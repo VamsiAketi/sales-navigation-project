@@ -88,19 +88,29 @@ jobs:
 
           helm upgrade --install "${DEV_RELEASE_NAME}" ./helm \
           --namespace "${DEV_NAMESPACE}" \
+          --set fullnameOverride="${DEV_RELEASE_NAME}" \
           --set server.image.repository="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}" \
           --set server.image.tag="${IMAGE_TAG}" \
           --set server.image.pullPolicy=IfNotPresent \
           --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}"
-
       - name: Capture CEO invite URL from logs
         id: capture_invite
         run: |
           echo "Attempting to capture CEO invite URL from server logs..."
-          # Give the deployment a bit of time to start and run bootstrap if this is a fresh install
-          sleep 30
+          # Wait for rollout (handles slow image pulls / startup)
+          kubectl rollout status deployment/${DEV_RELEASE_NAME}-server -n "${DEV_NAMESPACE}" --timeout=300s || echo "Warning: rollout did not complete within timeout; continuing to check logs."
 
-          INVITE_LINE=$(kubectl logs deployment/${DEV_RELEASE_NAME}-server -n "${DEV_NAMESPACE}" --tail=500 | grep -m1 'Invite URL:' || true)
+          INVITE_LINE=""
+          # Retry a few times in case bootstrap runs slightly after readiness
+          for i in $(seq 1 5); do
+            echo "Attempt ${i} to find invite URL in logs..."
+            INVITE_LINE=$(kubectl logs deployment/${DEV_RELEASE_NAME}-server -n "${DEV_NAMESPACE}" --tail=500 | grep -m1 'Invite URL:' || true)
+            if [ -n "$INVITE_LINE" ]; then
+              break
+            fi
+            sleep 15
+          done
+
           if [ -z "$INVITE_LINE" ]; then
             echo "No invite URL found in recent logs. This likely means the CEO was already bootstrapped previously."
             echo "invite_url=" >> "$GITHUB_OUTPUT"
