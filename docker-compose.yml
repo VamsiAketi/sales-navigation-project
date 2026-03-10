@@ -33,20 +33,33 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: >-
-      sh -c "
-      rm -f /paperclip/instances/default/config.json || true;
-      pnpm paperclipai onboard --yes;
-      pnpm --filter @paperclipai/server dev &
-      until curl -sf http://localhost:3100/health > /dev/null 2>&1; do
-        echo 'Waiting for server...';
-        sleep 2;
-      done;
-      echo '=== BOOTSTRAPPING ADMIN ===';
-      pnpm paperclipai auth bootstrap-ceo --data-dir /paperclip --base-url \"http://localhost:3100\";
-      echo '=== DONE ===';
-      wait
-      "
+    command: >
+      sh -c '
+      if [ ! -f "${PAPERCLIP_CONFIG:-/paperclip/instances/default/config.json}" ]; then
+        echo "=== ONBOARDING PAPERCLIP INSTANCE ===";
+        pnpm paperclipai onboard --yes;
+        echo "=== STARTING SERVER FOR BOOTSTRAP ===";
+        pnpm --filter @paperclipai/server dev &
+        echo "Waiting for server (max 60s)...";
+        ATTEMPTS=0;
+        until curl -sf http://localhost:3100/api/health > /dev/null 2>&1; do
+          ATTEMPTS=$((ATTEMPTS + 1));
+          if [ "$ATTEMPTS" -ge 30 ]; then
+            echo "Server did not become healthy within 60s, aborting bootstrap.";
+            exit 1;
+          fi;
+          echo "Waiting for server... (${ATTEMPTS}/30)";
+          sleep 2;
+        done;
+        echo "=== BOOTSTRAPPING ADMIN (CEO) ===";
+        pnpm paperclipai auth bootstrap-ceo --data-dir /paperclip --base-url "http://localhost:3100";
+        echo "=== BOOTSTRAP DONE ===";
+        wait;
+      else
+        echo "Config ${PAPERCLIP_CONFIG:-/paperclip/instances/default/config.json} exists; skipping onboarding/bootstrap.";
+        pnpm --filter @paperclipai/server dev;
+      fi
+      '
 volumes:
   pgdata:
   paperclip-data:
