@@ -39,8 +39,15 @@ spec:
                 pnpm paperclipai onboard --yes;
                 echo '=== STARTING SERVER FOR BOOTSTRAP ===';
                 pnpm --filter @paperclipai/server dev &
+                echo 'Waiting for server (max 60s)...';
+                ATTEMPTS=0;
                 until curl -sf http://localhost:3100/api/health > /dev/null 2>&1; do
-                  echo 'Waiting for server...';
+                  ATTEMPTS=$((ATTEMPTS + 1));
+                  if [ "$ATTEMPTS" -ge 30 ]; then
+                    echo 'Server did not become healthy within 60s, aborting bootstrap.';
+                    exit 1;
+                  fi;
+                  echo "Waiting for server... (${ATTEMPTS}/30)";
                   sleep 2;
                 done;
                 echo '=== BOOTSTRAPPING ADMIN (CEO) ===';
