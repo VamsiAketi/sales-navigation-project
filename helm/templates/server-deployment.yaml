@@ -60,7 +60,11 @@ spec:
             - sh
             - -c
             - |
+              
               if [ ! -f "${PAPERCLIP_CONFIG}" ]; then
+                echo '=== WAITING FOR 30 SECONDS ===';
+                sleep 30;
+                echo '=== WAITING FOR 30 SECONDS DONE ===';
                 echo '=== ONBOARDING PAPERCLIP INSTANCE ===';
                 pnpm paperclipai onboard --yes;
                 echo '=== STARTING SERVER FOR BOOTSTRAP ===';
