@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev:setup": "bash scripts/dev-setup.sh",
     "dev": "node scripts/dev-runner.mjs watch",
     "dev:watch": "cross-env PAPERCLIP_MIGRATION_PROMPT=never node scripts/dev-runner.mjs watch",
     "dev:once": "node scripts/dev-runner.mjs dev",
