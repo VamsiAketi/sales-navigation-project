@@ -459,7 +459,12 @@ export async function onboard(opts: OnboardOptions): Promise<void> {
     await bootstrapCeoInvite({ config: configPath });
   }
 
-  let shouldRunNow = opts.run === true || opts.yes === true;
+  const autoRunEnv = process.env.PAPERCLIP_ONBOARD_AUTO_RUN;
+  const autoRunDisabled =
+    typeof autoRunEnv === "string" &&
+    autoRunEnv.trim().length > 0 &&
+    autoRunEnv.trim().toLowerCase() === "false";
+  let shouldRunNow = !autoRunDisabled && (opts.run === true || opts.yes === true);
   if (!shouldRunNow && !opts.invokedByRun && process.stdin.isTTY && process.stdout.isTTY) {
     const answer = await p.confirm({
       message: "Start Paperclip now?",

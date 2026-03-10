@@ -105,6 +105,8 @@ spec:
               value: /paperclip
             - name: PAPERCLIP_INSTANCE_ID
               value: {{ .Values.server.paperclip.instanceId | quote }}
+            - name: PAPERCLIP_ONBOARD_AUTO_RUN
+              value: "false"
             - name: PAPERCLIP_CONFIG
               value: /paperclip/instances/default/config.json
             - name: SERVE_UI
