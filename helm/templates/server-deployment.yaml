@@ -44,7 +44,7 @@ spec:
                   sleep 2;
                 done;
                 echo '=== BOOTSTRAPPING ADMIN (CEO) ===';
-                pnpm paperclipai auth bootstrap-ceo --data-dir /paperclip --base-url "http://localhost:3100";
+                pnpm paperclipai auth bootstrap-ceo --data-dir /paperclip --base-url "{{ .Values.server.paperclip.publicUrl }}";
                 echo '=== BOOTSTRAP DONE ===';
                 wait;
               else

@@ -93,3 +93,37 @@ jobs:
           --set server.image.pullPolicy=IfNotPresent \
           --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}"
 
+      - name: Capture CEO invite URL from logs
+        id: capture_invite
+        run: |
+          echo "Attempting to capture CEO invite URL from server logs..."
+          # Give the deployment a bit of time to start and run bootstrap if this is a fresh install
+          sleep 30
+
+          INVITE_LINE=$(kubectl logs deployment/${DEV_RELEASE_NAME}-server -n "${DEV_NAMESPACE}" --tail=500 | grep -m1 'Invite URL:' || true)
+          if [ -z "$INVITE_LINE" ]; then
+            echo "No invite URL found in recent logs. This likely means the CEO was already bootstrapped previously."
+            echo "invite_url=" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Paperclip Dev CEO Invite"
+              echo ""
+              echo "- No new invite URL found in recent logs."
+              echo "- This usually means the CEO was already bootstrapped."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          INVITE_URL=$(echo "$INVITE_LINE" | awk '{print $3}')
+          echo "Found invite URL: $INVITE_URL"
+          echo "invite_url=${INVITE_URL}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Paperclip Dev CEO Invite"
+            echo ""
+            echo "A new CEO invite URL was created during this deployment:"
+            echo ""
+            echo "  ${INVITE_URL}"
+            echo ""
+            echo "_Note: This URL is typically single-use and time-limited. Share it only with the intended recipient._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
