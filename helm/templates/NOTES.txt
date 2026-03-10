@@ -1,0 +1,21 @@
+Paperclip has been deployed.
+
+1. Get the application URL by running:
+{{- if .Values.ingress.enabled }}
+   {{- range $host := .Values.ingress.hosts }}
+   {{- range .paths }}
+   https://{{ $host.host }}{{ .path }}
+   {{- end }}
+   {{- end }}
+{{- else }}
+   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "paperclip.fullname" . }}-server 3100:3100
+   Then visit http://localhost:3100
+{{- end }}
+
+2. Before first use:
+   - Ensure BETTER_AUTH_SECRET is set (override server.secrets.betterAuthSecret)
+   - Generate with: openssl rand -base64 32
+   - For AI adapters (Codex/Claude), set server.paperclip.openaiApiKey and/or anthropicApiKey
+
+3. Verify health:
+   curl {{ .Values.server.paperclip.publicUrl }}/api/health

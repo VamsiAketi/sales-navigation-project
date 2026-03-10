@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paperclip.fullname" . }}-server
+  labels:
+    {{- include "paperclip.server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.server.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "paperclip.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "paperclip.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      {{- with .Values.server.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: server
+          image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              if [ ! -f "${PAPERCLIP_CONFIG}" ]; then
+                echo '=== ONBOARDING PAPERCLIP INSTANCE ===';
+                pnpm paperclipai onboard --yes;
+                echo '=== STARTING SERVER FOR BOOTSTRAP ===';
+                pnpm --filter @paperclipai/server dev &
+                until curl -sf http://localhost:3100/api/health > /dev/null 2>&1; do
+                  echo 'Waiting for server...';
+                  sleep 2;
+                done;
+                echo '=== BOOTSTRAPPING ADMIN (CEO) ===';
+                pnpm paperclipai auth bootstrap-ceo --data-dir /paperclip --base-url "http://localhost:3100";
+                echo '=== BOOTSTRAP DONE ===';
+                wait;
+              else
+                echo "Config ${PAPERCLIP_CONFIG} exists; skipping onboarding/bootstrap.";
+                pnpm --filter @paperclipai/server dev;
+              fi
+          ports:
+            - name: http
+              containerPort: 3100
+              protocol: TCP
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "3100"
+            - name: NODE_ENV
+              value: production
+            - name: HOME
+              value: /paperclip
+            - name: PAPERCLIP_HOME
+              value: /paperclip
+            - name: PAPERCLIP_INSTANCE_ID
+              value: {{ .Values.server.paperclip.instanceId | quote }}
+            - name: PAPERCLIP_CONFIG
+              value: /paperclip/instances/default/config.json
+            - name: SERVE_UI
+              value: {{ .Values.server.serveUi | quote }}
+            - name: PAPERCLIP_DEPLOYMENT_MODE
+              value: {{ .Values.server.paperclip.deploymentMode | quote }}
+            - name: PAPERCLIP_DEPLOYMENT_EXPOSURE
+              value: {{ .Values.server.paperclip.deploymentExposure | quote }}
+            - name: PAPERCLIP_PUBLIC_URL
+              value: {{ .Values.server.paperclip.publicUrl | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paperclip.fullname" . }}-server
+                  key: database-url
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paperclip.fullname" . }}-server
+                  key: better-auth-secret
+            {{- if .Values.server.paperclip.openaiApiKey }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paperclip.fullname" . }}-server
+                  key: openai-api-key
+            {{- end }}
+            {{- if .Values.server.paperclip.anthropicApiKey }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paperclip.fullname" . }}-server
+                  key: anthropic-api-key
+            {{- end }}
+            {{- range $key, $value := .Values.server.extraEnv }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: paperclip-data
+              mountPath: /paperclip
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: paperclip-data
+          persistentVolumeClaim:
+            claimName: {{ include "paperclip.fullname" . }}-paperclip-data

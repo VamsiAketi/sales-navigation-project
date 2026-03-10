@@ -1,0 +1,12 @@
+apiVersion: v2
+name: paperclip
+description: Paperclip - Control plane for AI-agent companies
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - paperclip
+  - ai
+  - agents
+maintainers:
+  - name: Paperclip Team
