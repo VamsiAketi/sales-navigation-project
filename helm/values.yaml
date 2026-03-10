@@ -1,0 +1,68 @@
+# Default values for paperclip.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -- PostgreSQL database (deployed with chart when enabled)
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    username: paperclip
+    password: paperclip
+    database: paperclip
+  persistence:
+    size: 10Gi
+    storageClass: ""  # Use default storage class if empty
+
+# -- Paperclip server application
+server:
+  replicaCount: 1
+  image:
+    # Build from project root: docker build -t <your-registry>/paperclip:latest .
+    # Image must include git and @openai/codex (Dockerfile already does)
+    repository: paperclip
+    tag: latest
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  serveUi: "true"
+  persistence:
+    size: 10Gi
+    storageClass: ""  # Use default storage class if empty
+  paperclip:
+    instanceId: default
+    deploymentMode: authenticated
+    deploymentExposure: private
+    publicUrl: https://dev.ai-harness.com
+    # Optional: API keys for AI adapters (Codex, Claude). Leave empty to skip.
+    openaiApiKey: ""
+    anthropicApiKey: ""
+  secrets:
+    # Required for authenticated mode. Generate with: openssl rand -base64 32
+    betterAuthSecret: "CHANGE_ME_use_openssl_rand_base64_32"
+  # External database URL (when postgres.enabled: false)
+  database:
+    externalUrl: ""
+  # Extra environment variables
+  extraEnv: {}
+
+# -- Ingress configuration
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-cert-issuer
+  hosts:
+    - host: dev.ai-harness.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: dev-tls
+      hosts:
+        - dev.ai-harness.com

@@ -1,0 +1,109 @@
+name: Deploy Tenant
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant:
+        description: "Tenant name (used in namespace and host)"
+        required: true
+        type: string
+      imageTag:
+        description: "Image tag to deploy (dd.mm.yyyy.N)"
+        required: true
+        type: string
+      createNamespace:
+        description: "Create namespace if it does not exist"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+env:
+  IMAGE_NAME: ai-harness
+
+jobs:
+  deploy-tenant:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Extract ACR name from login server
+        id: acr
+        run: |
+          LOGIN_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
+          ACR_NAME="${LOGIN_SERVER%%.*}"
+          echo "acr_name=${ACR_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Resolve image tag and validate
+        id: tag
+        run: |
+          IMAGE_TAG="${{ github.event.inputs.imageTag }}"
+          ACR_NAME="${{ steps.acr.outputs.acr_name }}"
+
+          echo "Using provided image tag: ${IMAGE_TAG}"
+
+          EXISTS=$(az acr repository show-tags \
+            -n "${ACR_NAME}" \
+            --repository "${IMAGE_NAME}" \
+            --query "[?@=='${IMAGE_TAG}']|length(@)" -o tsv 2>/dev/null || echo 0)
+
+          if [ "${EXISTS}" -eq 0 ]; then
+            echo "ERROR: Tag '${IMAGE_TAG}' does not exist in ACR for repository '${IMAGE_NAME}'."
+            exit 1
+          fi
+
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ secrets.AZURE_AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AZURE_AKS_CLUSTER_NAME }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Deploy tenant with Helm
+        run: |
+          TENANT="${{ github.event.inputs.tenant }}"
+          IMAGE_TAG="${{ steps.tag.outputs.image_tag }}"
+          CREATE_NS="${{ github.event.inputs.createNamespace }}"
+
+          NAMESPACE="ai-harness-${TENANT}"
+          RELEASE_NAME="ai-harness-${TENANT}"
+          HOST="${TENANT}.ai-harness.com"
+
+          if [ "${CREATE_NS}" = "true" ]; then
+            kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
+          fi
+
+          helm upgrade --install "${RELEASE_NAME}" ./helm \
+            --namespace "${NAMESPACE}" \
+            --set server.image.repository="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}" \
+            --set server.image.tag="${IMAGE_TAG}" \
+            --set server.image.pullPolicy=IfNotPresent \
+            --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
+            --set server.paperclip.instanceId="${TENANT}" \
+            --set server.paperclip.publicUrl="https://${HOST}" \
+            --set ingress.enabled=true \
+            --set ingress.hosts[0].host="${HOST}" \
+            --set ingress.hosts[0].paths[0].path="/" \
+            --set ingress.hosts[0].paths[0].pathType="Prefix" \
+            --set ingress.tls[0].hosts[0]="${HOST}"
+

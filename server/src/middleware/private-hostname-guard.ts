@@ -64,6 +64,12 @@ export function privateHostnameGuard(opts: {
   });
 
   return (req, res, next) => {
+    // Skip hostname check for health endpoint - used by k8s probes, load balancers, etc.
+    if (req.path === "/api/health" || req.path === "/health") {
+      next();
+      return;
+    }
+
     const hostname = extractHostname(req);
     const wantsJson = req.path.startsWith("/api") || req.accepts(["json", "html", "text"]) === "json";
 
