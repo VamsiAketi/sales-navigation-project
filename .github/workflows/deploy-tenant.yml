@@ -142,7 +142,7 @@ jobs:
             exit 0
           fi
 
-          INVITE_URL=$(echo "$INVITE_LINE" | awk '{print $3}')
+          INVITE_URL=$(echo "$INVITE_LINE" | awk '{print $NF}')
           echo "Found invite URL: $INVITE_URL"
           echo "invite_url=${INVITE_URL}" >> "$GITHUB_OUTPUT"
 
