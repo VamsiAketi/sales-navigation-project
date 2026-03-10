@@ -26,6 +26,26 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+
+      {{- if .Values.postgres.enabled }}
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              HOST="{{ include "paperclip.fullname" . }}-postgres"
+              PORT="5432"
+              echo "Waiting for Postgres at ${HOST}:${PORT}..."
+              until pg_isready -h "${HOST}" -p "${PORT}"; do
+                echo "Postgres not ready yet, sleeping..."
+                sleep 3
+              done
+              echo "Postgres is ready."
+      {{- end }}
+
       containers:
         - name: server
           image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
