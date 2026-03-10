@@ -31,16 +31,22 @@ spec:
       initContainers:
         - name: wait-for-postgres
           image: postgres:17-alpine
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paperclip.fullname" . }}-server
+                  key: database-url
           command:
             - sh
             - -c
             - |
               set -e
-              HOST="{{ include "paperclip.fullname" . }}-postgres"
-              PORT="5432"
-              echo "Waiting for Postgres at ${HOST}:${PORT}..."
-              until pg_isready -h "${HOST}" -p "${PORT}"; do
-                echo "Postgres not ready yet, sleeping..."
+              echo "Waiting for Postgres using DATABASE_URL..."
+              ATTEMPTS=0
+              until psql "$DATABASE_URL" -c 'SELECT 1' >/dev/null 2>&1; do
+                ATTEMPTS=$((ATTEMPTS + 1))
+                echo "Postgres not ready yet, sleeping... (attempt ${ATTEMPTS})"
                 sleep 3
               done
               echo "Postgres is ready."
