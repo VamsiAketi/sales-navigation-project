@@ -63,6 +63,6 @@ ingress:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: dev-tls
+    - secretName: app-ai-harness-tls
       hosts:
         - dev-test.ai-harness.com
