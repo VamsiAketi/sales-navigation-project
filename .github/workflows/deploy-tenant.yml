@@ -7,6 +7,14 @@ on:
         description: "Tenant name (used in namespace and host)"
         required: true
         type: string
+      userName:
+        description: "Default CEO user full name"
+        required: true
+        type: string
+      userEmail:
+        description: "Default CEO user email"
+        required: true
+        type: string
       imageTag:
         description: "Image tag to deploy (dd.mm.yyyy.N)"
         required: true
@@ -156,4 +164,90 @@ jobs:
             echo ""
             echo "_Note: This URL is typically single-use and time-limited. Share it only with the intended recipient._"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Auto-bootstrap CEO user and accept invite
+        if: steps.capture_invite.outputs.invite_url != ''
+        env:
+          CEO_DEFAULT_PASSWORD: ${{ secrets.CEO_DEFAULT_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          TENANT="${{ github.event.inputs.tenant }}"
+          HOST="${TENANT}.app.ai-harness.com"
+          BASE_URL="https://${HOST}"
+
+          USER_NAME="${{ github.event.inputs.userName }}"
+          USER_EMAIL="${{ github.event.inputs.userEmail }}"
+          USER_PASSWORD="${CEO_DEFAULT_PASSWORD}"
+
+          INVITE_URL="${{ steps.capture_invite.outputs.invite_url }}"
+          INVITE_TOKEN="${INVITE_URL##*/}"
+
+          echo "Using invite URL: ${INVITE_URL}"
+          echo "Bootstrapping CEO user ${USER_EMAIL} at ${BASE_URL}"
+
+          TMP_DIR="$(mktemp -d)"
+          COOKIE_JAR="$TMP_DIR/cookies.txt"
+
+          post_json_with_cookies() {
+            local url="$1"
+            local body="$2"
+            local output_file="$3"
+            curl -sS \
+              -o "$output_file" \
+              -w "%{http_code}" \
+              -c "$COOKIE_JAR" \
+              -b "$COOKIE_JAR" \
+              -H "Content-Type: application/json" \
+              -H "Origin: $BASE_URL" \
+              -X POST \
+              "$url" \
+              --data "$body"
+          }
+
+          # 1) Sign up or sign in the CEO user
+          SIGNUP_RESP="$TMP_DIR/signup.json"
+          SIGNUP_STATUS="$(post_json_with_cookies \
+            "$BASE_URL/api/auth/sign-up/email" \
+            "{\"name\":\"$USER_NAME\",\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}" \
+            "$SIGNUP_RESP")"
+
+          if [[ "$SIGNUP_STATUS" =~ ^2 ]]; then
+            echo "Created CEO user ${USER_EMAIL}"
+          else
+            SIGNIN_RESP="$TMP_DIR/signin.json"
+            SIGNIN_STATUS="$(post_json_with_cookies \
+              "$BASE_URL/api/auth/sign-in/email" \
+              "{\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}" \
+              "$SIGNIN_RESP")"
+
+            if [[ "$SIGNIN_STATUS" =~ ^2 ]]; then
+              echo "Signed in existing CEO user ${USER_EMAIL}"
+            else
+              echo "Failed to sign up or sign in CEO user" >&2
+              echo "Sign-up response:" >&2
+              cat "$SIGNUP_RESP" || true
+              echo >&2
+              echo "Sign-in response:" >&2
+              cat "$SIGNIN_RESP" || true
+              exit 1
+            fi
+          fi
+
+          echo "Authenticated as ${USER_EMAIL}, accepting invite..."
+
+          # 2) Accept the invite as this user
+          ACCEPT_RESP="$TMP_DIR/accept.json"
+          ACCEPT_STATUS="$(post_json_with_cookies \
+            "$BASE_URL/api/invites/$INVITE_TOKEN/accept" \
+            '{"requestType":"human"}' \
+            "$ACCEPT_RESP")"
+
+          if ! [[ "$ACCEPT_STATUS" =~ ^2 ]]; then
+            echo "Failed to accept invite (HTTP $ACCEPT_STATUS)" >&2
+            cat "$ACCEPT_RESP" || true
+            exit 1
+          fi
+
+          echo "CEO invite accepted automatically for ${USER_EMAIL}"
 
