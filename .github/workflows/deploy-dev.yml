@@ -92,7 +92,8 @@ jobs:
           --set server.image.repository="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}" \
           --set server.image.tag="${IMAGE_TAG}" \
           --set server.image.pullPolicy=IfNotPresent \
-          --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}"
+          --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
+          --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
       - name: Capture CEO invite URL from logs
         id: capture_invite
         run: |
