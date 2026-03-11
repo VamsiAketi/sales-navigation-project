@@ -266,8 +266,7 @@ jobs:
           secure: true
           username: "support@ai-harness.com"
           password: ${{ secrets.SMTP_PASSWORD }}
-          from: "support@ai-harness.com"
-          from_name: "AI-Harness Support"
+          from: "AI-Harness Support <support@ai-harness.com>"
           to: ${{ github.event.inputs.userEmail }}
           subject: "Your AI-Harness access is ready"
           body: |
