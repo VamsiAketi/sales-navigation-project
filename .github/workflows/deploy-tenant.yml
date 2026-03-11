@@ -167,8 +167,6 @@ jobs:
 
       - name: Auto-bootstrap CEO user and accept invite
         if: steps.capture_invite.outputs.invite_url != ''
-        env:
-          CEO_DEFAULT_PASSWORD: ${{ secrets.CEO_DEFAULT_PASSWORD }}
         run: |
           set -euo pipefail
 
@@ -178,7 +176,8 @@ jobs:
 
           USER_NAME="${{ github.event.inputs.userName }}"
           USER_EMAIL="${{ github.event.inputs.userEmail }}"
-          USER_PASSWORD="${CEO_DEFAULT_PASSWORD}"
+          # Generate a random 24-char base64 password
+          USER_PASSWORD="$(openssl rand -base64 18)"
 
           INVITE_URL="${{ steps.capture_invite.outputs.invite_url }}"
           INVITE_TOKEN="${INVITE_URL##*/}"
@@ -250,4 +249,7 @@ jobs:
           fi
 
           echo "CEO invite accepted automatically for ${USER_EMAIL}"
+          echo "CEO login details:"
+          echo "  Email: ${USER_EMAIL}"
+          echo "  Password: ${USER_PASSWORD}"
 
