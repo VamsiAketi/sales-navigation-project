@@ -115,7 +115,8 @@ jobs:
             --set ingress.hosts[0].paths[0].path="/" \
             --set ingress.hosts[0].paths[0].pathType="Prefix" \
             --set ingress.tls[0].hosts[0]="${HOST}" \
-            --set ingress.tls[0].secretName="app-ai-harness-tls"
+            --set ingress.tls[0].secretName="app-ai-harness-tls" \
+            --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
 
       - name: Capture CEO invite URL from logs
         id: capture_invite
@@ -166,6 +167,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Auto-bootstrap CEO user and accept invite
+        id: bootstrap_ceo
         if: steps.capture_invite.outputs.invite_url != ''
         run: |
           set -euo pipefail
@@ -252,4 +254,36 @@ jobs:
           echo "CEO login details:"
           echo "  Email: ${USER_EMAIL}"
           echo "  Password: ${USER_PASSWORD}"
+
+          echo "user_password=${USER_PASSWORD}" >> "$GITHUB_OUTPUT"
+
+      - name: Send CEO credentials email
+        if: steps.capture_invite.outputs.invite_url != ''
+        uses: dawidd6/action-send-mail@v4
+        with:
+          server_address: smtp.agentmail.to
+          server_port: 465
+          secure: true
+          username: "support@ai-harness.com"
+          password: ${{ secrets.SMTP_PASSWORD }}
+          from: "support@ai-harness.com"
+          from_name: "AI-Harness Support"
+          to: ${{ github.event.inputs.userEmail }}
+          subject: "Your AI-Harness access is ready"
+          body: |
+            Hi ${{ github.event.inputs.userName }},
+
+            Your AI-Harness tenant (${{ github.event.inputs.tenant }}) is ready.
+
+            You can sign in at:
+            https://${{ github.event.inputs.tenant }}.app.ai-harness.com
+
+            Your initial login credentials are:
+            - Email: ${{ github.event.inputs.userEmail }}
+            - Password: ${{ steps.bootstrap_ceo.outputs.user_password }}
+
+            For security, please sign in and change your password as soon as possible.
+
+            Thanks,
+            AI-Harness Support
 
