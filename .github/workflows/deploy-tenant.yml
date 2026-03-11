@@ -76,77 +76,6 @@ jobs:
           resource-group: ${{ secrets.AZURE_AKS_RESOURCE_GROUP }}
           cluster-name: ${{ secrets.AZURE_AKS_CLUSTER_NAME }}
 
-      - name: Ensure DNS A record for tenant
-        env:
-          AZURE_AKS_RESOURCE_GROUP: ${{ secrets.AZURE_AKS_RESOURCE_GROUP }}
-          AZURE_DNS_ZONE: ${{ secrets.AZURE_DNS_ZONE }}
-        run: |
-          set -e
-          TENANT="${{ github.event.inputs.tenant }}"
-          HOST="${TENANT}.ai-harness.com"
-          ZONE="${AZURE_DNS_ZONE:-ai-harness.com}"
-          RG="${AZURE_AKS_RESOURCE_GROUP}"
-          # Record name is the subdomain (e.g. "mytenant" for mytenant.ai-harness.com)
-          RECORD_NAME="${TENANT}"
-
-          echo "Getting Traefik LoadBalancer public IP from cluster (namespace traefik)..."
-          TRAEFIK_IP=$(kubectl get svc -n traefik -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-          if [ -z "$TRAEFIK_IP" ]; then
-            TRAEFIK_IP=$(kubectl get svc -n traefik -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-          fi
-          if [ -z "$TRAEFIK_IP" ]; then
-            echo "ERROR: Could not get Traefik LoadBalancer IP from traefik namespace. Ensure Traefik is installed and has a LoadBalancer service."
-            exit 1
-          fi
-          echo "Traefik public IP: ${TRAEFIK_IP}"
-
-          echo "Checking if A record '${RECORD_NAME}' exists in zone '${ZONE}' (resource group '${RG}')..."
-          if az network dns record-set a show \
-            --resource-group "${RG}" \
-            --zone-name "${ZONE}" \
-            --name "${RECORD_NAME}" \
-            --query "name" -o tsv 2>/dev/null; then
-            echo "A record '${RECORD_NAME}' already exists; ensuring it points to ${TRAEFIK_IP}..."
-            # Get current IPs and add/update so the LB IP is present
-            CURRENT_IPS=$(az network dns record-set a list-records \
-              --resource-group "${RG}" \
-              --zone-name "${ZONE}" \
-              --name "${RECORD_NAME}" \
-              --query "[].ipv4Address" -o tsv 2>/dev/null || true)
-            if echo "$CURRENT_IPS" | grep -q "^${TRAEFIK_IP}$"; then
-              echo "Record already points to ${TRAEFIK_IP}. No change needed."
-            else
-              # Remove existing records and add the Traefik IP (Azure CLI doesn't have a simple "set single A")
-              for ip in $CURRENT_IPS; do
-                az network dns record-set a remove-record \
-                  --resource-group "${RG}" \
-                  --zone-name "${ZONE}" \
-                  --name "${RECORD_NAME}" \
-                  --ipv4-address "${ip}" 2>/dev/null || true
-              done
-              az network dns record-set a add-record \
-                --resource-group "${RG}" \
-                --zone-name "${ZONE}" \
-                --name "${RECORD_NAME}" \
-                --ipv4-address "${TRAEFIK_IP}"
-              echo "Updated A record '${RECORD_NAME}' to ${TRAEFIK_IP}."
-            fi
-          else
-            echo "A record '${RECORD_NAME}' not found. Creating record set and adding A record..."
-            az network dns record-set a create \
-              --resource-group "${RG}" \
-              --zone-name "${ZONE}" \
-              --name "${RECORD_NAME}" \
-              --ttl 300
-            az network dns record-set a add-record \
-              --resource-group "${RG}" \
-              --zone-name "${ZONE}" \
-              --name "${RECORD_NAME}" \
-              --ipv4-address "${TRAEFIK_IP}"
-            echo "Created A record '${RECORD_NAME}' -> ${TRAEFIK_IP}."
-          fi
-          echo "DNS: ${HOST} -> ${TRAEFIK_IP}"
-
       - name: Install Helm
         uses: azure/setup-helm@v4
 
@@ -158,7 +87,7 @@ jobs:
 
           NAMESPACE="ai-harness-${TENANT}"
           RELEASE_NAME="ai-harness-${TENANT}"
-          HOST="${TENANT}.ai-harness.com"
+          HOST="${TENANT}.app.ai-harness.com"
 
           if [ "${CREATE_NS}" = "true" ]; then
             kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
