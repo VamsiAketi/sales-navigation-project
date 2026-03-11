@@ -38,7 +38,7 @@ server:
     instanceId: default
     deploymentMode: authenticated
     deploymentExposure: private
-    publicUrl: https://dev.ai-harness.com
+    publicUrl: https://dev-test.ai-harness.com
     # Optional: API keys for AI adapters (Codex, Claude). Leave empty to skip.
     openaiApiKey: ""
     anthropicApiKey: ""
