@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@paperclipai/shared";
+import type { CompanySecret, Project } from "@paperclipai/shared";
 import { StatusBadge } from "./StatusBadge";
 import { cn, formatDate } from "../lib/utils";
 import { goalsApi } from "../api/goals";
 import { projectsApi } from "../api/projects";
+import { secretsApi } from "../api/secrets";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { statusBadge, statusBadgeDefault } from "../lib/status-colors";
@@ -84,6 +85,12 @@ export function ProjectProperties({ project, onUpdate }: ProjectPropertiesProps)
   const [workspaceCwd, setWorkspaceCwd] = useState("");
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+
+  const { data: companySecrets = [] } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
+    queryFn: () => secretsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
 
   const { data: allGoals } = useQuery({
     queryKey: queryKeys.goals.list(selectedCompanyId!),
@@ -253,6 +260,67 @@ export function ProjectProperties({ project, onUpdate }: ProjectPropertiesProps)
     removeWorkspace.mutate(workspace.id);
   };
 
+  const getWorkspaceGitHubSecretId = (workspace: Project["workspaces"][number]): string => {
+    const metadata = (workspace.metadata as
+      | {
+          githubSecretId?: unknown;
+          projectSecrets?: { githubPatSecretId?: unknown } | null;
+        }
+      | null
+      | undefined) ?? null;
+    if (typeof metadata?.githubSecretId === "string") {
+      return metadata.githubSecretId;
+    }
+    const projectSecretsBinding = metadata?.projectSecrets;
+    if (
+      projectSecretsBinding &&
+      typeof projectSecretsBinding === "object" &&
+      typeof (projectSecretsBinding as { githubPatSecretId?: unknown }).githubPatSecretId === "string"
+    ) {
+      return (projectSecretsBinding as { githubPatSecretId: string }).githubPatSecretId;
+    }
+    return "";
+  };
+
+  const setWorkspaceGitHubSecretId = (
+    workspace: Project["workspaces"][number],
+    secretId: string,
+  ) => {
+    const currentMetadata = (workspace.metadata as Record<string, unknown> | null) ?? {};
+    const projectSecretsBinding = (currentMetadata.projectSecrets as
+      | { githubPatSecretId?: string }
+      | null
+      | undefined) ?? {};
+    const nextProjectSecrets: { githubPatSecretId?: string } = { ...projectSecretsBinding };
+    if (secretId) {
+      nextProjectSecrets.githubPatSecretId = secretId;
+    } else {
+      delete nextProjectSecrets.githubPatSecretId;
+    }
+    const nextMetadata: Record<string, unknown> = {
+      ...currentMetadata,
+    };
+    if (Object.keys(nextProjectSecrets).length > 0) {
+      nextMetadata.projectSecrets = nextProjectSecrets;
+    } else {
+      // Avoid leaving an empty object that could be misleading
+      if ("projectSecrets" in nextMetadata) {
+        delete nextMetadata.projectSecrets;
+      }
+    }
+    // Also set legacy top-level githubSecretId so existing helpers keep working.
+    if (secretId) {
+      nextMetadata.githubSecretId = secretId;
+    } else if ("githubSecretId" in nextMetadata) {
+      delete nextMetadata.githubSecretId;
+    }
+
+    updateWorkspace.mutate({
+      workspaceId: workspace.id,
+      data: { metadata: nextMetadata },
+    });
+  };
+
   return (
     <div className="space-y-4">
       <div className="space-y-1">
@@ -369,46 +437,79 @@ export function ProjectProperties({ project, onUpdate }: ProjectPropertiesProps)
               No workspace configured.
             </p>
           ) : (
-            <div className="space-y-1">
-              {workspaces.map((workspace) => (
-                <div key={workspace.id} className="space-y-1">
-                  {workspace.cwd && workspace.cwd !== REPO_ONLY_CWD_SENTINEL ? (
-                    <div className="flex items-center justify-between gap-2 py-1">
-                      <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{workspace.cwd}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => clearLocalWorkspace(workspace)}
-                        aria-label="Delete local folder"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ) : null}
-                  {workspace.repoUrl ? (
-                    <div className="flex items-center justify-between gap-2 py-1">
-                      <a
-                        href={workspace.repoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
-                      >
-                        <Github className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{formatGitHubRepo(workspace.repoUrl)}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => clearRepoWorkspace(workspace)}
-                        aria-label="Delete workspace repo"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+            <div className="space-y-2">
+              {workspaces.map((workspace) => {
+                const currentSecretId = getWorkspaceGitHubSecretId(workspace);
+                const currentSecret: CompanySecret | undefined = companySecrets.find(
+                  (s) => s.id === currentSecretId,
+                );
+                return (
+                  <div key={workspace.id} className="space-y-1.5 rounded-md border border-border px-2 py-1.5">
+                    {workspace.cwd && workspace.cwd !== REPO_ONLY_CWD_SENTINEL ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
+                          {workspace.cwd}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => clearLocalWorkspace(workspace)}
+                          aria-label="Delete local folder"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : null}
+                    {workspace.repoUrl ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <a
+                          href={workspace.repoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                        >
+                          <Github className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{formatGitHubRepo(workspace.repoUrl)}</span>
+                          <ExternalLink className="h-3 w-3 shrink-0" />
+                        </a>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => clearRepoWorkspace(workspace)}
+                          aria-label="Delete workspace repo"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : null}
+                    {workspace.repoUrl && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="text-[11px] text-muted-foreground shrink-0">
+                          GitHub PAT secret
+                        </span>
+                        <select
+                          className="flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
+                          value={currentSecretId}
+                          onChange={(e) => setWorkspaceGitHubSecretId(workspace, e.target.value)}
+                        >
+                          <option value="">None</option>
+                          {companySecrets.map((secret) => (
+                            <option key={secret.id} value={secret.id}>
+                              {secret.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {workspace.repoUrl && currentSecret && (
+                      <p className="text-[11px] text-muted-foreground/70">
+                        Agents using this workspace can use{" "}
+                        <span className="font-mono">{currentSecret.name}</span> to access the repo.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
           <div className="flex flex-col items-start gap-2">
