@@ -60,7 +60,7 @@ spec:
             - sh
             - -c
             - |
-              
+              printenv OPENAI_API_KEY | codex login --with-api-key
               if [ ! -f "${PAPERCLIP_CONFIG}" ]; then
                 echo '=== WAITING FOR 30 SECONDS ===';
                 sleep 30;
