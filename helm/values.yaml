@@ -38,7 +38,7 @@ server:
     instanceId: default
     deploymentMode: authenticated
     deploymentExposure: private
-    publicUrl: https://dev-test.ai-harness.com
+    publicUrl: https://dev.app.ai-harness.com
     # Optional: API keys for AI adapters (Codex, Claude). Leave empty to skip.
     openaiApiKey: ""
     anthropicApiKey: ""
@@ -58,11 +58,11 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-cert-issuer
   hosts:
-    - host: dev-test.ai-harness.com
+    - host: dev.app.ai-harness.com
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: app-ai-harness-tls
       hosts:
-        - dev-test.ai-harness.com
+        - dev.app.ai-harness.com
