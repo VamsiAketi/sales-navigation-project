@@ -22,6 +22,7 @@ import type { AdapterExecutionResult, AdapterInvocationMeta, AdapterSessionCodec
 import { createLocalAgentJwt } from "../agent-auth-jwt.js";
 import { parseObject, asBoolean, asNumber, appendWithCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
 import { secretService } from "./secrets.js";
+import { resolveProjectGitHubCredentials } from "./project-git.js";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 
 const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
@@ -1116,6 +1117,40 @@ export function heartbeatService(db: Db) {
           ]
         : []),
     ];
+
+    let workspaceGitAuth: {
+      provider: "github";
+      repoOwner: string;
+      repoName: string;
+      token: string;
+    } | null = null;
+    if (resolvedWorkspace.projectId && resolvedWorkspace.repoUrl) {
+      try {
+        const githubCreds = await resolveProjectGitHubCredentials(
+          db,
+          resolvedWorkspace.projectId,
+        );
+        if (githubCreds && githubCreds.repoUrl === resolvedWorkspace.repoUrl) {
+          workspaceGitAuth = {
+            provider: "github",
+            repoOwner: githubCreds.repoOwner,
+            repoName: githubCreds.repoName,
+            token: githubCreds.token,
+          };
+        }
+      } catch (err) {
+        logger.warn(
+          {
+            err,
+            companyId: agent.companyId,
+            agentId: agent.id,
+            projectId: resolvedWorkspace.projectId,
+            workspaceId: resolvedWorkspace.workspaceId,
+          },
+          "failed to resolve project GitHub credentials for workspace; proceeding without repo auth",
+        );
+      }
+    }
     context.paperclipWorkspace = {
       cwd: resolvedWorkspace.cwd,
       source: resolvedWorkspace.source,
@@ -1123,6 +1158,7 @@ export function heartbeatService(db: Db) {
       workspaceId: resolvedWorkspace.workspaceId,
       repoUrl: resolvedWorkspace.repoUrl,
       repoRef: resolvedWorkspace.repoRef,
+      gitAuth: workspaceGitAuth,
     };
     context.paperclipWorkspaces = resolvedWorkspace.workspaceHints;
     if (resolvedWorkspace.projectId && !readNonEmptyString(context.projectId)) {
