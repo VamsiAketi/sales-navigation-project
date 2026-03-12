@@ -129,6 +129,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const workspaceId = asString(workspaceContext.workspaceId, "");
   const workspaceRepoUrl = asString(workspaceContext.repoUrl, "");
   const workspaceRepoRef = asString(workspaceContext.repoRef, "");
+  const workspaceGitAuth = parseObject(workspaceContext.gitAuth);
+  const workspaceGitProvider = asString(workspaceGitAuth.provider, "");
+  const workspaceGitToken = asString(workspaceGitAuth.token, "");
+  const workspaceGitOwner = asString(workspaceGitAuth.repoOwner, "");
+  const workspaceGitRepo = asString(workspaceGitAuth.repoName, "");
   const workspaceHints = Array.isArray(context.paperclipWorkspaces)
     ? context.paperclipWorkspaces.filter(
         (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
@@ -203,6 +208,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   }
   if (workspaceHints.length > 0) {
     env.PAPERCLIP_WORKSPACES_JSON = JSON.stringify(workspaceHints);
+  }
+  if (workspaceGitProvider === "github" && workspaceGitToken) {
+    env.PAPERCLIP_WORKSPACE_GITHUB_PAT = workspaceGitToken;
+    if (workspaceGitOwner && workspaceGitRepo) {
+      env.PAPERCLIP_WORKSPACE_GITHUB_OWNER = workspaceGitOwner;
+      env.PAPERCLIP_WORKSPACE_GITHUB_REPO = workspaceGitRepo;
+      env.PAPERCLIP_WORKSPACE_REPO_AUTH_URL = `https://${workspaceGitToken}@github.com/${workspaceGitOwner}/${workspaceGitRepo}.git`;
+    }
   }
   for (const [k, v] of Object.entries(envConfig)) {
     if (typeof v === "string") env[k] = v;
