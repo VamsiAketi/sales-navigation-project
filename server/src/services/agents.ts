@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
@@ -63,6 +65,29 @@ interface AgentShortnameCollisionOptions {
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const ENGINEERING_ROLE_KEYWORDS = ["engineer", "engineering", "developer", "dev"];
+const ENGINEER_INSTRUCTIONS_MARKER = "Standard Engineering InstructionsStandard Engineering Instructions for AI-Harness";
+
+let cachedEngineerInstructions: string | null | undefined;
+
+async function loadEngineerStandardInstructions(): Promise<string | null> {
+  if (cachedEngineerInstructions !== undefined) return cachedEngineerInstructions;
+  const repoRoot = process.cwd();
+  const instructionsPath = path.resolve(
+    repoRoot,
+    "standard-instructions",
+    "engineer",
+    "Agent.md",
+  );
+  try {
+    const contents = await fs.readFile(instructionsPath, "utf8");
+    cachedEngineerInstructions = contents.trim() || null;
+  } catch {
+    cachedEngineerInstructions = null;
+  }
+  return cachedEngineerInstructions;
 }
 
 function jsonEqual(left: unknown, right: unknown): boolean {
@@ -349,9 +374,48 @@ export function agentService(db: Db) {
 
       const role = data.role ?? "general";
       const normalizedPermissions = normalizeAgentPermissions(data.permissions, role);
+
+      // For engineering agents, automatically append standard repository access
+      // instructions loaded from standard-instructions/engineer/Agent.md to any
+      // existing promptTemplate, without changing the reference point the CEO
+      // configured.
+      const roleLower = (data.role ?? "").toLowerCase();
+      const titleLower = (data.title ?? "").toLowerCase();
+      const isEngineeringAgent =
+        ENGINEERING_ROLE_KEYWORDS.some((kw) => roleLower.includes(kw)) ||
+        ENGINEERING_ROLE_KEYWORDS.some((kw) => titleLower.includes(kw));
+
+      let normalizedAdapterConfig: Record<string, unknown> | null = null;
+      if (isPlainRecord(data.adapterConfig)) {
+        normalizedAdapterConfig = { ...(data.adapterConfig as Record<string, unknown>) };
+      } else if (isEngineeringAgent) {
+        normalizedAdapterConfig = {};
+      }
+
+      if (isEngineeringAgent && normalizedAdapterConfig) {
+        const engineerInstructions = await loadEngineerStandardInstructions();
+        if (engineerInstructions) {
+        const existingPrompt = typeof normalizedAdapterConfig.promptTemplate === "string"
+          ? normalizedAdapterConfig.promptTemplate
+          : "";
+        const alreadyHasMarker = existingPrompt.includes(ENGINEER_INSTRUCTIONS_MARKER);
+          const nextPrompt = alreadyHasMarker
+            ? existingPrompt
+            : `${existingPrompt}\n\n${engineerInstructions}`.trim();
+          normalizedAdapterConfig.promptTemplate = nextPrompt;
+        }
+      }
+
       const created = await db
         .insert(agents)
-        .values({ ...data, name: uniqueName, companyId, role, permissions: normalizedPermissions })
+        .values({
+          ...data,
+          adapterConfig: normalizedAdapterConfig ?? data.adapterConfig,
+          name: uniqueName,
+          companyId,
+          role,
+          permissions: normalizedPermissions,
+        })
         .returning()
         .then((rows) => rows[0]);
 
