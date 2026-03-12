@@ -115,7 +115,14 @@ export function ProjectProperties({ project, onUpdate }: ProjectPropertiesProps)
   const workspaces = project.workspaces ?? [];
 
   const invalidateProject = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) });
+    // Invalidate all project detail queries so panels using different
+    // reference keys (id vs slug) get refreshed, plus the project list.
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey;
+        return Array.isArray(key) && key[0] === "projects" && key[1] === "detail";
+      },
+    });
     if (selectedCompanyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(selectedCompanyId) });
     }

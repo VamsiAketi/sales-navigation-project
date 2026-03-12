@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
+import { secretsApi } from "../api/secrets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check } from "lucide-react";
+import { Settings, Check, EyeOff, Trash2 } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -47,6 +48,10 @@ export function CompanySettings() {
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
+
+  const [newSecretName, setNewSecretName] = useState("");
+  const [newSecretValue, setNewSecretValue] = useState("");
+  const [newSecretDescription, setNewSecretDescription] = useState("");
 
   const generalDirty =
     !!selectedCompany &&
@@ -155,6 +160,38 @@ export function CompanySettings() {
     }
   });
 
+  const { data: companySecrets = [], isLoading: secretsLoading } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
+    queryFn: () => secretsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId
+  });
+
+  const createSecretMutation = useMutation({
+    mutationFn: () =>
+      secretsApi.create(selectedCompanyId!, {
+        name: newSecretName.trim(),
+        value: newSecretValue,
+        description: newSecretDescription.trim() || null
+      }),
+    onSuccess: async () => {
+      setNewSecretName("");
+      setNewSecretValue("");
+      setNewSecretDescription("");
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.secrets.list(selectedCompanyId!)
+      });
+    }
+  });
+
+  const deleteSecretMutation = useMutation({
+    mutationFn: (secretId: string) => secretsApi.remove(secretId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.secrets.list(selectedCompanyId!)
+      });
+    }
+  });
+
   useEffect(() => {
     setBreadcrumbs([
       { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
@@ -211,6 +248,137 @@ export function CompanySettings() {
               onChange={(e) => setDescription(e.target.value)}
             />
           </Field>
+        </div>
+      </div>
+
+      {/* Secrets */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Secrets
+        </div>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <p className="text-xs text-muted-foreground">
+            Company secrets are encrypted values (API keys, tokens, credentials) that can be
+            referenced from agents and projects. Values are write-only and never shown after
+            creation.
+          </p>
+
+          {/* New secret form */}
+          <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 px-3 py-3">
+            <div className="flex flex-col gap-2 md:flex-row">
+              <div className="flex-1 space-y-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground">
+                  Name
+                </label>
+                <input
+                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
+                  placeholder="github_repo_pat"
+                  value={newSecretName}
+                  onChange={(e) => setNewSecretName(e.target.value)}
+                />
+              </div>
+              <div className="flex-[2] space-y-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+                  Value
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                    <EyeOff className="h-3 w-3" />
+                    Hidden after save
+                  </span>
+                </label>
+                <input
+                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none font-mono"
+                  type="password"
+                  placeholder="Paste token or secret value"
+                  value={newSecretValue}
+                  onChange={(e) => setNewSecretValue(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground">
+                Description (optional)
+              </label>
+              <input
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
+                placeholder="What is this secret used for?"
+                value={newSecretDescription}
+                onChange={(e) => setNewSecretDescription(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                onClick={() => createSecretMutation.mutate()}
+                disabled={
+                  !newSecretName.trim() ||
+                  !newSecretValue ||
+                  createSecretMutation.isPending ||
+                  !selectedCompanyId
+                }
+              >
+                {createSecretMutation.isPending ? "Creating..." : "Create secret"}
+              </Button>
+              {createSecretMutation.isError && (
+                <span className="text-xs text-destructive">
+                  {createSecretMutation.error instanceof Error
+                    ? createSecretMutation.error.message
+                    : "Failed to create secret"}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Existing secrets list */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">
+                Existing secrets
+              </span>
+              {secretsLoading && (
+                <span className="text-[11px] text-muted-foreground">Loading…</span>
+              )}
+            </div>
+            {companySecrets.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No secrets created yet. Use the form above to add one.
+              </p>
+            ) : (
+              <div className="max-h-60 space-y-1 overflow-y-auto rounded-md border border-border/60 bg-muted/5 p-1">
+                {companySecrets.map((secret) => (
+                  <div
+                    key={secret.id}
+                    className="flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/40"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono truncate">{secret.name}</span>
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {secret.provider}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground/80">
+                        {secret.description || "No description"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        const confirmed = window.confirm(
+                          `Delete secret "${secret.name}"? This cannot be undone and may break adapters or projects that reference it.`,
+                        );
+                        if (!confirmed) return;
+                        deleteSecretMutation.mutate(secret.id);
+                      }}
+                      aria-label={`Delete secret ${secret.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
