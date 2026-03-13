@@ -6,10 +6,10 @@ metadata:
     {{- include "paperclip.server.labels" . | nindent 4 }}
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: {{ .Values.server.persistence.size }}
-  {{- if .Values.server.persistence.storageClass }}
-  storageClassName: {{ .Values.server.persistence.storageClass }}
-  {{- end }}
+  storageClassName: azurefile-csi
+  # Bind to the per-tenant PV that points to the shared Azure File Share
+  volumeName: {{ include "paperclip.fullname" . }}-shared-pv

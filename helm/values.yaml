@@ -36,7 +36,7 @@ server:
   serveUi: "true"
   persistence:
     size: 10Gi
-    storageClass: ""  # Use default storage class if empty
+    storageClass: "azurefile-csi"  # ReadWriteMany via Azure Files CSI driver — survives cluster deletion
   paperclip:
     instanceId: default
     deploymentMode: authenticated
@@ -56,6 +56,16 @@ server:
     externalUrl: ""
   # Extra environment variables
   extraEnv: {}
+
+# -- Shared Azure File Storage (one file share for ALL tenants, subPath per tenant)
+# Pre-requisite: Storage Account + File Share must be created once by infra team.
+# Secret "azure-storage-secret" must exist in kube-system with storage account credentials.
+sharedStorage:
+  resourceGroup: "ai-harness-prod"
+  storageAccount: "aiharnessstorage"
+  fileShareName: "paperclip-shared"
+  secretName: "azure-storage-secret"
+  secretNamespace: "kube-system"
 
 # -- Ingress configuration
 ingress:
