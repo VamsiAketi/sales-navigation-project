@@ -148,6 +148,7 @@ spec:
           volumeMounts:
             - name: paperclip-data
               mountPath: /paperclip
+              subPath: {{ .Values.server.paperclip.instanceId }}
           livenessProbe:
             httpGet:
               path: /api/health
