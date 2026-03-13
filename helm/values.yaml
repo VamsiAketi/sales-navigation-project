@@ -5,9 +5,12 @@
 nameOverride: ""
 fullnameOverride: ""
 
-# -- PostgreSQL database (deployed with chart when enabled)
+# -- PostgreSQL database
+# Set enabled: true ONLY for local development (spins up an in-cluster Postgres pod).
+# For all Azure deployments (dev + tenants) keep enabled: false and supply
+# server.database.externalUrl pointing to the shared Azure PostgreSQL Flexible Server.
 postgres:
-  enabled: true
+  enabled: false
   image:
     repository: postgres
     tag: "17-alpine"
@@ -44,8 +47,11 @@ server:
     anthropicApiKey: ""
   secrets:
     # Required for authenticated mode. Generate with: openssl rand -base64 32
+    # In CI/CD this is injected via --set-string server.secrets.betterAuthSecret from BETTER_AUTH_SECRET GitHub secret.
     betterAuthSecret: "CHANGE_ME_use_openssl_rand_base64_32"
-  # External database URL (when postgres.enabled: false)
+  # -- External database URL (used when postgres.enabled: false)
+  # For Azure deployments this is set per-tenant by the pipeline, e.g.:
+  #   postgresql://postgres:<password>@ai-harness-pg-db.postgres.database.azure.com:5432/ai-harness-<tenant>?sslmode=require
   database:
     externalUrl: ""
   # Extra environment variables
