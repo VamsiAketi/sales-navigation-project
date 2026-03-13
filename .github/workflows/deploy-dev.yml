@@ -82,17 +82,35 @@ jobs:
         run: |
           kubectl get ns "${DEV_NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${DEV_NAMESPACE}"
 
+      - name: Create dev database on shared Azure PostgreSQL
+        run: |
+          DB_NAME="ai-harness-dev"
+
+          echo "Creating database '${DB_NAME}' on shared Azure PostgreSQL instance..."
+          az postgres flexible-server db create \
+            --resource-group "${{ secrets.AZURE_POSTGRES_RG }}" \
+            --server-name   "${{ secrets.AZURE_POSTGRES_SERVER }}" \
+            --database-name "${DB_NAME}" \
+            2>&1 | grep -v "already exists" || true
+
+          echo "Database '${DB_NAME}' is ready."
+
       - name: Deploy dev with Helm
         run: |
           IMAGE_TAG="${{ steps.tag.outputs.image_tag }}"
+          DB_NAME="ai-harness-dev"
+          DATABASE_URL="postgresql://${{ secrets.AZURE_POSTGRES_USER }}:${{ secrets.AZURE_POSTGRES_PASSWORD }}@${{ secrets.AZURE_POSTGRES_HOST }}:5432/${DB_NAME}?sslmode=require"
 
           helm upgrade --install "${DEV_RELEASE_NAME}" ./helm \
           --namespace "${DEV_NAMESPACE}" \
           --set fullnameOverride="${DEV_RELEASE_NAME}" \
+          --set postgres.enabled=false \
           --set server.image.repository="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}" \
           --set server.image.tag="${IMAGE_TAG}" \
           --set server.image.pullPolicy=IfNotPresent \
           --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
+          --set-string server.database.externalUrl="${DATABASE_URL}" \
+          --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
           --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
       - name: Capture CEO invite URL from logs
         id: capture_invite

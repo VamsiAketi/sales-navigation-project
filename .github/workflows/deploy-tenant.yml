@@ -87,6 +87,20 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
+      - name: Create tenant database on shared Azure PostgreSQL
+        run: |
+          TENANT="${{ github.event.inputs.tenant }}"
+          DB_NAME="ai-harness-${TENANT}"
+
+          echo "Creating database '${DB_NAME}' on shared Azure PostgreSQL instance..."
+          az postgres flexible-server db create \
+            --resource-group "${{ secrets.AZURE_POSTGRES_RG }}" \
+            --server-name   "${{ secrets.AZURE_POSTGRES_SERVER }}" \
+            --database-name "${DB_NAME}" \
+            2>&1 | grep -v "already exists" || true
+
+          echo "Database '${DB_NAME}' is ready."
+
       - name: Deploy tenant with Helm
         run: |
           TENANT="${{ github.event.inputs.tenant }}"
@@ -96,6 +110,11 @@ jobs:
           NAMESPACE="ai-harness-${TENANT}"
           RELEASE_NAME="ai-harness-${TENANT}"
           HOST="${TENANT}.app.ai-harness.com"
+          DB_NAME="ai-harness-${TENANT}"
+
+          # Build connection string for the tenant's database on the shared instance
+          # Azure PostgreSQL Flexible Server requires sslmode=require
+          DATABASE_URL="postgresql://${{ secrets.AZURE_POSTGRES_USER }}:${{ secrets.AZURE_POSTGRES_PASSWORD }}@${{ secrets.AZURE_POSTGRES_HOST }}:5432/${DB_NAME}?sslmode=require"
 
           if [ "${CREATE_NS}" = "true" ]; then
             kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
@@ -104,6 +123,7 @@ jobs:
           helm upgrade --install "${RELEASE_NAME}" ./helm \
             --namespace "${NAMESPACE}" \
             --set fullnameOverride="${RELEASE_NAME}" \
+            --set postgres.enabled=false \
             --set server.image.repository="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}" \
             --set server.image.tag="${IMAGE_TAG}" \
             --set server.image.pullPolicy=IfNotPresent \
@@ -116,6 +136,8 @@ jobs:
             --set ingress.hosts[0].paths[0].pathType="Prefix" \
             --set ingress.tls[0].hosts[0]="${HOST}" \
             --set ingress.tls[0].secretName="app-ai-harness-tls" \
+            --set-string server.database.externalUrl="${DATABASE_URL}" \
+            --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
             --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
 
       - name: Capture CEO invite URL from logs
