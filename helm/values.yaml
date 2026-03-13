@@ -74,11 +74,11 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-cert-issuer
   hosts:
-    - host: dev.app.ai-harness.com
+    - host: dev-test.app.ai-harness.com
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: app-ai-harness-tls
       hosts:
-        - dev.app.ai-harness.com
+        - dev-test.app.ai-harness.com
