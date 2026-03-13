@@ -1,10 +1,7 @@
 # Cluster-scoped PersistentVolume — one per tenant, all pointing to the SAME Azure File Share.
 # subPath mounting in the pod isolates each tenant's data into its own subdirectory:
 #   paperclip-shared/<instanceId>/   (e.g. paperclip-shared/acme/, paperclip-shared/dev/)
-# This means:
-#   - 1 Azure File Share total for all tenants (not 1 per tenant)
-#   - Full data isolation via filesystem subdirectories
-#   - Data survives pod deletion, helm uninstall, namespace deletion, and cluster deletion
+
 apiVersion: v1
 kind: PersistentVolume
 metadata:

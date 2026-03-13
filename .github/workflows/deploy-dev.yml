@@ -109,6 +109,7 @@ jobs:
           --set server.image.tag="${IMAGE_TAG}" \
           --set server.image.pullPolicy=IfNotPresent \
           --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
+          --set server.paperclip.instanceId="dev" \
           --set-string server.database.externalUrl="${DATABASE_URL}" \
           --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
           --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}"

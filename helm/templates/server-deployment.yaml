@@ -148,8 +148,6 @@ spec:
           volumeMounts:
             - name: paperclip-data
               mountPath: /paperclip
-              # subPath isolates this tenant's data into its own subdirectory
-              # inside the shared Azure File Share: paperclip-shared/<instanceId>/
               subPath: {{ .Values.server.paperclip.instanceId }}
           livenessProbe:
             httpGet:
