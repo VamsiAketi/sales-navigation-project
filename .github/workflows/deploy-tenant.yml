@@ -7,6 +7,10 @@ on:
         description: "Tenant name (used in namespace and host)"
         required: true
         type: string
+      nodeName:
+        description: "Kubernetes node name to schedule this tenant on (optional)"
+        required: false
+        type: string
       userName:
         description: "Default CEO user full name"
         required: true
@@ -106,6 +110,7 @@ jobs:
           TENANT="${{ github.event.inputs.tenant }}"
           IMAGE_TAG="${{ steps.tag.outputs.image_tag }}"
           CREATE_NS="${{ github.event.inputs.createNamespace }}"
+          NODE_NAME="${{ github.event.inputs.nodeName }}"
 
           NAMESPACE="ai-harness-${TENANT}"
           RELEASE_NAME="ai-harness-${TENANT}"
@@ -118,6 +123,12 @@ jobs:
 
           if [ "${CREATE_NS}" = "true" ]; then
             kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
+          fi
+
+          HELM_EXTRA_ARGS=""
+          if [ -n "${NODE_NAME}" ]; then
+            echo "Scheduling tenant '${TENANT}' on node '${NODE_NAME}'"
+            HELM_EXTRA_ARGS="${HELM_EXTRA_ARGS} --set server.nodeName=${NODE_NAME}"
           fi
 
           helm upgrade --install "${RELEASE_NAME}" ./helm \
@@ -138,7 +149,8 @@ jobs:
             --set ingress.tls[0].secretName="app-ai-harness-tls" \
             --set-string server.database.externalUrl="${DATABASE_URL}" \
             --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
-            --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
+            --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}" \
+            ${HELM_EXTRA_ARGS}
 
       - name: Capture CEO invite URL from logs
         id: capture_invite

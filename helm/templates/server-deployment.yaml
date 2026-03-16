@@ -16,6 +16,9 @@ spec:
         {{- include "paperclip.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: server
     spec:
+      {{- if .Values.server.nodeName }}
+      nodeName: {{ .Values.server.nodeName | quote }}
+      {{- end }}
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000

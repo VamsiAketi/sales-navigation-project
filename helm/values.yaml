@@ -26,6 +26,7 @@ postgres:
 # -- Paperclip server application
 server:
   replicaCount: 1
+  nodeName: ""
   image:
     # Build from project root: docker build -t <your-registry>/paperclip:latest .
     # Image must include git and @openai/codex (Dockerfile already does)
