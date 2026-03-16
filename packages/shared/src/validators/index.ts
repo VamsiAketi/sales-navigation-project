@@ -120,6 +120,7 @@ export {
 export {
   createCompanyInviteSchema,
   createOpenClawInvitePromptSchema,
+  createHumanInviteSchema,
   acceptInviteSchema,
   listJoinRequestsQuerySchema,
   claimJoinRequestApiKeySchema,
@@ -127,6 +128,7 @@ export {
   updateUserCompanyAccessSchema,
   type CreateCompanyInvite,
   type CreateOpenClawInvitePrompt,
+  type CreateHumanInvite,
   type AcceptInvite,
   type ListJoinRequestsQuery,
   type ClaimJoinRequestApiKey,

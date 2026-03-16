@@ -48,6 +48,15 @@ export function CompanySettings() {
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
+  const [humanInviteName, setHumanInviteName] = useState("");
+  const [humanInviteEmail, setHumanInviteEmail] = useState("");
+  const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
+  const [humanInviteCredentials, setHumanInviteCredentials] = useState<{
+    name: string;
+    email: string;
+    temporaryUsername: string;
+    temporaryPassword: string;
+  } | null>(null);
 
   const [newSecretName, setNewSecretName] = useState("");
   const [newSecretValue, setNewSecretValue] = useState("");
@@ -133,11 +142,43 @@ export function CompanySettings() {
     }
   });
 
+  const humanInviteMutation = useMutation({
+    mutationFn: () =>
+      accessApi.createHumanInvite(selectedCompanyId!, {
+        email: humanInviteEmail.trim(),
+        name: humanInviteName.trim() || undefined
+      }),
+    onSuccess: async (created) => {
+      setHumanInviteError(null);
+      setHumanInviteCredentials({
+        name: created.name,
+        email: created.email,
+        temporaryUsername: created.temporaryUsername,
+        temporaryPassword: created.temporaryPassword
+      });
+      setHumanInviteName("");
+      setHumanInviteEmail("");
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.sidebarBadges(selectedCompanyId!)
+      });
+    },
+    onError: (err) => {
+      setHumanInviteCredentials(null);
+      setHumanInviteError(
+        err instanceof Error ? err.message : "Failed to create human invite"
+      );
+    }
+  });
+
   useEffect(() => {
     setInviteError(null);
     setInviteSnippet(null);
     setSnippetCopied(false);
     setSnippetCopyDelightId(0);
+    setHumanInviteError(null);
+    setHumanInviteCredentials(null);
+    setHumanInviteName("");
+    setHumanInviteEmail("");
   }, [selectedCompanyId]);
   const archiveMutation = useMutation({
     mutationFn: ({
@@ -481,6 +522,96 @@ export function CompanySettings() {
           Invites
         </div>
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 px-3 py-3">
+            <div className="text-xs font-medium text-muted-foreground">
+              Invite human user
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <input
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
+                type="text"
+                placeholder="Name (optional)"
+                value={humanInviteName}
+                onChange={(e) => setHumanInviteName(e.target.value)}
+              />
+              <input
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
+                type="email"
+                placeholder="Email"
+                value={humanInviteEmail}
+                onChange={(e) => setHumanInviteEmail(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => humanInviteMutation.mutate()}
+                disabled={
+                  humanInviteMutation.isPending ||
+                  !humanInviteEmail.trim() ||
+                  !selectedCompanyId
+                }
+              >
+                {humanInviteMutation.isPending
+                  ? "Creating..."
+                  : "Create Human Invite"}
+              </Button>
+              {humanInviteError && (
+                <span className="text-xs text-destructive">
+                  {humanInviteError}
+                </span>
+              )}
+            </div>
+            {humanInviteCredentials && (
+              <div className="space-y-1 rounded-md border border-border bg-background px-2.5 py-2 text-xs">
+                <p className="font-medium text-foreground">
+                  Temporary credentials (share securely)
+                </p>
+                <p>
+                  Name:{" "}
+                  <span className="font-mono">{humanInviteCredentials.name}</span>
+                </p>
+                <p>
+                  Email:{" "}
+                  <span className="font-mono">{humanInviteCredentials.email}</span>
+                </p>
+                <p>
+                  Username:{" "}
+                  <span className="font-mono">
+                    {humanInviteCredentials.temporaryUsername}
+                  </span>
+                </p>
+                <p>
+                  Password:{" "}
+                  <span className="font-mono">
+                    {humanInviteCredentials.temporaryPassword}
+                  </span>
+                </p>
+                <div className="pt-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      const credentialsText = [
+                        `Name: ${humanInviteCredentials.name}`,
+                        `Email: ${humanInviteCredentials.email}`,
+                        `Username: ${humanInviteCredentials.temporaryUsername}`,
+                        `Password: ${humanInviteCredentials.temporaryPassword}`
+                      ].join("\n");
+                      try {
+                        await navigator.clipboard.writeText(credentialsText);
+                      } catch {
+                        /* clipboard may not be available */
+                      }
+                    }}
+                  >
+                    Copy credentials
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">
               Generate an OpenClaw agent invite snippet.
