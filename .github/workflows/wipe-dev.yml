@@ -1,0 +1,134 @@
+name: Wipe Dev Environment
+
+on:
+  workflow_dispatch:
+
+env:
+  DEV_RELEASE_NAME: ai-harness-dev
+  DEV_NAMESPACE: dev
+  DEV_INSTANCE_ID: dev
+  DEV_DB_NAME: ai-harness-dev
+  STORAGE_ACCOUNT: aiharnessstorage
+  STORAGE_RG: ai-harness-prod
+  FILE_SHARE_NAME: paperclip-shared
+
+jobs:
+  wipe-dev:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ secrets.AZURE_AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AZURE_AKS_CLUSTER_NAME }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      # ── 1. Helm uninstall ────────────────────────────────────────────────────
+      - name: Helm uninstall dev release
+        run: |
+          if helm status "${DEV_RELEASE_NAME}" -n "${DEV_NAMESPACE}" >/dev/null 2>&1; then
+            echo "Uninstalling Helm release '${DEV_RELEASE_NAME}'..."
+            helm uninstall "${DEV_RELEASE_NAME}" -n "${DEV_NAMESPACE}"
+          else
+            echo "Helm release '${DEV_RELEASE_NAME}' not found — skipping."
+          fi
+
+      # ── 2. Delete PVC (namespace-scoped, deleted with namespace but be explicit) ──
+      - name: Delete PVC in dev namespace
+        run: |
+          PVC_NAME="${DEV_RELEASE_NAME}-paperclip-data"
+          if kubectl get pvc "${PVC_NAME}" -n "${DEV_NAMESPACE}" >/dev/null 2>&1; then
+            echo "Deleting PVC '${PVC_NAME}'..."
+            kubectl delete pvc "${PVC_NAME}" -n "${DEV_NAMESPACE}" --timeout=60s
+          else
+            echo "PVC '${PVC_NAME}' not found — skipping."
+          fi
+
+      # ── 3. Delete PV (cluster-scoped — safe to delete only the dev one) ────
+      - name: Delete PV for dev tenant
+        run: |
+          PV_NAME="${DEV_RELEASE_NAME}-shared-pv"
+          if kubectl get pv "${PV_NAME}" >/dev/null 2>&1; then
+            echo "Deleting PV '${PV_NAME}'..."
+            kubectl delete pv "${PV_NAME}" --timeout=60s
+          else
+            echo "PV '${PV_NAME}' not found — skipping."
+          fi
+
+      # ── 4. Delete namespace (removes all remaining resources) ───────────────
+      - name: Delete dev namespace
+        run: |
+          if kubectl get ns "${DEV_NAMESPACE}" >/dev/null 2>&1; then
+            echo "Deleting namespace '${DEV_NAMESPACE}'..."
+            kubectl delete ns "${DEV_NAMESPACE}" --timeout=120s
+          else
+            echo "Namespace '${DEV_NAMESPACE}' not found — skipping."
+          fi
+
+      # ── 5. Delete Azure PostgreSQL database (only dev db, server stays) ────
+      - name: Delete dev database from Azure PostgreSQL
+        run: |
+          echo "Deleting database '${DEV_DB_NAME}' from Azure PostgreSQL..."
+          az postgres flexible-server db delete \
+            --resource-group "${{ secrets.AZURE_POSTGRES_RG }}" \
+            --server-name    "${{ secrets.AZURE_POSTGRES_SERVER }}" \
+            --database-name  "${DEV_DB_NAME}" \
+            --yes \
+            2>&1 || echo "Database '${DEV_DB_NAME}' not found or already deleted — skipping."
+
+      # ── 6. Delete dev folder from Azure File Share ──────────────────────────
+      # Deletes paperclip-shared/dev/ only — other tenant folders are untouched
+      - name: Delete dev folder from Azure File Share
+        run: |
+          STORAGE_KEY=$(az storage account keys list \
+            --account-name "${STORAGE_ACCOUNT}" \
+            --resource-group "${STORAGE_RG}" \
+            --query "[0].value" -o tsv)
+
+          echo "Checking if folder '${DEV_INSTANCE_ID}' exists in file share '${FILE_SHARE_NAME}'..."
+          EXISTS=$(az storage directory exists \
+            --share-name "${FILE_SHARE_NAME}" \
+            --name       "${DEV_INSTANCE_ID}" \
+            --account-name "${STORAGE_ACCOUNT}" \
+            --account-key  "${STORAGE_KEY}" \
+            --query "exists" -o tsv)
+
+          if [ "${EXISTS}" = "true" ]; then
+            echo "Deleting folder '${DEV_INSTANCE_ID}' from file share..."
+            az storage remove \
+              --share-name   "${FILE_SHARE_NAME}" \
+              --name         "${DEV_INSTANCE_ID}" \
+              --account-name "${STORAGE_ACCOUNT}" \
+              --account-key  "${STORAGE_KEY}" \
+              --recursive
+            echo "Folder '${DEV_INSTANCE_ID}' deleted."
+          else
+            echo "Folder '${DEV_INSTANCE_ID}' not found in file share — skipping."
+          fi
+
+      # ── Summary ─────────────────────────────────────────────────────────────
+      - name: Summary
+        run: |
+          {
+            echo "## Dev Environment Wiped"
+            echo ""
+            echo "| Resource | Action |"
+            echo "|----------|--------|"
+            echo "| Helm release \`${DEV_RELEASE_NAME}\` | Uninstalled |"
+            echo "| PVC \`${DEV_RELEASE_NAME}-paperclip-data\` | Deleted |"
+            echo "| PV \`${DEV_RELEASE_NAME}-shared-pv\` | Deleted |"
+            echo "| Namespace \`${DEV_NAMESPACE}\` | Deleted |"
+            echo "| Azure PostgreSQL DB \`${DEV_DB_NAME}\` | Deleted |"
+            echo "| Azure File Share folder \`${FILE_SHARE_NAME}/${DEV_INSTANCE_ID}/\` | Deleted |"
+            echo ""
+            echo "> PV and PVC will be recreated automatically on next \`deploy-dev\` run."
+            echo "> Azure Storage Account and File Share are intact — other tenants unaffected."
+          } >> "$GITHUB_STEP_SUMMARY"
