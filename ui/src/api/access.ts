@@ -75,6 +75,14 @@ type CompanyInviteCreated = {
   inviteMessage?: string | null;
 };
 
+type HumanInviteCreated = {
+  userId: string;
+  email: string;
+  name: string;
+  temporaryUsername: string;
+  temporaryPassword: string;
+};
+
 export const accessApi = {
   createCompanyInvite: (
     companyId: string,
@@ -94,6 +102,18 @@ export const accessApi = {
   ) =>
     api.post<CompanyInviteCreated>(
       `/companies/${companyId}/openclaw/invite-prompt`,
+      input,
+    ),
+
+  createHumanInvite: (
+    companyId: string,
+    input: {
+      email: string;
+      name?: string;
+    },
+  ) =>
+    api.post<HumanInviteCreated>(
+      `/companies/${companyId}/human-invites`,
       input,
     ),
 

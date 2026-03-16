@@ -23,6 +23,13 @@ export type CreateOpenClawInvitePrompt = z.infer<
   typeof createOpenClawInvitePromptSchema
 >;
 
+export const createHumanInviteSchema = z.object({
+  email: z.string().trim().email().max(320),
+  name: z.string().trim().min(1).max(120).optional(),
+});
+
+export type CreateHumanInvite = z.infer<typeof createHumanInviteSchema>;
+
 export const acceptInviteSchema = z.object({
   requestType: z.enum(JOIN_REQUEST_TYPES),
   agentName: z.string().min(1).max(120).optional(),

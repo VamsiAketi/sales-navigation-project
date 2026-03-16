@@ -14,6 +14,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agentApiKeys,
   authUsers,
+  companyMemberships,
   invites,
   joinRequests
 } from "@paperclipai/db";
@@ -21,6 +22,7 @@ import {
   acceptInviteSchema,
   claimJoinRequestApiKeySchema,
   createCompanyInviteSchema,
+  createHumanInviteSchema,
   createOpenClawInvitePromptSchema,
   listJoinRequestsQuerySchema,
   updateMemberPermissionsSchema,
@@ -73,6 +75,17 @@ function createClaimSecret() {
   return `pcp_claim_${randomBytes(24).toString("hex")}`;
 }
 
+function createTemporaryPassword(length = 18) {
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let idx = 0; idx < length; idx += 1) {
+    out += alphabet[bytes[idx]! % alphabet.length];
+  }
+  return out;
+}
+
 export function companyInviteExpiresAt(nowMs: number = Date.now()) {
   return new Date(nowMs + COMPANY_INVITE_TTL_MS);
 }
@@ -93,6 +106,68 @@ function requestBaseUrl(req: Request) {
     req.header("x-forwarded-host")?.split(",")[0]?.trim() || req.header("host");
   if (!host) return "";
   return `${proto}://${host}`;
+}
+
+type AuthSignUpResult = {
+  userId: string;
+  userEmail: string;
+  userName: string;
+};
+
+async function createAuthUserViaSignupApi(input: {
+  req: Request;
+  email: string;
+  name: string;
+  password: string;
+}): Promise<AuthSignUpResult> {
+  const baseUrl = requestBaseUrl(input.req);
+  if (!baseUrl) {
+    throw new Error("Unable to resolve API base URL for auth sign-up");
+  }
+  const endpoint = `${baseUrl}/api/auth/sign-up/email`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      email: input.email,
+      name: input.name,
+      password: input.password,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | Record<string, unknown>
+    | null;
+  if (!response.ok) {
+    const message =
+      (payload?.error &&
+      typeof payload.error === "object" &&
+      typeof (payload.error as Record<string, unknown>).message === "string")
+        ? (payload.error as Record<string, unknown>).message as string
+        : typeof payload?.error === "string"
+          ? payload.error
+          : `Failed to create auth user (${response.status})`;
+    throw new Error(message);
+  }
+
+  const user =
+    payload && typeof payload.user === "object"
+      ? (payload.user as Record<string, unknown>)
+      : null;
+  const userId = typeof user?.id === "string" ? user.id : null;
+  const userEmail =
+    typeof user?.email === "string" && user.email.trim().length > 0
+      ? user.email.trim().toLowerCase()
+      : input.email;
+  const userName =
+    typeof user?.name === "string" && user.name.trim().length > 0
+      ? user.name.trim()
+      : input.name;
+
+  if (!userId) {
+    throw new Error("Auth sign-up succeeded but did not return user id");
+  }
+
+  return { userId, userEmail, userName };
 }
 
 function readSkillMarkdown(skillName: string): string | null {
@@ -1666,6 +1741,115 @@ export function accessRoutes(
         onboardingTextPath: inviteSummary.onboardingTextPath,
         onboardingTextUrl: inviteSummary.onboardingTextUrl,
         inviteMessage: inviteSummary.inviteMessage
+      });
+    }
+  );
+
+  router.post(
+    "/companies/:companyId/human-invites",
+    validate(createHumanInviteSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      await assertCompanyPermission(req, companyId, "users:invite");
+
+      if (opts.deploymentMode !== "authenticated") {
+        throw badRequest(
+          "Human invites are only available in authenticated deployment mode"
+        );
+      }
+
+      const inviteEmail = req.body.email.trim().toLowerCase();
+      const inviteName =
+        typeof req.body.name === "string" && req.body.name.trim().length > 0
+          ? req.body.name.trim()
+          : inviteEmail.split("@")[0] ?? "Invited User";
+
+      const existingUser = await db
+        .select({
+          id: authUsers.id,
+          email: authUsers.email
+        })
+        .from(authUsers)
+        .where(eq(authUsers.email, inviteEmail))
+        .then((rows) => rows[0] ?? null);
+      if (existingUser) {
+        const activeMembership = await db
+          .select({ id: companyMemberships.id })
+          .from(companyMemberships)
+          .where(
+            and(
+              eq(companyMemberships.companyId, companyId),
+              eq(companyMemberships.principalType, "user"),
+              eq(companyMemberships.principalId, existingUser.id),
+              eq(companyMemberships.status, "active")
+            )
+          )
+          .then((rows) => rows[0] ?? null);
+        if (activeMembership) {
+          throw conflict("User already has access to this company");
+        }
+        throw conflict(
+          "User account already exists. Grant company access from admin user controls."
+        );
+      }
+
+      const temporaryPassword = createTemporaryPassword();
+      let createdAuthUser: AuthSignUpResult;
+      try {
+        createdAuthUser = await createAuthUserViaSignupApi({
+          req,
+          email: inviteEmail,
+          name: inviteName,
+          password: temporaryPassword
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to create user";
+        if (
+          message.toLowerCase().includes("exists") ||
+          message.toLowerCase().includes("already")
+        ) {
+          throw conflict("User already exists");
+        }
+        if (message.toLowerCase().includes("disable")) {
+          throw badRequest(
+            "Sign-up is disabled for this instance. Enable sign-up or create the user manually."
+          );
+        }
+        throw badRequest(message);
+      }
+
+      const membership = await access.ensureMembership(
+        companyId,
+        "user",
+        createdAuthUser.userId,
+        "member",
+        "active"
+      );
+
+      await logActivity(db, {
+        companyId,
+        actorType: req.actor.type === "agent" ? "agent" : "user",
+        actorId:
+          req.actor.type === "agent"
+            ? req.actor.agentId ?? "unknown-agent"
+            : req.actor.userId ?? "board",
+        action: "user.invited",
+        entityType: "user",
+        entityId: createdAuthUser.userId,
+        details: {
+          email: createdAuthUser.userEmail,
+          name: createdAuthUser.userName,
+          membershipId: membership.id
+        }
+      });
+
+      res.status(201).json({
+        userId: createdAuthUser.userId,
+        email: createdAuthUser.userEmail,
+        name: createdAuthUser.userName,
+        temporaryUsername: createdAuthUser.userEmail,
+        temporaryPassword
       });
     }
   );
