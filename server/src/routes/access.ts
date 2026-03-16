@@ -124,10 +124,16 @@ async function createAuthUserViaSignupApi(input: {
   if (!baseUrl) {
     throw new Error("Unable to resolve API base URL for auth sign-up");
   }
+  const origin = new URL(baseUrl).origin;
   const endpoint = `${baseUrl}/api/auth/sign-up/email`;
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      origin,
+      referer: `${origin}/`,
+    },
     body: JSON.stringify({
       email: input.email,
       name: input.name,

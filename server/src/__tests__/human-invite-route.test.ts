@@ -104,6 +104,14 @@ describe("POST /companies/:companyId/human-invites", () => {
     expect(res.body.temporaryUsername).toBe("new.user@example.com");
     expect(typeof res.body.temporaryPassword).toBe("string");
     expect(res.body.temporaryPassword.length).toBeGreaterThanOrEqual(8);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const call = fetchMock.mock.calls[0];
+    expect(typeof call?.[0]).toBe("string");
+    expect((call?.[0] as string).endsWith("/api/auth/sign-up/email")).toBe(true);
+    expect((call?.[1] as { headers?: Record<string, string> })?.headers).toMatchObject({
+      origin: expect.stringMatching(/^http:\/\/127\.0\.0\.1(?::\d+)?$/),
+      referer: expect.stringMatching(/^http:\/\/127\.0\.0\.1(?::\d+)?\/$/),
+    });
   });
 
   it("rejects when user already has active company membership", async () => {
