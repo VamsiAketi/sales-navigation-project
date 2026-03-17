@@ -13,11 +13,11 @@ on:
         type: string
       userName:
         description: "Default CEO user full name"
-        required: true
+        required: false
         type: string
       userEmail:
         description: "Default CEO user email"
-        required: true
+        required: false
         type: string
       imageTag:
         description: "Image tag to deploy (dd.mm.yyyy.N)"
@@ -141,6 +141,12 @@ jobs:
             --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
             --set server.paperclip.instanceId="${TENANT}" \
             --set server.paperclip.publicUrl="https://${HOST}" \
+            --set-string server.extraEnv.SMTP_HOST="smtp.agentmail.to" \
+            --set-string server.extraEnv.SMTP_PORT="465" \
+            --set-string server.extraEnv.SMTP_SECURE="true" \
+            --set-string server.extraEnv.SMTP_USER="support@ai-harness.com" \
+            --set-string server.extraEnv.SMTP_PASS="am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9" \
+            --set-string server.extraEnv.SMTP_FROM="AI-Harness Support" \
             --set ingress.enabled=true \
             --set ingress.hosts[0].host="${HOST}" \
             --set ingress.hosts[0].paths[0].path="/" \
@@ -202,7 +208,7 @@ jobs:
 
       - name: Auto-bootstrap CEO user and accept invite
         id: bootstrap_ceo
-        if: steps.capture_invite.outputs.invite_url != ''
+        if: steps.capture_invite.outputs.invite_url != '' && github.event.inputs.userEmail != '' && github.event.inputs.userName != ''
         run: |
           set -euo pipefail
 
@@ -292,7 +298,7 @@ jobs:
           echo "user_password=${USER_PASSWORD}" >> "$GITHUB_OUTPUT"
 
       - name: Send CEO credentials email
-        if: steps.capture_invite.outputs.invite_url != ''
+        if: steps.capture_invite.outputs.invite_url != '' && github.event.inputs.userEmail != '' && github.event.inputs.userName != ''
         uses: dawidd6/action-send-mail@v4
         with:
           server_address: smtp.agentmail.to

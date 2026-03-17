@@ -110,6 +110,12 @@ jobs:
           --set server.image.pullPolicy=IfNotPresent \
           --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
           --set server.paperclip.instanceId="dev" \
+          --set-string server.extraEnv.SMTP_HOST="smtp.agentmail.to" \
+          --set-string server.extraEnv.SMTP_PORT="465" \
+          --set-string server.extraEnv.SMTP_SECURE="true" \
+          --set-string server.extraEnv.SMTP_USER="support@ai-harness.com" \
+          --set-string server.extraEnv.SMTP_PASS="am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9" \
+          --set-string server.extraEnv.SMTP_FROM="AI-Harness Support" \
           --set-string server.database.externalUrl="${DATABASE_URL}" \
           --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
           --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
