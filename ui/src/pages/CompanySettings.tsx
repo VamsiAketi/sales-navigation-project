@@ -61,6 +61,7 @@ export function CompanySettings() {
   const [newSecretName, setNewSecretName] = useState("");
   const [newSecretValue, setNewSecretValue] = useState("");
   const [newSecretDescription, setNewSecretDescription] = useState("");
+  const [selectedHumanMemberId, setSelectedHumanMemberId] = useState<string | null>(null);
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
   const [memberManagerDrafts, setMemberManagerDrafts] = useState<Record<string, string>>({});
   const [memberManagedAgentsDrafts, setMemberManagedAgentsDrafts] = useState<Record<string, string[]>>({});
@@ -229,6 +230,23 @@ export function CompanySettings() {
     (member: CompanyMember) =>
       member.principalType === "agent" && member.status === "active"
   );
+  const selectedHumanMember = activeHumanMembers.find(
+    (member) => member.id === selectedHumanMemberId
+  ) ?? activeHumanMembers[0] ?? null;
+
+  useEffect(() => {
+    if (activeHumanMembers.length === 0) {
+      setSelectedHumanMemberId(null);
+      return;
+    }
+    if (
+      selectedHumanMemberId &&
+      activeHumanMembers.some((member) => member.id === selectedHumanMemberId)
+    ) {
+      return;
+    }
+    setSelectedHumanMemberId(activeHumanMembers[0]?.id ?? null);
+  }, [activeHumanMembers, selectedHumanMemberId]);
 
   useEffect(() => {
     const activeHuman = (companyMembers ?? []).filter(
@@ -695,32 +713,62 @@ export function CompanySettings() {
                 </p>
               )}
               {activeHumanMembers.length > 0 && (
-                <div className="space-y-1">
-                  {activeHumanMembers.map((member) => (
-                    <div
-                      key={member.id}
-                      className="space-y-2 rounded border border-border/70 px-2 py-2"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono">
+                <div className="grid gap-2 md:grid-cols-[16rem_1fr]">
+                  <div className="max-h-72 space-y-1 overflow-y-auto rounded border border-border/70 bg-muted/5 p-1">
+                    {activeHumanMembers.map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => setSelectedHumanMemberId(member.id)}
+                        className={`w-full rounded border px-2 py-1.5 text-left transition-colors ${
+                          selectedHumanMember?.id === member.id
+                            ? "border-foreground/30 bg-accent/40"
+                            : "border-transparent hover:border-border hover:bg-accent/20"
+                        }`}
+                      >
+                        <div className="truncate text-xs font-medium">
                           {member.user?.name || member.user?.email || member.principalId}
-                        </span>
-                        <span className="text-muted-foreground">
+                        </div>
+                        <div className="truncate text-[11px] text-muted-foreground">
                           {member.user?.email ?? "unknown email"}
+                        </div>
+                        <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {member.membershipRole ?? "member"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedHumanMember && (
+                    <div className="space-y-2 rounded border border-border/70 bg-background px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium">
+                            {selectedHumanMember.user?.name ||
+                              selectedHumanMember.user?.email ||
+                              selectedHumanMember.principalId}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {selectedHumanMember.user?.email ?? "unknown email"}
+                          </p>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">
+                          {`${(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length} managed agents`}
                         </span>
                       </div>
-                      <div className="grid gap-2 md:grid-cols-3">
+
+                      <div className="grid gap-2 md:grid-cols-2">
                         <div className="space-y-1">
                           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
                             Role
                           </label>
                           <input
                             className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
-                            value={memberRoleDrafts[member.id] ?? ""}
+                            value={memberRoleDrafts[selectedHumanMember.id] ?? ""}
                             onChange={(e) =>
                               setMemberRoleDrafts((prev) => ({
                                 ...prev,
-                                [member.id]: e.target.value
+                                [selectedHumanMember.id]: e.target.value
                               }))
                             }
                             placeholder="CEO, CTO, PM..."
@@ -732,17 +780,17 @@ export function CompanySettings() {
                           </label>
                           <select
                             className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
-                            value={memberManagerDrafts[member.id] ?? ""}
+                            value={memberManagerDrafts[selectedHumanMember.id] ?? ""}
                             onChange={(e) =>
                               setMemberManagerDrafts((prev) => ({
                                 ...prev,
-                                [member.id]: e.target.value
+                                [selectedHumanMember.id]: e.target.value
                               }))
                             }
                           >
                             <option value="">None</option>
                             {activeHumanMembers
-                              .filter((candidate) => candidate.id !== member.id)
+                              .filter((candidate) => candidate.id !== selectedHumanMember.id)
                               .map((candidate) => (
                                 <option key={candidate.id} value={candidate.id}>
                                   {candidate.user?.name || candidate.user?.email || candidate.principalId} (human)
@@ -755,51 +803,66 @@ export function CompanySettings() {
                             ))}
                           </select>
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                            Manages agents
-                          </label>
-                          <div className="max-h-24 space-y-1 overflow-y-auto rounded border border-border/60 bg-background px-2 py-1">
-                            {activeAgentMembers.length === 0 && (
-                              <div className="text-[11px] text-muted-foreground">No active agents</div>
-                            )}
-                            {activeAgentMembers.map((candidate) => {
-                              const checked = (memberManagedAgentsDrafts[member.id] ?? []).includes(candidate.id);
-                              return (
-                                <label key={candidate.id} className="flex items-center gap-1 text-[11px]">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={(e) => {
-                                      setMemberManagedAgentsDrafts((prev) => {
-                                        const next = new Set(prev[member.id] ?? []);
-                                        if (e.target.checked) {
-                                          next.add(candidate.id);
-                                        } else {
-                                          next.delete(candidate.id);
-                                        }
-                                        return { ...prev, [member.id]: Array.from(next) };
-                                      });
-                                    }}
-                                  />
-                                  <span>{candidate.agent?.name || candidate.principalId}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Manages agents
+                        </label>
+                        <div className="max-h-28 space-y-1 overflow-y-auto rounded border border-border/60 bg-muted/5 px-2 py-1">
+                          {activeAgentMembers.length === 0 && (
+                            <div className="text-[11px] text-muted-foreground">No active agents</div>
+                          )}
+                          {activeAgentMembers.map((candidate) => {
+                            const checked = (
+                              memberManagedAgentsDrafts[selectedHumanMember.id] ?? []
+                            ).includes(candidate.id);
+                            return (
+                              <label key={candidate.id} className="flex items-center gap-1 text-[11px]">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setMemberManagedAgentsDrafts((prev) => {
+                                      const next = new Set(prev[selectedHumanMember.id] ?? []);
+                                      if (e.target.checked) {
+                                        next.add(candidate.id);
+                                      } else {
+                                        next.delete(candidate.id);
+                                      }
+                                      return {
+                                        ...prev,
+                                        [selectedHumanMember.id]: Array.from(next)
+                                      };
+                                    });
+                                  }}
+                                />
+                                <span>{candidate.agent?.name || candidate.principalId}</span>
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
-                      <div className="flex justify-end">
+
+                      <div className="flex items-center justify-end gap-2">
+                        {memberOrgMutation.isError && (
+                          <span className="text-[11px] text-destructive">
+                            {memberOrgMutation.error instanceof Error
+                              ? memberOrgMutation.error.message
+                              : "Failed to save"}
+                          </span>
+                        )}
                         <Button
                           size="sm"
                           onClick={() =>
                             memberOrgMutation.mutate({
-                              memberId: member.id,
+                              memberId: selectedHumanMember.id,
                               membershipRole:
-                                (memberRoleDrafts[member.id] ?? "").trim() || null,
+                                (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
                               reportsToMembershipId:
-                                (memberManagerDrafts[member.id] ?? "").trim() || null,
-                              managedAgentMemberIds: memberManagedAgentsDrafts[member.id] ?? []
+                                (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null,
+                              managedAgentMemberIds:
+                                memberManagedAgentsDrafts[selectedHumanMember.id] ?? []
                             })
                           }
                           disabled={memberOrgMutation.isPending || !selectedCompanyId}
@@ -808,7 +871,7 @@ export function CompanySettings() {
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
