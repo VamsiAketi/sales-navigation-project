@@ -94,6 +94,7 @@ export type CompanyMember = {
   principalId: string;
   status: "pending" | "active" | "suspended";
   membershipRole: string | null;
+  reportsToMembershipId: string | null;
   createdAt: string;
   updatedAt: string;
   user: { id: string; name: string; email: string } | null;
@@ -136,6 +137,20 @@ export const accessApi = {
 
   listMembers: (companyId: string) =>
     api.get<CompanyMember[]>(`/companies/${companyId}/members`),
+
+  updateMemberOrgConfig: (
+    companyId: string,
+    memberId: string,
+    input: {
+      membershipRole?: string | null;
+      reportsToMembershipId?: string | null;
+      managedAgentMemberIds?: string[];
+    },
+  ) =>
+    api.patch<CompanyMember>(
+      `/companies/${companyId}/members/${encodeURIComponent(memberId)}/org-config`,
+      input,
+    ),
 
   getInvite: (token: string) => api.get<InviteSummary>(`/invites/${token}`),
   getInviteOnboarding: (token: string) =>

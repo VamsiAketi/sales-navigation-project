@@ -61,6 +61,9 @@ export function CompanySettings() {
   const [newSecretName, setNewSecretName] = useState("");
   const [newSecretValue, setNewSecretValue] = useState("");
   const [newSecretDescription, setNewSecretDescription] = useState("");
+  const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
+  const [memberManagerDrafts, setMemberManagerDrafts] = useState<Record<string, string>>({});
+  const [memberManagedAgentsDrafts, setMemberManagedAgentsDrafts] = useState<Record<string, string[]>>({});
 
   const generalDirty =
     !!selectedCompany &&
@@ -222,6 +225,59 @@ export function CompanySettings() {
     (member: CompanyMember) =>
       member.principalType === "user" && member.status === "active"
   );
+  const activeAgentMembers = companyMembers.filter(
+    (member: CompanyMember) =>
+      member.principalType === "agent" && member.status === "active"
+  );
+
+  useEffect(() => {
+    const activeHuman = companyMembers.filter(
+      (member: CompanyMember) =>
+        member.principalType === "user" && member.status === "active"
+    );
+    const activeAgent = companyMembers.filter(
+      (member: CompanyMember) =>
+        member.principalType === "agent" && member.status === "active"
+    );
+
+    const nextRoleDrafts: Record<string, string> = {};
+    const nextManagerDrafts: Record<string, string> = {};
+    const nextManagedAgentsDrafts: Record<string, string[]> = {};
+
+    for (const member of activeHuman) {
+      nextRoleDrafts[member.id] = member.membershipRole ?? "";
+      nextManagerDrafts[member.id] = member.reportsToMembershipId ?? "";
+      nextManagedAgentsDrafts[member.id] = activeAgent
+        .filter((agentMember) => agentMember.reportsToMembershipId === member.id)
+        .map((agentMember) => agentMember.id);
+    }
+
+    setMemberRoleDrafts(nextRoleDrafts);
+    setMemberManagerDrafts(nextManagerDrafts);
+    setMemberManagedAgentsDrafts(nextManagedAgentsDrafts);
+  }, [companyMembers]);
+
+  const memberOrgMutation = useMutation({
+    mutationFn: (input: {
+      memberId: string;
+      membershipRole: string | null;
+      reportsToMembershipId: string | null;
+      managedAgentMemberIds: string[];
+    }) =>
+      accessApi.updateMemberOrgConfig(selectedCompanyId!, input.memberId, {
+        membershipRole: input.membershipRole,
+        reportsToMembershipId: input.reportsToMembershipId,
+        managedAgentMemberIds: input.managedAgentMemberIds
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.access.members(selectedCompanyId!)
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.org(selectedCompanyId!)
+      });
+    }
+  });
 
   const createSecretMutation = useMutation({
     mutationFn: () =>
@@ -643,14 +699,114 @@ export function CompanySettings() {
                   {activeHumanMembers.map((member) => (
                     <div
                       key={member.id}
-                      className="flex items-center justify-between gap-2 rounded border border-border/70 px-2 py-1"
+                      className="space-y-2 rounded border border-border/70 px-2 py-2"
                     >
-                      <span className="font-mono">
-                        {member.user?.name || member.user?.email || member.principalId}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {member.user?.email ?? "unknown email"}
-                      </span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono">
+                          {member.user?.name || member.user?.email || member.principalId}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {member.user?.email ?? "unknown email"}
+                        </span>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Role
+                          </label>
+                          <input
+                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
+                            value={memberRoleDrafts[member.id] ?? ""}
+                            onChange={(e) =>
+                              setMemberRoleDrafts((prev) => ({
+                                ...prev,
+                                [member.id]: e.target.value
+                              }))
+                            }
+                            placeholder="CEO, CTO, PM..."
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Reports to
+                          </label>
+                          <select
+                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
+                            value={memberManagerDrafts[member.id] ?? ""}
+                            onChange={(e) =>
+                              setMemberManagerDrafts((prev) => ({
+                                ...prev,
+                                [member.id]: e.target.value
+                              }))
+                            }
+                          >
+                            <option value="">None</option>
+                            {activeHumanMembers
+                              .filter((candidate) => candidate.id !== member.id)
+                              .map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.user?.name || candidate.user?.email || candidate.principalId} (human)
+                                </option>
+                              ))}
+                            {activeAgentMembers.map((candidate) => (
+                              <option key={candidate.id} value={candidate.id}>
+                                {candidate.agent?.name || candidate.principalId} (agent)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Manages agents
+                          </label>
+                          <div className="max-h-24 space-y-1 overflow-y-auto rounded border border-border/60 bg-background px-2 py-1">
+                            {activeAgentMembers.length === 0 && (
+                              <div className="text-[11px] text-muted-foreground">No active agents</div>
+                            )}
+                            {activeAgentMembers.map((candidate) => {
+                              const checked = (memberManagedAgentsDrafts[member.id] ?? []).includes(candidate.id);
+                              return (
+                                <label key={candidate.id} className="flex items-center gap-1 text-[11px]">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      setMemberManagedAgentsDrafts((prev) => {
+                                        const next = new Set(prev[member.id] ?? []);
+                                        if (e.target.checked) {
+                                          next.add(candidate.id);
+                                        } else {
+                                          next.delete(candidate.id);
+                                        }
+                                        return { ...prev, [member.id]: Array.from(next) };
+                                      });
+                                    }}
+                                  />
+                                  <span>{candidate.agent?.name || candidate.principalId}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            memberOrgMutation.mutate({
+                              memberId: member.id,
+                              membershipRole:
+                                (memberRoleDrafts[member.id] ?? "").trim() || null,
+                              reportsToMembershipId:
+                                (memberManagerDrafts[member.id] ?? "").trim() || null,
+                              managedAgentMemberIds: memberManagedAgentsDrafts[member.id] ?? []
+                            })
+                          }
+                          disabled={memberOrgMutation.isPending || !selectedCompanyId}
+                        >
+                          {memberOrgMutation.isPending ? "Saving..." : "Save org config"}
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

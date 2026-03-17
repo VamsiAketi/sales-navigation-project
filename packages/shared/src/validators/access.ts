@@ -70,6 +70,14 @@ export const updateMemberPermissionsSchema = z.object({
 
 export type UpdateMemberPermissions = z.infer<typeof updateMemberPermissionsSchema>;
 
+export const updateMemberOrgConfigSchema = z.object({
+  membershipRole: z.string().trim().min(1).max(120).nullable().optional(),
+  reportsToMembershipId: z.string().uuid().nullable().optional(),
+  managedAgentMemberIds: z.array(z.string().uuid()).max(500).optional(),
+});
+
+export type UpdateMemberOrgConfig = z.infer<typeof updateMemberOrgConfigSchema>;
+
 export const updateUserCompanyAccessSchema = z.object({
   companyIds: z.array(z.string().uuid()).default([]),
 });
