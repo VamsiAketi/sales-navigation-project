@@ -213,7 +213,7 @@ export function CompanySettings() {
     enabled: !!selectedCompanyId
   });
 
-  const { data: companyMembers = [], isLoading: membersLoading } = useQuery({
+  const { data: companyMembers, isLoading: membersLoading } = useQuery({
     queryKey: selectedCompanyId
       ? queryKeys.access.members(selectedCompanyId)
       : ["access", "members", "none"],
@@ -221,21 +221,21 @@ export function CompanySettings() {
     enabled: !!selectedCompanyId
   });
 
-  const activeHumanMembers = companyMembers.filter(
+  const activeHumanMembers = (companyMembers ?? []).filter(
     (member: CompanyMember) =>
       member.principalType === "user" && member.status === "active"
   );
-  const activeAgentMembers = companyMembers.filter(
+  const activeAgentMembers = (companyMembers ?? []).filter(
     (member: CompanyMember) =>
       member.principalType === "agent" && member.status === "active"
   );
 
   useEffect(() => {
-    const activeHuman = companyMembers.filter(
+    const activeHuman = (companyMembers ?? []).filter(
       (member: CompanyMember) =>
         member.principalType === "user" && member.status === "active"
     );
-    const activeAgent = companyMembers.filter(
+    const activeAgent = (companyMembers ?? []).filter(
       (member: CompanyMember) =>
         member.principalType === "agent" && member.status === "active"
     );
