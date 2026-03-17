@@ -24,6 +24,7 @@ const mockAgentService = vi.hoisted(() => ({
 }));
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
+const mockSendHumanInviteEmail = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/index.js", () => ({
   accessService: () => mockAccessService,
@@ -31,6 +32,7 @@ vi.mock("../services/index.js", () => ({
   deduplicateAgentName: vi.fn(),
   logActivity: mockLogActivity,
   notifyHireApproved: vi.fn(),
+  sendHumanInviteEmail: mockSendHumanInviteEmail,
 }));
 
 function createDbStub(selectQueue: unknown[]) {
@@ -76,6 +78,10 @@ describe("POST /companies/:companyId/human-invites", () => {
     mockAccessService.canUser.mockResolvedValue(true);
     mockAccessService.ensureMembership.mockResolvedValue({ id: "membership-1" });
     mockLogActivity.mockResolvedValue(undefined);
+    mockSendHumanInviteEmail.mockResolvedValue({
+      status: "skipped",
+      message: "SMTP not configured",
+    });
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
   });
@@ -104,6 +110,7 @@ describe("POST /companies/:companyId/human-invites", () => {
     expect(res.body.temporaryUsername).toBe("new.user@example.com");
     expect(typeof res.body.temporaryPassword).toBe("string");
     expect(res.body.temporaryPassword.length).toBeGreaterThanOrEqual(8);
+    expect(res.body.emailDelivery?.status).toBe("skipped");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const call = fetchMock.mock.calls[0];
     expect(typeof call?.[0]).toBe("string");
@@ -145,5 +152,66 @@ describe("POST /companies/:companyId/human-invites", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("Sign-up is disabled");
+  });
+});
+
+describe("GET /companies/:companyId/members", () => {
+  beforeEach(() => {
+    mockAccessService.canUser.mockResolvedValue(true);
+    mockAccessService.listMembers.mockResolvedValue([
+      {
+        id: "member-user-1",
+        companyId: "company-1",
+        principalType: "user",
+        principalId: "user-2",
+        status: "active",
+        membershipRole: "member",
+        createdAt: new Date("2026-03-16T00:00:00.000Z"),
+        updatedAt: new Date("2026-03-16T00:00:00.000Z"),
+      },
+      {
+        id: "member-agent-1",
+        companyId: "company-1",
+        principalType: "agent",
+        principalId: "agent-1",
+        status: "active",
+        membershipRole: "member",
+        createdAt: new Date("2026-03-16T00:00:00.000Z"),
+        updatedAt: new Date("2026-03-16T00:00:00.000Z"),
+      },
+    ]);
+  });
+
+  it("returns memberships enriched with user and agent details", async () => {
+    const db = createDbStub([
+      [{ id: "user-2", name: "User Two", email: "user.two@example.com" }],
+      [{ id: "agent-1", name: "Agent One", role: "engineer" }],
+    ]);
+    const app = createApp(db);
+
+    const res = await request(app).get("/api/companies/company-1/members");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0]).toMatchObject({
+      id: "member-user-1",
+      principalType: "user",
+      user: {
+        id: "user-2",
+        name: "User Two",
+        email: "user.two@example.com",
+      },
+      agent: null,
+    });
+    expect(res.body[1]).toMatchObject({
+      id: "member-agent-1",
+      principalType: "agent",
+      user: null,
+      agent: {
+        id: "agent-1",
+        name: "Agent One",
+        role: "engineer",
+      },
+    });
   });
 });

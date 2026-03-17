@@ -81,6 +81,23 @@ type HumanInviteCreated = {
   name: string;
   temporaryUsername: string;
   temporaryPassword: string;
+  emailDelivery?: {
+    status: "sent" | "skipped" | "failed";
+    message: string;
+  };
+};
+
+export type CompanyMember = {
+  id: string;
+  companyId: string;
+  principalType: "agent" | "user";
+  principalId: string;
+  status: "pending" | "active" | "suspended";
+  membershipRole: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; name: string; email: string } | null;
+  agent: { id: string; name: string; role: string } | null;
 };
 
 export const accessApi = {
@@ -116,6 +133,9 @@ export const accessApi = {
       `/companies/${companyId}/human-invites`,
       input,
     ),
+
+  listMembers: (companyId: string) =>
+    api.get<CompanyMember[]>(`/companies/${companyId}/members`),
 
   getInvite: (token: string) => api.get<InviteSummary>(`/invites/${token}`),
   getInviteOnboarding: (token: string) =>
