@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { companiesApi } from "../api/companies";
-import { accessApi } from "../api/access";
+import { accessApi, type CompanyMember } from "../api/access";
 import { secretsApi } from "../api/secrets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
@@ -161,6 +161,9 @@ export function CompanySettings() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sidebarBadges(selectedCompanyId!)
       });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.access.members(selectedCompanyId!)
+      });
     },
     onError: (err) => {
       setHumanInviteCredentials(null);
@@ -206,6 +209,19 @@ export function CompanySettings() {
     queryFn: () => secretsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId
   });
+
+  const { data: companyMembers = [], isLoading: membersLoading } = useQuery({
+    queryKey: selectedCompanyId
+      ? queryKeys.access.members(selectedCompanyId)
+      : ["access", "members", "none"],
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId
+  });
+
+  const activeHumanMembers = companyMembers.filter(
+    (member: CompanyMember) =>
+      member.principalType === "user" && member.status === "active"
+  );
 
   const createSecretMutation = useMutation({
     mutationFn: () =>
@@ -610,6 +626,36 @@ export function CompanySettings() {
                 </div>
               </div>
             )}
+            <div className="rounded-md border border-border bg-background px-2.5 py-2 text-xs">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="font-medium text-foreground">Active users</p>
+                <span className="text-muted-foreground">
+                  {membersLoading ? "Loading..." : `${activeHumanMembers.length}`}
+                </span>
+              </div>
+              {!membersLoading && activeHumanMembers.length === 0 && (
+                <p className="text-muted-foreground">
+                  No active human users yet.
+                </p>
+              )}
+              {activeHumanMembers.length > 0 && (
+                <div className="space-y-1">
+                  {activeHumanMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between gap-2 rounded border border-border/70 px-2 py-1"
+                    >
+                      <span className="font-mono">
+                        {member.user?.name || member.user?.email || member.principalId}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {member.user?.email ?? "unknown email"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5">

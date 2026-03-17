@@ -16,5 +16,10 @@ export { accessService } from "./access.js";
 export { companyPortabilityService } from "./company-portability.js";
 export { logActivity, type LogActivityInput } from "./activity-log.js";
 export { notifyHireApproved, type NotifyHireApprovedInput } from "./hire-hook.js";
+export {
+  sendHumanInviteEmail,
+  type HumanInviteEmailInput,
+  type HumanInviteEmailDelivery
+} from "./human-invite-email.js";
 export { publishLiveEvent, subscribeCompanyLiveEvents } from "./live-events.js";
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";

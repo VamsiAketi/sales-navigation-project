@@ -9,9 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Router } from "express";
 import type { Request } from "express";
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, eq, isNull, desc, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
+  agents as dbAgents,
   agentApiKeys,
   authUsers,
   companyMemberships,
@@ -44,7 +45,8 @@ import {
   agentService,
   deduplicateAgentName,
   logActivity,
-  notifyHireApproved
+  notifyHireApproved,
+  sendHumanInviteEmail
 } from "../services/index.js";
 import { assertCompanyAccess } from "./authz.js";
 import {
@@ -1832,6 +1834,21 @@ export function accessRoutes(
         "member",
         "active"
       );
+      const signInBaseUrl = requestBaseUrl(req);
+      const signInUrl = signInBaseUrl ? `${signInBaseUrl}/auth` : "/auth";
+      const emailDelivery = await sendHumanInviteEmail({
+        toEmail: createdAuthUser.userEmail,
+        toName: createdAuthUser.userName,
+        temporaryUsername: createdAuthUser.userEmail,
+        temporaryPassword,
+        signInUrl
+      });
+      if (emailDelivery.status === "failed") {
+        logger.warn(
+          { companyId, invitedUserId: createdAuthUser.userId, message: emailDelivery.message },
+          "Failed to send human invite email"
+        );
+      }
 
       await logActivity(db, {
         companyId,
@@ -1846,7 +1863,9 @@ export function accessRoutes(
         details: {
           email: createdAuthUser.userEmail,
           name: createdAuthUser.userName,
-          membershipId: membership.id
+          membershipId: membership.id,
+          emailDeliveryStatus: emailDelivery.status,
+          emailDeliveryMessage: emailDelivery.message
         }
       });
 
@@ -1855,7 +1874,8 @@ export function accessRoutes(
         email: createdAuthUser.userEmail,
         name: createdAuthUser.userName,
         temporaryUsername: createdAuthUser.userEmail,
-        temporaryPassword
+        temporaryPassword,
+        emailDelivery
       });
     }
   );
@@ -2727,7 +2747,53 @@ export function accessRoutes(
     const companyId = req.params.companyId as string;
     await assertCompanyPermission(req, companyId, "users:manage_permissions");
     const members = await access.listMembers(companyId);
-    res.json(members);
+
+    const userIds = members
+      .filter((member) => member.principalType === "user")
+      .map((member) => member.principalId);
+    const agentIds = members
+      .filter((member) => member.principalType === "agent")
+      .map((member) => member.principalId);
+
+    const [users, agents] = await Promise.all([
+      userIds.length > 0
+        ? db
+            .select({
+              id: authUsers.id,
+              name: authUsers.name,
+              email: authUsers.email
+            })
+            .from(authUsers)
+            .where(inArray(authUsers.id, userIds))
+        : Promise.resolve([] as Array<{ id: string; name: string; email: string }>),
+      agentIds.length > 0
+        ? db
+            .select({
+              id: dbAgents.id,
+              name: dbAgents.name,
+              role: dbAgents.role
+            })
+            .from(dbAgents)
+            .where(inArray(dbAgents.id, agentIds))
+        : Promise.resolve([] as Array<{ id: string; name: string; role: string }>)
+    ]);
+
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+
+    res.json(
+      members.map((member) => ({
+        ...member,
+        user:
+          member.principalType === "user"
+            ? usersById.get(member.principalId) ?? null
+            : null,
+        agent:
+          member.principalType === "agent"
+            ? agentsById.get(member.principalId) ?? null
+            : null
+      }))
+    );
   });
 
   router.patch(
