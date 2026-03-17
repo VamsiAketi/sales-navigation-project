@@ -9,7 +9,7 @@ import { agentUrl } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Network } from "lucide-react";
+import { Network, User } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 
 // Layout constants
@@ -26,6 +26,7 @@ interface LayoutNode {
   name: string;
   role: string;
   status: string;
+  nodeType: "agent" | "human";
   x: number;
   y: number;
   children: LayoutNode[];
@@ -63,6 +64,7 @@ function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
     name: node.name,
     role: node.role,
     status: node.status,
+    nodeType: node.nodeType ?? "agent",
     x: x + (totalW - CARD_W) / 2,
     y,
     children: layoutChildren,
@@ -371,6 +373,7 @@ export function OrgChart() {
         }}
       >
         {allNodes.map((node) => {
+          const isAgentNode = (node.nodeType ?? "agent") === "agent";
           const agent = agentMap.get(node.id);
           const dotColor = statusDotColor[node.status] ?? defaultDotColor;
 
@@ -385,13 +388,20 @@ export function OrgChart() {
                 width: CARD_W,
                 minHeight: CARD_H,
               }}
-              onClick={() => navigate(agent ? agentUrl(agent) : `/agents/${node.id}`)}
+              onClick={() => {
+                if (!isAgentNode) return;
+                navigate(agent ? agentUrl(agent) : `/agents/${node.id}`);
+              }}
             >
               <div className="flex items-center px-4 py-3 gap-3">
                 {/* Agent icon + status dot */}
                 <div className="relative shrink-0">
                   <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
-                    <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
+                    {isAgentNode ? (
+                      <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
+                    ) : (
+                      <User className="h-4.5 w-4.5 text-foreground/70" />
+                    )}
                   </div>
                   <span
                     className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card"
@@ -404,9 +414,9 @@ export function OrgChart() {
                     {node.name}
                   </span>
                   <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                    {agent?.title ?? roleLabel(node.role)}
+                    {isAgentNode ? agent?.title ?? roleLabel(node.role) : node.role}
                   </span>
-                  {agent && (
+                  {isAgentNode && agent && (
                     <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
                       {adapterLabels[agent.adapterType] ?? agent.adapterType}
                     </span>

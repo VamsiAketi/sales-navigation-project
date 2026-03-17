@@ -14,7 +14,7 @@ import { cn } from "../lib/utils";
 function OrgTree({
   nodes,
   depth = 0,
-  hrefFn,
+  hrefFn
 }: {
   nodes: OrgNode[];
   depth?: number;
@@ -32,7 +32,7 @@ function OrgTree({
 function OrgTreeNode({
   node,
   depth,
-  hrefFn,
+  hrefFn
 }: {
   node: OrgNode;
   depth: number;
@@ -40,48 +40,90 @@ function OrgTreeNode({
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.reports.length > 0;
+  const isAgentNode = (node.nodeType ?? "agent") === "agent";
+  const rowClassName =
+    "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors no-underline text-inherit";
+  const rowStyle = { paddingLeft: `${depth * 16 + 12}px` };
 
   return (
     <div>
-      <Link
-        to={hrefFn(node.id)}
-        className="flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer hover:bg-accent/50 no-underline text-inherit"
-        style={{ paddingLeft: `${depth * 16 + 12}px` }}
-      >
-        {hasChildren ? (
-          <button
-            className="p-0.5"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setExpanded(!expanded);
-            }}
-          >
-            <ChevronRight
-              className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")}
-            />
-          </button>
-        ) : (
-          <span className="w-4" />
-        )}
-        <span
-          className={cn(
-            "h-2 w-2 rounded-full shrink-0",
-            node.status === "active"
-              ? "bg-green-400"
-              : node.status === "paused"
-                ? "bg-yellow-400"
-                : node.status === "pending_approval"
-                  ? "bg-amber-400"
-                : node.status === "error"
-                  ? "bg-red-400"
-                  : "bg-neutral-400"
+      {isAgentNode ? (
+        <Link
+          to={hrefFn(node.id)}
+          className={`${rowClassName} cursor-pointer hover:bg-accent/50`}
+          style={rowStyle}
+        >
+          {hasChildren ? (
+            <button
+              className="p-0.5"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setExpanded(!expanded);
+              }}
+            >
+              <ChevronRight
+                className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")}
+              />
+            </button>
+          ) : (
+            <span className="w-4" />
           )}
-        />
-        <span className="font-medium flex-1">{node.name}</span>
-        <span className="text-xs text-muted-foreground">{node.role}</span>
-        <StatusBadge status={node.status} />
-      </Link>
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full shrink-0",
+              node.status === "active"
+                ? "bg-green-400"
+                : node.status === "paused"
+                  ? "bg-yellow-400"
+                  : node.status === "pending_approval"
+                    ? "bg-amber-400"
+                    : node.status === "error"
+                      ? "bg-red-400"
+                      : "bg-neutral-400"
+            )}
+          />
+          <span className="font-medium flex-1">{node.name}</span>
+          <span className="text-xs text-muted-foreground">{node.role}</span>
+          <StatusBadge status={node.status} />
+        </Link>
+      ) : (
+        <div className={rowClassName} style={rowStyle}>
+          {hasChildren ? (
+            <button
+              className="p-0.5"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setExpanded(!expanded);
+              }}
+            >
+              <ChevronRight
+                className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")}
+              />
+            </button>
+          ) : (
+            <span className="w-4" />
+          )}
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full shrink-0",
+              node.status === "active"
+                ? "bg-green-400"
+                : node.status === "paused"
+                  ? "bg-yellow-400"
+                  : node.status === "pending_approval"
+                    ? "bg-amber-400"
+                    : node.status === "error"
+                      ? "bg-red-400"
+                      : "bg-neutral-400"
+            )}
+          />
+          <span className="font-medium flex-1">{node.name}</span>
+          <span className="text-xs text-muted-foreground">{node.role}</span>
+          <StatusBadge status={node.status} />
+        </div>
+      )}
       {hasChildren && expanded && (
         <OrgTree nodes={node.reports} depth={depth + 1} hrefFn={hrefFn} />
       )}

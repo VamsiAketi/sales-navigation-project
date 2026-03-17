@@ -26,6 +26,7 @@ import {
   createHumanInviteSchema,
   createOpenClawInvitePromptSchema,
   listJoinRequestsQuerySchema,
+  updateMemberOrgConfigSchema,
   updateMemberPermissionsSchema,
   updateUserCompanyAccessSchema,
   PERMISSION_KEYS
@@ -2795,6 +2796,137 @@ export function accessRoutes(
       }))
     );
   });
+
+  router.patch(
+    "/companies/:companyId/members/:memberId/org-config",
+    validate(updateMemberOrgConfigSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const memberId = req.params.memberId as string;
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+
+      const allMembers = await db
+        .select()
+        .from(companyMemberships)
+        .where(eq(companyMemberships.companyId, companyId));
+      const membersById = new Map(allMembers.map((candidate) => [candidate.id, candidate]));
+      const member = membersById.get(memberId) ?? null;
+      if (!member) throw notFound("Member not found");
+
+      const nextRole =
+        req.body.membershipRole === undefined
+          ? member.membershipRole
+          : req.body.membershipRole;
+      const requestedReportsTo =
+        req.body.reportsToMembershipId === undefined
+          ? member.reportsToMembershipId
+          : req.body.reportsToMembershipId;
+
+      if (requestedReportsTo === member.id) {
+        throw badRequest("Member cannot report to itself");
+      }
+
+      if (requestedReportsTo) {
+        const parentMember = membersById.get(requestedReportsTo) ?? null;
+        if (!parentMember) throw notFound("Manager member not found");
+        if (parentMember.status !== "active") {
+          throw conflict("Manager member must be active");
+        }
+      }
+
+      const targetIds: string[] | null = Array.isArray(req.body.managedAgentMemberIds)
+        ? Array.from(new Set((req.body.managedAgentMemberIds as string[]).map((value) => String(value))))
+        : null;
+      if (targetIds) {
+        for (const targetId of targetIds) {
+          const target = membersById.get(targetId) ?? null;
+          if (!target || target.status !== "active" || target.principalType !== "agent") {
+            throw badRequest("managedAgentMemberIds must contain active agent members only");
+          }
+        }
+      }
+
+      const proposedParentByMemberId = new Map(
+        allMembers.map((candidate) => [candidate.id, candidate.reportsToMembershipId ?? null]),
+      );
+      proposedParentByMemberId.set(member.id, requestedReportsTo ?? null);
+
+      if (targetIds) {
+        for (const candidate of allMembers) {
+          if (candidate.companyId !== companyId || candidate.principalType !== "agent") continue;
+          if (candidate.reportsToMembershipId === member.id) {
+            proposedParentByMemberId.set(candidate.id, null);
+          }
+        }
+        for (const targetId of targetIds) {
+          proposedParentByMemberId.set(targetId, member.id);
+        }
+      }
+
+      const detectCycle = (startId: string) => {
+        const visited = new Set<string>();
+        let cursor = startId;
+        while (true) {
+          const next = proposedParentByMemberId.get(cursor) ?? null;
+          if (!next) return false;
+          if (next === startId) return true;
+          if (visited.has(next)) return true;
+          visited.add(next);
+          cursor = next;
+        }
+      };
+
+      for (const candidate of allMembers) {
+        if (detectCycle(candidate.id)) {
+          throw badRequest("Org hierarchy cannot contain reporting cycles");
+        }
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const memberUpdated = await tx
+          .update(companyMemberships)
+          .set({
+            membershipRole: nextRole ?? null,
+            reportsToMembershipId: requestedReportsTo ?? null,
+            updatedAt: new Date(),
+          })
+          .where(eq(companyMemberships.id, member.id))
+          .returning()
+          .then((rows) => rows[0] ?? null);
+        if (!memberUpdated) throw notFound("Member not found");
+
+        if (targetIds) {
+          await tx
+            .update(companyMemberships)
+            .set({ reportsToMembershipId: null, updatedAt: new Date() })
+            .where(
+              and(
+                eq(companyMemberships.companyId, companyId),
+                eq(companyMemberships.principalType, "agent"),
+                eq(companyMemberships.reportsToMembershipId, member.id),
+              ),
+            );
+
+          if (targetIds.length > 0) {
+            await tx
+              .update(companyMemberships)
+              .set({ reportsToMembershipId: member.id, updatedAt: new Date() })
+              .where(
+                and(
+                  eq(companyMemberships.companyId, companyId),
+                  eq(companyMemberships.principalType, "agent"),
+                  inArray(companyMemberships.id, targetIds),
+                ),
+              );
+          }
+        }
+
+        return memberUpdated;
+      });
+
+      res.json(updated);
+    }
+  );
 
   router.patch(
     "/companies/:companyId/members/:memberId/permissions",

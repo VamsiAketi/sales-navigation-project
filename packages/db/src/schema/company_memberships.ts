@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, pgTable, uuid, text, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
 export const companyMemberships = pgTable(
@@ -10,6 +10,9 @@ export const companyMemberships = pgTable(
     principalId: text("principal_id").notNull(),
     status: text("status").notNull().default("active"),
     membershipRole: text("membership_role"),
+    reportsToMembershipId: uuid("reports_to_membership_id").references(
+      (): AnyPgColumn => companyMemberships.id,
+    ),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -25,5 +28,9 @@ export const companyMemberships = pgTable(
       table.status,
     ),
     companyStatusIdx: index("company_memberships_company_status_idx").on(table.companyId, table.status),
+    companyReportsToMembershipIdx: index("company_memberships_company_reports_to_membership_idx").on(
+      table.companyId,
+      table.reportsToMembershipId,
+    ),
   }),
 );
