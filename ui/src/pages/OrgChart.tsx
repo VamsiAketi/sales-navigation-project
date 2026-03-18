@@ -9,7 +9,7 @@ import { agentUrl } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { GripVertical, Network, User } from "lucide-react";
+import { ArrowDownUp, ChevronDown, ChevronRight, GripVertical, Network, User } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 import { useOrgChartViewMemory } from "../hooks/useOrgChartViewMemory";
 import {
@@ -32,9 +32,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 // Layout constants
 const CARD_W = 200;
 const CARD_H = 100;
-const GAP_X = 32;
-const GAP_Y = 80;
-const PADDING = 60;
+// More breathing room so hierarchy reads clearly.
+const GAP_X = 56;
+const GAP_Y = 120;
+const PADDING = 80;
 
 // ── Tree layout types ───────────────────────────────────────────────────
 
@@ -305,6 +306,8 @@ export function OrgChart() {
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
+    // Let trackpad pinch (ctrlKey wheel) be handled by the native non-passive listener below.
+    if ((e as unknown as { ctrlKey?: boolean }).ctrlKey) return;
     const container = containerRef.current;
     if (!container) return;
 
@@ -312,7 +315,7 @@ export function OrgChart() {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    const factor = e.deltaY < 0 ? 1.06 : 0.94;
     const newZoom = Math.min(Math.max(zoom * factor, 0.2), 2);
 
     // Zoom toward mouse position
@@ -323,6 +326,38 @@ export function OrgChart() {
     });
     setZoom(newZoom);
   }, [zoom, pan]);
+
+  // Trackpad pinch zoom on macOS shows up as a wheel event with ctrlKey=true and
+  // will zoom the browser unless we intercept it with a non-passive listener.
+  // React's synthetic onWheel is not reliable for preventDefault here.
+  useEffect(() => {
+    const onWheelNative = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      const container = containerRef.current;
+      if (!container) return;
+      const target = e.target as Node | null;
+      if (!target || !container.contains(target)) return;
+
+      e.preventDefault();
+
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const factor = e.deltaY < 0 ? 1.12 : 0.88;
+      const prevZoom = zoom;
+      const nextZoom = Math.min(Math.max(prevZoom * factor, 0.2), 2);
+      const scale = nextZoom / prevZoom;
+      setPan((prev) => ({
+        x: mouseX - scale * (mouseX - prev.x),
+        y: mouseY - scale * (mouseY - prev.y),
+      }));
+      setZoom(nextZoom);
+    };
+
+    window.addEventListener("wheel", onWheelNative, { passive: false });
+    return () => window.removeEventListener("wheel", onWheelNative as any);
+  }, [zoom]);
 
   const focusNode = useCallback(
     (nodeId: string) => {
@@ -552,11 +587,12 @@ export function OrgChart() {
                 key={`${parent.id}-${child.id}`}
                 d={`M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`}
                 fill="none"
-                stroke="hsl(var(--foreground))"
-                strokeWidth={1.75}
+                stroke="currentColor"
+                className="text-foreground/45"
+                strokeWidth={1.6}
                 strokeLinecap="round"
-                strokeDasharray="2 7"
-                opacity={0.45}
+                strokeDasharray="2 10"
+                vectorEffect="non-scaling-stroke"
               />
             );
           })}
@@ -631,14 +667,16 @@ export function OrgChart() {
                   <div className="flex items-center justify-between gap-2">
                     {expanded ? (
                       <button
-                        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           toggleExpanded(node.id, false);
                         }}
+                        title="Collapse direct reports"
+                        aria-label="Collapse direct reports"
                       >
-                        Collapse reports
+                        <ChevronDown className="h-3.5 w-3.5" />
                       </button>
                     ) : (
                       <button
@@ -648,22 +686,26 @@ export function OrgChart() {
                           e.stopPropagation();
                           toggleExpanded(node.id, true);
                         }}
+                        title="Expand direct reports"
+                        aria-label="Expand direct reports"
                       >
-                        + {node.directReportCount} more reports
+                        <ChevronRight className="h-3.5 w-3.5" />
+                        <span className="tabular-nums">+ {node.directReportCount}</span>
                       </button>
                     )}
 
                     {isAgentNode && (
                       <button
-                        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           setReorderManagerId(node.id);
                         }}
                         title="Reorder direct reports"
+                        aria-label="Reorder direct reports"
                       >
-                        Reorder
+                        <ArrowDownUp className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
