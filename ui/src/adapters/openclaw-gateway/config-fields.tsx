@@ -114,7 +114,7 @@ export function OpenClawGatewayConfigFields({
 
       {!isCreate && (
         <>
-          <Field label="Paperclip API URL override">
+          <Field label="AI-Harness API URL override">
             <DraftInput
               value={
                 eff(
@@ -145,11 +145,11 @@ export function OpenClawGatewayConfigFields({
           {sessionStrategy === "fixed" && (
             <Field label="Session key">
               <DraftInput
-                value={eff("adapterConfig", "sessionKey", String(config.sessionKey ?? "paperclip"))}
+                value={eff("adapterConfig", "sessionKey", String(config.sessionKey ?? "ai-harness"))}
                 onCommit={(v) => mark("adapterConfig", "sessionKey", v || undefined)}
                 immediate
                 className={inputClass}
-                placeholder="paperclip"
+                placeholder="ai-harness"
               />
             </Field>
           )}
@@ -206,7 +206,7 @@ export function OpenClawGatewayConfigFields({
 
           <Field label="Device auth">
             <div className="text-xs text-muted-foreground leading-relaxed">
-              Always enabled for gateway agents. Paperclip persists a device key during onboarding so pairing approvals
+              Always enabled for gateway agents. AI-Harness persists a device key during onboarding so pairing approvals
               remain stable across runs.
             </div>
           </Field>
