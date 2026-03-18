@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "env_config" jsonb DEFAULT 'null'::jsonb;

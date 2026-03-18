@@ -49,6 +49,7 @@ export {
   updateProjectSchema,
   createProjectWorkspaceSchema,
   updateProjectWorkspaceSchema,
+  projectSecretBindingsSchema,
   type CreateProject,
   type UpdateProject,
   type CreateProjectWorkspace,

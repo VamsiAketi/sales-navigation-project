@@ -33,6 +33,11 @@ export interface Project {
   leadAgentId: string | null;
   targetDate: string | null;
   color: string | null;
+  /**
+   * Maps env var name → company secret **name** (the name from Company settings).
+   * Agents on this project get those env vars with values resolved from the vault.
+   */
+  envConfig: Record<string, string> | null;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;
   archivedAt: Date | null;

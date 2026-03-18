@@ -8,13 +8,38 @@ import {
   updateProjectWorkspaceSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { projectService, logActivity } from "../services/index.js";
-import { conflict } from "../errors.js";
+import { projectService, secretService, logActivity } from "../services/index.js";
+import { conflict, unprocessable } from "../errors.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 
 export function projectRoutes(db: Db) {
   const router = Router();
   const svc = projectService(db);
+  const secretsSvc = secretService(db);
+
+  async function validateProjectSecretBindings(
+    companyId: string,
+    raw: unknown,
+  ): Promise<Record<string, string> | null> {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      throw unprocessable("envConfig must be an object mapping env names to company secret names");
+    }
+    const rec = raw as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [envKey, secretNameRaw] of Object.entries(rec)) {
+      if (typeof secretNameRaw !== "string" || !secretNameRaw.trim()) {
+        throw unprocessable(`envConfig: company secret name required for ${envKey}`);
+      }
+      const secretName = secretNameRaw.trim();
+      const secret = await secretsSvc.getByName(companyId, secretName);
+      if (!secret) {
+        throw unprocessable(`Unknown company secret: ${secretName}`);
+      }
+      out[envKey] = secretName;
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  }
 
   async function resolveCompanyIdForProjectReference(req: Request) {
     const companyIdQuery = req.query.companyId;
@@ -77,7 +102,18 @@ export function projectRoutes(db: Db) {
       workspace?: Parameters<typeof svc.createWorkspace>[1];
     };
 
-    const { workspace, ...projectData } = req.body as CreateProjectPayload;
+    const { workspace, ...rawProjectData } = req.body as CreateProjectPayload;
+
+    const projectEnvConfig =
+      rawProjectData.envConfig !== undefined
+        ? await validateProjectSecretBindings(companyId, rawProjectData.envConfig)
+        : undefined;
+
+    const projectData = {
+      ...rawProjectData,
+      ...(projectEnvConfig !== undefined ? { envConfig: projectEnvConfig } : {}),
+    };
+
     const project = await svc.create(companyId, projectData);
     let createdWorkspaceId: string | null = null;
     if (workspace) {
@@ -116,7 +152,19 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
-    const project = await svc.update(id, req.body);
+
+    const rawBody = req.body as Record<string, unknown>;
+    const projectEnvConfig =
+      Object.prototype.hasOwnProperty.call(rawBody, "envConfig") && rawBody.envConfig !== undefined
+        ? await validateProjectSecretBindings(existing.companyId, rawBody.envConfig)
+        : undefined;
+
+    const updates = {
+      ...rawBody,
+      ...(projectEnvConfig !== undefined ? { envConfig: projectEnvConfig } : {}),
+    };
+
+    const project = await svc.update(id, updates);
     if (!project) {
       res.status(404).json({ error: "Project not found" });
       return;
