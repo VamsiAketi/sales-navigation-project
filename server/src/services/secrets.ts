@@ -298,6 +298,16 @@ export function secretService(db: Db) {
       opts?: { strictMode?: boolean },
     ) => normalizeAdapterConfigForPersistenceInternal(companyId, adapterConfig, opts),
 
+    /**
+     * Normalize a generic environment config object for persistence.
+     * Used for non-adapter env configs (e.g. project-level env).
+     */
+    normalizeEnvConfigForPersistence: async (
+      companyId: string,
+      envValue: unknown,
+      opts?: { strictMode?: boolean },
+    ): Promise<AgentEnvConfig> => normalizeEnvConfig(companyId, envValue, opts),
+
     normalizeHireApprovalPayloadForPersistence: async (
       companyId: string,
       payload: Record<string, unknown>,

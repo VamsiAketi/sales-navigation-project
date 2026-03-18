@@ -1,6 +1,26 @@
 import { z } from "zod";
 import { PROJECT_STATUSES } from "../constants.js";
 
+const PROJECT_ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Env var name → company secret name (must exist in company vault). */
+export const projectSecretBindingsSchema = z
+  .record(z.string().min(1).max(512))
+  .optional()
+  .nullable()
+  .superRefine((rec, ctx) => {
+    if (!rec) return;
+    for (const key of Object.keys(rec)) {
+      if (!PROJECT_ENV_KEY_RE.test(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid environment variable name: ${key}`,
+          path: [key],
+        });
+      }
+    }
+  });
+
 const projectWorkspaceFields = {
   name: z.string().min(1).optional(),
   cwd: z.string().min(1).optional().nullable(),
@@ -44,6 +64,7 @@ const projectFields = {
   targetDate: z.string().optional().nullable(),
   color: z.string().optional().nullable(),
   archivedAt: z.string().datetime().optional().nullable(),
+  envConfig: projectSecretBindingsSchema,
 };
 
 export const createProjectSchema = z.object({
