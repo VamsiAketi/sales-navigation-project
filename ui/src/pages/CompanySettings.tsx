@@ -312,26 +312,39 @@ export function CompanySettings() {
     setMemberManagedAgentsDrafts(nextManagedAgentsDrafts);
   }, [companyMembers]);
 
-  const memberOrgMutation = useMutation({
+  const invalidateOrgQueries = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.access.members(selectedCompanyId!)
+    });
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.org(selectedCompanyId!)
+    });
+  };
+
+  const humanMemberOrgMutation = useMutation({
     mutationFn: (input: {
       memberId: string;
       membershipRole: string | null;
       reportsToMembershipId: string | null;
-      managedAgentMemberIds?: string[];
     }) =>
       accessApi.updateMemberOrgConfig(selectedCompanyId!, input.memberId, {
         membershipRole: input.membershipRole,
-        reportsToMembershipId: input.reportsToMembershipId,
-        managedAgentMemberIds: input.managedAgentMemberIds
+        reportsToMembershipId: input.reportsToMembershipId
       }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.access.members(selectedCompanyId!)
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.org(selectedCompanyId!)
-      });
-    }
+    onSuccess: invalidateOrgQueries
+  });
+
+  const agentMemberOrgMutation = useMutation({
+    mutationFn: (input: {
+      memberId: string;
+      membershipRole: string | null;
+      reportsToMembershipId: string | null;
+    }) =>
+      accessApi.updateMemberOrgConfig(selectedCompanyId!, input.memberId, {
+        membershipRole: input.membershipRole,
+        reportsToMembershipId: input.reportsToMembershipId
+      }),
+    onSuccess: invalidateOrgQueries
   });
 
   const createSecretMutation = useMutation({
@@ -826,16 +839,16 @@ export function CompanySettings() {
               )}
               {activeHumanMembers.length > 0 && (
                 <div className="grid gap-2 md:grid-cols-[16rem_1fr]">
-                  <div className="max-h-72 space-y-1 overflow-y-auto rounded border border-border/70 bg-muted/5 p-1">
+                  <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-border/70 bg-muted/10 p-1">
                     {activeHumanMembers.map((member) => (
                       <button
                         key={member.id}
                         type="button"
                         onClick={() => setSelectedHumanMemberId(member.id)}
-                        className={`w-full rounded border px-2 py-1.5 text-left transition-colors ${
+                        className={`w-full rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 ${
                           selectedHumanMember?.id === member.id
-                            ? "border-foreground/30 bg-accent/40"
-                            : "border-transparent hover:border-border hover:bg-accent/20"
+                            ? "border-foreground/30 bg-accent/50"
+                            : "border-transparent hover:border-border/80 hover:bg-accent/25"
                         }`}
                       >
                         <div className="truncate text-xs font-medium">
@@ -852,10 +865,10 @@ export function CompanySettings() {
                   </div>
 
                   {selectedHumanMember && (
-                    <div className="space-y-2 rounded border border-border/70 bg-background px-2.5 py-2">
-                      <div className="flex items-center justify-between gap-2">
+                    <div className="flex h-full flex-col rounded-md border border-border/70 bg-background">
+                      <div className="flex items-start justify-between gap-3 border-b border-border/60 px-3 py-2">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-medium">
+                          <p className="truncate text-xs font-medium text-foreground">
                             {selectedHumanMember.user?.name ||
                               selectedHumanMember.user?.email ||
                               selectedHumanMember.principalId}
@@ -864,18 +877,19 @@ export function CompanySettings() {
                             {selectedHumanMember.user?.email ?? "unknown email"}
                           </p>
                         </div>
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
                           {`${(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length} managed agents`}
                         </span>
                       </div>
 
-                      <div className="grid gap-2 md:grid-cols-2">
+                      <div className="space-y-3 px-3 py-3">
+                        <div className="grid gap-2 md:grid-cols-2">
                         <div className="space-y-1">
                           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
                             Role
                           </label>
                           <input
-                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
+                            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                             value={memberRoleDrafts[selectedHumanMember.id] ?? ""}
                             onChange={(e) =>
                               setMemberRoleDrafts((prev) => ({
@@ -891,7 +905,7 @@ export function CompanySettings() {
                             Reports to
                           </label>
                           <select
-                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
+                            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                             value={memberManagerDrafts[selectedHumanMember.id] ?? ""}
                             onChange={(e) =>
                               setMemberManagerDrafts((prev) => ({
@@ -915,66 +929,66 @@ export function CompanySettings() {
                             ))}
                           </select>
                         </div>
-                      </div>
+                        </div>
 
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Manages agents
-                        </label>
-                        <div className="rounded border border-border/60 bg-muted/5 px-2 py-2">
-                          <div className="text-[11px] text-muted-foreground">
-                            {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length === 0
-                              ? "No managed agents"
-                              : `${(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length} managed agents`}
-                          </div>
-                          {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length > 0 && (
-                            <div className="mt-1 space-y-0.5">
-                              {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? [])
-                                .slice(0, 6)
-                                .map((memberId) => {
-                                  const agentMember = activeAgentMembers.find((m) => m.id === memberId);
-                                  return (
-                                    <div key={memberId} className="text-[11px]">
-                                      {agentMember?.agent?.name || agentMember?.principalId || memberId}
-                                    </div>
-                                  );
-                                })}
-                              {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length > 6 && (
-                                <div className="text-[11px] text-muted-foreground">
-                                  +{(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length - 6} more
-                                </div>
-                              )}
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Manages agents
+                          </label>
+                          <div className="rounded-md border border-border/60 bg-muted/10 px-2 py-2">
+                            <div className="text-[11px] text-muted-foreground">
+                              {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length === 0
+                                ? "No managed agents"
+                                : `${(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length} managed agents`}
                             </div>
-                          )}
-                          <div className="mt-2 text-[10px] text-muted-foreground">
-                            Tip: assign managers per-agent in “Active agents” below.
+                            {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length > 0 && (
+                              <div className="mt-1 space-y-0.5">
+                                {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? [])
+                                  .slice(0, 6)
+                                  .map((memberId) => {
+                                    const agentMember = activeAgentMembers.find((m) => m.id === memberId);
+                                    return (
+                                      <div key={memberId} className="truncate text-[11px]">
+                                        {agentMember?.agent?.name || agentMember?.principalId || memberId}
+                                      </div>
+                                    );
+                                  })}
+                                {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length > 6 && (
+                                  <div className="text-[11px] text-muted-foreground">
+                                    +{(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length - 6} more
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div className="mt-2 text-[10px] text-muted-foreground">
+                              Tip: assign managers per-agent in “Active agents” below.
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-end gap-2">
-                        {memberOrgMutation.isError && (
+                      <div className="mt-auto flex items-center justify-end gap-2 border-t border-border/60 px-3 py-2">
+                        {humanMemberOrgMutation.isError && (
                           <span className="text-[11px] text-destructive">
-                            {memberOrgMutation.error instanceof Error
-                              ? memberOrgMutation.error.message
+                            {humanMemberOrgMutation.error instanceof Error
+                              ? humanMemberOrgMutation.error.message
                               : "Failed to save"}
                           </span>
                         )}
                         <Button
                           size="sm"
                           onClick={() =>
-                            memberOrgMutation.mutate({
+                            humanMemberOrgMutation.mutate({
                               memberId: selectedHumanMember.id,
                               membershipRole:
                                 (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
                               reportsToMembershipId:
-                                (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null,
-                              // Managed agents are edited in the “Active agents” panel for a cleaner UI.
+                                (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null
                             })
                           }
-                          disabled={memberOrgMutation.isPending || !selectedCompanyId}
+                          disabled={humanMemberOrgMutation.isPending || !selectedCompanyId}
                         >
-                          {memberOrgMutation.isPending ? "Saving..." : "Save org config"}
+                          {humanMemberOrgMutation.isPending ? "Saving..." : "Save"}
                         </Button>
                       </div>
                     </div>
@@ -997,16 +1011,16 @@ export function CompanySettings() {
               )}
               {activeAgentMembers.length > 0 && (
                 <div className="grid gap-2 md:grid-cols-[16rem_1fr]">
-                  <div className="max-h-72 space-y-1 overflow-y-auto rounded border border-border/70 bg-muted/5 p-1">
+                  <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-border/70 bg-muted/10 p-1">
                     {activeAgentMembers.map((member) => (
                       <button
                         key={member.id}
                         type="button"
                         onClick={() => setSelectedAgentMemberId(member.id)}
-                        className={`w-full rounded border px-2 py-1.5 text-left transition-colors ${
+                        className={`w-full rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 ${
                           selectedAgentMember?.id === member.id
-                            ? "border-foreground/30 bg-accent/40"
-                            : "border-transparent hover:border-border hover:bg-accent/20"
+                            ? "border-foreground/30 bg-accent/50"
+                            : "border-transparent hover:border-border/80 hover:bg-accent/25"
                         }`}
                       >
                         <div className="truncate text-xs font-medium">
@@ -1023,10 +1037,10 @@ export function CompanySettings() {
                   </div>
 
                   {selectedAgentMember && (
-                    <div className="space-y-2 rounded border border-border/70 bg-background px-2.5 py-2">
-                      <div className="flex items-center justify-between gap-2">
+                    <div className="flex h-full flex-col rounded-md border border-border/70 bg-background">
+                      <div className="flex items-start justify-between gap-3 border-b border-border/60 px-3 py-2">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-medium">
+                          <p className="truncate text-xs font-medium text-foreground">
                             {selectedAgentMember.agent?.name || selectedAgentMember.principalId}
                           </p>
                           <p className="truncate text-[11px] text-muted-foreground">
@@ -1035,13 +1049,14 @@ export function CompanySettings() {
                         </div>
                       </div>
 
-                      <div className="grid gap-2 md:grid-cols-2">
+                      <div className="space-y-3 px-3 py-3">
+                        <div className="grid gap-2 md:grid-cols-2">
                         <div className="space-y-1">
                           <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
                             Role label
                           </label>
                           <input
-                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
+                            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                             value={memberRoleDrafts[selectedAgentMember.id] ?? ""}
                             onChange={(e) =>
                               setMemberRoleDrafts((prev) => ({
@@ -1057,7 +1072,7 @@ export function CompanySettings() {
                             Reports to
                           </label>
                           <select
-                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
+                            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                             value={memberManagerDrafts[selectedAgentMember.id] ?? ""}
                             onChange={(e) =>
                               setMemberManagerDrafts((prev) => ({
@@ -1081,20 +1096,22 @@ export function CompanySettings() {
                               ))}
                           </select>
                         </div>
+                        </div>
+
                       </div>
 
-                      <div className="flex items-center justify-end gap-2">
-                        {memberOrgMutation.isError && (
+                      <div className="mt-auto flex items-center justify-end gap-2 border-t border-border/60 px-3 py-2">
+                        {agentMemberOrgMutation.isError && (
                           <span className="text-[11px] text-destructive">
-                            {memberOrgMutation.error instanceof Error
-                              ? memberOrgMutation.error.message
+                            {agentMemberOrgMutation.error instanceof Error
+                              ? agentMemberOrgMutation.error.message
                               : "Failed to save"}
                           </span>
                         )}
                         <Button
                           size="sm"
                           onClick={() =>
-                            memberOrgMutation.mutate({
+                            agentMemberOrgMutation.mutate({
                               memberId: selectedAgentMember.id,
                               membershipRole:
                                 (memberRoleDrafts[selectedAgentMember.id] ?? "").trim() || null,
@@ -1102,9 +1119,9 @@ export function CompanySettings() {
                                 (memberManagerDrafts[selectedAgentMember.id] ?? "").trim() || null
                             })
                           }
-                          disabled={memberOrgMutation.isPending || !selectedCompanyId}
+                          disabled={agentMemberOrgMutation.isPending || !selectedCompanyId}
                         >
-                          {memberOrgMutation.isPending ? "Saving..." : "Save agent org config"}
+                          {agentMemberOrgMutation.isPending ? "Saving..." : "Save"}
                         </Button>
                       </div>
                     </div>
