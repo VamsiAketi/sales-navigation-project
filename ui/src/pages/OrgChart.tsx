@@ -11,6 +11,7 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
 import { Network, User } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import { useOrgChartViewMemory } from "../hooks/useOrgChartViewMemory";
 
 // Layout constants
 const CARD_W = 200;
@@ -30,31 +31,34 @@ interface LayoutNode {
   x: number;
   y: number;
   children: LayoutNode[];
+  directReportCount: number;
 }
 
 // ── Layout algorithm ────────────────────────────────────────────────────
 
 /** Compute the width each subtree needs. */
-function subtreeWidth(node: OrgNode): number {
-  if (node.reports.length === 0) return CARD_W;
-  const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
+function subtreeWidth(node: OrgNode, isExpanded: (id: string) => boolean): number {
+  const expanded = isExpanded(node.id);
+  if (!expanded || node.reports.length === 0) return CARD_W;
+  const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c, isExpanded), 0);
   const gaps = (node.reports.length - 1) * GAP_X;
   return Math.max(CARD_W, childrenW + gaps);
 }
 
 /** Recursively assign x,y positions. */
-function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
-  const totalW = subtreeWidth(node);
+function layoutTree(node: OrgNode, x: number, y: number, isExpanded: (id: string) => boolean): LayoutNode {
+  const expanded = isExpanded(node.id);
+  const totalW = subtreeWidth(node, isExpanded);
   const layoutChildren: LayoutNode[] = [];
 
-  if (node.reports.length > 0) {
-    const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
+  if (expanded && node.reports.length > 0) {
+    const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c, isExpanded), 0);
     const gaps = (node.reports.length - 1) * GAP_X;
     let cx = x + (totalW - childrenW - gaps) / 2;
 
     for (const child of node.reports) {
-      const cw = subtreeWidth(child);
-      layoutChildren.push(layoutTree(child, cx, y + CARD_H + GAP_Y));
+      const cw = subtreeWidth(child, isExpanded);
+      layoutChildren.push(layoutTree(child, cx, y + CARD_H + GAP_Y, isExpanded));
       cx += cw + GAP_X;
     }
   }
@@ -68,22 +72,23 @@ function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
     x: x + (totalW - CARD_W) / 2,
     y,
     children: layoutChildren,
+    directReportCount: node.reports.length,
   };
 }
 
 /** Layout all root nodes side by side. */
-function layoutForest(roots: OrgNode[]): LayoutNode[] {
+function layoutForest(roots: OrgNode[], isExpanded: (id: string) => boolean): LayoutNode[] {
   if (roots.length === 0) return [];
 
-  const totalW = roots.reduce((sum, r) => sum + subtreeWidth(r), 0);
+  const totalW = roots.reduce((sum, r) => sum + subtreeWidth(r, isExpanded), 0);
   const gaps = (roots.length - 1) * GAP_X;
   let x = PADDING;
   const y = PADDING;
 
   const result: LayoutNode[] = [];
   for (const root of roots) {
-    const w = subtreeWidth(root);
-    result.push(layoutTree(root, x, y));
+    const w = subtreeWidth(root, isExpanded);
+    result.push(layoutTree(root, x, y, isExpanded));
     x += w + GAP_X;
   }
 
@@ -143,6 +148,9 @@ export function OrgChart() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
+  const { memory, expandedSet, setExpandedNodeIds, toggleExpanded, setViewport } = useOrgChartViewMemory(
+    selectedCompanyId
+  );
 
   const { data: orgTree, isLoading } = useQuery({
     queryKey: queryKeys.org(selectedCompanyId!),
@@ -166,8 +174,44 @@ export function OrgChart() {
     setBreadcrumbs([{ label: "Org Chart" }]);
   }, [setBreadcrumbs]);
 
+  const orgIndex = useMemo(() => {
+    const nodeById = new Map<string, OrgNode>();
+    const parentById = new Map<string, string | null>();
+    function walk(nodes: OrgNode[], parentId: string | null) {
+      for (const n of nodes) {
+        nodeById.set(n.id, n);
+        parentById.set(n.id, parentId);
+        if (n.reports.length > 0) walk(n.reports, n.id);
+      }
+    }
+    walk(orgTree ?? [], null);
+    return { nodeById, parentById };
+  }, [orgTree]);
+
+  const defaultExpandedIds = useMemo(() => {
+    // Default: expand roots and their direct reports (depth <= 1).
+    const ids: string[] = [];
+    function walk(nodes: OrgNode[], depth: number) {
+      for (const n of nodes) {
+        if (depth <= 1) ids.push(n.id);
+        if (n.reports.length > 0) walk(n.reports, depth + 1);
+      }
+    }
+    walk(orgTree ?? [], 0);
+    return ids;
+  }, [orgTree]);
+
+  useEffect(() => {
+    // If user has no stored expansion state for this company yet, seed defaults.
+    if (!orgTree || orgTree.length === 0) return;
+    if (memory.expandedNodeIds.length > 0) return;
+    setExpandedNodeIds(defaultExpandedIds);
+  }, [orgTree, memory.expandedNodeIds.length, defaultExpandedIds, setExpandedNodeIds]);
+
+  const isExpanded = useCallback((id: string) => expandedSet.has(id), [expandedSet]);
+
   // Layout computation
-  const layout = useMemo(() => layoutForest(orgTree ?? []), [orgTree]);
+  const layout = useMemo(() => layoutForest(orgTree ?? [], isExpanded), [orgTree, isExpanded]);
   const allNodes = useMemo(() => flattenLayout(layout), [layout]);
   const edges = useMemo(() => collectEdges(layout), [layout]);
 
@@ -184,8 +228,8 @@ export function OrgChart() {
 
   // Pan & zoom state
   const containerRef = useRef<HTMLDivElement>(null);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState(() => memory.viewport?.pan ?? { x: 0, y: 0 });
+  const [zoom, setZoom] = useState(() => memory.viewport?.zoom ?? 1);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
@@ -194,6 +238,9 @@ export function OrgChart() {
   useEffect(() => {
     if (hasInitialized.current || allNodes.length === 0 || !containerRef.current) return;
     hasInitialized.current = true;
+
+    // If we have a stored viewport, prefer it over fit-to-screen.
+    if (memory.viewport) return;
 
     const container = containerRef.current;
     const containerW = container.clientWidth;
@@ -212,7 +259,12 @@ export function OrgChart() {
       x: (containerW - chartW) / 2,
       y: (containerH - chartH) / 2,
     });
-  }, [allNodes, bounds]);
+  }, [allNodes, bounds, memory.viewport]);
+
+  useEffect(() => {
+    // Persist viewport. This keeps the org chart stable when navigating away/back.
+    setViewport({ pan, zoom });
+  }, [pan, zoom, setViewport]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -255,6 +307,52 @@ export function OrgChart() {
     setZoom(newZoom);
   }, [zoom, pan]);
 
+  const focusNode = useCallback(
+    (nodeId: string) => {
+      const n = allNodes.find((x) => x.id === nodeId);
+      const container = containerRef.current;
+      if (!n || !container) return;
+
+      const cx = container.clientWidth / 2;
+      const cy = container.clientHeight / 2;
+      const nodeCenterX = n.x + CARD_W / 2;
+      const nodeCenterY = n.y + CARD_H / 2;
+      setPan({
+        x: cx - nodeCenterX * zoom,
+        y: cy - nodeCenterY * zoom,
+      });
+    },
+    [allNodes, zoom]
+  );
+
+  const expandAncestors = useCallback(
+    (nodeId: string) => {
+      const ids: string[] = [];
+      let cur: string | null = nodeId;
+      while (cur) {
+        ids.push(cur);
+        cur = orgIndex.parentById.get(cur) ?? null;
+      }
+      // Ensure the full chain is expanded so the node becomes visible.
+      const next = new Set(expandedSet);
+      for (const id of ids) next.add(id);
+      setExpandedNodeIds(Array.from(next));
+    },
+    [orgIndex.parentById, expandedSet, setExpandedNodeIds]
+  );
+
+  // Search UI state
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || !(agents ?? []).length) return [];
+    return (agents ?? [])
+      .filter((a) => a.status !== "terminated")
+      .filter((a) => a.name.toLowerCase().includes(q) || (a.title ?? "").toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [search, agents]);
+
   if (!selectedCompanyId) {
     return <EmptyState icon={Network} message="Select a company to view the org chart." />;
   }
@@ -278,6 +376,50 @@ export function OrgChart() {
       onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
     >
+      {/* Search */}
+      <div className="absolute top-3 left-3 z-10 w-[320px] max-w-[calc(100%-1.5rem)]">
+        <div className="relative">
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setSearchOpen(true);
+            }}
+            onFocus={() => setSearchOpen(true)}
+            onBlur={() => {
+              // let clicks register
+              window.setTimeout(() => setSearchOpen(false), 150);
+            }}
+            placeholder="Search agents…"
+            className="w-full h-9 px-3 rounded-md bg-background border border-border text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+          />
+          {searchOpen && searchResults.length > 0 && (
+            <div className="absolute mt-2 w-full rounded-md border border-border bg-background shadow-lg overflow-hidden">
+              {searchResults.map((a) => (
+                <button
+                  key={a.id}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent/50 transition-colors"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setSearchOpen(false);
+                    setSearch("");
+                    expandAncestors(a.id);
+                    // Defer focus so layout can re-compute with expanded ancestors.
+                    window.setTimeout(() => focusNode(a.id), 0);
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <AgentIcon icon={a.icon} className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-medium truncate">{a.name}</span>
+                    {a.title && <span className="text-xs text-muted-foreground truncate">· {a.title}</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Zoom controls */}
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
         <button
@@ -349,15 +491,18 @@ export function OrgChart() {
             const y1 = parent.y + CARD_H;
             const x2 = child.x + CARD_W / 2;
             const y2 = child.y;
-            const midY = (y1 + y2) / 2;
+            const dy = Math.max(40, Math.min(140, (y2 - y1) / 2));
 
             return (
               <path
                 key={`${parent.id}-${child.id}`}
-                d={`M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`}
+                d={`M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`}
                 fill="none"
                 stroke="var(--border)"
                 strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeDasharray="2 7"
+                opacity={0.75}
               />
             );
           })}
@@ -376,12 +521,14 @@ export function OrgChart() {
           const isAgentNode = (node.nodeType ?? "agent") === "agent";
           const agent = agentMap.get(node.id);
           const dotColor = statusDotColor[node.status] ?? defaultDotColor;
+          const hasReports = node.directReportCount > 0;
+          const expanded = isExpanded(node.id);
 
           return (
             <div
               key={node.id}
               data-org-card
-              className="absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none"
+              className="absolute bg-card/95 backdrop-blur border border-border/80 rounded-2xl shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none"
               style={{
                 left: node.x,
                 top: node.y,
@@ -423,6 +570,35 @@ export function OrgChart() {
                   )}
                 </div>
               </div>
+
+              {/* Expand / collapse controls */}
+              {hasReports && (
+                <div className="px-4 pb-3 -mt-1">
+                  {expanded ? (
+                    <button
+                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleExpanded(node.id, false);
+                      }}
+                    >
+                      Collapse reports
+                    </button>
+                  ) : (
+                    <button
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleExpanded(node.id, true);
+                      }}
+                    >
+                      + {node.directReportCount} more reports
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
