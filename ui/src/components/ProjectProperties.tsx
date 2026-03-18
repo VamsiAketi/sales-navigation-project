@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CompanySecret, Project } from "@paperclipai/shared";
@@ -14,8 +14,152 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { ExternalLink, Github, Plus, Trash2, X } from "lucide-react";
 import { ChoosePathButton } from "./PathInstructionsModal";
+
+function rowsFromEnvConfig(env: Record<string, string> | null | undefined): Array<{ envKey: string; secretName: string }> {
+  const e = Object.entries(env ?? {});
+  return e.length > 0 ? e.map(([k, v]) => ({ envKey: k, secretName: v })) : [{ envKey: "", secretName: "" }];
+}
+
+function stableProjectEnvKey(env: Record<string, string> | null | undefined): string {
+  if (!env || Object.keys(env).length === 0) return "__empty__";
+  return JSON.stringify(
+    Object.keys(env)
+      .sort()
+      .reduce<Record<string, string>>((acc, k) => {
+        acc[k] = env[k]!;
+        return acc;
+      }, {}),
+  );
+}
+
+function ProjectSecretBindingsEditor({
+  envConfig,
+  companySecrets,
+  companyPrefix,
+  onSave,
+}: {
+  envConfig: Record<string, string> | null;
+  companySecrets: CompanySecret[];
+  companyPrefix: string;
+  onSave: (next: Record<string, string> | null) => void;
+}) {
+  const [rows, setRows] = useState(() => rowsFromEnvConfig(envConfig));
+  const [savedOk, setSavedOk] = useState(false);
+
+  useEffect(() => {
+    setRows(rowsFromEnvConfig(envConfig));
+  }, [stableProjectEnvKey(envConfig)]);
+
+  const secretNames = [...new Set(companySecrets.map((s) => s.name))].sort();
+
+  function buildRecord(): Record<string, string> | null {
+    const rec: Record<string, string> = {};
+    for (const r of rows) {
+      const k = r.envKey.trim();
+      const s = r.secretName.trim();
+      if (k && s) rec[k] = s;
+    }
+    return Object.keys(rec).length > 0 ? rec : null;
+  }
+
+  function handleSave() {
+    onSave(buildRecord());
+    setSavedOk(true);
+    window.setTimeout(() => setSavedOk(false), 2000);
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        For each row: <span className="font-medium text-foreground">env var name</span> (what the agent sees) →{" "}
+        <span className="font-medium text-foreground">company secret</span> (name from{" "}
+        <Link to={`/${companyPrefix}/company/settings`} className="underline underline-offset-2">
+          Company settings
+        </Link>
+        ).
+      </p>
+      {secretNames.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No company secrets yet. Add them under Company settings → Secrets first.
+        </p>
+      ) : null}
+      <div className="space-y-2">
+        {rows.map((row, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <input
+              className="min-w-[7rem] flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
+              placeholder="ENV_VAR_NAME"
+              value={row.envKey}
+              onChange={(e) => {
+                const v = e.target.value;
+                setRows((prev) => prev.map((r, j) => (j === i ? { ...r, envKey: v } : r)));
+              }}
+              disabled={secretNames.length === 0}
+            />
+            <span className="text-xs text-muted-foreground shrink-0">→</span>
+            <select
+              className="min-w-[8rem] flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
+              value={row.secretName}
+              onChange={(e) => {
+                const v = e.target.value;
+                setRows((prev) => prev.map((r, j) => (j === i ? { ...r, secretName: v } : r)));
+              }}
+              disabled={secretNames.length === 0}
+            >
+              <option value="">— company secret —</option>
+              {secretNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="shrink-0"
+              onClick={() => {
+                setRows((prev) => {
+                  const next = prev.filter((_, j) => j !== i);
+                  return next.length ? next : [{ envKey: "", secretName: "" }];
+                });
+              }}
+              aria-label="Remove row"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          className="h-7"
+          onClick={() => setRows((prev) => [...prev, { envKey: "", secretName: "" }])}
+          disabled={secretNames.length === 0}
+        >
+          <Plus className="h-3 w-3 mr-1" />
+          Add mapping
+        </Button>
+        <Button type="button" size="xs" className="h-7" onClick={handleSave} disabled={secretNames.length === 0}>
+          Save bindings
+        </Button>
+        {savedOk ? <span className="text-xs text-green-600 dark:text-green-400">Saved</span> : null}
+      </div>
+    </div>
+  );
+}
 
 const PROJECT_STATUSES = [
   { value: "backlog", label: "Backlog" },
@@ -78,9 +222,11 @@ function ProjectStatusPicker({ status, onChange }: { status: string; onChange: (
 }
 
 export function ProjectProperties({ project, onUpdate }: ProjectPropertiesProps) {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, selectedCompany } = useCompany();
+  const companyPrefix = selectedCompany?.issuePrefix ?? "";
   const queryClient = useQueryClient();
   const [goalOpen, setGoalOpen] = useState(false);
+  const [projectSecretsOpen, setProjectSecretsOpen] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"local" | "repo" | null>(null);
   const [workspaceCwd, setWorkspaceCwd] = useState("");
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
@@ -419,6 +565,51 @@ export function ProjectProperties({ project, onUpdate }: ProjectPropertiesProps)
       </div>
 
       <Separator />
+
+      {/* Compact CTA + modal for project secrets */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Project secrets
+          </span>
+
+        </div>
+        <div className="flex items-center justify-between gap-2">
+
+          <Button
+            type="button"
+            size="xs"
+            onClick={() => setProjectSecretsOpen(true)}
+            disabled={!onUpdate || !companyPrefix}
+          >
+            Configure project secrets
+          </Button>
+        </div>
+      </div>
+
+      {onUpdate && companyPrefix && (
+        <Dialog open={projectSecretsOpen} onOpenChange={setProjectSecretsOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Project → company secrets</DialogTitle>
+              <DialogDescription className="text-xs">
+                Map environment variable names to company secrets. Agents working on issues in this
+                project will receive these env vars.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-2">
+              <ProjectSecretBindingsEditor
+                envConfig={project.envConfig ?? null}
+                companySecrets={companySecrets}
+                companyPrefix={companyPrefix}
+                onSave={(next) => {
+                  onUpdate({ envConfig: next });
+                }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <div className="space-y-1">
         <div className="py-1.5 space-y-2">

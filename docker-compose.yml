@@ -26,7 +26,7 @@ services:
       PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
       PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
       PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
-      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
+      BETTER_AUTH_SECRET: "iZiDCE3TANXA/ZFEHObBlpxnIqOyEqil9YVwnU6duMM="
     volumes:
       - paperclip-data:/paperclip
       - ./bootstrap-output:/bootstrap-output 

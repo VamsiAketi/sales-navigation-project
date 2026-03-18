@@ -11,6 +11,7 @@ import {
   heartbeatRuns,
   costEvents,
   issues,
+  projects,
   projectWorkspaces,
 } from "@paperclipai/db";
 import { conflict, notFound } from "../errors.js";
@@ -1276,6 +1277,45 @@ export function heartbeatService(db: Db) {
       const mergedConfig = issueAssigneeOverrides?.adapterConfig
         ? { ...config, ...issueAssigneeOverrides.adapterConfig }
         : config;
+
+      // Project env: env var name → company secret name; resolve to secret_ref before runtime.
+      if (resolvedWorkspace.projectId) {
+        const projectRow = await db
+          .select({ companyId: projects.companyId, envConfig: projects.envConfig })
+          .from(projects)
+          .where(eq(projects.id, resolvedWorkspace.projectId))
+          .then((rows) => rows[0] ?? null);
+        if (projectRow && projectRow.companyId === agent.companyId) {
+          const projectEnv = (projectRow.envConfig as Record<string, unknown> | null) ?? null;
+          if (projectEnv && typeof projectEnv === "object") {
+            const existingEnv =
+              (mergedConfig.env as Record<string, unknown> | undefined) ?? {};
+            const fromProject: Record<string, unknown> = {};
+            for (const [envKey, secretNameRaw] of Object.entries(projectEnv)) {
+              if (typeof secretNameRaw !== "string" || !secretNameRaw.trim()) continue;
+              const secret = await secretsSvc.getByName(agent.companyId, secretNameRaw.trim());
+              if (!secret) {
+                logger.warn(
+                  {
+                    envKey,
+                    secretName: secretNameRaw,
+                    projectId: resolvedWorkspace.projectId,
+                    companyId: agent.companyId,
+                  },
+                  "project envConfig: company secret name not found; skipping",
+                );
+                continue;
+              }
+              fromProject[envKey] = {
+                type: "secret_ref",
+                secretId: secret.id,
+                version: "latest" as const,
+              };
+            }
+            mergedConfig.env = { ...fromProject, ...existingEnv };
+          }
+        }
+      }
       const { config: resolvedConfig, secretKeys } = await secretsSvc.resolveAdapterConfigForRuntime(
         agent.companyId,
         mergedConfig,
