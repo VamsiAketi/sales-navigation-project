@@ -14,7 +14,7 @@ INSERT INTO "company_memberships" (
 SELECT
   a."company_id",
   'agent' AS "principal_type",
-  a."id" AS "principal_id",
+  a."id"::text AS "principal_id",
   'active' AS "status",
   'agent' AS "membership_role",
   NOW() AS "created_at",
@@ -23,7 +23,7 @@ FROM "agents" a
 LEFT JOIN "company_memberships" m
   ON m."company_id" = a."company_id"
   AND m."principal_type" = 'agent'
-  AND m."principal_id" = a."id"
+  AND m."principal_id" = a."id"::text
 WHERE m."id" IS NULL
   AND a."status" <> 'terminated';
 
