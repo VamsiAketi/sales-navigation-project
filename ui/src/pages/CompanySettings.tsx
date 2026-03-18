@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { companiesApi } from "../api/companies";
 import { accessApi, type CompanyMember } from "../api/access";
+import { assetsApi } from "../api/assets";
 import { secretsApi } from "../api/secrets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export function CompanySettings() {
   } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
+  const logoFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // General settings local state
   const [companyName, setCompanyName] = useState("");
@@ -62,6 +64,7 @@ export function CompanySettings() {
   const [newSecretValue, setNewSecretValue] = useState("");
   const [newSecretDescription, setNewSecretDescription] = useState("");
   const [selectedHumanMemberId, setSelectedHumanMemberId] = useState<string | null>(null);
+  const [selectedAgentMemberId, setSelectedAgentMemberId] = useState<string | null>(null);
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
   const [memberManagerDrafts, setMemberManagerDrafts] = useState<Record<string, string>>({});
   const [memberManagedAgentsDrafts, setMemberManagedAgentsDrafts] = useState<Record<string, string[]>>({});
@@ -91,6 +94,23 @@ export function CompanySettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     }
+  });
+
+  const logoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const uploaded = await assetsApi.uploadImage(selectedCompanyId!, file, "company_logo");
+      return companiesApi.update(selectedCompanyId!, { logoAssetId: uploaded.assetId });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+    },
+  });
+
+  const clearLogoMutation = useMutation({
+    mutationFn: () => companiesApi.update(selectedCompanyId!, { logoAssetId: null }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+    },
   });
 
   const inviteMutation = useMutation({
@@ -233,6 +253,9 @@ export function CompanySettings() {
   const selectedHumanMember = activeHumanMembers.find(
     (member) => member.id === selectedHumanMemberId
   ) ?? activeHumanMembers[0] ?? null;
+  const selectedAgentMember = activeAgentMembers.find(
+    (member) => member.id === selectedAgentMemberId
+  ) ?? activeAgentMembers[0] ?? null;
 
   useEffect(() => {
     if (activeHumanMembers.length === 0) {
@@ -247,6 +270,20 @@ export function CompanySettings() {
     }
     setSelectedHumanMemberId(activeHumanMembers[0]?.id ?? null);
   }, [activeHumanMembers, selectedHumanMemberId]);
+
+  useEffect(() => {
+    if (activeAgentMembers.length === 0) {
+      setSelectedAgentMemberId(null);
+      return;
+    }
+    if (
+      selectedAgentMemberId &&
+      activeAgentMembers.some((member) => member.id === selectedAgentMemberId)
+    ) {
+      return;
+    }
+    setSelectedAgentMemberId(activeAgentMembers[0]?.id ?? null);
+  }, [activeAgentMembers, selectedAgentMemberId]);
 
   useEffect(() => {
     const activeHuman = (companyMembers ?? []).filter(
@@ -280,7 +317,7 @@ export function CompanySettings() {
       memberId: string;
       membershipRole: string | null;
       reportsToMembershipId: string | null;
-      managedAgentMemberIds: string[];
+      managedAgentMemberIds?: string[];
     }) =>
       accessApi.updateMemberOrgConfig(selectedCompanyId!, input.memberId, {
         membershipRole: input.membershipRole,
@@ -408,7 +445,7 @@ export function CompanySettings() {
                   onChange={(e) => setNewSecretName(e.target.value)}
                 />
               </div>
-              <div className="flex-[2] space-y-1.5">
+              <div className="flex-2 space-y-1.5">
                 <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
                   Value
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700">
@@ -524,10 +561,85 @@ export function CompanySettings() {
               <CompanyPatternIcon
                 companyName={companyName || selectedCompany.name}
                 brandColor={brandColor || null}
+                logoAssetId={selectedCompany.logoAssetId}
                 className="rounded-[14px]"
               />
             </div>
             <div className="flex-1 space-y-2">
+              <Field
+                label="Company logo"
+                hint="Upload a small square image (PNG/JPG/WebP/GIF). Displayed in the right-hand panel."
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 overflow-hidden rounded-md border border-border bg-background">
+                    {selectedCompany.logoAssetId ? (
+                      <img
+                        src={`/api/assets/${selectedCompany.logoAssetId}/content`}
+                        alt={`${selectedCompany.name} logo`}
+                        className="h-full w-full object-contain"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-muted/20" />
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={logoFileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.currentTarget.value = "";
+                        if (!file || !selectedCompanyId) return;
+                        logoMutation.mutate(file);
+                      }}
+                      disabled={logoMutation.isPending || !selectedCompanyId}
+                    />
+                    <Button
+                      size="sm"
+                      type="button"
+                      disabled={logoMutation.isPending || !selectedCompanyId}
+                      onClick={() => logoFileInputRef.current?.click()}
+                    >
+                      {logoMutation.isPending
+                        ? "Uploading..."
+                        : selectedCompany.logoAssetId
+                          ? "Replace logo"
+                          : "Upload logo"}
+                    </Button>
+
+                    {selectedCompany.logoAssetId && (
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                        onClick={() => clearLogoMutation.mutate()}
+                        disabled={clearLogoMutation.isPending}
+                        className="text-xs text-muted-foreground"
+                      >
+                        {clearLogoMutation.isPending ? "Clearing..." : "Remove"}
+                      </Button>
+                    )}
+
+                    {logoMutation.isError && (
+                      <span className="text-xs text-destructive">
+                        {logoMutation.error instanceof Error ? logoMutation.error.message : "Failed to upload logo"}
+                      </span>
+                    )}
+                    {clearLogoMutation.isError && (
+                      <span className="text-xs text-destructive">
+                        {clearLogoMutation.error instanceof Error ? clearLogoMutation.error.message : "Failed to clear logo"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Field>
+
               <Field
                 label="Brand color"
                 hint="Sets the hue for the company icon. Leave empty for auto-generated color."
@@ -809,38 +921,34 @@ export function CompanySettings() {
                         <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
                           Manages agents
                         </label>
-                        <div className="max-h-28 space-y-1 overflow-y-auto rounded border border-border/60 bg-muted/5 px-2 py-1">
-                          {activeAgentMembers.length === 0 && (
-                            <div className="text-[11px] text-muted-foreground">No active agents</div>
+                        <div className="rounded border border-border/60 bg-muted/5 px-2 py-2">
+                          <div className="text-[11px] text-muted-foreground">
+                            {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length === 0
+                              ? "No managed agents"
+                              : `${(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length} managed agents`}
+                          </div>
+                          {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? [])
+                                .slice(0, 6)
+                                .map((memberId) => {
+                                  const agentMember = activeAgentMembers.find((m) => m.id === memberId);
+                                  return (
+                                    <div key={memberId} className="text-[11px]">
+                                      {agentMember?.agent?.name || agentMember?.principalId || memberId}
+                                    </div>
+                                  );
+                                })}
+                              {(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length > 6 && (
+                                <div className="text-[11px] text-muted-foreground">
+                                  +{(memberManagedAgentsDrafts[selectedHumanMember.id] ?? []).length - 6} more
+                                </div>
+                              )}
+                            </div>
                           )}
-                          {activeAgentMembers.map((candidate) => {
-                            const checked = (
-                              memberManagedAgentsDrafts[selectedHumanMember.id] ?? []
-                            ).includes(candidate.id);
-                            return (
-                              <label key={candidate.id} className="flex items-center gap-1 text-[11px]">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    setMemberManagedAgentsDrafts((prev) => {
-                                      const next = new Set(prev[selectedHumanMember.id] ?? []);
-                                      if (e.target.checked) {
-                                        next.add(candidate.id);
-                                      } else {
-                                        next.delete(candidate.id);
-                                      }
-                                      return {
-                                        ...prev,
-                                        [selectedHumanMember.id]: Array.from(next)
-                                      };
-                                    });
-                                  }}
-                                />
-                                <span>{candidate.agent?.name || candidate.principalId}</span>
-                              </label>
-                            );
-                          })}
+                          <div className="mt-2 text-[10px] text-muted-foreground">
+                            Tip: assign managers per-agent in “Active agents” below.
+                          </div>
                         </div>
                       </div>
 
@@ -861,13 +969,142 @@ export function CompanySettings() {
                                 (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
                               reportsToMembershipId:
                                 (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null,
-                              managedAgentMemberIds:
-                                memberManagedAgentsDrafts[selectedHumanMember.id] ?? []
+                              // Managed agents are edited in the “Active agents” panel for a cleaner UI.
                             })
                           }
                           disabled={memberOrgMutation.isPending || !selectedCompanyId}
                         >
                           {memberOrgMutation.isPending ? "Saving..." : "Save org config"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-md border border-border bg-background px-2.5 py-2 text-xs">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="font-medium text-foreground">Active agents</p>
+                <span className="text-muted-foreground">
+                  {membersLoading ? "Loading..." : `${activeAgentMembers.length}`}
+                </span>
+              </div>
+              {!membersLoading && activeAgentMembers.length === 0 && (
+                <p className="text-muted-foreground">
+                  No active agent members yet. (Agents become members automatically when created.)
+                </p>
+              )}
+              {activeAgentMembers.length > 0 && (
+                <div className="grid gap-2 md:grid-cols-[16rem_1fr]">
+                  <div className="max-h-72 space-y-1 overflow-y-auto rounded border border-border/70 bg-muted/5 p-1">
+                    {activeAgentMembers.map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => setSelectedAgentMemberId(member.id)}
+                        className={`w-full rounded border px-2 py-1.5 text-left transition-colors ${
+                          selectedAgentMember?.id === member.id
+                            ? "border-foreground/30 bg-accent/40"
+                            : "border-transparent hover:border-border hover:bg-accent/20"
+                        }`}
+                      >
+                        <div className="truncate text-xs font-medium">
+                          {member.agent?.name || member.principalId}
+                        </div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {member.agent?.role ?? "agent"}
+                        </div>
+                        <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {member.membershipRole ?? "agent"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedAgentMember && (
+                    <div className="space-y-2 rounded border border-border/70 bg-background px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium">
+                            {selectedAgentMember.agent?.name || selectedAgentMember.principalId}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {selectedAgentMember.agent?.role ?? "agent"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Role label
+                          </label>
+                          <input
+                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
+                            value={memberRoleDrafts[selectedAgentMember.id] ?? ""}
+                            onChange={(e) =>
+                              setMemberRoleDrafts((prev) => ({
+                                ...prev,
+                                [selectedAgentMember.id]: e.target.value
+                              }))
+                            }
+                            placeholder="optional"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Reports to
+                          </label>
+                          <select
+                            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none"
+                            value={memberManagerDrafts[selectedAgentMember.id] ?? ""}
+                            onChange={(e) =>
+                              setMemberManagerDrafts((prev) => ({
+                                ...prev,
+                                [selectedAgentMember.id]: e.target.value
+                              }))
+                            }
+                          >
+                            <option value="">None</option>
+                            {activeHumanMembers.map((candidate) => (
+                              <option key={candidate.id} value={candidate.id}>
+                                {candidate.user?.name || candidate.user?.email || candidate.principalId} (human)
+                              </option>
+                            ))}
+                            {activeAgentMembers
+                              .filter((candidate) => candidate.id !== selectedAgentMember.id)
+                              .map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.agent?.name || candidate.principalId} (agent)
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2">
+                        {memberOrgMutation.isError && (
+                          <span className="text-[11px] text-destructive">
+                            {memberOrgMutation.error instanceof Error
+                              ? memberOrgMutation.error.message
+                              : "Failed to save"}
+                          </span>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            memberOrgMutation.mutate({
+                              memberId: selectedAgentMember.id,
+                              membershipRole:
+                                (memberRoleDrafts[selectedAgentMember.id] ?? "").trim() || null,
+                              reportsToMembershipId:
+                                (memberManagerDrafts[selectedAgentMember.id] ?? "").trim() || null
+                            })
+                          }
+                          disabled={memberOrgMutation.isPending || !selectedCompanyId}
+                        >
+                          {memberOrgMutation.isPending ? "Saving..." : "Save agent org config"}
                         </Button>
                       </div>
                     </div>
@@ -915,7 +1152,7 @@ export function CompanySettings() {
               </div>
               <div className="mt-1 space-y-1.5">
                 <textarea
-                  className="h-[28rem] w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
+                  className="h-112 w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
                   value={inviteSnippet}
                   readOnly
                 />

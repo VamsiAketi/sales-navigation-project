@@ -21,9 +21,15 @@ const DARK_THEME_COLOR = "#18181b";
 const LIGHT_THEME_COLOR = "#ffffff";
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-function resolveThemeFromDocument(): Theme {
-  if (typeof document === "undefined") return "dark";
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+function resolveInitialTheme(): Theme {
+  if (typeof document === "undefined") return "light";
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    // Ignore local storage read failures in restricted environments.
+  }
+  return "light";
 }
 
 function applyTheme(theme: Theme) {
@@ -39,7 +45,7 @@ function applyTheme(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => resolveThemeFromDocument());
+  const [theme, setThemeState] = useState<Theme>(() => resolveInitialTheme());
 
   const setTheme = useCallback((nextTheme: Theme) => {
     setThemeState(nextTheme);

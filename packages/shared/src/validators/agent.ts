@@ -99,3 +99,10 @@ export const updateAgentPermissionsSchema = z.object({
 });
 
 export type UpdateAgentPermissions = z.infer<typeof updateAgentPermissionsSchema>;
+
+export const updateOrgChildOrderSchema = z.object({
+  managerId: z.string().uuid(),
+  childIds: z.array(z.string().uuid()).min(1).max(500),
+});
+
+export type UpdateOrgChildOrder = z.infer<typeof updateOrgChildOrderSchema>;

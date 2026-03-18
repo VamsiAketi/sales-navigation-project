@@ -21,6 +21,7 @@ export const agents = pgTable(
     icon: text("icon"),
     status: text("status").notNull().default("idle"),
     reportsTo: uuid("reports_to").references((): AnyPgColumn => agents.id),
+    orgSort: integer("org_sort").notNull().default(0),
     capabilities: text("capabilities"),
     adapterType: text("adapter_type").notNull().default("process"),
     adapterConfig: jsonb("adapter_config").$type<Record<string, unknown>>().notNull().default({}),

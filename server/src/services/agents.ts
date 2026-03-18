@@ -631,7 +631,12 @@ export function agentService(db: Db) {
       }
 
       const build = (managerId: string | null): Array<Record<string, unknown>> => {
-        const members = byManager.get(managerId) ?? [];
+        const members = (byManager.get(managerId) ?? []).slice().sort((a, b) => {
+          const ao = typeof (a as any).orgSort === "number" ? (a as any).orgSort : 0;
+          const bo = typeof (b as any).orgSort === "number" ? (b as any).orgSort : 0;
+          if (ao !== bo) return ao - bo;
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        });
         return members.map((member) => ({
           ...member,
           reports: build(member.id),
@@ -639,6 +644,40 @@ export function agentService(db: Db) {
       };
 
       return build(null);
+    },
+
+    updateDirectReportOrder: async (companyId: string, managerId: string, childIds: string[]) => {
+      const manager = await ensureManager(companyId, managerId);
+      if (manager.companyId !== companyId) throw unprocessable("Manager must belong to same company");
+
+      const children = await db
+        .select()
+        .from(agents)
+        .where(and(eq(agents.companyId, companyId), inArray(agents.id, childIds)));
+
+      if (children.length !== childIds.length) {
+        throw unprocessable("All childIds must be valid agents in the company");
+      }
+
+      for (const child of children) {
+        if (child.reportsTo !== managerId) {
+          throw unprocessable("Can only reorder direct reports of the specified manager");
+        }
+      }
+
+      // Persist ordering as 0..n-1
+      const positionById = new Map(childIds.map((id, idx) => [id, idx]));
+      await db.transaction(async (tx) => {
+        for (const id of childIds) {
+          const orgSort = positionById.get(id);
+          if (orgSort === undefined) continue;
+          await tx
+            .update(agents)
+            .set({ orgSort, updatedAt: new Date() })
+            .where(and(eq(agents.companyId, companyId), eq(agents.id, id)));
+        }
+      });
+      return { ok: true as const };
     },
 
     getChainOfCommand: async (agentId: string) => {

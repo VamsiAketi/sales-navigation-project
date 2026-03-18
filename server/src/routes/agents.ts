@@ -21,6 +21,7 @@ import {
   updateAgentInstructionsPathSchema,
   wakeAgentSchema,
   updateAgentSchema,
+  updateOrgChildOrderSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import {
@@ -568,6 +569,18 @@ export function agentRoutes(db: Db) {
     res.json(leanTree);
   });
 
+  router.patch(
+    "/companies/:companyId/org/child-order",
+    validate(updateOrgChildOrderSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const { managerId, childIds } = req.body as { managerId: string; childIds: string[] };
+      const result = await svc.updateDirectReportOrder(companyId, managerId, childIds);
+      res.json(result);
+    },
+  );
+
   router.get("/companies/:companyId/agent-configurations", async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanReadConfigurations(req, companyId);
@@ -789,6 +802,10 @@ export function agentRoutes(db: Db) {
       lastHeartbeatAt: null,
     });
 
+    // Ensure the agent exists as a company member so Company Settings can
+    // assign a human/agent manager and have it reflected in /companies/:id/org.
+    await access.ensureMembership(companyId, "agent", agent.id, "agent", "active");
+
     let approval: Awaited<ReturnType<typeof approvalsSvc.getById>> | null = null;
     const actor = getActorInfo(req);
 
@@ -913,6 +930,9 @@ export function agentRoutes(db: Db) {
       spentMonthlyCents: 0,
       lastHeartbeatAt: null,
     });
+
+    // Ensure the agent exists as a company member so it can be managed in Company Settings.
+    await access.ensureMembership(companyId, "agent", agent.id, "agent", "active");
 
     const actor = getActorInfo(req);
     await logActivity(db, {

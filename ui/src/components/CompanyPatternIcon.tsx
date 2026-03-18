@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "../lib/utils";
 
 const BAYER_4X4 = [
@@ -11,6 +11,7 @@ const BAYER_4X4 = [
 interface CompanyPatternIconProps {
   companyName: string;
   brandColor?: string | null;
+  logoAssetId?: string | null;
   className?: string;
 }
 
@@ -159,8 +160,10 @@ function makeCompanyPatternDataUrl(seed: string, brandColor?: string | null, log
   return canvas.toDataURL("image/png");
 }
 
-export function CompanyPatternIcon({ companyName, brandColor, className }: CompanyPatternIconProps) {
+export function CompanyPatternIcon({ companyName, brandColor, logoAssetId, className }: CompanyPatternIconProps) {
   const initial = companyName.trim().charAt(0).toUpperCase() || "?";
+  const [logoFailed, setLogoFailed] = useState(false);
+  const logoSrc = logoAssetId && !logoFailed ? `/api/assets/${logoAssetId}/content` : null;
   const patternDataUrl = useMemo(
     () => makeCompanyPatternDataUrl(companyName.trim().toLowerCase(), brandColor),
     [companyName, brandColor],
@@ -173,20 +176,29 @@ export function CompanyPatternIcon({ companyName, brandColor, className }: Compa
         className,
       )}
     >
-      {patternDataUrl ? (
+      {logoSrc ? (
         <img
-          src={patternDataUrl}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 h-full w-full"
-          style={{ imageRendering: "pixelated" }}
+          src={logoSrc}
+          alt={`${companyName} logo`}
+          className="absolute inset-0 h-full w-full object-contain bg-background"
+          onError={() => setLogoFailed(true)}
         />
+      ) : patternDataUrl ? (
+        <>
+          <img
+            src={patternDataUrl}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full"
+            style={{ imageRendering: "pixelated" }}
+          />
+          <span className="relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.65)]">
+            {initial}
+          </span>
+        </>
       ) : (
         <div className="absolute inset-0 bg-muted" />
       )}
-      <span className="relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.65)]">
-        {initial}
-      </span>
     </div>
   );
 }

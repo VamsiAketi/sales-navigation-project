@@ -59,6 +59,8 @@ function agentPath(id: string, companyId?: string, suffix = "") {
 export const agentsApi = {
   list: (companyId: string) => api.get<Agent[]>(`/companies/${companyId}/agents`),
   org: (companyId: string) => api.get<OrgNode[]>(`/companies/${companyId}/org`),
+  updateChildOrder: (companyId: string, managerId: string, childIds: string[]) =>
+    api.patch<{ ok: true }>(`/companies/${companyId}/org/child-order`, { managerId, childIds }),
   listConfigurations: (companyId: string) =>
     api.get<Record<string, unknown>[]>(`/companies/${companyId}/agent-configurations`),
   get: async (id: string, companyId?: string) => {

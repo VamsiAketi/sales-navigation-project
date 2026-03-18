@@ -197,6 +197,20 @@
       "when": 1773810640168,
       "tag": "0027_opposite_mentallo",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1773816627711,
+      "tag": "0028_lively_betty_brant",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1773817445774,
+      "tag": "0029_smart_tigra",
+      "breakpoints": true
     }
   ]
 }

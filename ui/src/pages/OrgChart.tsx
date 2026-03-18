@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -9,9 +9,25 @@ import { agentUrl } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Network, User } from "lucide-react";
+import { GripVertical, Network, User } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 import { useOrgChartViewMemory } from "../hooks/useOrgChartViewMemory";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 // Layout constants
 const CARD_W = 200;
@@ -148,6 +164,7 @@ export function OrgChart() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { memory, expandedSet, setExpandedNodeIds, toggleExpanded, setViewport } = useOrgChartViewMemory(
     selectedCompanyId
   );
@@ -353,6 +370,43 @@ export function OrgChart() {
       .slice(0, 8);
   }, [search, agents]);
 
+  // Reorder modal
+  const [reorderManagerId, setReorderManagerId] = useState<string | null>(null);
+  const reorderManager = reorderManagerId ? orgIndex.nodeById.get(reorderManagerId) ?? null : null;
+  const initialChildIds = useMemo(() => {
+    if (!reorderManager) return [];
+    return reorderManager.reports.map((c) => c.id);
+  }, [reorderManager]);
+  const [childIdsDraft, setChildIdsDraft] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!reorderManagerId) return;
+    setChildIdsDraft(initialChildIds);
+  }, [reorderManagerId, initialChildIds]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const onDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      setChildIdsDraft((items) => {
+        const oldIndex = items.indexOf(String(active.id));
+        const newIndex = items.indexOf(String(over.id));
+        if (oldIndex === -1 || newIndex === -1) return items;
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    },
+    []
+  );
+
+  const saveChildOrder = useCallback(async () => {
+    if (!selectedCompanyId || !reorderManagerId) return;
+    await agentsApi.updateChildOrder(selectedCompanyId, reorderManagerId, childIdsDraft);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.org(selectedCompanyId) });
+    setReorderManagerId(null);
+  }, [selectedCompanyId, reorderManagerId, childIdsDraft, queryClient]);
+
   if (!selectedCompanyId) {
     return <EmptyState icon={Network} message="Select a company to view the org chart." />;
   }
@@ -498,11 +552,11 @@ export function OrgChart() {
                 key={`${parent.id}-${child.id}`}
                 d={`M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`}
                 fill="none"
-                stroke="var(--border)"
-                strokeWidth={1.5}
+                stroke="hsl(var(--foreground))"
+                strokeWidth={1.75}
                 strokeLinecap="round"
                 strokeDasharray="2 7"
-                opacity={0.75}
+                opacity={0.45}
               />
             );
           })}
@@ -574,35 +628,122 @@ export function OrgChart() {
               {/* Expand / collapse controls */}
               {hasReports && (
                 <div className="px-4 pb-3 -mt-1">
-                  {expanded ? (
-                    <button
-                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleExpanded(node.id, false);
-                      }}
-                    >
-                      Collapse reports
-                    </button>
-                  ) : (
-                    <button
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleExpanded(node.id, true);
-                      }}
-                    >
-                      + {node.directReportCount} more reports
-                    </button>
-                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    {expanded ? (
+                      <button
+                        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleExpanded(node.id, false);
+                        }}
+                      >
+                        Collapse reports
+                      </button>
+                    ) : (
+                      <button
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleExpanded(node.id, true);
+                        }}
+                      >
+                        + {node.directReportCount} more reports
+                      </button>
+                    )}
+
+                    {isAgentNode && (
+                      <button
+                        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setReorderManagerId(node.id);
+                        }}
+                        title="Reorder direct reports"
+                      >
+                        Reorder
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      <Dialog open={Boolean(reorderManagerId)} onOpenChange={(open) => (!open ? setReorderManagerId(null) : null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reorder direct reports</DialogTitle>
+          </DialogHeader>
+
+          <div className="mt-2 text-sm text-muted-foreground">
+            Drag to reorder. This only changes the sequence of this manager’s direct reports.
+          </div>
+
+          <div className="mt-4">
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={childIdsDraft} strategy={verticalListSortingStrategy}>
+                <div className="flex flex-col gap-2">
+                  {childIdsDraft.map((id) => (
+                    <SortableReportRow
+                      key={id}
+                      id={id}
+                      label={orgIndex.nodeById.get(id)?.name ?? agentMap.get(id)?.name ?? "Unknown"}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </div>
+
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <button
+              className="h-9 px-3 rounded-md border border-border text-sm hover:bg-accent/50 transition-colors"
+              onClick={() => setReorderManagerId(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="h-9 px-3 rounded-md bg-foreground text-background text-sm hover:bg-foreground/90 transition-colors"
+              onClick={() => void saveChildOrder()}
+              disabled={!reorderManagerId || childIdsDraft.length === 0}
+            >
+              Save order
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function SortableReportRow({ id, label }: { id: string; label: string }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.85 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
+    >
+      <button
+        className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-accent/50 text-muted-foreground"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        type="button"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="text-sm font-medium truncate">{label}</span>
     </div>
   );
 }
