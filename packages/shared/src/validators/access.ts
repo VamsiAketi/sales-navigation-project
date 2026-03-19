@@ -4,6 +4,7 @@ import {
   INVITE_JOIN_TYPES,
   JOIN_REQUEST_STATUSES,
   JOIN_REQUEST_TYPES,
+  MEMBERSHIP_STATUSES,
   PERMISSION_KEYS,
 } from "../constants.js";
 
@@ -77,6 +78,14 @@ export const updateMemberOrgConfigSchema = z.object({
 });
 
 export type UpdateMemberOrgConfig = z.infer<typeof updateMemberOrgConfigSchema>;
+
+export const updateMemberStatusSchema = z.object({
+  status: z.enum(MEMBERSHIP_STATUSES).refine((status) => status !== "pending", {
+    message: "Pending membership status is not supported for this operation",
+  }),
+});
+
+export type UpdateMemberStatus = z.infer<typeof updateMemberStatusSchema>;
 
 export const updateUserCompanyAccessSchema = z.object({
   companyIds: z.array(z.string().uuid()).default([]),

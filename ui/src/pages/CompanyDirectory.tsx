@@ -349,6 +349,17 @@ export function CompanyDirectory() {
     onSuccess: invalidateMembers
   });
 
+  const deactivateHumanMutation = useMutation({
+    mutationFn: (memberId: string) =>
+      accessApi.updateMemberStatus(selectedCompanyId!, memberId, "suspended"),
+    onSuccess: invalidateMembers
+  });
+
+  const removeHumanMutation = useMutation({
+    mutationFn: (memberId: string) => accessApi.removeMember(selectedCompanyId!, memberId),
+    onSuccess: invalidateMembers
+  });
+
   const agentSaveMutation = useMutation({
     mutationFn: (input: { memberId: string; membershipRole: string | null; reportsToMembershipId: string | null }) =>
       accessApi.updateMemberOrgConfig(selectedCompanyId!, input.memberId, {
@@ -953,27 +964,69 @@ export function CompanyDirectory() {
 
                   <div className="flex items-center justify-between border-t border-border/60 px-4 py-3">
                     <div className="text-xs text-muted-foreground">Autosave is on.</div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={
-                        !humanIsDirty ||
-                        humanSaveMutation.isPending ||
-                        !selectedCompanyId ||
-                        selectedHumanManagerIsAgent
-                      }
-                      onClick={() => {
-                        if (!selectedHumanMember) return;
-                        if (selectedHumanManagerIsAgent) return;
-                        humanSaveMutation.mutate({
-                          memberId: selectedHumanMember.id,
-                          membershipRole: (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
-                          reportsToMembershipId: (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null
-                        });
-                      }}
-                    >
-                      Save now
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={
+                          !humanIsDirty ||
+                          humanSaveMutation.isPending ||
+                          !selectedCompanyId ||
+                          selectedHumanManagerIsAgent
+                        }
+                        onClick={() => {
+                          if (!selectedHumanMember) return;
+                          if (selectedHumanManagerIsAgent) return;
+                          humanSaveMutation.mutate({
+                            memberId: selectedHumanMember.id,
+                            membershipRole: (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
+                            reportsToMembershipId: (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null
+                          });
+                        }}
+                      >
+                        Save now
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          !selectedHumanMember ||
+                          !selectedCompanyId ||
+                          deactivateHumanMutation.isPending ||
+                          removeHumanMutation.isPending
+                        }
+                        onClick={() => {
+                          if (!selectedHumanMember) return;
+                          const confirmed = window.confirm(
+                            `Deactivate ${memberDisplayName(selectedHumanMember)}? They will lose active access to this company.`
+                          );
+                          if (!confirmed) return;
+                          deactivateHumanMutation.mutate(selectedHumanMember.id);
+                        }}
+                      >
+                        Deactivate
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={
+                          !selectedHumanMember ||
+                          !selectedCompanyId ||
+                          deactivateHumanMutation.isPending ||
+                          removeHumanMutation.isPending
+                        }
+                        onClick={() => {
+                          if (!selectedHumanMember) return;
+                          const confirmed = window.confirm(
+                            `Remove ${memberDisplayName(selectedHumanMember)} from this company? This removes their membership from Teams.`
+                          );
+                          if (!confirmed) return;
+                          removeHumanMutation.mutate(selectedHumanMember.id);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 </>
               ) : (

@@ -28,6 +28,7 @@ import {
   listJoinRequestsQuerySchema,
   updateMemberOrgConfigSchema,
   updateMemberPermissionsSchema,
+  updateMemberStatusSchema,
   updateUserCompanyAccessSchema,
   PERMISSION_KEYS
 } from "@paperclipai/shared";
@@ -2795,6 +2796,129 @@ export function accessRoutes(
             : null
       }))
     );
+  });
+
+  router.patch(
+    "/companies/:companyId/members/:memberId/status",
+    validate(updateMemberStatusSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const memberId = req.params.memberId as string;
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+
+      const member = await db
+        .select()
+        .from(companyMemberships)
+        .where(
+          and(
+            eq(companyMemberships.companyId, companyId),
+            eq(companyMemberships.id, memberId),
+          ),
+        )
+        .then((rows) => rows[0] ?? null);
+      if (!member) throw notFound("Member not found");
+      if (member.principalType !== "user") {
+        throw badRequest("Only user members can be suspended or reactivated");
+      }
+
+      const nextStatus = req.body.status;
+      const updated = await db.transaction(async (tx) => {
+        if (nextStatus !== "active") {
+          await tx
+            .update(companyMemberships)
+            .set({ reportsToMembershipId: null, updatedAt: new Date() })
+            .where(
+              and(
+                eq(companyMemberships.companyId, companyId),
+                eq(companyMemberships.reportsToMembershipId, memberId),
+              ),
+            );
+        }
+        const changed = await tx
+          .update(companyMemberships)
+          .set({
+            status: nextStatus,
+            reportsToMembershipId: nextStatus === "active" ? member.reportsToMembershipId : null,
+            updatedAt: new Date(),
+          })
+          .where(eq(companyMemberships.id, memberId))
+          .returning()
+          .then((rows) => rows[0] ?? null);
+        if (!changed) throw notFound("Member not found");
+        return changed;
+      });
+
+      await logActivity(db, {
+        companyId,
+        actorType: req.actor.type === "agent" ? "agent" : "user",
+        actorId:
+          req.actor.type === "agent"
+            ? req.actor.agentId ?? "unknown-agent"
+            : req.actor.userId ?? "board",
+        action: nextStatus === "active" ? "user.reactivated" : "user.deactivated",
+        entityType: "user",
+        entityId: member.principalId,
+        details: { membershipId: member.id, status: nextStatus },
+      });
+
+      res.json(updated);
+    }
+  );
+
+  router.delete("/companies/:companyId/members/:memberId", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const memberId = req.params.memberId as string;
+    await assertCompanyPermission(req, companyId, "users:manage_permissions");
+
+    const member = await db
+      .select()
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.companyId, companyId),
+          eq(companyMemberships.id, memberId),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+    if (!member) throw notFound("Member not found");
+    if (member.principalType !== "user") {
+      throw badRequest("Only user members can be removed from the Teams page");
+    }
+
+    const removed = await db.transaction(async (tx) => {
+      await tx
+        .update(companyMemberships)
+        .set({ reportsToMembershipId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(companyMemberships.companyId, companyId),
+            eq(companyMemberships.reportsToMembershipId, memberId),
+          ),
+        );
+
+      const deleted = await tx
+        .delete(companyMemberships)
+        .where(eq(companyMemberships.id, memberId))
+        .returning()
+        .then((rows) => rows[0] ?? null);
+      if (!deleted) throw notFound("Member not found");
+      return deleted;
+    });
+
+    await logActivity(db, {
+      companyId,
+      actorType: req.actor.type === "agent" ? "agent" : "user",
+      actorId:
+        req.actor.type === "agent"
+          ? req.actor.agentId ?? "unknown-agent"
+          : req.actor.userId ?? "board",
+      action: "user.removed_from_company",
+      entityType: "user",
+      entityId: member.principalId,
+      details: { membershipId: member.id },
+    });
+
+    res.json(removed);
   });
 
   router.patch(

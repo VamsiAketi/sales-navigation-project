@@ -152,6 +152,21 @@ export const accessApi = {
       input,
     ),
 
+  updateMemberStatus: (
+    companyId: string,
+    memberId: string,
+    status: "active" | "suspended",
+  ) =>
+    api.patch<CompanyMember>(
+      `/companies/${companyId}/members/${encodeURIComponent(memberId)}/status`,
+      { status },
+    ),
+
+  removeMember: (companyId: string, memberId: string) =>
+    api.delete<CompanyMember>(
+      `/companies/${companyId}/members/${encodeURIComponent(memberId)}`,
+    ),
+
   getInvite: (token: string) => api.get<InviteSummary>(`/invites/${token}`),
   getInviteOnboarding: (token: string) =>
     api.get<InviteOnboardingManifest>(`/invites/${token}/onboarding`),
