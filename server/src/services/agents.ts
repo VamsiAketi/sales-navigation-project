@@ -622,9 +622,14 @@ export function agentService(db: Db) {
         .from(agents)
         .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
       const normalizedRows = rows.map(normalizeAgentRow);
+      const agentIds = new Set(normalizedRows.map((row) => row.id));
       const byManager = new Map<string | null, typeof normalizedRows>();
       for (const row of normalizedRows) {
-        const key = row.reportsTo ?? null;
+        // `agents.reportsTo` is a FK to other agents, but we have legacy / buggy
+        // data where it can hold a user id or membership id. Treat those as
+        // top-level so the org chart can still render the node and let the
+        // membership hierarchy attach it to a human.
+        const key = row.reportsTo && agentIds.has(row.reportsTo) ? row.reportsTo : null;
         const group = byManager.get(key) ?? [];
         group.push(row);
         byManager.set(key, group);
