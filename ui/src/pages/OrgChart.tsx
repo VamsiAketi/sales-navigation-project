@@ -142,6 +142,7 @@ function collectEdges(nodes: LayoutNode[]): Array<{ parent: LayoutNode; child: L
 const adapterLabels: Record<string, string> = {
   claude_local: "Claude",
   codex_local: "Codex",
+  gemini_local: "Gemini",
   opencode_local: "OpenCode",
   cursor: "Cursor",
   openclaw_gateway: "OpenClaw Gateway",
@@ -457,7 +458,7 @@ export function OrgChart() {
   return (
     <div
       ref={containerRef}
-      className="w-full h-[calc(100vh-4rem)] overflow-hidden relative bg-muted/20 border border-border rounded-lg"
+      className="w-full h-[calc(100dvh-6rem)] overflow-hidden relative bg-muted/20 border border-border rounded-lg"
       style={{ cursor: dragging ? "grabbing" : "grab" }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}

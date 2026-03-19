@@ -152,19 +152,11 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
-
-    const rawBody = req.body as Record<string, unknown>;
-    const projectEnvConfig =
-      Object.prototype.hasOwnProperty.call(rawBody, "envConfig") && rawBody.envConfig !== undefined
-        ? await validateProjectSecretBindings(existing.companyId, rawBody.envConfig)
-        : undefined;
-
-    const updates = {
-      ...rawBody,
-      ...(projectEnvConfig !== undefined ? { envConfig: projectEnvConfig } : {}),
-    };
-
-    const project = await svc.update(id, updates);
+    const body = { ...req.body };
+    if (typeof body.archivedAt === "string") {
+      body.archivedAt = new Date(body.archivedAt);
+    }
+    const project = await svc.update(id, body);
     if (!project) {
       res.status(404).json({ error: "Project not found" });
       return;

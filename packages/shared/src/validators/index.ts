@@ -1,4 +1,18 @@
 export {
+  instanceExperimentalSettingsSchema,
+  patchInstanceExperimentalSettingsSchema,
+  type InstanceExperimentalSettings,
+  type PatchInstanceExperimentalSettings,
+} from "./instance.js";
+
+export {
+  upsertBudgetPolicySchema,
+  resolveBudgetIncidentSchema,
+  type UpsertBudgetPolicy,
+  type ResolveBudgetIncident,
+} from "./budget.js";
+
+export {
   createCompanySchema,
   updateCompanySchema,
   type CreateCompany,
@@ -51,29 +65,53 @@ export {
   updateProjectSchema,
   createProjectWorkspaceSchema,
   updateProjectWorkspaceSchema,
-  projectSecretBindingsSchema,
+  projectExecutionWorkspacePolicySchema,
   type CreateProject,
   type UpdateProject,
   type CreateProjectWorkspace,
   type UpdateProjectWorkspace,
+  type ProjectExecutionWorkspacePolicy,
 } from "./project.js";
 
 export {
   createIssueSchema,
   createIssueLabelSchema,
   updateIssueSchema,
+  issueExecutionWorkspaceSettingsSchema,
   checkoutIssueSchema,
   addIssueCommentSchema,
   linkIssueApprovalSchema,
   createIssueAttachmentMetadataSchema,
+  issueDocumentFormatSchema,
+  issueDocumentKeySchema,
+  upsertIssueDocumentSchema,
   type CreateIssue,
   type CreateIssueLabel,
   type UpdateIssue,
+  type IssueExecutionWorkspaceSettings,
   type CheckoutIssue,
   type AddIssueComment,
   type LinkIssueApproval,
   type CreateIssueAttachmentMetadata,
+  type IssueDocumentFormat,
+  type UpsertIssueDocument,
 } from "./issue.js";
+
+export {
+  createIssueWorkProductSchema,
+  updateIssueWorkProductSchema,
+  issueWorkProductTypeSchema,
+  issueWorkProductStatusSchema,
+  issueWorkProductReviewStateSchema,
+  type CreateIssueWorkProduct,
+  type UpdateIssueWorkProduct,
+} from "./work-product.js";
+
+export {
+  updateExecutionWorkspaceSchema,
+  executionWorkspaceStatusSchema,
+  type UpdateExecutionWorkspace,
+} from "./execution-workspace.js";
 
 export {
   createGoalSchema,
@@ -116,6 +154,11 @@ export {
 } from "./cost.js";
 
 export {
+  createFinanceEventSchema,
+  type CreateFinanceEvent,
+} from "./finance.js";
+
+export {
   createAssetImageMetadataSchema,
   type CreateAssetImageMetadata,
 } from "./asset.js";
@@ -140,3 +183,39 @@ export {
   type UpdateMemberOrgConfig,
   type UpdateUserCompanyAccess,
 } from "./access.js";
+
+export {
+  jsonSchemaSchema,
+  pluginJobDeclarationSchema,
+  pluginWebhookDeclarationSchema,
+  pluginToolDeclarationSchema,
+  pluginUiSlotDeclarationSchema,
+  pluginLauncherActionDeclarationSchema,
+  pluginLauncherRenderDeclarationSchema,
+  pluginLauncherDeclarationSchema,
+  pluginManifestV1Schema,
+  installPluginSchema,
+  upsertPluginConfigSchema,
+  patchPluginConfigSchema,
+  updatePluginStatusSchema,
+  uninstallPluginSchema,
+  pluginStateScopeKeySchema,
+  setPluginStateSchema,
+  listPluginStateSchema,
+  type PluginJobDeclarationInput,
+  type PluginWebhookDeclarationInput,
+  type PluginToolDeclarationInput,
+  type PluginUiSlotDeclarationInput,
+  type PluginLauncherActionDeclarationInput,
+  type PluginLauncherRenderDeclarationInput,
+  type PluginLauncherDeclarationInput,
+  type PluginManifestV1Input,
+  type InstallPlugin,
+  type UpsertPluginConfig,
+  type PatchPluginConfig,
+  type UpdatePluginStatus,
+  type UninstallPlugin,
+  type PluginStateScopeKey,
+  type SetPluginState,
+  type ListPluginState,
+} from "./plugin.js";
