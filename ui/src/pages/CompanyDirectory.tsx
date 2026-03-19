@@ -8,6 +8,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ApiError } from "../api/client";
 import {
   Dialog,
   DialogContent,
@@ -109,6 +110,36 @@ function memberSecondaryLine(member: CompanyMember) {
   return member.agent?.role ?? "agent";
 }
 
+function apiErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Failed to save changes.";
+}
+
+function buildChildrenIndex(parentById: Record<string, string>) {
+  const childrenById = new Map<string, string[]>();
+  for (const [childId, parentId] of Object.entries(parentById)) {
+    if (!parentId) continue;
+    const list = childrenById.get(parentId) ?? [];
+    list.push(childId);
+    childrenById.set(parentId, list);
+  }
+  return childrenById;
+}
+
+function descendantsOf(rootId: string, childrenById: Map<string, string[]>) {
+  const result = new Set<string>();
+  const stack = [...(childrenById.get(rootId) ?? [])];
+  while (stack.length > 0) {
+    const next = stack.pop()!;
+    if (result.has(next)) continue;
+    result.add(next);
+    const kids = childrenById.get(next);
+    if (kids) stack.push(...kids);
+  }
+  return result;
+}
+
 export function CompanyDirectory() {
   const { selectedCompany, selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -121,6 +152,7 @@ export function CompanyDirectory() {
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
   const [memberManagerDrafts, setMemberManagerDrafts] = useState<Record<string, string>>({});
   const [memberSaveStates, setMemberSaveStates] = useState<Record<string, SaveState>>({});
+  const [memberSaveErrors, setMemberSaveErrors] = useState<Record<string, string>>({});
   const [customHumanRoles, setCustomHumanRoles] = useState<string[]>([]);
   const [customAgentRoles, setCustomAgentRoles] = useState<string[]>([]);
   const [newHumanRole, setNewHumanRole] = useState("");
@@ -188,6 +220,34 @@ export function CompanyDirectory() {
     activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ?? activeHumanMembers[0] ?? null;
   const selectedAgentMember =
     activeAgentMembers.find((m) => m.id === selectedAgentMemberId) ?? activeAgentMembers[0] ?? null;
+
+  const memberById = useMemo(() => {
+    const map = new Map<string, CompanyMember>();
+    for (const m of companyMembers ?? []) map.set(m.id, m);
+    return map;
+  }, [companyMembers]);
+
+  const childrenByMemberId = useMemo(() => {
+    const parentById: Record<string, string> = {};
+    for (const member of [...activeHumanMembers, ...activeAgentMembers]) {
+      parentById[member.id] = (memberManagerDrafts[member.id] ?? member.reportsToMembershipId ?? "").trim();
+    }
+    return buildChildrenIndex(parentById);
+  }, [activeHumanMembers, activeAgentMembers, memberManagerDrafts]);
+
+  const invalidManagersForSelectedHuman = useMemo(() => {
+    if (!selectedHumanMember) return new Set<string>();
+    const invalid = descendantsOf(selectedHumanMember.id, childrenByMemberId);
+    invalid.add(selectedHumanMember.id);
+    return invalid;
+  }, [selectedHumanMember?.id, childrenByMemberId]);
+
+  const invalidManagersForSelectedAgent = useMemo(() => {
+    if (!selectedAgentMember) return new Set<string>();
+    const invalid = descendantsOf(selectedAgentMember.id, childrenByMemberId);
+    invalid.add(selectedAgentMember.id);
+    return invalid;
+  }, [selectedAgentMember?.id, childrenByMemberId]);
 
   useEffect(() => {
     setBreadcrumbs([
@@ -278,6 +338,13 @@ export function CompanyDirectory() {
   const humanIsDirty = computeDirty(selectedHumanMember);
   const agentIsDirty = computeDirty(selectedAgentMember);
 
+  function revertDraftsToServer(memberId: string) {
+    const serverMember = memberById.get(memberId) ?? null;
+    if (!serverMember) return;
+    setMemberRoleDrafts((prev) => ({ ...prev, [memberId]: serverMember.membershipRole ?? "" }));
+    setMemberManagerDrafts((prev) => ({ ...prev, [memberId]: serverMember.reportsToMembershipId ?? "" }));
+  }
+
   // Autosave (debounced) for selected human
   useEffect(() => {
     if (!selectedCompanyId || !selectedHumanMember) return;
@@ -299,11 +366,20 @@ export function CompanyDirectory() {
         {
           onSuccess: () => {
             setMemberSaveState(selectedHumanMember.id, "saved");
+            setMemberSaveErrors((prev) => {
+              if (!prev[selectedHumanMember.id]) return prev;
+              const { [selectedHumanMember.id]: _drop, ...rest } = prev;
+              return rest;
+            });
             window.setTimeout(() => {
               if (!computeDirty(selectedHumanMember)) setMemberSaveState(selectedHumanMember.id, "idle");
             }, 900);
           },
-          onError: () => setMemberSaveState(selectedHumanMember.id, "error")
+          onError: (err) => {
+            setMemberSaveState(selectedHumanMember.id, "error");
+            setMemberSaveErrors((prev) => ({ ...prev, [selectedHumanMember.id]: apiErrorMessage(err) }));
+            revertDraftsToServer(selectedHumanMember.id);
+          }
         }
       );
     }, 650);
@@ -338,11 +414,20 @@ export function CompanyDirectory() {
         {
           onSuccess: () => {
             setMemberSaveState(selectedAgentMember.id, "saved");
+            setMemberSaveErrors((prev) => {
+              if (!prev[selectedAgentMember.id]) return prev;
+              const { [selectedAgentMember.id]: _drop, ...rest } = prev;
+              return rest;
+            });
             window.setTimeout(() => {
               if (!computeDirty(selectedAgentMember)) setMemberSaveState(selectedAgentMember.id, "idle");
             }, 900);
           },
-          onError: () => setMemberSaveState(selectedAgentMember.id, "error")
+          onError: (err) => {
+            setMemberSaveState(selectedAgentMember.id, "error");
+            setMemberSaveErrors((prev) => ({ ...prev, [selectedAgentMember.id]: apiErrorMessage(err) }));
+            revertDraftsToServer(selectedAgentMember.id);
+          }
         }
       );
     }, 650);
@@ -673,24 +758,50 @@ export function CompanyDirectory() {
                         <select
                           className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                           value={memberManagerDrafts[selectedHumanMember.id] ?? ""}
-                          onChange={(e) =>
-                            setMemberManagerDrafts((prev) => ({ ...prev, [selectedHumanMember.id]: e.target.value }))
-                          }
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setMemberSaveErrors((prev) => {
+                              if (!prev[selectedHumanMember.id]) return prev;
+                              const { [selectedHumanMember.id]: _drop, ...rest } = prev;
+                              return rest;
+                            });
+                            setMemberManagerDrafts((prev) => ({ ...prev, [selectedHumanMember.id]: next }));
+                          }}
                         >
                           <option value="">None</option>
-                          {activeHumanMembers
-                            .filter((candidate) => candidate.id !== selectedHumanMember.id)
-                            .map((candidate) => (
-                              <option key={candidate.id} value={candidate.id}>
-                                {memberDisplayName(candidate)} (human)
+                          <optgroup label="Humans">
+                            {activeHumanMembers
+                              .filter((candidate) => candidate.id !== selectedHumanMember.id)
+                              .map((candidate) => (
+                                <option
+                                  key={candidate.id}
+                                  value={candidate.id}
+                                  disabled={invalidManagersForSelectedHuman.has(candidate.id)}
+                                >
+                                  {memberDisplayName(candidate)}
+                                </option>
+                              ))}
+                          </optgroup>
+                          <optgroup label="Agents">
+                            {activeAgentMembers.map((candidate) => (
+                              <option
+                                key={candidate.id}
+                                value={candidate.id}
+                                disabled={invalidManagersForSelectedHuman.has(candidate.id)}
+                              >
+                                {memberDisplayName(candidate)}
                               </option>
                             ))}
-                          {activeAgentMembers.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {memberDisplayName(candidate)} (agent)
-                            </option>
-                          ))}
+                          </optgroup>
                         </select>
+                        {memberSaveErrors[selectedHumanMember.id] && (
+                          <div className="text-[11px] text-destructive">
+                            {memberSaveErrors[selectedHumanMember.id]}
+                          </div>
+                        )}
+                        <div className="text-[11px] text-muted-foreground">
+                          Options that would create a cycle are disabled.
+                        </div>
                       </div>
                     </div>
 
@@ -797,24 +908,50 @@ export function CompanyDirectory() {
                         <select
                           className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                           value={memberManagerDrafts[selectedAgentMember.id] ?? ""}
-                          onChange={(e) =>
-                            setMemberManagerDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: e.target.value }))
-                          }
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setMemberSaveErrors((prev) => {
+                              if (!prev[selectedAgentMember.id]) return prev;
+                              const { [selectedAgentMember.id]: _drop, ...rest } = prev;
+                              return rest;
+                            });
+                            setMemberManagerDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: next }));
+                          }}
                         >
                           <option value="">None</option>
-                          {activeHumanMembers.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {memberDisplayName(candidate)} (human)
-                            </option>
-                          ))}
-                          {activeAgentMembers
-                            .filter((candidate) => candidate.id !== selectedAgentMember.id)
-                            .map((candidate) => (
-                              <option key={candidate.id} value={candidate.id}>
-                                {memberDisplayName(candidate)} (agent)
+                          <optgroup label="Humans">
+                            {activeHumanMembers.map((candidate) => (
+                              <option
+                                key={candidate.id}
+                                value={candidate.id}
+                                disabled={invalidManagersForSelectedAgent.has(candidate.id)}
+                              >
+                                {memberDisplayName(candidate)}
                               </option>
                             ))}
+                          </optgroup>
+                          <optgroup label="Agents">
+                            {activeAgentMembers
+                              .filter((candidate) => candidate.id !== selectedAgentMember.id)
+                              .map((candidate) => (
+                                <option
+                                  key={candidate.id}
+                                  value={candidate.id}
+                                  disabled={invalidManagersForSelectedAgent.has(candidate.id)}
+                                >
+                                  {memberDisplayName(candidate)}
+                                </option>
+                              ))}
+                          </optgroup>
                         </select>
+                        {memberSaveErrors[selectedAgentMember.id] && (
+                          <div className="text-[11px] text-destructive">
+                            {memberSaveErrors[selectedAgentMember.id]}
+                          </div>
+                        )}
+                        <div className="text-[11px] text-muted-foreground">
+                          Options that would create a cycle are disabled.
+                        </div>
                       </div>
                     </div>
                   </div>

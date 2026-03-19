@@ -544,11 +544,55 @@ export function agentRoutes(db: Db) {
       explicitParentByKey.set(childKey, parentKey);
     }
 
+    // Build a parent index, then break cycles defensively so org chart rendering
+    // can't be taken down by bad or legacy data.
+    const parentByKey = new Map<string, string | null>();
+    for (const childKey of nodesByKey.keys()) {
+      parentByKey.set(childKey, explicitParentByKey.get(childKey) ?? fallbackParentByKey.get(childKey) ?? null);
+    }
+
+    const stateByKey = new Map<string, 0 | 1 | 2>(); // 0=unvisited, 1=visiting, 2=done
+    const breakCyclesFrom = (startKey: string) => {
+      let cursor: string | null = startKey;
+      const stack: string[] = [];
+      const idxByKey = new Map<string, number>();
+      while (cursor) {
+        const state = stateByKey.get(cursor) ?? 0;
+        if (state === 2) return;
+        if (state === 1) {
+          // Found a cycle. Sever an edge inside it, preferring explicit parent edges.
+          const startIdx = idxByKey.get(cursor) ?? 0;
+          const cycleNodes = stack.slice(startIdx);
+          let severKey = cycleNodes[cycleNodes.length - 1] ?? cursor;
+          for (const k of cycleNodes) {
+            if (explicitParentByKey.has(k)) {
+              severKey = k;
+              break;
+            }
+          }
+          parentByKey.set(severKey, null);
+          stateByKey.set(severKey, 2);
+          return;
+        }
+
+        stateByKey.set(cursor, 1);
+        idxByKey.set(cursor, stack.length);
+        stack.push(cursor);
+        cursor = parentByKey.get(cursor) ?? null;
+      }
+
+      for (const k of stack) stateByKey.set(k, 2);
+    };
+
+    for (const key of nodesByKey.keys()) breakCyclesFrom(key);
+
+    // Clear any earlier report arrays (defensive) then attach.
+    for (const node of nodesByKey.values()) node.reports = [];
     for (const [childKey, childNode] of nodesByKey.entries()) {
-      const parentKey = explicitParentByKey.get(childKey) ?? fallbackParentByKey.get(childKey) ?? null;
+      const parentKey = parentByKey.get(childKey) ?? null;
       if (!parentKey) continue;
       const parentNode = nodesByKey.get(parentKey);
-      if (!parentNode || parentNode.id === childNode.id) continue;
+      if (!parentNode || parentKey === childKey || parentNode.id === childNode.id) continue;
       parentNode.reports.push(childNode);
     }
 
@@ -561,8 +605,8 @@ export function agentRoutes(db: Db) {
       reports: unknown[];
     }> = [];
 
-    for (const node of nodesByKey.entries()) {
-      if (!explicitParentByKey.has(node[0]) && !(fallbackParentByKey.get(node[0]) ?? null)) roots.push(node[1]);
+    for (const [key, node] of nodesByKey.entries()) {
+      if (!(parentByKey.get(key) ?? null)) roots.push(node);
     }
 
     const leanTree = roots.map((node) => toLeanOrgNode(node as Record<string, unknown>));
