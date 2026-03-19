@@ -83,7 +83,7 @@ export function SidebarAgents() {
           <CollapsibleTrigger className="flex items-center gap-1 flex-1 min-w-0">
             <ChevronRight
               className={cn(
-                "h-3 w-3 text-muted-foreground/60 transition-transform opacity-0 group-hover:opacity-100",
+                "h-4 w-4 text-muted-foreground/60 transition-transform",
                 open && "rotate-90"
               )}
             />
