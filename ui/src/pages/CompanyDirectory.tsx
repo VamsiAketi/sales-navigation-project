@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Users } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
@@ -158,6 +159,16 @@ export function CompanyDirectory() {
   const [newHumanRole, setNewHumanRole] = useState("");
   const [newAgentRole, setNewAgentRole] = useState("");
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [humanInviteName, setHumanInviteName] = useState("");
+  const [humanInviteEmail, setHumanInviteEmail] = useState("");
+  const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
+  const [humanInviteCredentials, setHumanInviteCredentials] = useState<{
+    name: string;
+    email: string;
+    temporaryUsername: string;
+    temporaryPassword: string;
+  } | null>(null);
 
   const { data: companyMembers, isLoading: membersLoading } = useQuery({
     queryKey: selectedCompanyId
@@ -227,6 +238,12 @@ export function CompanyDirectory() {
     return map;
   }, [companyMembers]);
 
+  const memberPrincipalTypeById = useMemo(() => {
+    const map = new Map<string, CompanyMember["principalType"]>();
+    for (const m of companyMembers ?? []) map.set(m.id, m.principalType);
+    return map;
+  }, [companyMembers]);
+
   const childrenByMemberId = useMemo(() => {
     const parentById: Record<string, string> = {};
     for (const member of [...activeHumanMembers, ...activeAgentMembers]) {
@@ -252,7 +269,7 @@ export function CompanyDirectory() {
   useEffect(() => {
     setBreadcrumbs([
       { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
-      { label: "People" }
+      { label: "Teams" }
     ]);
   }, [setBreadcrumbs, selectedCompany?.name]);
 
@@ -296,6 +313,33 @@ export function CompanyDirectory() {
     });
   };
 
+  const humanInviteMutation = useMutation({
+    mutationFn: () =>
+      accessApi.createHumanInvite(selectedCompanyId!, {
+        email: humanInviteEmail.trim(),
+        name: humanInviteName.trim() || undefined,
+      }),
+    onSuccess: async (created) => {
+      setHumanInviteError(null);
+      setHumanInviteCredentials({
+        name: created.name,
+        email: created.email,
+        temporaryUsername: created.temporaryUsername,
+        temporaryPassword: created.temporaryPassword,
+      });
+      setHumanInviteName("");
+      setHumanInviteEmail("");
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
+      });
+      await invalidateMembers();
+    },
+    onError: (err) => {
+      setHumanInviteCredentials(null);
+      setHumanInviteError(err instanceof Error ? err.message : "Failed to create human invite");
+    },
+  });
+
   const humanSaveMutation = useMutation({
     mutationFn: (input: { memberId: string; membershipRole: string | null; reportsToMembershipId: string | null }) =>
       accessApi.updateMemberOrgConfig(selectedCompanyId!, input.memberId, {
@@ -337,6 +381,11 @@ export function CompanyDirectory() {
 
   const humanIsDirty = computeDirty(selectedHumanMember);
   const agentIsDirty = computeDirty(selectedAgentMember);
+  const selectedHumanManagerId = selectedHumanMember
+    ? (memberManagerDrafts[selectedHumanMember.id] ?? "").trim()
+    : "";
+  const selectedHumanManagerIsAgent =
+    !!selectedHumanManagerId && memberPrincipalTypeById.get(selectedHumanManagerId) === "agent";
 
   function revertDraftsToServer(memberId: string) {
     const serverMember = memberById.get(memberId) ?? null;
@@ -348,6 +397,14 @@ export function CompanyDirectory() {
   // Autosave (debounced) for selected human
   useEffect(() => {
     if (!selectedCompanyId || !selectedHumanMember) return;
+    if (selectedHumanManagerIsAgent) {
+      setMemberSaveState(selectedHumanMember.id, "error");
+      setMemberSaveErrors((prev) => ({
+        ...prev,
+        [selectedHumanMember.id]: "Humans can only report to another human.",
+      }));
+      return;
+    }
     if (!humanIsDirty) {
       if (getMemberSaveState(selectedHumanMember.id) !== "saving") setMemberSaveState(selectedHumanMember.id, "idle");
       return;
@@ -390,7 +447,8 @@ export function CompanyDirectory() {
     selectedCompanyId,
     selectedHumanMember?.id,
     memberRoleDrafts[selectedHumanMember?.id ?? ""],
-    memberManagerDrafts[selectedHumanMember?.id ?? ""]
+    memberManagerDrafts[selectedHumanMember?.id ?? ""],
+    selectedHumanManagerIsAgent,
   ]);
 
   // Autosave (debounced) for selected agent
@@ -555,13 +613,104 @@ export function CompanyDirectory() {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-xl font-bold text-foreground">People</h1>
+            <h1 className="text-xl font-bold text-foreground">Teams</h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Manage human users and agents. Changes auto-save.
           </p>
         </div>
         <div className="flex w-full max-w-xl items-center justify-end gap-2">
+          <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="secondary">
+                Invite users
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Invite human user</DialogTitle>
+                <DialogDescription>
+                  Send a human invite and get temporary credentials for a new teammate.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-4 space-y-3">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <Input
+                    className="h-9"
+                    type="text"
+                    placeholder="Name (optional)"
+                    value={humanInviteName}
+                    onChange={(e) => setHumanInviteName(e.target.value)}
+                  />
+                  <Input
+                    className="h-9"
+                    type="email"
+                    placeholder="Email"
+                    value={humanInviteEmail}
+                    onChange={(e) => setHumanInviteEmail(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => humanInviteMutation.mutate()}
+                    disabled={
+                      humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId
+                    }
+                  >
+                    {humanInviteMutation.isPending ? "Creating..." : "Create invite"}
+                  </Button>
+                  {humanInviteError && (
+                    <span className="text-xs text-destructive">{humanInviteError}</span>
+                  )}
+                </div>
+                {humanInviteCredentials && (
+                  <div className="space-y-1 rounded-md border border-border bg-background px-2.5 py-2 text-xs">
+                    <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
+                    <p>
+                      Name: <span className="font-mono">{humanInviteCredentials.name}</span>
+                    </p>
+                    <p>
+                      Email: <span className="font-mono">{humanInviteCredentials.email}</span>
+                    </p>
+                    <p>
+                      Username:{" "}
+                      <span className="font-mono">
+                        {humanInviteCredentials.temporaryUsername}
+                      </span>
+                    </p>
+                    <p>
+                      Password:{" "}
+                      <span className="font-mono">
+                        {humanInviteCredentials.temporaryPassword}
+                      </span>
+                    </p>
+                    <div className="pt-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          const credentialsText = [
+                            `Name: ${humanInviteCredentials.name}`,
+                            `Email: ${humanInviteCredentials.email}`,
+                            `Username: ${humanInviteCredentials.temporaryUsername}`,
+                            `Password: ${humanInviteCredentials.temporaryPassword}`,
+                          ].join("\n");
+                          try {
+                            await navigator.clipboard.writeText(credentialsText);
+                          } catch {
+                            /* clipboard may not be available */
+                          }
+                        }}
+                      >
+                        Copy credentials
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
           <Dialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen}>
             <DialogTrigger asChild>
               <Button type="button" variant="secondary">
@@ -782,17 +931,6 @@ export function CompanyDirectory() {
                                 </option>
                               ))}
                           </optgroup>
-                          <optgroup label="Agents">
-                            {activeAgentMembers.map((candidate) => (
-                              <option
-                                key={candidate.id}
-                                value={candidate.id}
-                                disabled={invalidManagersForSelectedHuman.has(candidate.id)}
-                              >
-                                {memberDisplayName(candidate)}
-                              </option>
-                            ))}
-                          </optgroup>
                         </select>
                         {memberSaveErrors[selectedHumanMember.id] && (
                           <div className="text-[11px] text-destructive">
@@ -800,7 +938,7 @@ export function CompanyDirectory() {
                           </div>
                         )}
                         <div className="text-[11px] text-muted-foreground">
-                          Options that would create a cycle are disabled.
+                          Humans can only report to humans. Options that would create a cycle are disabled.
                         </div>
                       </div>
                     </div>
@@ -818,9 +956,15 @@ export function CompanyDirectory() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      disabled={!humanIsDirty || humanSaveMutation.isPending || !selectedCompanyId}
+                      disabled={
+                        !humanIsDirty ||
+                        humanSaveMutation.isPending ||
+                        !selectedCompanyId ||
+                        selectedHumanManagerIsAgent
+                      }
                       onClick={() => {
                         if (!selectedHumanMember) return;
+                        if (selectedHumanManagerIsAgent) return;
                         humanSaveMutation.mutate({
                           memberId: selectedHumanMember.id,
                           membershipRole: (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,

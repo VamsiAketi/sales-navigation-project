@@ -431,6 +431,8 @@ All endpoints are under `/api` and return JSON.
 - `GET /agents/:agentId`
 - `PATCH /agents/:agentId`
 - `POST /agents/:agentId/pause`
+- `POST /companies/:companyId/agents/pause`
+- `POST /companies/:companyId/agents/resume`
 - `POST /agents/:agentId/resume`
 - `POST /agents/:agentId/terminate`
 - `POST /agents/:agentId/keys` (create API key)

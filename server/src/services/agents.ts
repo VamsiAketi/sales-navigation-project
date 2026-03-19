@@ -438,6 +438,28 @@ export function agentService(db: Db) {
       return updated ? normalizeAgentRow(updated) : null;
     },
 
+    pauseAll: async (companyId: string) => {
+      const now = new Date();
+      const updated = await db
+        .update(agents)
+        .set({ status: "paused", updatedAt: now })
+        .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")))
+        .returning({ id: agents.id });
+
+      return updated.map((row) => row.id);
+    },
+
+    resumeAll: async (companyId: string) => {
+      const now = new Date();
+      const updated = await db
+        .update(agents)
+        .set({ status: "idle", updatedAt: now })
+        .where(and(eq(agents.companyId, companyId), eq(agents.status, "paused")))
+        .returning({ id: agents.id });
+
+      return updated.map((row) => row.id);
+    },
+
     resume: async (id: string) => {
       const existing = await getById(id);
       if (!existing) return null;

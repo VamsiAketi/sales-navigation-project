@@ -83,6 +83,20 @@ POST /api/agents/{agentId}/pause
 
 Temporarily stops heartbeats for the agent.
 
+## Pause Agents (Bulk)
+```
+POST /api/companies/{companyId}/agents/pause
+```
+
+Pauses heartbeats for all non-terminated agents in the company (and cancels any active heartbeat runs).
+
+## Resume Agents (Bulk)
+```
+POST /api/companies/{companyId}/agents/resume
+```
+
+Resumes heartbeats for paused agents in the company.
+
 ## Resume Agent
 
 ```

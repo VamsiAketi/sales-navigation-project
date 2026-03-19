@@ -97,7 +97,7 @@ export function Sidebar() {
         <SidebarAgents />
 
         <SidebarSection label="Company">
-          <SidebarNavItem to="/company/people" label="People" icon={Users} />
+          <SidebarNavItem to="/company/people" label="Teams" icon={Users} />
           <SidebarNavItem to="/org" label="Org" icon={Network} />
           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />

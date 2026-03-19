@@ -558,7 +558,7 @@ export function agentRoutes(db: Db) {
       const idxByKey = new Map<string, number>();
       while (cursor) {
         const state = stateByKey.get(cursor) ?? 0;
-        if (state === 2) return;
+        if (state === 2) break;
         if (state === 1) {
           // Found a cycle. Sever an edge inside it, preferring explicit parent edges.
           const startIdx = idxByKey.get(cursor) ?? 0;
@@ -581,6 +581,8 @@ export function agentRoutes(db: Db) {
         cursor = parentByKey.get(cursor) ?? null;
       }
 
+      // Even when we stop because we reached an already-completed branch, all
+      // nodes we traversed in this pass are acyclic and must be marked done.
       for (const k of stack) stateByKey.set(k, 2);
     };
 
@@ -1222,6 +1224,50 @@ export function agentRoutes(db: Db) {
     });
 
     res.json(agent);
+  });
+
+  router.post("/companies/:companyId/agents/pause", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const agentIds = await svc.pauseAll(companyId);
+
+    // Pause changes are company-scoped; cancellation and activity logs must be emitted per agent.
+    for (const id of agentIds) {
+      await heartbeat.cancelActiveForAgent(id);
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "agent.paused",
+        entityType: "agent",
+        entityId: id,
+      });
+    }
+
+    res.json({ ok: true, pausedCount: agentIds.length });
+  });
+
+  router.post("/companies/:companyId/agents/resume", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const agentIds = await svc.resumeAll(companyId);
+
+    for (const id of agentIds) {
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "agent.resumed",
+        entityType: "agent",
+        entityId: id,
+      });
+    }
+
+    res.json({ ok: true, resumedCount: agentIds.length });
   });
 
   router.post("/agents/:id/resume", async (req, res) => {

@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { companiesApi } from "../api/companies";
+import { agentsApi } from "../api/agents";
 import { accessApi, type CompanyMember } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { secretsApi } from "../api/secrets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, EyeOff, Trash2 } from "lucide-react";
+import { Settings, Check, EyeOff, Trash2, Pause, Play } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -51,16 +52,6 @@ export function CompanySettings() {
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
-  const [humanInviteName, setHumanInviteName] = useState("");
-  const [humanInviteEmail, setHumanInviteEmail] = useState("");
-  const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
-  const [humanInviteCredentials, setHumanInviteCredentials] = useState<{
-    name: string;
-    email: string;
-    temporaryUsername: string;
-    temporaryPassword: string;
-  } | null>(null);
-
   const [newSecretName, setNewSecretName] = useState("");
   const [newSecretValue, setNewSecretValue] = useState("");
   const [newSecretDescription, setNewSecretDescription] = useState("");
@@ -163,46 +154,12 @@ export function CompanySettings() {
     }
   });
 
-  const humanInviteMutation = useMutation({
-    mutationFn: () =>
-      accessApi.createHumanInvite(selectedCompanyId!, {
-        email: humanInviteEmail.trim(),
-        name: humanInviteName.trim() || undefined
-      }),
-    onSuccess: async (created) => {
-      setHumanInviteError(null);
-      setHumanInviteCredentials({
-        name: created.name,
-        email: created.email,
-        temporaryUsername: created.temporaryUsername,
-        temporaryPassword: created.temporaryPassword
-      });
-      setHumanInviteName("");
-      setHumanInviteEmail("");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.sidebarBadges(selectedCompanyId!)
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.access.members(selectedCompanyId!)
-      });
-    },
-    onError: (err) => {
-      setHumanInviteCredentials(null);
-      setHumanInviteError(
-        err instanceof Error ? err.message : "Failed to create human invite"
-      );
-    }
-  });
-
   useEffect(() => {
     setInviteError(null);
     setInviteSnippet(null);
     setSnippetCopied(false);
     setSnippetCopyDelightId(0);
-    setHumanInviteError(null);
-    setHumanInviteCredentials(null);
-    setHumanInviteName("");
-    setHumanInviteEmail("");
+    setAgentBulkError(null);
   }, [selectedCompanyId]);
   const archiveMutation = useMutation({
     mutationFn: ({
@@ -231,6 +188,18 @@ export function CompanySettings() {
     enabled: !!selectedCompanyId
   });
 
+  const { data: companyAgents = [], isLoading: agentsLoading } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none"],
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { pausedCount, totalCount } = useMemo(() => {
+    const total = companyAgents.length;
+    const paused = companyAgents.reduce((acc, a) => (a.status === "paused" ? acc + 1 : acc), 0);
+    return { pausedCount: paused, totalCount: total };
+  }, [companyAgents]);
+
   // Org member queries/mutations removed from settings page.
 
   const createSecretMutation = useMutation({
@@ -257,6 +226,36 @@ export function CompanySettings() {
         queryKey: queryKeys.secrets.list(selectedCompanyId!)
       });
     }
+  });
+
+  const [agentBulkError, setAgentBulkError] = useState<string | null>(null);
+
+  const pauseAllAgentsMutation = useMutation({
+    mutationFn: () => agentsApi.pauseAll(selectedCompanyId!),
+    onMutate: () => setAgentBulkError(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) });
+    },
+    onError: (err) => {
+      setAgentBulkError(err instanceof Error ? err.message : "Failed to pause agents");
+    },
+  });
+
+  const resumeAllAgentsMutation = useMutation({
+    mutationFn: () => agentsApi.resumeAll(selectedCompanyId!),
+    onMutate: () => setAgentBulkError(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId!) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) });
+    },
+    onError: (err) => {
+      setAgentBulkError(err instanceof Error ? err.message : "Failed to resume agents");
+    },
   });
 
   useEffect(() => {
@@ -623,109 +622,6 @@ export function CompanySettings() {
           Invites
         </div>
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
-          <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 px-3 py-3">
-            <div className="text-xs font-medium text-muted-foreground">
-              Invite human user
-            </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              <input
-                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
-                type="text"
-                placeholder="Name (optional)"
-                value={humanInviteName}
-                onChange={(e) => setHumanInviteName(e.target.value)}
-              />
-              <input
-                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
-                type="email"
-                placeholder="Email"
-                value={humanInviteEmail}
-                onChange={(e) => setHumanInviteEmail(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={() => humanInviteMutation.mutate()}
-                disabled={
-                  humanInviteMutation.isPending ||
-                  !humanInviteEmail.trim() ||
-                  !selectedCompanyId
-                }
-              >
-                {humanInviteMutation.isPending
-                  ? "Creating..."
-                  : "Create Human Invite"}
-              </Button>
-              {humanInviteError && (
-                <span className="text-xs text-destructive">
-                  {humanInviteError}
-                </span>
-              )}
-            </div>
-            {humanInviteCredentials && (
-              <div className="space-y-1 rounded-md border border-border bg-background px-2.5 py-2 text-xs">
-                <p className="font-medium text-foreground">
-                  Temporary credentials (share securely)
-                </p>
-                <p>
-                  Name:{" "}
-                  <span className="font-mono">{humanInviteCredentials.name}</span>
-                </p>
-                <p>
-                  Email:{" "}
-                  <span className="font-mono">{humanInviteCredentials.email}</span>
-                </p>
-                <p>
-                  Username:{" "}
-                  <span className="font-mono">
-                    {humanInviteCredentials.temporaryUsername}
-                  </span>
-                </p>
-                <p>
-                  Password:{" "}
-                  <span className="font-mono">
-                    {humanInviteCredentials.temporaryPassword}
-                  </span>
-                </p>
-                <div className="pt-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={async () => {
-                      const credentialsText = [
-                        `Name: ${humanInviteCredentials.name}`,
-                        `Email: ${humanInviteCredentials.email}`,
-                        `Username: ${humanInviteCredentials.temporaryUsername}`,
-                        `Password: ${humanInviteCredentials.temporaryPassword}`
-                      ].join("\n");
-                      try {
-                        await navigator.clipboard.writeText(credentialsText);
-                      } catch {
-                        /* clipboard may not be available */
-                      }
-                    }}
-                  >
-                    Copy credentials
-                  </Button>
-                </div>
-              </div>
-            )}
-            <div className="rounded-md border border-border bg-background px-3 py-3 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-foreground">People</div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    Manage user roles and reporting relationships in the People screen (autosave enabled).
-                  </div>
-                </div>
-                <Button asChild size="sm">
-                  <Link to="/company/people">Manage people</Link>
-                </Button>
-              </div>
-            </div>
-          </div>
-
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">
               Generate an OpenClaw agent invite snippet.
@@ -789,6 +685,68 @@ export function CompanySettings() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Agent Run Control */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Agent Run Control
+        </div>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-foreground">Pause / Resume all agents</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {agentsLoading ? "Loading…" : `${pausedCount}/${totalCount} agents paused`}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                pauseAllAgentsMutation.isPending ||
+                agentsLoading ||
+                totalCount === 0 ||
+                pausedCount === totalCount
+              }
+              onClick={() => {
+                const confirmed = window.confirm(
+                  `Pause all agents in "${selectedCompany.name}"? This stops heartbeats for all non-terminated agents and cancels active runs.`
+                );
+                if (!confirmed) return;
+                pauseAllAgentsMutation.mutate();
+              }}
+            >
+              <Pause className="h-3.5 w-3.5 mr-1.5" />
+              {pauseAllAgentsMutation.isPending ? "Pausing…" : "Pause all"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                resumeAllAgentsMutation.isPending ||
+                agentsLoading ||
+                pausedCount === 0
+              }
+              onClick={() => {
+                const confirmed = window.confirm(
+                  `Resume all paused agents in "${selectedCompany.name}"?`
+                );
+                if (!confirmed) return;
+                resumeAllAgentsMutation.mutate();
+              }}
+            >
+              <Play className="h-3.5 w-3.5 mr-1.5" />
+              {resumeAllAgentsMutation.isPending ? "Resuming…" : "Resume all"}
+            </Button>
+          </div>
+          {agentBulkError && <p className="text-sm text-destructive">{agentBulkError}</p>}
+          <p className="text-xs text-muted-foreground">
+            Pause cancels any active heartbeat runs; resume sets paused agents back to idle.
+          </p>
         </div>
       </div>
 

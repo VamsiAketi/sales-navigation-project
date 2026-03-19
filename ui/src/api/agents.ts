@@ -107,6 +107,8 @@ export const agentsApi = {
     api.patch<Agent>(agentPath(id, companyId, "/permissions"), data),
   pause: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/pause"), {}),
   resume: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/resume"), {}),
+  pauseAll: (companyId: string) => api.post<{ ok: true; pausedCount: number }>(`/companies/${companyId}/agents/pause`, {}),
+  resumeAll: (companyId: string) => api.post<{ ok: true; resumedCount: number }>(`/companies/${companyId}/agents/resume`, {}),
   terminate: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/terminate"), {}),
   remove: (id: string, companyId?: string) => api.delete<{ ok: true }>(agentPath(id, companyId)),
   listKeys: (id: string, companyId?: string) => api.get<AgentKey[]>(agentPath(id, companyId, "/keys")),
