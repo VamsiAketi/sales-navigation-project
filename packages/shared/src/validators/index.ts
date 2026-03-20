@@ -65,6 +65,7 @@ export {
   updateProjectSchema,
   createProjectWorkspaceSchema,
   updateProjectWorkspaceSchema,
+  projectSecretBindingsSchema,
   projectExecutionWorkspacePolicySchema,
   type CreateProject,
   type UpdateProject,

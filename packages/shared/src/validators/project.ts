@@ -29,6 +29,7 @@ export const projectExecutionWorkspacePolicySchema = z
 
 const projectWorkspaceSourceTypeSchema = z.enum(["local_path", "git_repo", "remote_managed", "non_git_path"]);
 const projectWorkspaceVisibilitySchema = z.enum(["default", "advanced"]);
+export const projectSecretBindingsSchema = z.record(z.string(), z.unknown()).optional().nullable();
 
 const projectWorkspaceFields = {
   name: z.string().min(1).optional(),
