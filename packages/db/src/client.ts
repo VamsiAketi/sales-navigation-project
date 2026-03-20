@@ -672,6 +672,24 @@ export async function applyPendingMigrations(url: string): Promise<void> {
 
     const bootstrappedState = await inspectMigrations(url);
     if (bootstrappedState.status === "upToDate") return;
+    if (
+      bootstrappedState.status === "needsMigrations" &&
+      bootstrappedState.reason === "pending-migrations"
+    ) {
+      // Some older legacy migrations can be structurally present but missing
+      // from the drizzle journal; reconcile them so bootstrap reaches
+      // up-to-date state. If anything is still missing, apply remaining pending
+      // migrations.
+      await reconcilePendingMigrationHistory(url);
+      const repairedState = await inspectMigrations(url);
+      if (repairedState.status === "upToDate") return;
+
+      if (repairedState.status === "needsMigrations" && repairedState.reason === "pending-migrations") {
+        await applyPendingMigrationsManually(url, repairedState.pendingMigrations);
+        const finalState = await inspectMigrations(url);
+        if (finalState.status === "upToDate") return;
+      }
+    }
     throw new Error(
       `Failed to bootstrap migrations: ${bootstrappedState.pendingMigrations.join(", ")}`,
     );

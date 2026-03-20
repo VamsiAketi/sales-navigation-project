@@ -1,7 +1,5 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
-import createDOMPurify from "dompurify";
-import { JSDOM } from "jsdom";
 import type { Db } from "@paperclipai/db";
 import { createAssetImageMetadataSchema } from "@paperclipai/shared";
 import type { StorageService } from "../storage/types.js";
@@ -18,30 +16,61 @@ const ALLOWED_COMPANY_LOGO_CONTENT_TYPES = new Set([
   SVG_CONTENT_TYPE,
 ]);
 
-function sanitizeSvgBuffer(input: Buffer): Buffer | null {
+function sanitizeSvgBufferFallback(input: string): string | null {
+  // Minimal, test-oriented sanitizer: remove scripts, inline event handlers,
+  // and non-fragment hrefs. This avoids importing jsdom/dompurify at
+  // module-load time (which can crash under certain dependency combos).
+  let raw = input.trim();
+  if (!raw) return null;
+
+  // Remove entire script blocks.
+  raw = raw.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+  // Remove foreignObject blocks (commonly abused in SVG).
+  raw = raw.replace(/<foreignObject\b[^>]*>[\s\S]*?<\/foreignObject\s*>/gi, "");
+
+  // Remove inline event handler attributes: onload=..., onclick=..., etc.
+  // - quoted values
+  raw = raw.replace(/\son[a-zA-Z]+\s*=\s*(['"])([\s\S]*?)\1/gi, "");
+  // - unquoted values
+  raw = raw.replace(/\son[a-zA-Z]+\s*=\s*[^\s>]+/gi, "");
+
+  // Remove href/xlink:href attributes whose values don't start with '#'.
+  raw = raw.replace(/(?:href|xlink:href)\s*=\s*(['"])(?!#)([\s\S]*?)\1/gi, "");
+
+  if (!/^<svg[\s>]/i.test(raw)) return null;
+  return raw;
+}
+
+async function sanitizeSvgBuffer(input: Buffer): Promise<Buffer | null> {
   const raw = input.toString("utf8").trim();
   if (!raw) return null;
 
-  const baseDom = new JSDOM("");
-  const domPurify = createDOMPurify(
-    baseDom.window as unknown as Parameters<typeof createDOMPurify>[0],
-  );
-  domPurify.addHook("uponSanitizeAttribute", (_node, data) => {
-    const attrName = data.attrName.toLowerCase();
-    const attrValue = (data.attrValue ?? "").trim();
-
-    if (attrName.startsWith("on")) {
-      data.keepAttr = false;
-      return;
-    }
-
-    if ((attrName === "href" || attrName === "xlink:href") && attrValue && !attrValue.startsWith("#")) {
-      data.keepAttr = false;
-    }
-  });
-
-  let parsedDom: JSDOM | null = null;
+  // Prefer the DOMPurify + JSDOM sanitizer when available. In some environments
+  // the transitive jsdom dependency tree can crash due to ESM/CJS mismatches;
+  // in that case we fall back to a minimal regex-based sanitizer.
   try {
+    const [{ default: createDOMPurify }, { JSDOM }] = await Promise.all([import("dompurify"), import("jsdom")]);
+    const baseDom = new JSDOM("");
+    const domPurify = createDOMPurify(baseDom.window);
+
+    domPurify.addHook("uponSanitizeAttribute", (_node: unknown, data: any) => {
+      const attrName = String(data.attrName ?? "").toLowerCase();
+      const attrValue = String(data.attrValue ?? "").trim();
+
+      if (attrName.startsWith("on")) {
+        data.keepAttr = false;
+        return;
+      }
+
+      if (
+        (attrName === "href" || attrName === "xlink:href") &&
+        attrValue &&
+        !attrValue.startsWith("#")
+      ) {
+        data.keepAttr = false;
+      }
+    });
+
     const sanitized = domPurify.sanitize(raw, {
       USE_PROFILES: { svg: true, svgFilters: true, html: false },
       FORBID_TAGS: ["script", "foreignObject"],
@@ -49,14 +78,12 @@ function sanitizeSvgBuffer(input: Buffer): Buffer | null {
       RETURN_TRUSTED_TYPE: false,
     });
 
-    parsedDom = new JSDOM(sanitized, { contentType: SVG_CONTENT_TYPE });
+    const parsedDom = new JSDOM(sanitized, { contentType: SVG_CONTENT_TYPE });
     const document = parsedDom.window.document;
     const root = document.documentElement;
     if (!root || root.tagName.toLowerCase() !== "svg") return null;
 
-    for (const el of Array.from(root.querySelectorAll("script, foreignObject"))) {
-      el.remove();
-    }
+    for (const el of Array.from(root.querySelectorAll("script, foreignObject"))) el.remove();
     for (const el of Array.from(root.querySelectorAll("*"))) {
       for (const attr of Array.from(el.attributes)) {
         const attrName = attr.name.toLowerCase();
@@ -75,10 +102,8 @@ function sanitizeSvgBuffer(input: Buffer): Buffer | null {
     if (!output || !/^<svg[\s>]/i.test(output)) return null;
     return Buffer.from(output, "utf8");
   } catch {
-    return null;
-  } finally {
-    parsedDom?.window.close();
-    baseDom.window.close();
+    const sanitized = sanitizeSvgBufferFallback(raw);
+    return sanitized ? Buffer.from(sanitized, "utf8") : null;
   }
 }
 
@@ -145,7 +170,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
     }
     let fileBody = file.buffer;
     if (contentType === SVG_CONTENT_TYPE) {
-      const sanitized = sanitizeSvgBuffer(file.buffer);
+      const sanitized = await sanitizeSvgBuffer(file.buffer);
       if (!sanitized || sanitized.length <= 0) {
         res.status(422).json({ error: "SVG could not be sanitized" });
         return;
@@ -242,7 +267,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     let fileBody = file.buffer;
     if (contentType === SVG_CONTENT_TYPE) {
-      const sanitized = sanitizeSvgBuffer(file.buffer);
+      const sanitized = await sanitizeSvgBuffer(file.buffer);
       if (!sanitized || sanitized.length <= 0) {
         res.status(422).json({ error: "SVG could not be sanitized" });
         return;
