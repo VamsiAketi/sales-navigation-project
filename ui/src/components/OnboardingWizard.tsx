@@ -74,6 +74,7 @@ https://github.com/paperclipai/companies/blob/main/default/ceo/AGENTS.md
 Ensure you have a folder agents/ceo and then download this AGENTS.md, and sibling HEARTBEAT.md, SOUL.md, and TOOLS.md. and set that AGENTS.md as the path to your agents instruction file
 
 After that, hire yourself a Founding Engineer agent and then plan the roadmap and tasks for your new company.`;
+const DEFAULT_TASK_TITLE = "Set up the CEO and plan the roadmap";
 
 export function OnboardingWizard() {
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();

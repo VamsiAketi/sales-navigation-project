@@ -104,6 +104,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const workspaceId = asString(workspaceContext.workspaceId, "");
   const workspaceRepoUrl = asString(workspaceContext.repoUrl, "");
   const workspaceRepoRef = asString(workspaceContext.repoRef, "");
+  const workspaceGitAuth = parseObject(workspaceContext.gitAuth);
+  const workspaceGitProvider = asString(workspaceGitAuth.provider, "");
+  const workspaceGitToken = asString(workspaceGitAuth.token, "");
+  const workspaceGitOwner = asString(workspaceGitAuth.repoOwner, "");
+  const workspaceGitRepo = asString(workspaceGitAuth.repoName, "");
   const agentHome = asString(workspaceContext.agentHome, "");
   const workspaceHints = Array.isArray(context.paperclipWorkspaces)
     ? context.paperclipWorkspaces.filter(

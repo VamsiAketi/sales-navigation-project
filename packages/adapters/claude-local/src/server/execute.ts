@@ -122,6 +122,11 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
   const workspaceRepoRef = asString(workspaceContext.repoRef, "") || null;
   const workspaceBranch = asString(workspaceContext.branchName, "") || null;
   const workspaceWorktreePath = asString(workspaceContext.worktreePath, "") || null;
+  const workspaceGitAuth = parseObject(workspaceContext.gitAuth);
+  const workspaceGitProvider = asString(workspaceGitAuth.provider, "");
+  const workspaceGitToken = asString(workspaceGitAuth.token, "");
+  const workspaceGitOwner = asString(workspaceGitAuth.repoOwner, "");
+  const workspaceGitRepo = asString(workspaceGitAuth.repoName, "");
   const agentHome = asString(workspaceContext.agentHome, "") || null;
   const workspaceHints = Array.isArray(context.paperclipWorkspaces)
     ? context.paperclipWorkspaces.filter(

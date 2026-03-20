@@ -1,10 +1,12 @@
-import { ChangeEvent, useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
+import { secretsApi } from "../api/secrets";
+import { agentsApi } from "../api/agents";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Settings, Check, EyeOff, Trash2, Pause, Play } from "lucide-react";
@@ -89,13 +91,6 @@ export function CompanySettings() {
       const uploaded = await assetsApi.uploadImage(selectedCompanyId!, file, "company_logo");
       return companiesApi.update(selectedCompanyId!, { logoAssetId: uploaded.assetId });
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-    },
-  });
-
-  const clearLogoMutation = useMutation({
-    mutationFn: () => companiesApi.update(selectedCompanyId!, { logoAssetId: null }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     },

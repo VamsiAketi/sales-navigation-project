@@ -193,13 +193,6 @@ export function CompanyPatternIcon({
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : patternDataUrl ? (
-        <img
-          src={logoSrc}
-          alt={`${companyName} logo`}
-          className="absolute inset-0 h-full w-full object-contain bg-background"
-          onError={() => setLogoFailed(true)}
-        />
-      ) : patternDataUrl ? (
         <>
           <img
             src={patternDataUrl}
