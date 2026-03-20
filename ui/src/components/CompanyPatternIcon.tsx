@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "../lib/utils";
 
 const BAYER_4X4 = [
@@ -10,6 +10,7 @@ const BAYER_4X4 = [
 
 interface CompanyPatternIconProps {
   companyName: string;
+  logoUrl?: string | null;
   brandColor?: string | null;
   logoAssetId?: string | null;
   className?: string;
@@ -160,10 +161,18 @@ function makeCompanyPatternDataUrl(seed: string, brandColor?: string | null, log
   return canvas.toDataURL("image/png");
 }
 
-export function CompanyPatternIcon({ companyName, brandColor, logoAssetId, className }: CompanyPatternIconProps) {
+export function CompanyPatternIcon({
+  companyName,
+  logoUrl,
+  brandColor,
+  className,
+}: CompanyPatternIconProps) {
   const initial = companyName.trim().charAt(0).toUpperCase() || "?";
-  const [logoFailed, setLogoFailed] = useState(false);
-  const logoSrc = logoAssetId && !logoFailed ? `/api/assets/${logoAssetId}/content` : null;
+  const [imageError, setImageError] = useState(false);
+  const logo = !imageError && typeof logoUrl === "string" && logoUrl.trim().length > 0 ? logoUrl : null;
+  useEffect(() => {
+    setImageError(false);
+  }, [logoUrl]);
   const patternDataUrl = useMemo(
     () => makeCompanyPatternDataUrl(companyName.trim().toLowerCase(), brandColor),
     [companyName, brandColor],
@@ -176,12 +185,12 @@ export function CompanyPatternIcon({ companyName, brandColor, logoAssetId, class
         className,
       )}
     >
-      {logoSrc ? (
+      {logo ? (
         <img
-          src={logoSrc}
+          src={logo}
           alt={`${companyName} logo`}
-          className="absolute inset-0 h-full w-full object-contain bg-background"
-          onError={() => setLogoFailed(true)}
+          onError={() => setImageError(true)}
+          className="absolute inset-0 h-full w-full object-cover"
         />
       ) : patternDataUrl ? (
         <>
@@ -198,6 +207,11 @@ export function CompanyPatternIcon({ companyName, brandColor, logoAssetId, class
         </>
       ) : (
         <div className="absolute inset-0 bg-muted" />
+      )}
+      {!logo && (
+        <span className="relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.65)]">
+          {initial}
+        </span>
       )}
     </div>
   );

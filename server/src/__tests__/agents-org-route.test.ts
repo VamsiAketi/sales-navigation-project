@@ -29,11 +29,13 @@ vi.mock("../services/index.js", () => ({
     rollbackConfigRevision: vi.fn(),
     resolveByReference: vi.fn(),
   }),
+  budgetService: () => ({}),
   accessService: () => ({
     canUser: vi.fn(),
     hasPermission: vi.fn(),
     ensureMembership: vi.fn(),
   }),
+  workspaceOperationService: () => ({}),
   approvalService: () => ({
     create: vi.fn(),
     getById: vi.fn(),

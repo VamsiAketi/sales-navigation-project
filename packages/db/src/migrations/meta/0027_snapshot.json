@@ -1,6 +1,6 @@
 {
-  "id": "304f303b-e624-4f3b-8f77-e483b8148f97",
-  "prevId": "6ae54c35-6c52-4805-b420-e287e512bb77",
+  "id": "8186209d-f7ec-4048-bd4f-c96530f45304",
+  "prevId": "5f8dd541-9e28-4a42-890b-fc4a301604ac",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2221,12 +2221,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "reports_to_membership_id": {
-          "name": "reports_to_membership_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -2317,27 +2311,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "company_memberships_company_reports_to_membership_idx": {
-          "name": "company_memberships_company_reports_to_membership_idx",
-          "columns": [
-            {
-              "expression": "company_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "reports_to_membership_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -2347,19 +2320,6 @@
           "tableTo": "companies",
           "columnsFrom": [
             "company_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "company_memberships_reports_to_membership_id_company_memberships_id_fk": {
-          "name": "company_memberships_reports_to_membership_id_company_memberships_id_fk",
-          "tableFrom": "company_memberships",
-          "tableTo": "company_memberships",
-          "columnsFrom": [
-            "reports_to_membership_id"
           ],
           "columnsTo": [
             "id"
@@ -4672,6 +4632,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "execution_workspace_settings": {
+          "name": "execution_workspace_settings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "started_at": {
           "name": "started_at",
           "type": "timestamp with time zone",
@@ -5789,12 +5755,11 @@
           "primaryKey": false,
           "notNull": false
         },
-        "env_config": {
-          "name": "env_config",
+        "execution_workspace_policy": {
+          "name": "execution_workspace_policy",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false,
-          "default": "'null'::jsonb"
+          "notNull": false
         },
         "archived_at": {
           "name": "archived_at",
@@ -5872,6 +5837,350 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace_runtime_services": {
+      "name": "workspace_runtime_services",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "project_workspace_id": {
+          "name": "project_workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope_type": {
+          "name": "scope_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "service_name": {
+          "name": "service_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lifecycle": {
+          "name": "lifecycle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reuse_key": {
+          "name": "reuse_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command": {
+          "name": "command",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cwd": {
+          "name": "cwd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "port": {
+          "name": "port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_ref": {
+          "name": "provider_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_agent_id": {
+          "name": "owner_agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_by_run_id": {
+          "name": "started_by_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "stopped_at": {
+          "name": "stopped_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stop_policy": {
+          "name": "stop_policy",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "health_status": {
+          "name": "health_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "workspace_runtime_services_company_workspace_status_idx": {
+          "name": "workspace_runtime_services_company_workspace_status_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workspace_runtime_services_company_project_status_idx": {
+          "name": "workspace_runtime_services_company_project_status_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workspace_runtime_services_run_idx": {
+          "name": "workspace_runtime_services_run_idx",
+          "columns": [
+            {
+              "expression": "started_by_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workspace_runtime_services_company_updated_idx": {
+          "name": "workspace_runtime_services_company_updated_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "workspace_runtime_services_company_id_companies_id_fk": {
+          "name": "workspace_runtime_services_company_id_companies_id_fk",
+          "tableFrom": "workspace_runtime_services",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "workspace_runtime_services_project_id_projects_id_fk": {
+          "name": "workspace_runtime_services_project_id_projects_id_fk",
+          "tableFrom": "workspace_runtime_services",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "workspace_runtime_services_project_workspace_id_project_workspaces_id_fk": {
+          "name": "workspace_runtime_services_project_workspace_id_project_workspaces_id_fk",
+          "tableFrom": "workspace_runtime_services",
+          "tableTo": "project_workspaces",
+          "columnsFrom": [
+            "project_workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "workspace_runtime_services_issue_id_issues_id_fk": {
+          "name": "workspace_runtime_services_issue_id_issues_id_fk",
+          "tableFrom": "workspace_runtime_services",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "workspace_runtime_services_owner_agent_id_agents_id_fk": {
+          "name": "workspace_runtime_services_owner_agent_id_agents_id_fk",
+          "tableFrom": "workspace_runtime_services",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "owner_agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "workspace_runtime_services_started_by_run_id_heartbeat_runs_id_fk": {
+          "name": "workspace_runtime_services_started_by_run_id_heartbeat_runs_id_fk",
+          "tableFrom": "workspace_runtime_services",
+          "tableTo": "heartbeat_runs",
+          "columnsFrom": [
+            "started_by_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

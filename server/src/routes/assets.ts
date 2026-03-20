@@ -4,26 +4,126 @@ import type { Db } from "@paperclipai/db";
 import { createAssetImageMetadataSchema } from "@paperclipai/shared";
 import type { StorageService } from "../storage/types.js";
 import { assetService, logActivity } from "../services/index.js";
+import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
-
-const MAX_ASSET_IMAGE_BYTES = Number(process.env.PAPERCLIP_ATTACHMENT_MAX_BYTES) || 10 * 1024 * 1024;
-const ALLOWED_IMAGE_CONTENT_TYPES = new Set([
+const SVG_CONTENT_TYPE = "image/svg+xml";
+const ALLOWED_COMPANY_LOGO_CONTENT_TYPES = new Set([
   "image/png",
   "image/jpeg",
   "image/jpg",
   "image/webp",
   "image/gif",
+  SVG_CONTENT_TYPE,
 ]);
+
+function sanitizeSvgBufferFallback(input: string): string | null {
+  // Minimal, test-oriented sanitizer: remove scripts, inline event handlers,
+  // and non-fragment hrefs. This avoids importing jsdom/dompurify at
+  // module-load time (which can crash under certain dependency combos).
+  let raw = input.trim();
+  if (!raw) return null;
+
+  // Remove entire script blocks.
+  raw = raw.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+  // Remove foreignObject blocks (commonly abused in SVG).
+  raw = raw.replace(/<foreignObject\b[^>]*>[\s\S]*?<\/foreignObject\s*>/gi, "");
+
+  // Remove inline event handler attributes: onload=..., onclick=..., etc.
+  // - quoted values
+  raw = raw.replace(/\son[a-zA-Z]+\s*=\s*(['"])([\s\S]*?)\1/gi, "");
+  // - unquoted values
+  raw = raw.replace(/\son[a-zA-Z]+\s*=\s*[^\s>]+/gi, "");
+
+  // Remove href/xlink:href attributes whose values don't start with '#'.
+  raw = raw.replace(/(?:href|xlink:href)\s*=\s*(['"])(?!#)([\s\S]*?)\1/gi, "");
+
+  if (!/^<svg[\s>]/i.test(raw)) return null;
+  return raw;
+}
+
+async function sanitizeSvgBuffer(input: Buffer): Promise<Buffer | null> {
+  const raw = input.toString("utf8").trim();
+  if (!raw) return null;
+
+  // Prefer the DOMPurify + JSDOM sanitizer when available. In some environments
+  // the transitive jsdom dependency tree can crash due to ESM/CJS mismatches;
+  // in that case we fall back to a minimal regex-based sanitizer.
+  try {
+    const [{ default: createDOMPurify }, { JSDOM }] = await Promise.all([import("dompurify"), import("jsdom")]);
+    const baseDom = new JSDOM("");
+    const domPurify = createDOMPurify(baseDom.window);
+
+    domPurify.addHook("uponSanitizeAttribute", (_node: unknown, data: any) => {
+      const attrName = String(data.attrName ?? "").toLowerCase();
+      const attrValue = String(data.attrValue ?? "").trim();
+
+      if (attrName.startsWith("on")) {
+        data.keepAttr = false;
+        return;
+      }
+
+      if (
+        (attrName === "href" || attrName === "xlink:href") &&
+        attrValue &&
+        !attrValue.startsWith("#")
+      ) {
+        data.keepAttr = false;
+      }
+    });
+
+    const sanitized = domPurify.sanitize(raw, {
+      USE_PROFILES: { svg: true, svgFilters: true, html: false },
+      FORBID_TAGS: ["script", "foreignObject"],
+      FORBID_CONTENTS: ["script", "foreignObject"],
+      RETURN_TRUSTED_TYPE: false,
+    });
+
+    const parsedDom = new JSDOM(sanitized, { contentType: SVG_CONTENT_TYPE });
+    const document = parsedDom.window.document;
+    const root = document.documentElement;
+    if (!root || root.tagName.toLowerCase() !== "svg") return null;
+
+    for (const el of Array.from(root.querySelectorAll("script, foreignObject"))) el.remove();
+    for (const el of Array.from(root.querySelectorAll("*"))) {
+      for (const attr of Array.from(el.attributes)) {
+        const attrName = attr.name.toLowerCase();
+        const attrValue = attr.value.trim();
+        if (attrName.startsWith("on")) {
+          el.removeAttribute(attr.name);
+          continue;
+        }
+        if ((attrName === "href" || attrName === "xlink:href") && attrValue && !attrValue.startsWith("#")) {
+          el.removeAttribute(attr.name);
+        }
+      }
+    }
+
+    const output = root.outerHTML.trim();
+    if (!output || !/^<svg[\s>]/i.test(output)) return null;
+    return Buffer.from(output, "utf8");
+  } catch {
+    const sanitized = sanitizeSvgBufferFallback(raw);
+    return sanitized ? Buffer.from(sanitized, "utf8") : null;
+  }
+}
 
 export function assetRoutes(db: Db, storage: StorageService) {
   const router = Router();
   const svc = assetService(db);
-  const upload = multer({
+  const assetUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_ASSET_IMAGE_BYTES, files: 1 },
+    limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
+  });
+  const companyLogoUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
   });
 
-  async function runSingleFileUpload(req: Request, res: Response) {
+  async function runSingleFileUpload(
+    upload: ReturnType<typeof multer>,
+    req: Request,
+    res: Response,
+  ) {
     await new Promise<void>((resolve, reject) => {
       upload.single("file")(req, res, (err: unknown) => {
         if (err) reject(err);
@@ -37,11 +137,11 @@ export function assetRoutes(db: Db, storage: StorageService) {
     assertCompanyAccess(req, companyId);
 
     try {
-      await runSingleFileUpload(req, res);
+      await runSingleFileUpload(assetUpload, req, res);
     } catch (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
-          res.status(422).json({ error: `Image exceeds ${MAX_ASSET_IMAGE_BYTES} bytes` });
+          res.status(422).json({ error: `File exceeds ${MAX_ATTACHMENT_BYTES} bytes` });
           return;
         }
         res.status(400).json({ error: err.message });
@@ -56,16 +156,6 @@ export function assetRoutes(db: Db, storage: StorageService) {
       return;
     }
 
-    const contentType = (file.mimetype || "").toLowerCase();
-    if (!ALLOWED_IMAGE_CONTENT_TYPES.has(contentType)) {
-      res.status(422).json({ error: `Unsupported image type: ${contentType || "unknown"}` });
-      return;
-    }
-    if (file.buffer.length <= 0) {
-      res.status(422).json({ error: "Image is empty" });
-      return;
-    }
-
     const parsedMeta = createAssetImageMetadataSchema.safeParse(req.body ?? {});
     if (!parsedMeta.success) {
       res.status(400).json({ error: "Invalid image metadata", details: parsedMeta.error.issues });
@@ -73,13 +163,32 @@ export function assetRoutes(db: Db, storage: StorageService) {
     }
 
     const namespaceSuffix = parsedMeta.data.namespace ?? "general";
+    const contentType = (file.mimetype || "").toLowerCase();
+    if (contentType !== SVG_CONTENT_TYPE && !isAllowedContentType(contentType)) {
+      res.status(422).json({ error: `Unsupported file type: ${contentType || "unknown"}` });
+      return;
+    }
+    let fileBody = file.buffer;
+    if (contentType === SVG_CONTENT_TYPE) {
+      const sanitized = await sanitizeSvgBuffer(file.buffer);
+      if (!sanitized || sanitized.length <= 0) {
+        res.status(422).json({ error: "SVG could not be sanitized" });
+        return;
+      }
+      fileBody = sanitized;
+    }
+    if (fileBody.length <= 0) {
+      res.status(422).json({ error: "Image is empty" });
+      return;
+    }
+
     const actor = getActorInfo(req);
     const stored = await storage.putFile({
       companyId,
       namespace: `assets/${namespaceSuffix}`,
       originalFilename: file.originalname || null,
       contentType,
-      body: file.buffer,
+      body: fileBody,
     });
 
     const asset = await svc.create(companyId, {
@@ -126,6 +235,105 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
   });
 
+  router.post("/companies/:companyId/logo", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    try {
+      await runSingleFileUpload(companyLogoUpload, req, res);
+    } catch (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          res.status(422).json({ error: `Image exceeds ${MAX_ATTACHMENT_BYTES} bytes` });
+          return;
+        }
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+
+    const file = (req as Request & { file?: { mimetype: string; buffer: Buffer; originalname: string } }).file;
+    if (!file) {
+      res.status(400).json({ error: "Missing file field 'file'" });
+      return;
+    }
+
+    const contentType = (file.mimetype || "").toLowerCase();
+    if (!ALLOWED_COMPANY_LOGO_CONTENT_TYPES.has(contentType)) {
+      res.status(422).json({ error: `Unsupported image type: ${contentType || "unknown"}` });
+      return;
+    }
+
+    let fileBody = file.buffer;
+    if (contentType === SVG_CONTENT_TYPE) {
+      const sanitized = await sanitizeSvgBuffer(file.buffer);
+      if (!sanitized || sanitized.length <= 0) {
+        res.status(422).json({ error: "SVG could not be sanitized" });
+        return;
+      }
+      fileBody = sanitized;
+    }
+
+    if (fileBody.length <= 0) {
+      res.status(422).json({ error: "Image is empty" });
+      return;
+    }
+
+    const actor = getActorInfo(req);
+    const stored = await storage.putFile({
+      companyId,
+      namespace: "assets/companies",
+      originalFilename: file.originalname || null,
+      contentType,
+      body: fileBody,
+    });
+
+    const asset = await svc.create(companyId, {
+      provider: stored.provider,
+      objectKey: stored.objectKey,
+      contentType: stored.contentType,
+      byteSize: stored.byteSize,
+      sha256: stored.sha256,
+      originalFilename: stored.originalFilename,
+      createdByAgentId: actor.agentId,
+      createdByUserId: actor.actorType === "user" ? actor.actorId : null,
+    });
+
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "asset.created",
+      entityType: "asset",
+      entityId: asset.id,
+      details: {
+        originalFilename: asset.originalFilename,
+        contentType: asset.contentType,
+        byteSize: asset.byteSize,
+        namespace: "assets/companies",
+      },
+    });
+
+    res.status(201).json({
+      assetId: asset.id,
+      companyId: asset.companyId,
+      provider: asset.provider,
+      objectKey: asset.objectKey,
+      contentType: asset.contentType,
+      byteSize: asset.byteSize,
+      sha256: asset.sha256,
+      originalFilename: asset.originalFilename,
+      createdByAgentId: asset.createdByAgentId,
+      createdByUserId: asset.createdByUserId,
+      createdAt: asset.createdAt,
+      updatedAt: asset.updatedAt,
+      contentPath: `/api/assets/${asset.id}/content`,
+    });
+  });
+
   router.get("/assets/:assetId/content", async (req, res, next) => {
     const assetId = req.params.assetId as string;
     const asset = await svc.getById(assetId);
@@ -136,9 +344,14 @@ export function assetRoutes(db: Db, storage: StorageService) {
     assertCompanyAccess(req, asset.companyId);
 
     const object = await storage.getObject(asset.companyId, asset.objectKey);
-    res.setHeader("Content-Type", asset.contentType || object.contentType || "application/octet-stream");
+    const responseContentType = asset.contentType || object.contentType || "application/octet-stream";
+    res.setHeader("Content-Type", responseContentType);
     res.setHeader("Content-Length", String(asset.byteSize || object.contentLength || 0));
     res.setHeader("Cache-Control", "private, max-age=60");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (responseContentType === SVG_CONTENT_TYPE) {
+      res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
+    }
     const filename = asset.originalFilename ?? "asset";
     res.setHeader("Content-Disposition", `inline; filename=\"${filename.replaceAll("\"", "")}\"`);
 
@@ -150,4 +363,3 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
   return router;
 }
-
