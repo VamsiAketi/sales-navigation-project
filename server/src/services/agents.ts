@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
@@ -86,7 +88,7 @@ async function loadEngineerStandardInstructions(): Promise<string | null> {
   } catch {
     cachedEngineerInstructions = null;
   }
-  return cachedEngineerInstructions;
+  return cachedEngineerInstructions ?? null;
 }
 
 function jsonEqual(left: unknown, right: unknown): boolean {
