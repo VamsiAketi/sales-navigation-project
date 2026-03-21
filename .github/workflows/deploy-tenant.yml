@@ -155,6 +155,7 @@ jobs:
             --set ingress.tls[0].secretName="app-ai-harness-tls" \
             --set-string server.database.externalUrl="${DATABASE_URL}" \
             --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
+            --set-string server.secrets.paperclipSecretsMasterKey="${{ secrets.PAPERCLIP_SECRETS_MASTER_KEY }}" \
             --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}" \
             ${HELM_EXTRA_ARGS}
 

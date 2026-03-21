@@ -94,6 +94,8 @@ const CODE_BLOCK_LANGUAGES: Record<string, string> = {
   css: "CSS",
   yaml: "YAML",
   yml: "YAML",
+  // Used by onboarding to append agent-only bootstrap text; hidden in UI via CSS unless editing.
+  "paperclip-agent-only": "Paperclip (agent only)",
 };
 
 const FALLBACK_CODE_BLOCK_DESCRIPTOR: CodeBlockEditorDescriptor = {

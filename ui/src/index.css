@@ -425,6 +425,17 @@
   overflow-x: auto;
 }
 
+/* Agent-only bootstrap block: MDXEditor preserves fenced code; HTML comments do not round-trip.
+   Hide while skimming the issue; show when the description editor is focused so it can be edited. */
+.paperclip-mdxeditor-content.paperclip-edit-in-place-content:not(:focus-within)
+  pre:has(> code.language-paperclip-agent-only) {
+  display: none !important;
+}
+
+.paperclip-markdown pre:has(> code.language-paperclip-agent-only) {
+  display: none !important;
+}
+
 /* Dark theme for CodeMirror code blocks inside the MDXEditor.
    Overrides the default cm6-theme-basic-light that MDXEditor bundles. */
 .paperclip-mdxeditor .cm-editor {

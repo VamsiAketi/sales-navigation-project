@@ -50,6 +50,11 @@ server:
     # Required for authenticated mode. Generate with: openssl rand -base64 32
     # In CI/CD this is injected via --set-string server.secrets.betterAuthSecret from BETTER_AUTH_SECRET GitHub secret.
     betterAuthSecret: "CHANGE_ME_use_openssl_rand_base64_32"
+    # Optional but strongly recommended on Kubernetes: master key for local_encrypted company secrets
+    # (see docs/deploy/secrets.md). Without this, the server defaults to data/secrets/master.key under
+    # the container WORKDIR (/app), which is NOT on the /paperclip PVC — restarts/reschedules can break decryption.
+    # Generate once per tenant and store in GitHub/Azure Key Vault: openssl rand -base64 32
+    paperclipSecretsMasterKey: ""
   # -- External database URL (used when postgres.enabled: false)
   # For Azure deployments this is set per-tenant by the pipeline, e.g.:
   #   postgresql://postgres:<password>@ai-harness-pg-db.postgres.database.azure.com:5432/ai-harness-<tenant>?sslmode=require

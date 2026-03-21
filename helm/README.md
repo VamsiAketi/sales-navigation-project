@@ -42,6 +42,7 @@ helm install paperclip ./helm -n paperclip -f helm/values.yaml \
 | `server.image.tag` | Server image tag | `latest` |
 | `server.paperclip.publicUrl` | Public URL for auth/callbacks | `https://dev.ai-harness.com` |
 | `server.secrets.betterAuthSecret` | **Required** Better Auth secret | `CHANGE_ME` |
+| `server.secrets.paperclipSecretsMasterKey` | Optional `PAPERCLIP_SECRETS_MASTER_KEY` for encrypted company secrets (recommended on K8s) | `""` |
 | `server.paperclip.openaiApiKey` | OpenAI API key (optional) | `""` |
 | `server.paperclip.anthropicApiKey` | Anthropic API key (optional) | `""` |
 | `ingress.enabled` | Enable ingress | `true` |

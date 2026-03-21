@@ -45,6 +45,14 @@ pnpm paperclipai doctor
 | `PAPERCLIP_SECRETS_MASTER_KEY_FILE` | Custom key file path |
 | `PAPERCLIP_SECRETS_STRICT_MODE` | Set to `true` to enforce secret refs |
 
+### Kubernetes / multi-node
+
+On Kubernetes, **do not rely on the default key file** unless you mount persistent storage at that path: the server resolves the default file relative to `process.cwd()` (often `/app` in the container image), which is **not** the same as the `/paperclip` PVC used for instance data.
+
+**Recommended:** set `PAPERCLIP_SECRETS_MASTER_KEY` from a Kubernetes `Secret` so every pod (any node) uses the same key across restarts. The Helm chart supports `server.secrets.paperclipSecretsMasterKey`; tenant deploy workflows can inject it from a GitHub Actions secret `PAPERCLIP_SECRETS_MASTER_KEY` (generate once per environment or tenant with `openssl rand -base64 32` and store it safely).
+
+**Alternative:** set `PAPERCLIP_SECRETS_MASTER_KEY_FILE` to a path **on your RWX volume** (e.g. under `/paperclip/...`) and ensure that file exists and is backed up with your volume snapshots.
+
 ## Strict Mode
 
 When strict mode is enabled, sensitive env keys (matching `*_API_KEY`, `*_TOKEN`, `*_SECRET`) must use secret references instead of inline plain values.

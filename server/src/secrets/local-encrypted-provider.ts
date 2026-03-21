@@ -38,7 +38,7 @@ function decodeMasterKey(raw: string): Buffer | null {
   return null;
 }
 
-function loadOrCreateMasterKey(): Buffer {
+function resolveMasterKey(input: { createIfMissing: boolean }): { masterKey: Buffer; keySource: string } {
   const envKeyRaw = process.env.PAPERCLIP_SECRETS_MASTER_KEY;
   if (envKeyRaw && envKeyRaw.trim().length > 0) {
     const fromEnv = decodeMasterKey(envKeyRaw);
@@ -47,7 +47,7 @@ function loadOrCreateMasterKey(): Buffer {
         "Invalid PAPERCLIP_SECRETS_MASTER_KEY (expected 32-byte base64, 64-char hex, or raw 32-char string)",
       );
     }
-    return fromEnv;
+    return { masterKey: fromEnv, keySource: "PAPERCLIP_SECRETS_MASTER_KEY" };
   }
 
   const keyPath = resolveMasterKeyFilePath();
@@ -57,7 +57,15 @@ function loadOrCreateMasterKey(): Buffer {
     if (!decoded) {
       throw badRequest(`Invalid secrets master key at ${keyPath}`);
     }
-    return decoded;
+    return { masterKey: decoded, keySource: keyPath };
+  }
+
+  if (!input.createIfMissing) {
+    throw badRequest(
+      `Local encrypted secrets master key is missing.\n` +
+        `Expected PAPERCLIP_SECRETS_MASTER_KEY (env) or PAPERCLIP_SECRETS_MASTER_KEY_FILE (file), ` +
+        `or an existing key file at: ${keyPath}`,
+    );
   }
 
   const dir = path.dirname(keyPath);
@@ -69,7 +77,7 @@ function loadOrCreateMasterKey(): Buffer {
   } catch {
     // best effort
   }
-  return generated;
+  return { masterKey: generated, keySource: keyPath };
 }
 
 function sha256Hex(value: string): string {
@@ -93,10 +101,20 @@ function decryptValue(masterKey: Buffer, material: LocalEncryptedMaterial): stri
   const iv = Buffer.from(material.iv, "base64");
   const tag = Buffer.from(material.tag, "base64");
   const ciphertext = Buffer.from(material.ciphertext, "base64");
-  const decipher = createDecipheriv("aes-256-gcm", masterKey, iv);
-  decipher.setAuthTag(tag);
-  const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  return plain.toString("utf8");
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", masterKey, iv);
+    decipher.setAuthTag(tag);
+    const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    return plain.toString("utf8");
+  } catch (err) {
+    // AEAD decryption failure happens when the master key doesn't match (or ciphertext is corrupted).
+    throw badRequest(
+      `Unable to decrypt local_encrypted secret (authentication failed).\n` +
+        `This usually means the secrets master key changed or the data was corrupted. ` +
+        `Ensure PAPERCLIP_SECRETS_MASTER_KEY / PAPERCLIP_SECRETS_MASTER_KEY_FILE are consistent across runs.`,
+      { cause: err instanceof Error ? err.message : String(err) },
+    );
+  }
 }
 
 function asLocalEncryptedMaterial(value: StoredSecretVersionMaterial): LocalEncryptedMaterial {
@@ -121,7 +139,7 @@ export const localEncryptedProvider: SecretProviderModule = {
     requiresExternalRef: false,
   },
   async createVersion(input) {
-    const masterKey = loadOrCreateMasterKey();
+    const { masterKey } = resolveMasterKey({ createIfMissing: true });
     return {
       material: encryptValue(masterKey, input.value),
       valueSha256: sha256Hex(input.value),
@@ -129,7 +147,7 @@ export const localEncryptedProvider: SecretProviderModule = {
     };
   },
   async resolveVersion(input) {
-    const masterKey = loadOrCreateMasterKey();
+    const { masterKey } = resolveMasterKey({ createIfMissing: false });
     return decryptValue(masterKey, asLocalEncryptedMaterial(input.material));
   },
 };

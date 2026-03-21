@@ -130,6 +130,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "paperclip.fullname" . }}-server
                   key: better-auth-secret
+            {{- if and .Values.server.secrets.paperclipSecretsMasterKey (ne .Values.server.secrets.paperclipSecretsMasterKey "") }}
+            - name: PAPERCLIP_SECRETS_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paperclip.fullname" . }}-server
+                  key: paperclip-secrets-master-key
+            {{- end }}
             {{- if .Values.server.paperclip.openaiApiKey }}
             - name: OPENAI_API_KEY
               valueFrom:
