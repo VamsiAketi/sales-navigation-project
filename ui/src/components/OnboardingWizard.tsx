@@ -9,7 +9,6 @@ import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
 import { queryKeys } from "../lib/queryKeys";
-import { authApi } from "../api/auth";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import {
   Popover,
@@ -33,8 +32,6 @@ import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
-import { ChoosePathButton } from "./PathInstructionsModal";
-import { HintIcon } from "./agent-config-primitives";
 import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
 import {
   Building2,
@@ -50,7 +47,6 @@ import {
   MousePointer2,
   Check,
   Loader2,
-  FolderOpen,
   ChevronDown,
   X
 } from "lucide-react";
@@ -63,23 +59,14 @@ type AdapterType =
   | "opencode_local"
   | "pi_local"
   | "cursor"
-  | "process"
   | "http"
   | "openclaw_gateway";
 
-const DEFAULT_TASK_DESCRIPTION = ` Hire yourself a Founding Engineer agent.`;
-const DEFAULT_TASK_TITLE = "Set up the CEO and plan the roadmap";
-// Use a fenced code block (not HTML comments). MDXEditor round-trips markdown and drops `<!-- ... -->`,
-// which made the hidden block disappear after the issue page loaded / autosaved.
-const HIDDEN_SETUP_INSTRUCTIONS = [
-  "```paperclip-agent-only",
-  "Setup yourself as the CEO. Use the ceo persona found here: https://github.com/ai-harness/default-ceo-instructions/blob/main/default/ceo/AGENTS.md",
-  "",
-  "Ensure you have a folder agents/ceo and then download this AGENTS.md as well as the sibling HEARTBEAT.md, SOUL.md, and TOOLS.md. Set that AGENTS.md as the path to your agent's instruction file.",
-  "",
-  "After you've finished that,",
-  "```",
-].join("\n");
+const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
+
+- hire a founding engineer
+- write a hiring plan
+- break the roadmap into concrete tasks and start delegating work`;
 
 export function OnboardingWizard() {
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
@@ -118,16 +105,8 @@ export function OnboardingWizard() {
   const [companyGoal, setCompanyGoal] = useState("");
 
   // Step 2
-  const { data: session } = useQuery({
-    queryKey: queryKeys.auth.session,
-    queryFn: () => authApi.getSession(),
-    retry: false,
-  });
-  const defaultAgentName = "CEO";
-
-  const [agentName, setAgentName] = useState(defaultAgentName);
-  const [adapterType, setAdapterType] = useState<AdapterType>("codex_local");
-  const [cwd, setCwd] = useState("");
+  const [agentName, setAgentName] = useState("CEO");
+  const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
@@ -142,9 +121,12 @@ export function OnboardingWizard() {
   const [showMoreAdapters, setShowMoreAdapters] = useState(false);
 
   // Step 3
-  const [taskTitle, setTaskTitle] = useState(DEFAULT_TASK_TITLE);
-  const [taskDescription, setTaskDescription] =
-    useState(DEFAULT_TASK_DESCRIPTION);
+  const [taskTitle, setTaskTitle] = useState(
+    "Hire your first engineer and create a hiring plan"
+  );
+  const [taskDescription, setTaskDescription] = useState(
+    DEFAULT_TASK_DESCRIPTION
+  );
 
   // Auto-grow textarea for task description
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -213,6 +195,7 @@ export function OnboardingWizard() {
     adapterType === "codex_local" ||
     adapterType === "gemini_local" ||
     adapterType === "opencode_local" ||
+    adapterType === "pi_local" ||
     adapterType === "cursor";
   const effectiveAdapterCommand =
     command.trim() ||
@@ -220,6 +203,8 @@ export function OnboardingWizard() {
       ? "codex"
       : adapterType === "gemini_local"
         ? "gemini"
+      : adapterType === "pi_local"
+      ? "pi"
       : adapterType === "cursor"
       ? "agent"
       : adapterType === "opencode_local"
@@ -230,7 +215,7 @@ export function OnboardingWizard() {
     if (step !== 2) return;
     setAdapterEnvResult(null);
     setAdapterEnvError(null);
-  }, [step, adapterType, cwd, model, command, args, url]);
+  }, [step, adapterType, model, command, args, url]);
 
   const selectedModel = (adapterModels ?? []).find((m) => m.id === model);
   const hasAnthropicApiKeyOverrideCheck =
@@ -284,9 +269,8 @@ export function OnboardingWizard() {
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
-    setAgentName(defaultAgentName);
-    setAdapterType("codex_local");
-    setCwd("");
+    setAgentName("CEO");
+    setAdapterType("claude_local");
     setModel("");
     setCommand("");
     setArgs("");
@@ -296,7 +280,7 @@ export function OnboardingWizard() {
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
     setUnsetAnthropicLoading(false);
-    setTaskTitle(DEFAULT_TASK_TITLE);
+    setTaskTitle("Hire your first engineer and create a hiring plan");
     setTaskDescription(DEFAULT_TASK_DESCRIPTION);
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
@@ -314,7 +298,6 @@ export function OnboardingWizard() {
     const config = adapter.buildAdapterConfig({
       ...defaultCreateValues,
       adapterType,
-      cwd,
       model:
         adapterType === "codex_local"
           ? model || DEFAULT_CODEX_LOCAL_MODEL
@@ -541,17 +524,10 @@ export function OnboardingWizard() {
     try {
       let issueRef = createdIssueRef;
       if (!issueRef) {
-        const visibleDescription = taskDescription.trim();
-        const hiddenInstructions = HIDDEN_SETUP_INSTRUCTIONS.trim();
-        const combinedDescription =
-          visibleDescription && hiddenInstructions
-            ? `${hiddenInstructions}\n\n${visibleDescription}`
-            : visibleDescription || hiddenInstructions || "";
-
         const issue = await issuesApi.create(createdCompanyId, {
           title: taskTitle.trim(),
-          ...(combinedDescription
-            ? { description: combinedDescription }
+          ...(taskDescription.trim()
+            ? { description: taskDescription.trim() }
             : {}),
           assigneeAgentId: createdAgentId,
           status: "todo"
@@ -581,8 +557,7 @@ export function OnboardingWizard() {
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (step === 1 && companyName.trim() && companyGoal.trim())
-        handleStep1Next();
+      if (step === 1 && companyName.trim()) handleStep1Next();
       else if (step === 2 && agentName.trim()) handleStep2Next();
       else if (step === 3 && taskTitle.trim()) handleStep3Next();
       else if (step === 4) handleLaunch();
@@ -714,7 +689,7 @@ export function OnboardingWizard() {
                     <div>
                       <h3 className="font-medium">Create your first agent</h3>
                       <p className="text-xs text-muted-foreground">
-                        You are creating the Virtual Agent of your company. This is the highest-level persona in your org; every future agent will report directly or indirectly to this agent.
+                        Choose how this agent will run tasks.
                       </p>
                     </div>
                   </div>
@@ -724,7 +699,7 @@ export function OnboardingWizard() {
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="Virtual Agent"
+                      placeholder="CEO"
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       autoFocus
@@ -732,7 +707,7 @@ export function OnboardingWizard() {
                   </div>
 
                   {/* Adapter type radio cards */}
-                  <div className="hidden">
+                  <div>
                     <label className="text-xs text-muted-foreground mb-2 block">
                       Adapter type
                     </label>
@@ -807,12 +782,6 @@ export function OnboardingWizard() {
                             label: "Gemini CLI",
                             icon: Gem,
                             desc: "Local Gemini agent"
-                          },
-                          {
-                            value: "process" as const,
-                            label: "Process",
-                            icon: Terminal,
-                            desc: "Run a local command"
                           },
                           {
                             value: "opencode_local" as const,
@@ -894,25 +863,7 @@ export function OnboardingWizard() {
                     adapterType === "opencode_local" ||
                     adapterType === "pi_local" ||
                     adapterType === "cursor") && (
-                    <div className="hidden space-y-3">
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-muted-foreground">
-                            Working directory
-                          </label>
-                          <HintIcon text="Paperclip works best if you create a new folder for your agents to keep their memories and stay organized. Create a new folder and put the path here." />
-                        </div>
-                        <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                          <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <input
-                            className="w-full bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/50"
-                            placeholder="/path/to/project"
-                            value={cwd}
-                            onChange={(e) => setCwd(e.target.value)}
-                          />
-                          <ChoosePathButton />
-                        </div>
-                      </div>
+                    <div className="space-y-3">
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
                           Model
@@ -942,7 +893,7 @@ export function OnboardingWizard() {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent
-                            className="w-(--radix-popover-trigger-width) p-1"
+                            className="w-[var(--radix-popover-trigger-width)] p-1"
                             align="start"
                           >
                             <input
@@ -1014,7 +965,7 @@ export function OnboardingWizard() {
                   )}
 
                   {isLocalAdapter && (
-                    <div className="hidden space-y-2 rounded-md border border-border p-3">
+                    <div className="space-y-2 rounded-md border border-border p-3">
                       <div className="flex items-center justify-between gap-2">
                         <div>
                           <p className="text-xs font-medium">
@@ -1131,33 +1082,6 @@ export function OnboardingWizard() {
                     </div>
                   )}
 
-                  {adapterType === "process" && (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
-                          Command
-                        </label>
-                        <input
-                          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                          placeholder="e.g. node, python"
-                          value={command}
-                          onChange={(e) => setCommand(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
-                          Args (comma-separated)
-                        </label>
-                        <input
-                          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                          placeholder="e.g. script.js, --flag"
-                          value={args}
-                          onChange={(e) => setArgs(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   {(adapterType === "http" ||
                     adapterType === "openclaw_gateway") && (
                     <div>
@@ -1253,6 +1177,9 @@ export function OnboardingWizard() {
                         <p className="text-sm font-medium truncate">
                           {agentName}
                         </p>
+                        <p className="text-xs text-muted-foreground">
+                          {getUIAdapter(adapterType).label}
+                        </p>
                       </div>
                       <Check className="h-4 w-4 text-green-500 shrink-0" />
                     </div>
@@ -1296,9 +1223,7 @@ export function OnboardingWizard() {
                   {step === 1 && (
                     <Button
                       size="sm"
-                      disabled={
-                        !companyName.trim() || !companyGoal.trim() || loading
-                      }
+                      disabled={!companyName.trim() || loading}
                       onClick={handleStep1Next}
                     >
                       {loading ? (
@@ -1399,7 +1324,7 @@ function AdapterEnvironmentResult({
         {result.checks.map((check, idx) => (
           <div
             key={`${check.code}-${idx}`}
-            className="leading-relaxed wrap-break-word"
+            className="leading-relaxed break-words"
           >
             <span className="font-medium uppercase tracking-wide opacity-80">
               {check.level}
@@ -1412,7 +1337,7 @@ function AdapterEnvironmentResult({
               </span>
             )}
             {check.hint && (
-              <span className="block opacity-90 wrap-break-word">
+              <span className="block opacity-90 break-words">
                 Hint: {check.hint}
               </span>
             )}

@@ -1,15 +1,14 @@
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChangeEvent, useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useToast } from "../context/ToastContext";
 import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
-import { secretsApi } from "../api/secrets";
-import { agentsApi } from "../api/agents";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, EyeOff, Trash2, Pause, Play } from "lucide-react";
+import { Settings, Check, Download, Upload } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -31,9 +30,8 @@ export function CompanySettings() {
     setSelectedCompanyId
   } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { pushToast } = useToast();
   const queryClient = useQueryClient();
-  const logoFileInputRef = useRef<HTMLInputElement | null>(null);
-
   // General settings local state
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
@@ -54,10 +52,6 @@ export function CompanySettings() {
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
-  const [newSecretName, setNewSecretName] = useState("");
-  const [newSecretValue, setNewSecretValue] = useState("");
-  const [newSecretDescription, setNewSecretDescription] = useState("");
-  // Org directory editing moved to /company/people (People screen).
 
   const generalDirty =
     !!selectedCompany &&
@@ -84,16 +78,6 @@ export function CompanySettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     }
-  });
-
-  const logoMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const uploaded = await assetsApi.uploadImage(selectedCompanyId!, file, "company_logo");
-      return companiesApi.update(selectedCompanyId!, { logoAssetId: uploaded.assetId });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-    },
   });
 
   const inviteMutation = useMutation({
@@ -190,8 +174,8 @@ export function CompanySettings() {
     setInviteSnippet(null);
     setSnippetCopied(false);
     setSnippetCopyDelightId(0);
-    setAgentBulkError(null);
   }, [selectedCompanyId]);
+
   const archiveMutation = useMutation({
     mutationFn: ({
       companyId,
@@ -211,82 +195,6 @@ export function CompanySettings() {
         queryKey: queryKeys.companies.stats
       });
     }
-  });
-
-  const { data: companySecrets = [], isLoading: secretsLoading } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
-    queryFn: () => secretsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId
-  });
-
-  const { data: companyAgents = [], isLoading: agentsLoading } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none"],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
-  });
-
-  const { pausedCount, totalCount } = useMemo(() => {
-    const total = companyAgents.length;
-    const paused = companyAgents.reduce((acc, a) => (a.status === "paused" ? acc + 1 : acc), 0);
-    return { pausedCount: paused, totalCount: total };
-  }, [companyAgents]);
-
-  // Org member queries/mutations removed from settings page.
-
-  const createSecretMutation = useMutation({
-    mutationFn: () =>
-      secretsApi.create(selectedCompanyId!, {
-        name: newSecretName.trim(),
-        value: newSecretValue,
-        description: newSecretDescription.trim() || null
-      }),
-    onSuccess: async () => {
-      setNewSecretName("");
-      setNewSecretValue("");
-      setNewSecretDescription("");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.secrets.list(selectedCompanyId!)
-      });
-    }
-  });
-
-  const deleteSecretMutation = useMutation({
-    mutationFn: (secretId: string) => secretsApi.remove(secretId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.secrets.list(selectedCompanyId!)
-      });
-    }
-  });
-
-  const [agentBulkError, setAgentBulkError] = useState<string | null>(null);
-
-  const pauseAllAgentsMutation = useMutation({
-    mutationFn: () => agentsApi.pauseAll(selectedCompanyId!),
-    onMutate: () => setAgentBulkError(null),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(selectedCompanyId!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) });
-    },
-    onError: (err) => {
-      setAgentBulkError(err instanceof Error ? err.message : "Failed to pause agents");
-    },
-  });
-
-  const resumeAllAgentsMutation = useMutation({
-    mutationFn: () => agentsApi.resumeAll(selectedCompanyId!),
-    onMutate: () => setAgentBulkError(null),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(selectedCompanyId!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(selectedCompanyId!) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) });
-    },
-    onError: (err) => {
-      setAgentBulkError(err instanceof Error ? err.message : "Failed to resume agents");
-    },
   });
 
   useEffect(() => {
@@ -348,137 +256,6 @@ export function CompanySettings() {
         </div>
       </div>
 
-      {/* Secrets */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Secrets
-        </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
-          <p className="text-xs text-muted-foreground">
-            Company secrets are encrypted values (API keys, tokens, credentials) that can be
-            referenced from agents and projects. Values are write-only and never shown after
-            creation.
-          </p>
-
-          {/* New secret form */}
-          <div className="space-y-2 rounded-md border border-border/60 bg-muted/10 px-3 py-3">
-            <div className="flex flex-col gap-2 md:flex-row">
-              <div className="flex-1 space-y-1.5">
-                <label className="text-[11px] font-medium text-muted-foreground">
-                  Name
-                </label>
-                <input
-                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
-                  placeholder="github_repo_pat"
-                  value={newSecretName}
-                  onChange={(e) => setNewSecretName(e.target.value)}
-                />
-              </div>
-              <div className="flex-2 space-y-1.5">
-                <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
-                  Value
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                    <EyeOff className="h-3 w-3" />
-                    Hidden after save
-                  </span>
-                </label>
-                <input
-                  className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none font-mono"
-                  type="password"
-                  placeholder="Paste token or secret value"
-                  value={newSecretValue}
-                  onChange={(e) => setNewSecretValue(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground">
-                Description (optional)
-              </label>
-              <input
-                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none"
-                placeholder="What is this secret used for?"
-                value={newSecretDescription}
-                onChange={(e) => setNewSecretDescription(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-2 pt-1">
-              <Button
-                size="sm"
-                onClick={() => createSecretMutation.mutate()}
-                disabled={
-                  !newSecretName.trim() ||
-                  !newSecretValue ||
-                  createSecretMutation.isPending ||
-                  !selectedCompanyId
-                }
-              >
-                {createSecretMutation.isPending ? "Creating..." : "Create secret"}
-              </Button>
-              {createSecretMutation.isError && (
-                <span className="text-xs text-destructive">
-                  {createSecretMutation.error instanceof Error
-                    ? createSecretMutation.error.message
-                    : "Failed to create secret"}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Existing secrets list */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">
-                Existing secrets
-              </span>
-              {secretsLoading && (
-                <span className="text-[11px] text-muted-foreground">Loading…</span>
-              )}
-            </div>
-            {companySecrets.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No secrets created yet. Use the form above to add one.
-              </p>
-            ) : (
-              <div className="max-h-60 space-y-1 overflow-y-auto rounded-md border border-border/60 bg-muted/5 p-1">
-                {companySecrets.map((secret) => (
-                  <div
-                    key={secret.id}
-                    className="flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/40"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono truncate">{secret.name}</span>
-                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          {secret.provider}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground/80">
-                        {secret.description || "No description"}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => {
-                        const confirmed = window.confirm(
-                          `Delete secret "${secret.name}"? This cannot be undone and may break adapters or projects that reference it.`,
-                        );
-                        if (!confirmed) return;
-                        deleteSecretMutation.mutate(secret.id);
-                      }}
-                      aria-label={`Delete secret ${secret.name}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Appearance */}
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -491,7 +268,6 @@ export function CompanySettings() {
                 companyName={companyName || selectedCompany.name}
                 logoUrl={logoUrl || null}
                 brandColor={brandColor || null}
-                logoAssetId={selectedCompany.logoAssetId}
                 className="rounded-[14px]"
               />
             </div>
@@ -537,80 +313,6 @@ export function CompanySettings() {
                   )}
                 </div>
               </Field>
-              <Field
-                label="Company logo"
-                hint="Upload a small square image (PNG/JPG/WebP/GIF). Displayed in the right-hand panel."
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 overflow-hidden rounded-md border border-border bg-background">
-                    {selectedCompany.logoAssetId ? (
-                      <img
-                        src={`/api/assets/${selectedCompany.logoAssetId}/content`}
-                        alt={`${selectedCompany.name} logo`}
-                        className="h-full w-full object-contain"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <div className="h-full w-full bg-muted/20" />
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      ref={logoFileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        e.currentTarget.value = "";
-                        if (!file || !selectedCompanyId) return;
-                        logoMutation.mutate(file);
-                      }}
-                      disabled={logoMutation.isPending || !selectedCompanyId}
-                    />
-                    <Button
-                      size="sm"
-                      type="button"
-                      disabled={logoMutation.isPending || !selectedCompanyId}
-                      onClick={() => logoFileInputRef.current?.click()}
-                    >
-                      {logoMutation.isPending
-                        ? "Uploading..."
-                        : selectedCompany.logoAssetId
-                          ? "Replace logo"
-                          : "Upload logo"}
-                    </Button>
-
-                    {selectedCompany.logoAssetId && (
-                      <Button
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                        onClick={() => clearLogoMutation.mutate()}
-                        disabled={clearLogoMutation.isPending}
-                        className="text-xs text-muted-foreground"
-                      >
-                        {clearLogoMutation.isPending ? "Clearing..." : "Remove"}
-                      </Button>
-                    )}
-
-                    {logoMutation.isError && (
-                      <span className="text-xs text-destructive">
-                        {logoMutation.error instanceof Error ? logoMutation.error.message : "Failed to upload logo"}
-                      </span>
-                    )}
-                    {clearLogoMutation.isError && (
-                      <span className="text-xs text-destructive">
-                        {clearLogoMutation.error instanceof Error ? clearLogoMutation.error.message : "Failed to clear logo"}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </Field>
-
               <Field
                 label="Brand color"
                 hint="Sets the hue for the company icon. Leave empty for auto-generated color."
@@ -733,7 +435,7 @@ export function CompanySettings() {
               </div>
               <div className="mt-1 space-y-1.5">
                 <textarea
-                  className="h-112 w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
+                  className="h-[28rem] w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
                   value={inviteSnippet}
                   readOnly
                 />
@@ -761,65 +463,30 @@ export function CompanySettings() {
         </div>
       </div>
 
-      {/* Agent Run Control */}
+      {/* Import / Export */}
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Agent Run Control
+          Company Packages
         </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">Pause / Resume all agents</div>
-              <div className="mt-1 text-sm text-muted-foreground">
-                {agentsLoading ? "Loading…" : `${pausedCount}/${totalCount} agents paused`}
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                pauseAllAgentsMutation.isPending ||
-                agentsLoading ||
-                totalCount === 0 ||
-                pausedCount === totalCount
-              }
-              onClick={() => {
-                const confirmed = window.confirm(
-                  `Pause all agents in "${selectedCompany.name}"? This stops heartbeats for all non-terminated agents and cancels active runs.`
-                );
-                if (!confirmed) return;
-                pauseAllAgentsMutation.mutate();
-              }}
-            >
-              <Pause className="h-3.5 w-3.5 mr-1.5" />
-              {pauseAllAgentsMutation.isPending ? "Pausing…" : "Pause all"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                resumeAllAgentsMutation.isPending ||
-                agentsLoading ||
-                pausedCount === 0
-              }
-              onClick={() => {
-                const confirmed = window.confirm(
-                  `Resume all paused agents in "${selectedCompany.name}"?`
-                );
-                if (!confirmed) return;
-                resumeAllAgentsMutation.mutate();
-              }}
-            >
-              <Play className="h-3.5 w-3.5 mr-1.5" />
-              {resumeAllAgentsMutation.isPending ? "Resuming…" : "Resume all"}
-            </Button>
-          </div>
-          {agentBulkError && <p className="text-sm text-destructive">{agentBulkError}</p>}
-          <p className="text-xs text-muted-foreground">
-            Pause cancels any active heartbeat runs; resume sets paused agents back to idle.
+        <div className="rounded-md border border-border px-4 py-4">
+          <p className="text-sm text-muted-foreground">
+            Import and export have moved to dedicated pages accessible from the{" "}
+            <a href="/org" className="underline hover:text-foreground">Org Chart</a> header.
           </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <a href="/company/export">
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Export
+              </a>
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <a href="/company/import">
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
+                Import
+              </a>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -889,36 +556,36 @@ function buildAgentSnippet(input: AgentSnippetInput) {
       : "- (No candidate URLs available yet.)";
 
   const connectivityBlock =
-  candidateUrls.length === 0
-    ? `No candidate URLs are available. Ask your user to configure a reachable hostname in AI-Harness, then retry.
+    candidateUrls.length === 0
+      ? `No candidate URLs are available. Ask your user to configure a reachable hostname in Paperclip, then retry.
 Suggested steps:
-- choose a hostname that resolves to the AI-Harness host from your runtime
+- choose a hostname that resolves to the Paperclip host from your runtime
 - run: pnpm paperclipai allowed-hostname <host>
-- restart AI-Harness
+- restart Paperclip
 - verify with: curl -fsS http://<host>:3100/api/health
 - regenerate this invite snippet`
-    : `If none are reachable, ask your user to add a reachable hostname in AI-Harness, restart, and retry.
+      : `If none are reachable, ask your user to add a reachable hostname in Paperclip, restart, and retry.
 Suggested command:
 - pnpm paperclipai allowed-hostname <host>
 Then verify with: curl -fsS <base-url>/api/health`;
 
   const resolutionLine = resolutionTestUrl
-    ? `\nYou MUST test AI-Harness-to-gateway reachability, call: ${resolutionTestUrl}?url=<urlencoded-gateway-url> (using the hostname that worked above). Do not assume your 172.x is necessarily reachable from AI-Harness. Test it. `
+    ? `\nYou MUST test Paperclip-to-gateway reachability, call: ${resolutionTestUrl}?url=<urlencoded-gateway-url> (using the hostname that worked above). Do not assume your 172.x is necessarily reachable from Paperclip. Test it. `
     : "";
 
-  return `You're invited to join an AI-Harness organization.
+  return `You're invited to join a Paperclip organization.
 
 The URLs you should try are:
 ${candidateList}
 
 Connectivity guidance:
-If you are running on a different machine than AI-Harness, AI-Harness must be reachable at one of the hostnames used above.
+If you are running on a different machine than Paperclip, Paperclip must be reachable at one of the hostnames used above.
 Verify the hostname works from your runtime with: GET <base-url>/api/health
 
 ${connectivityBlock}
 
 For your "agentName", just use your own agent name (OpenClaw or whatever your name is) and send it directly.
-You also need to send a gateway URL that AI-Harness can access. Check your config and include that URL.${resolutionLine}
+You also need to send a gateway URL that Paperclip can access. Check your config and include that URL.${resolutionLine}
 
 ---
 
@@ -928,14 +595,14 @@ When you submit the join request, use:
 - \`agentDefaultsPayload.url\` as your \`ws://\` or \`wss://\` gateway URL
 - \`agentDefaultsPayload.headers["x-openclaw-token"]\` with your gateway token
 - (legacy accepted) \`agentDefaultsPayload.headers["x-openclaw-auth"]\`
-- Keep device auth enabled (recommended). If \`devicePrivateKeyPem\` is omitted, AI-Harness will generate and persist one during join so pairing approvals remain stable.
+- Keep device auth enabled (recommended). If \`devicePrivateKeyPem\` is omitted, Paperclip will generate and persist one during join so pairing approvals remain stable.
 - Only use \`disableDeviceAuth=true\` for special environments where pairing cannot be completed.
 
 Do NOT use \`/v1/responses\` or \`/hooks/*\` in this join flow.
 
-Before you do anything, please respond to your user that you understand the instructions and you're going to work on them. Then do the step above in another session called "ai-harness-onboarding" and then tell your user when you're done. Update your user in intermediate steps along the way so they know what's going on.
+Before you do anything, please respond to your user that you understand the instructions and you're going to work on them. Then do the step above in another session called "paperclip-onboarding" and then tell your user when you're done. Update your user in intermediate steps along the way so they know what's going on.
 
-Then after you've connected to AI-Harness (exchanged keys etc.) you MUST review and follow the onboarding instructions in onboarding.txt they give you.
+Then after you've connected to Paperclip (exchanged keys etc.) you MUST review and follow the onboarding instructions in onboarding.txt they give you.
 
 `;
 }

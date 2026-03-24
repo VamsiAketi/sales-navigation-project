@@ -9,26 +9,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Router } from "express";
 import type { Request } from "express";
-import { and, eq, isNull, desc, inArray } from "drizzle-orm";
+import { and, eq, isNull, desc } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
-  agents as dbAgents,
   agentApiKeys,
   authUsers,
-  companyMemberships,
   invites,
   joinRequests
 } from "@paperclipai/db";
 import {
   acceptInviteSchema,
+  createCliAuthChallengeSchema,
   claimJoinRequestApiKeySchema,
   createCompanyInviteSchema,
-  createHumanInviteSchema,
   createOpenClawInvitePromptSchema,
   listJoinRequestsQuerySchema,
-  updateMemberOrgConfigSchema,
+  resolveCliAuthChallengeSchema,
   updateMemberPermissionsSchema,
-  updateMemberStatusSchema,
   updateUserCompanyAccessSchema,
   PERMISSION_KEYS
 } from "@paperclipai/shared";
@@ -45,10 +42,10 @@ import { validate } from "../middleware/validate.js";
 import {
   accessService,
   agentService,
+  boardAuthService,
   deduplicateAgentName,
   logActivity,
-  notifyHireApproved,
-  sendHumanInviteEmail
+  notifyHireApproved
 } from "../services/index.js";
 import { assertCompanyAccess } from "./authz.js";
 import {
@@ -79,17 +76,6 @@ function createClaimSecret() {
   return `pcp_claim_${randomBytes(24).toString("hex")}`;
 }
 
-function createTemporaryPassword(length = 18) {
-  const alphabet =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
-  const bytes = randomBytes(length);
-  let out = "";
-  for (let idx = 0; idx < length; idx += 1) {
-    out += alphabet[bytes[idx]! % alphabet.length];
-  }
-  return out;
-}
-
 export function companyInviteExpiresAt(nowMs: number = Date.now()) {
   return new Date(nowMs + COMPANY_INVITE_TTL_MS);
 }
@@ -112,72 +98,8 @@ function requestBaseUrl(req: Request) {
   return `${proto}://${host}`;
 }
 
-type AuthSignUpResult = {
-  userId: string;
-  userEmail: string;
-  userName: string;
-};
-
-async function createAuthUserViaSignupApi(input: {
-  req: Request;
-  email: string;
-  name: string;
-  password: string;
-}): Promise<AuthSignUpResult> {
-  const baseUrl = requestBaseUrl(input.req);
-  if (!baseUrl) {
-    throw new Error("Unable to resolve API base URL for auth sign-up");
-  }
-  const origin = new URL(baseUrl).origin;
-  const endpoint = `${baseUrl}/api/auth/sign-up/email`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
-      origin,
-      referer: `${origin}/`,
-    },
-    body: JSON.stringify({
-      email: input.email,
-      name: input.name,
-      password: input.password,
-    }),
-  });
-  const payload = (await response.json().catch(() => null)) as
-    | Record<string, unknown>
-    | null;
-  if (!response.ok) {
-    const message =
-      (payload?.error &&
-      typeof payload.error === "object" &&
-      typeof (payload.error as Record<string, unknown>).message === "string")
-        ? (payload.error as Record<string, unknown>).message as string
-        : typeof payload?.error === "string"
-          ? payload.error
-          : `Failed to create auth user (${response.status})`;
-    throw new Error(message);
-  }
-
-  const user =
-    payload && typeof payload.user === "object"
-      ? (payload.user as Record<string, unknown>)
-      : null;
-  const userId = typeof user?.id === "string" ? user.id : null;
-  const userEmail =
-    typeof user?.email === "string" && user.email.trim().length > 0
-      ? user.email.trim().toLowerCase()
-      : input.email;
-  const userName =
-    typeof user?.name === "string" && user.name.trim().length > 0
-      ? user.name.trim()
-      : input.name;
-
-  if (!userId) {
-    throw new Error("Auth sign-up succeeded but did not return user id");
-  }
-
-  return { userId, userEmail, userName };
+function buildCliAuthApprovalPath(challengeId: string, token: string) {
+  return `/cli-auth/${challengeId}?token=${encodeURIComponent(token)}`;
 }
 
 function readSkillMarkdown(skillName: string): string | null {
@@ -1622,6 +1544,7 @@ export function accessRoutes(
 ) {
   const router = Router();
   const access = accessService(db);
+  const boardAuth = boardAuthService(db);
   const agents = agentService(db);
 
   async function assertInstanceAdmin(req: Request) {
@@ -1677,6 +1600,166 @@ export function accessRoutes(
     }
 
     throw conflict("Board claim challenge is no longer available");
+  });
+
+  router.post(
+    "/cli-auth/challenges",
+    validate(createCliAuthChallengeSchema),
+    async (req, res) => {
+      const created = await boardAuth.createCliAuthChallenge(req.body);
+      const approvalPath = buildCliAuthApprovalPath(
+        created.challenge.id,
+        created.challengeSecret,
+      );
+      const baseUrl = requestBaseUrl(req);
+      res.status(201).json({
+        id: created.challenge.id,
+        token: created.challengeSecret,
+        boardApiToken: created.pendingBoardToken,
+        approvalPath,
+        approvalUrl: baseUrl ? `${baseUrl}${approvalPath}` : null,
+        pollPath: `/cli-auth/challenges/${created.challenge.id}`,
+        expiresAt: created.challenge.expiresAt.toISOString(),
+        suggestedPollIntervalMs: 1000,
+      });
+    },
+  );
+
+  router.get("/cli-auth/challenges/:id", async (req, res) => {
+    const id = (req.params.id as string).trim();
+    const token =
+      typeof req.query.token === "string" ? req.query.token.trim() : "";
+    if (!id || !token) throw notFound("CLI auth challenge not found");
+    const challenge = await boardAuth.describeCliAuthChallenge(id, token);
+    if (!challenge) throw notFound("CLI auth challenge not found");
+
+    const isSignedInBoardUser =
+      req.actor.type === "board" &&
+      (req.actor.source === "session" || isLocalImplicit(req)) &&
+      Boolean(req.actor.userId);
+    const canApprove =
+      isSignedInBoardUser &&
+      (challenge.requestedAccess !== "instance_admin_required" ||
+        isLocalImplicit(req) ||
+        Boolean(req.actor.isInstanceAdmin));
+
+    res.json({
+      ...challenge,
+      requiresSignIn: !isSignedInBoardUser,
+      canApprove,
+      currentUserId: req.actor.type === "board" ? req.actor.userId ?? null : null,
+    });
+  });
+
+  router.post(
+    "/cli-auth/challenges/:id/approve",
+    validate(resolveCliAuthChallengeSchema),
+    async (req, res) => {
+      const id = (req.params.id as string).trim();
+      if (
+        req.actor.type !== "board" ||
+        (!req.actor.userId && !isLocalImplicit(req))
+      ) {
+        throw unauthorized("Sign in before approving CLI access");
+      }
+
+      const userId = req.actor.userId ?? "local-board";
+      const approved = await boardAuth.approveCliAuthChallenge(
+        id,
+        req.body.token,
+        userId,
+      );
+
+      if (approved.status === "approved") {
+        const companyIds = await boardAuth.resolveBoardActivityCompanyIds({
+          userId,
+          requestedCompanyId: approved.challenge.requestedCompanyId,
+          boardApiKeyId: approved.challenge.boardApiKeyId,
+        });
+        for (const companyId of companyIds) {
+          await logActivity(db, {
+            companyId,
+            actorType: "user",
+            actorId: userId,
+            action: "board_api_key.created",
+            entityType: "user",
+            entityId: userId,
+            details: {
+              boardApiKeyId: approved.challenge.boardApiKeyId,
+              requestedAccess: approved.challenge.requestedAccess,
+              requestedCompanyId: approved.challenge.requestedCompanyId,
+              challengeId: approved.challenge.id,
+            },
+          });
+        }
+      }
+
+      res.json({
+        approved: approved.status === "approved",
+        status: approved.status,
+        userId,
+        keyId: approved.challenge.boardApiKeyId ?? null,
+        expiresAt: approved.challenge.expiresAt.toISOString(),
+      });
+    },
+  );
+
+  router.post(
+    "/cli-auth/challenges/:id/cancel",
+    validate(resolveCliAuthChallengeSchema),
+    async (req, res) => {
+      const id = (req.params.id as string).trim();
+      const cancelled = await boardAuth.cancelCliAuthChallenge(id, req.body.token);
+      res.json({
+        status: cancelled.status,
+        cancelled: cancelled.status === "cancelled",
+      });
+    },
+  );
+
+  router.get("/cli-auth/me", async (req, res) => {
+    if (req.actor.type !== "board" || !req.actor.userId) {
+      throw unauthorized("Board authentication required");
+    }
+    const accessSnapshot = await boardAuth.resolveBoardAccess(req.actor.userId);
+    res.json({
+      user: accessSnapshot.user,
+      userId: req.actor.userId,
+      isInstanceAdmin: accessSnapshot.isInstanceAdmin,
+      companyIds: accessSnapshot.companyIds,
+      source: req.actor.source ?? "none",
+      keyId: req.actor.source === "board_key" ? req.actor.keyId ?? null : null,
+    });
+  });
+
+  router.post("/cli-auth/revoke-current", async (req, res) => {
+    if (req.actor.type !== "board" || req.actor.source !== "board_key") {
+      throw badRequest("Current board API key context is required");
+    }
+    const key = await boardAuth.assertCurrentBoardKey(
+      req.actor.keyId,
+      req.actor.userId,
+    );
+    await boardAuth.revokeBoardApiKey(key.id);
+    const companyIds = await boardAuth.resolveBoardActivityCompanyIds({
+      userId: key.userId,
+      boardApiKeyId: key.id,
+    });
+    for (const companyId of companyIds) {
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: key.userId,
+        action: "board_api_key.revoked",
+        entityType: "user",
+        entityId: key.userId,
+        details: {
+          boardApiKeyId: key.id,
+          revokedVia: "cli_auth_logout",
+        },
+      });
+    }
+    res.json({ revoked: true, keyId: key.id });
   });
 
   async function assertCompanyPermission(
@@ -1848,133 +1931,6 @@ export function accessRoutes(
         onboardingTextPath: inviteSummary.onboardingTextPath,
         onboardingTextUrl: inviteSummary.onboardingTextUrl,
         inviteMessage: inviteSummary.inviteMessage
-      });
-    }
-  );
-
-  router.post(
-    "/companies/:companyId/human-invites",
-    validate(createHumanInviteSchema),
-    async (req, res) => {
-      const companyId = req.params.companyId as string;
-      await assertCompanyPermission(req, companyId, "users:invite");
-
-      if (opts.deploymentMode !== "authenticated") {
-        throw badRequest(
-          "Human invites are only available in authenticated deployment mode"
-        );
-      }
-
-      const inviteEmail = req.body.email.trim().toLowerCase();
-      const inviteName =
-        typeof req.body.name === "string" && req.body.name.trim().length > 0
-          ? req.body.name.trim()
-          : inviteEmail.split("@")[0] ?? "Invited User";
-
-      const existingUser = await db
-        .select({
-          id: authUsers.id,
-          email: authUsers.email
-        })
-        .from(authUsers)
-        .where(eq(authUsers.email, inviteEmail))
-        .then((rows) => rows[0] ?? null);
-      if (existingUser) {
-        const activeMembership = await db
-          .select({ id: companyMemberships.id })
-          .from(companyMemberships)
-          .where(
-            and(
-              eq(companyMemberships.companyId, companyId),
-              eq(companyMemberships.principalType, "user"),
-              eq(companyMemberships.principalId, existingUser.id),
-              eq(companyMemberships.status, "active")
-            )
-          )
-          .then((rows) => rows[0] ?? null);
-        if (activeMembership) {
-          throw conflict("User already has access to this company");
-        }
-        throw conflict(
-          "User account already exists. Grant company access from admin user controls."
-        );
-      }
-
-      const temporaryPassword = createTemporaryPassword();
-      let createdAuthUser: AuthSignUpResult;
-      try {
-        createdAuthUser = await createAuthUserViaSignupApi({
-          req,
-          email: inviteEmail,
-          name: inviteName,
-          password: temporaryPassword
-        });
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to create user";
-        if (
-          message.toLowerCase().includes("exists") ||
-          message.toLowerCase().includes("already")
-        ) {
-          throw conflict("User already exists");
-        }
-        if (message.toLowerCase().includes("disable")) {
-          throw badRequest(
-            "Sign-up is disabled for this instance. Enable sign-up or create the user manually."
-          );
-        }
-        throw badRequest(message);
-      }
-
-      const membership = await access.ensureMembership(
-        companyId,
-        "user",
-        createdAuthUser.userId,
-        "member",
-        "active"
-      );
-      const signInBaseUrl = requestBaseUrl(req);
-      const signInUrl = signInBaseUrl ? `${signInBaseUrl}/auth` : "/auth";
-      const emailDelivery = await sendHumanInviteEmail({
-        toEmail: createdAuthUser.userEmail,
-        toName: createdAuthUser.userName,
-        temporaryUsername: createdAuthUser.userEmail,
-        temporaryPassword,
-        signInUrl
-      });
-      if (emailDelivery.status === "failed") {
-        logger.warn(
-          { companyId, invitedUserId: createdAuthUser.userId, message: emailDelivery.message },
-          "Failed to send human invite email"
-        );
-      }
-
-      await logActivity(db, {
-        companyId,
-        actorType: req.actor.type === "agent" ? "agent" : "user",
-        actorId:
-          req.actor.type === "agent"
-            ? req.actor.agentId ?? "unknown-agent"
-            : req.actor.userId ?? "board",
-        action: "user.invited",
-        entityType: "user",
-        entityId: createdAuthUser.userId,
-        details: {
-          email: createdAuthUser.userEmail,
-          name: createdAuthUser.userName,
-          membershipId: membership.id,
-          emailDeliveryStatus: emailDelivery.status,
-          emailDeliveryMessage: emailDelivery.message
-        }
-      });
-
-      res.status(201).json({
-        userId: createdAuthUser.userId,
-        email: createdAuthUser.userEmail,
-        name: createdAuthUser.userName,
-        temporaryUsername: createdAuthUser.userEmail,
-        temporaryPassword,
-        emailDelivery
       });
     }
   );
@@ -2662,6 +2618,14 @@ export function accessRoutes(
           "member",
           "active"
         );
+        await access.setPrincipalPermission(
+          companyId,
+          "agent",
+          created.id,
+          "tasks:assign",
+          true,
+          req.actor.userId ?? null
+        );
         const grants = grantsFromDefaults(
           invite.defaultsPayload as Record<string, unknown> | null,
           "agent"
@@ -2846,308 +2810,8 @@ export function accessRoutes(
     const companyId = req.params.companyId as string;
     await assertCompanyPermission(req, companyId, "users:manage_permissions");
     const members = await access.listMembers(companyId);
-
-    const userIds = members
-      .filter((member) => member.principalType === "user")
-      .map((member) => member.principalId);
-    const agentIds = members
-      .filter((member) => member.principalType === "agent")
-      .map((member) => member.principalId);
-
-    const [users, agents] = await Promise.all([
-      userIds.length > 0
-        ? db
-            .select({
-              id: authUsers.id,
-              name: authUsers.name,
-              email: authUsers.email
-            })
-            .from(authUsers)
-            .where(inArray(authUsers.id, userIds))
-        : Promise.resolve([] as Array<{ id: string; name: string; email: string }>),
-      agentIds.length > 0
-        ? db
-            .select({
-              id: dbAgents.id,
-              name: dbAgents.name,
-              role: dbAgents.role
-            })
-            .from(dbAgents)
-            .where(inArray(dbAgents.id, agentIds))
-        : Promise.resolve([] as Array<{ id: string; name: string; role: string }>)
-    ]);
-
-    const usersById = new Map(users.map((user) => [user.id, user]));
-    const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
-
-    res.json(
-      members.map((member) => ({
-        ...member,
-        user:
-          member.principalType === "user"
-            ? usersById.get(member.principalId) ?? null
-            : null,
-        agent:
-          member.principalType === "agent"
-            ? agentsById.get(member.principalId) ?? null
-            : null
-      }))
-    );
+    res.json(members);
   });
-
-  router.patch(
-    "/companies/:companyId/members/:memberId/status",
-    validate(updateMemberStatusSchema),
-    async (req, res) => {
-      const companyId = req.params.companyId as string;
-      const memberId = req.params.memberId as string;
-      await assertCompanyPermission(req, companyId, "users:manage_permissions");
-
-      const member = await db
-        .select()
-        .from(companyMemberships)
-        .where(
-          and(
-            eq(companyMemberships.companyId, companyId),
-            eq(companyMemberships.id, memberId),
-          ),
-        )
-        .then((rows) => rows[0] ?? null);
-      if (!member) throw notFound("Member not found");
-      if (member.principalType !== "user") {
-        throw badRequest("Only user members can be suspended or reactivated");
-      }
-
-      const nextStatus = req.body.status;
-      const updated = await db.transaction(async (tx) => {
-        if (nextStatus !== "active") {
-          await tx
-            .update(companyMemberships)
-            .set({ reportsToMembershipId: null, updatedAt: new Date() })
-            .where(
-              and(
-                eq(companyMemberships.companyId, companyId),
-                eq(companyMemberships.reportsToMembershipId, memberId),
-              ),
-            );
-        }
-        const changed = await tx
-          .update(companyMemberships)
-          .set({
-            status: nextStatus,
-            reportsToMembershipId: nextStatus === "active" ? member.reportsToMembershipId : null,
-            updatedAt: new Date(),
-          })
-          .where(eq(companyMemberships.id, memberId))
-          .returning()
-          .then((rows) => rows[0] ?? null);
-        if (!changed) throw notFound("Member not found");
-        return changed;
-      });
-
-      await logActivity(db, {
-        companyId,
-        actorType: req.actor.type === "agent" ? "agent" : "user",
-        actorId:
-          req.actor.type === "agent"
-            ? req.actor.agentId ?? "unknown-agent"
-            : req.actor.userId ?? "board",
-        action: nextStatus === "active" ? "user.reactivated" : "user.deactivated",
-        entityType: "user",
-        entityId: member.principalId,
-        details: { membershipId: member.id, status: nextStatus },
-      });
-
-      res.json(updated);
-    }
-  );
-
-  router.delete("/companies/:companyId/members/:memberId", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    const memberId = req.params.memberId as string;
-    await assertCompanyPermission(req, companyId, "users:manage_permissions");
-
-    const member = await db
-      .select()
-      .from(companyMemberships)
-      .where(
-        and(
-          eq(companyMemberships.companyId, companyId),
-          eq(companyMemberships.id, memberId),
-        ),
-      )
-      .then((rows) => rows[0] ?? null);
-    if (!member) throw notFound("Member not found");
-    if (member.principalType !== "user") {
-      throw badRequest("Only user members can be removed from the Teams page");
-    }
-
-    const removed = await db.transaction(async (tx) => {
-      await tx
-        .update(companyMemberships)
-        .set({ reportsToMembershipId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(companyMemberships.companyId, companyId),
-            eq(companyMemberships.reportsToMembershipId, memberId),
-          ),
-        );
-
-      const deleted = await tx
-        .delete(companyMemberships)
-        .where(eq(companyMemberships.id, memberId))
-        .returning()
-        .then((rows) => rows[0] ?? null);
-      if (!deleted) throw notFound("Member not found");
-      return deleted;
-    });
-
-    await logActivity(db, {
-      companyId,
-      actorType: req.actor.type === "agent" ? "agent" : "user",
-      actorId:
-        req.actor.type === "agent"
-          ? req.actor.agentId ?? "unknown-agent"
-          : req.actor.userId ?? "board",
-      action: "user.removed_from_company",
-      entityType: "user",
-      entityId: member.principalId,
-      details: { membershipId: member.id },
-    });
-
-    res.json(removed);
-  });
-
-  router.patch(
-    "/companies/:companyId/members/:memberId/org-config",
-    validate(updateMemberOrgConfigSchema),
-    async (req, res) => {
-      const companyId = req.params.companyId as string;
-      const memberId = req.params.memberId as string;
-      await assertCompanyPermission(req, companyId, "users:manage_permissions");
-
-      const allMembers = await db
-        .select()
-        .from(companyMemberships)
-        .where(eq(companyMemberships.companyId, companyId));
-      const membersById = new Map(allMembers.map((candidate) => [candidate.id, candidate]));
-      const member = membersById.get(memberId) ?? null;
-      if (!member) throw notFound("Member not found");
-
-      const nextRole =
-        req.body.membershipRole === undefined
-          ? member.membershipRole
-          : req.body.membershipRole;
-      const requestedReportsTo =
-        req.body.reportsToMembershipId === undefined
-          ? member.reportsToMembershipId
-          : req.body.reportsToMembershipId;
-
-      if (requestedReportsTo === member.id) {
-        throw badRequest("Member cannot report to itself");
-      }
-
-      if (requestedReportsTo) {
-        const parentMember = membersById.get(requestedReportsTo) ?? null;
-        if (!parentMember) throw notFound("Manager member not found");
-        if (parentMember.status !== "active") {
-          throw conflict("Manager member must be active");
-        }
-      }
-
-      const targetIds: string[] | null = Array.isArray(req.body.managedAgentMemberIds)
-        ? Array.from(new Set((req.body.managedAgentMemberIds as string[]).map((value) => String(value))))
-        : null;
-      if (targetIds) {
-        for (const targetId of targetIds) {
-          const target = membersById.get(targetId) ?? null;
-          if (!target || target.status !== "active" || target.principalType !== "agent") {
-            throw badRequest("managedAgentMemberIds must contain active agent members only");
-          }
-        }
-      }
-
-      const proposedParentByMemberId = new Map(
-        allMembers.map((candidate) => [candidate.id, candidate.reportsToMembershipId ?? null]),
-      );
-      proposedParentByMemberId.set(member.id, requestedReportsTo ?? null);
-
-      if (targetIds) {
-        for (const candidate of allMembers) {
-          if (candidate.companyId !== companyId || candidate.principalType !== "agent") continue;
-          if (candidate.reportsToMembershipId === member.id) {
-            proposedParentByMemberId.set(candidate.id, null);
-          }
-        }
-        for (const targetId of targetIds) {
-          proposedParentByMemberId.set(targetId, member.id);
-        }
-      }
-
-      const detectCycle = (startId: string) => {
-        const visited = new Set<string>();
-        let cursor = startId;
-        while (true) {
-          const next = proposedParentByMemberId.get(cursor) ?? null;
-          if (!next) return false;
-          if (next === startId) return true;
-          if (visited.has(next)) return true;
-          visited.add(next);
-          cursor = next;
-        }
-      };
-
-      for (const candidate of allMembers) {
-        if (detectCycle(candidate.id)) {
-          throw badRequest("Org hierarchy cannot contain reporting cycles");
-        }
-      }
-
-      const updated = await db.transaction(async (tx) => {
-        const memberUpdated = await tx
-          .update(companyMemberships)
-          .set({
-            membershipRole: nextRole ?? null,
-            reportsToMembershipId: requestedReportsTo ?? null,
-            updatedAt: new Date(),
-          })
-          .where(eq(companyMemberships.id, member.id))
-          .returning()
-          .then((rows) => rows[0] ?? null);
-        if (!memberUpdated) throw notFound("Member not found");
-
-        if (targetIds) {
-          await tx
-            .update(companyMemberships)
-            .set({ reportsToMembershipId: null, updatedAt: new Date() })
-            .where(
-              and(
-                eq(companyMemberships.companyId, companyId),
-                eq(companyMemberships.principalType, "agent"),
-                eq(companyMemberships.reportsToMembershipId, member.id),
-              ),
-            );
-
-          if (targetIds.length > 0) {
-            await tx
-              .update(companyMemberships)
-              .set({ reportsToMembershipId: member.id, updatedAt: new Date() })
-              .where(
-                and(
-                  eq(companyMemberships.companyId, companyId),
-                  eq(companyMemberships.principalType, "agent"),
-                  inArray(companyMemberships.id, targetIds),
-                ),
-              );
-          }
-        }
-
-        return memberUpdated;
-      });
-
-      res.json(updated);
-    }
-  );
 
   router.patch(
     "/companies/:companyId/members/:memberId/permissions",
