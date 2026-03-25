@@ -25,6 +25,8 @@ import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { CompanyPatternIcon } from "./CompanyPatternIcon";
+import { cn } from "../lib/utils";
 
 export function Sidebar() {
   const { openNewIssue } = useDialog();
@@ -55,6 +57,18 @@ export function Sidebar() {
           <div
             className="w-4 h-4 rounded-sm shrink-0 ml-1"
             style={{ backgroundColor: selectedCompany.brandColor }}
+          />
+        )}
+        {selectedCompany && (
+          <CompanyPatternIcon
+            companyName={selectedCompany.name}
+            logoUrl={selectedCompany.logoUrl}
+            brandColor={selectedCompany.brandColor}
+            logoAssetId={selectedCompany.logoAssetId}
+            className={cn(
+              "w-9 h-9",
+              "rounded-[10px]"
+            )}
           />
         )}
         <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">

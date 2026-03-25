@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Moon, Settings, Sun } from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
-import { CompanyRail } from "./CompanyRail";
+// import { CompanyRail } from "./CompanyRail";
 import { Sidebar } from "./Sidebar";
 import { InstanceSidebar } from "./InstanceSidebar";
 import { BreadcrumbBar } from "./BreadcrumbBar";
@@ -291,20 +291,12 @@ export function Layout() {
             )}
           >
             <div className="flex flex-1 min-h-0 overflow-hidden">
-              <CompanyRail />
+              {/* <CompanyRail /> */}
               {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar />}
             </div>
             <div className="border-t border-r border-border px-3 py-2 bg-background">
               <div className="flex items-center gap-1">
-                <a
-                  href="https://docs.paperclip.ing/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors text-foreground/80 hover:bg-accent/50 hover:text-foreground flex-1 min-w-0"
-                >
-                  <BookOpen className="h-4 w-4 shrink-0" />
-                  <span className="truncate">Documentation</span>
-                </a>
+
                 {health?.version && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -342,7 +334,7 @@ export function Layout() {
         ) : (
           <div className="flex h-full flex-col shrink-0">
             <div className="flex flex-1 min-h-0">
-              <CompanyRail />
+              {/* <CompanyRail /> */}
               <div
                 className={cn(
                   "overflow-hidden transition-[width] duration-100 ease-out",
@@ -354,7 +346,7 @@ export function Layout() {
             </div>
             <div className="border-t border-r border-border px-3 py-2">
               <div className="flex items-center gap-1">
-                <a
+                {/* <a
                   href="https://docs.paperclip.ing/"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -362,7 +354,7 @@ export function Layout() {
                 >
                   <BookOpen className="h-4 w-4 shrink-0" />
                   <span className="truncate">Documentation</span>
-                </a>
+                </a> */}
                 {health?.version && (
                   <Tooltip>
                     <TooltipTrigger asChild>
