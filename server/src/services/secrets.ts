@@ -286,13 +286,6 @@ export function secretService(db: Db) {
       return secret;
     },
 
-    /**
-     * Resolve a secret's concrete string value for a given company and version.
-     * This is intended for server-side callers only and must never be exposed
-     * directly over public APIs.
-     */
-    resolveSecretValue,
-
     normalizeAdapterConfigForPersistence: async (
       companyId: string,
       adapterConfig: Record<string, unknown>,

@@ -141,13 +141,27 @@ async function inflateZipEntry(compressionMethod: number, bytes: Uint8Array) {
   if (compressionMethod !== 8) {
     throw new Error("Unsupported zip archive: only STORE and DEFLATE entries are supported.");
   }
-  if (typeof DecompressionStream !== "function") {
-    throw new Error("Unsupported zip archive: this browser cannot read compressed zip entries.");
+  if (typeof DecompressionStream === "function") {
+    try {
+      const body = new Uint8Array(bytes.byteLength);
+      body.set(bytes);
+      const stream = new Blob([body])
+        .stream()
+        .pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch {
+      // Fall through to Node zlib fallback below.
+    }
   }
-  const body = new Uint8Array(bytes.byteLength);
-  body.set(bytes);
-  const stream = new Blob([body]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+
+  // Vitest/Node can expose DecompressionStream but reject "deflate-raw".
+  // Use zlib when available so DEFLATE archives from external tools still parse.
+  try {
+    const zlib = await import("node:zlib");
+    return new Uint8Array(zlib.inflateRawSync(bytes));
+  } catch {
+    throw new Error("Unsupported zip archive: this runtime cannot read compressed zip entries.");
+  }
 }
 
 export async function readZipArchive(source: ArrayBuffer | Uint8Array): Promise<{
