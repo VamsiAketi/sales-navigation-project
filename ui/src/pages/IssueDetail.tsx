@@ -269,7 +269,7 @@ export function IssueDetail() {
 
   const hasLiveRuns = (liveRuns ?? []).length > 0 || !!activeRun;
   const sourceBreadcrumb = useMemo(
-    () => readIssueDetailBreadcrumb(location.state) ?? { label: "Issues", href: "/issues" },
+    () => readIssueDetailBreadcrumb(location.state) ?? { label: "Tasks", href: "/issues" },
     [location.state],
   );
 
@@ -568,7 +568,7 @@ export function IssueDetail() {
   });
 
   useEffect(() => {
-    const titleLabel = issue?.title ?? issueId ?? "Issue";
+    const titleLabel = issue?.title ?? issueId ?? "Task";
     setBreadcrumbs([
       sourceBreadcrumb,
       { label: hasLiveRuns ? `🔵 ${titleLabel}` : titleLabel },

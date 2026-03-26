@@ -950,7 +950,7 @@ export function NewIssueDialog() {
               </PopoverContent>
             </Popover>
             <span className="text-muted-foreground/60">&rsaquo;</span>
-            <span>New issue</span>
+            <span>New task</span>
           </div>
           <div className="flex items-center gap-1">
             <Button
@@ -978,7 +978,7 @@ export function NewIssueDialog() {
         <div className="px-4 pt-4 pb-2 shrink-0">
           <textarea
             className="w-full text-lg font-semibold bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50"
-            placeholder="Issue title"
+            placeholder="Task title"
             rows={1}
             value={title}
             onChange={(e) => {
@@ -1119,7 +1119,7 @@ export function NewIssueDialog() {
             <div className="space-y-1.5">
               <div className="text-xs font-medium">Execution workspace</div>
               <div className="text-[11px] text-muted-foreground">
-                Control whether this issue runs in the shared workspace, a new isolated workspace, or an existing one.
+                Control whether this task runs in the shared workspace, a new isolated workspace, or an existing one.
               </div>
               <select
                 className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
@@ -1461,7 +1461,7 @@ export function NewIssueDialog() {
             >
               <span className="inline-flex items-center justify-center gap-1.5">
                 {createIssue.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                <span>{createIssue.isPending ? "Creating..." : "Create Issue"}</span>
+                <span>{createIssue.isPending ? "Creating..." : "Create Task"}</span>
               </span>
             </Button>
           </div>
