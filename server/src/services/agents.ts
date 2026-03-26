@@ -10,6 +10,7 @@ import {
   agentRuntimeState,
   agentTaskSessions,
   agentWakeupRequests,
+  companyMemberships,
   costEvents,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -550,6 +551,11 @@ export function agentService(db: Db) {
         .update(agentApiKeys)
         .set({ revokedAt: new Date() })
         .where(eq(agentApiKeys.agentId, id));
+
+      await db
+        .update(companyMemberships)
+        .set({ status: "terminated", updatedAt: new Date() })
+        .where(and(eq(companyMemberships.principalId, id), eq(companyMemberships.principalType, "agent")));
 
       return getById(id);
     },
