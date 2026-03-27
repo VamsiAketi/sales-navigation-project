@@ -672,7 +672,7 @@ export function CompanyExport() {
 
   useEffect(() => {
     setBreadcrumbs([
-      { label: "Org Chart", href: "/org" },
+      { label: "Hybrid Org Chart", href: "/org" },
       { label: "Export" },
     ]);
   }, [setBreadcrumbs]);
