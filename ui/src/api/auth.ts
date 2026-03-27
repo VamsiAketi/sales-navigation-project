@@ -33,11 +33,14 @@ async function authPost(path: string, body: Record<string, unknown>) {
   });
   const payload = await res.json().catch(() => null);
   if (!res.ok) {
+    const p = payload as Record<string, unknown> | null;
     const message =
-      (payload as { error?: { message?: string } | string } | null)?.error &&
-      typeof (payload as { error?: { message?: string } | string }).error === "object"
-        ? ((payload as { error?: { message?: string } }).error?.message ?? `Request failed: ${res.status}`)
-        : (payload as { error?: string } | null)?.error ?? `Request failed: ${res.status}`;
+      (typeof (p?.error as Record<string, unknown> | undefined)?.message === "string"
+        ? (p!.error as Record<string, unknown>).message as string
+        : null) ??
+      (typeof p?.error === "string" ? p.error : null) ??
+      (typeof p?.message === "string" ? p.message : null) ??
+      `Request failed: ${res.status}`;
     throw new Error(message);
   }
   return payload;
@@ -73,10 +76,18 @@ export const authApi = {
   },
 
   changePassword: async (input: { currentPassword: string; newPassword: string }) => {
-    await authPost("/change-password", {
-      currentPassword: input.currentPassword,
-      newPassword: input.newPassword,
-      revokeOtherSessions: false,
-    });
+    try {
+      await authPost("/change-password", {
+        currentPassword: input.currentPassword,
+        newPassword: input.newPassword,
+        revokeOtherSessions: false,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : "";
+      if (msg.includes("invalid password") || msg.includes("incorrect password")) {
+        throw new Error("Current password is incorrect. Please try again.");
+      }
+      throw err;
+    }
   },
 };

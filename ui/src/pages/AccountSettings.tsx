@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { KeyRound, User } from "lucide-react";
+import { Eye, EyeOff, KeyRound, User, X } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { PageTabBar } from "@/components/PageTabBar";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useNavigate } from "@/lib/router";
 import { authApi } from "../api/auth";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
@@ -15,14 +16,7 @@ import { cn } from "../lib/utils";
 
 type PasswordStrength = "weak" | "fair" | "good" | "strong";
 
-interface StrengthResult {
-  level: PasswordStrength;
-  score: number; // 0-4
-  label: string;
-  checks: { label: string; passed: boolean }[];
-}
-
-function evaluatePasswordStrength(password: string): StrengthResult {
+function evaluatePasswordStrength(password: string) {
   const checks = [
     { label: "At least 8 characters", passed: password.length >= 8 },
     { label: "Uppercase letter", passed: /[A-Z]/.test(password) },
@@ -55,10 +49,8 @@ const strengthLabelColor: Record<PasswordStrength, string> = {
 function PasswordStrengthMeter({ password }: { password: string }) {
   if (!password) return null;
   const { level, score, label, checks } = evaluatePasswordStrength(password);
-
   return (
     <div className="mt-2 space-y-2">
-      {/* Bar */}
       <div className="flex gap-1">
         {[1, 2, 3, 4, 5].map((i) => (
           <div
@@ -71,7 +63,6 @@ function PasswordStrengthMeter({ password }: { password: string }) {
         ))}
       </div>
       <p className={cn("text-xs font-medium", strengthLabelColor[level])}>{label}</p>
-      {/* Checklist */}
       <ul className="space-y-0.5">
         {checks.map((c) => (
           <li key={c.label} className={cn("text-xs", c.passed ? "text-muted-foreground" : "text-destructive/80")}>
@@ -84,26 +75,10 @@ function PasswordStrengthMeter({ password }: { password: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Input helper
+// Form field helpers
 // ---------------------------------------------------------------------------
 
-function FormField({
-  id,
-  label,
-  type = "text",
-  value,
-  onChange,
-  autoComplete,
-  disabled,
-}: {
-  id: string;
-  label: string;
-  type?: string;
-  value: string;
-  onChange?: (v: string) => void;
-  autoComplete?: string;
-  disabled?: boolean;
-}) {
+function ReadOnlyField({ id, label, value }: { id: string; label: string; value: string }) {
   return (
     <div className="space-y-1">
       <label htmlFor={id} className="text-xs text-muted-foreground block">
@@ -111,18 +86,59 @@ function FormField({
       </label>
       <input
         id={id}
-        type={type}
+        type="text"
         value={value}
-        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
-        autoComplete={autoComplete}
-        readOnly={!onChange}
-        disabled={disabled}
-        className={cn(
-          "w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50",
-          !onChange && "cursor-default opacity-70",
-          disabled && "opacity-50 cursor-not-allowed",
-        )}
+        readOnly
+        className="w-full rounded-md border border-border bg-muted/30 px-3 py-2 text-sm outline-none cursor-default text-foreground/80"
       />
+    </div>
+  );
+}
+
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete?: string;
+  disabled?: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-xs text-muted-foreground block">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          type={visible ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          autoComplete={autoComplete}
+          disabled={disabled}
+          className={cn(
+            "w-full rounded-md border border-border bg-transparent px-3 py-2 pr-10 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50",
+            disabled && "opacity-50 cursor-not-allowed",
+          )}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => setVisible((v) => !v)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          aria-label={visible ? "Hide password" : "Show password"}
+        >
+          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
     </div>
   );
 }
@@ -143,8 +159,8 @@ function PersonalDetailsTab({ name, email }: { name: string | null; email: strin
       </div>
 
       <section className="rounded-xl border border-border bg-card p-5 space-y-4 max-w-lg">
-        <FormField id="pd-name" label="Name" value={name ?? ""} />
-        <FormField id="pd-email" label="Email" type="email" value={email ?? ""} />
+        <ReadOnlyField id="pd-name" label="Name" value={name ?? "—"} />
+        <ReadOnlyField id="pd-email" label="Email" value={email ?? "—"} />
       </section>
     </div>
   );
@@ -164,8 +180,7 @@ function ChangePasswordForm() {
   const strength = evaluatePasswordStrength(newPassword);
 
   const mutation = useMutation({
-    mutationFn: () =>
-      authApi.changePassword({ currentPassword, newPassword }),
+    mutationFn: () => authApi.changePassword({ currentPassword, newPassword }),
     onSuccess: () => {
       setCurrentPassword("");
       setNewPassword("");
@@ -210,41 +225,30 @@ function ChangePasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
-      <FormField
+      <PasswordField
         id="current-password"
         label="Current Password"
-        type="password"
         value={currentPassword}
-        onChange={setCurrentPassword}
+        onChange={(v) => { setCurrentPassword(v); setValidationError(null); setSuccessMessage(null); }}
         autoComplete="current-password"
         disabled={mutation.isPending}
       />
       <div>
-        <FormField
+        <PasswordField
           id="new-password"
           label="New Password"
-          type="password"
           value={newPassword}
-          onChange={(v) => {
-            setNewPassword(v);
-            setValidationError(null);
-            setSuccessMessage(null);
-          }}
+          onChange={(v) => { setNewPassword(v); setValidationError(null); setSuccessMessage(null); }}
           autoComplete="new-password"
           disabled={mutation.isPending}
         />
         <PasswordStrengthMeter password={newPassword} />
       </div>
-      <FormField
+      <PasswordField
         id="confirm-password"
         label="Confirm New Password"
-        type="password"
         value={confirmPassword}
-        onChange={(v) => {
-          setConfirmPassword(v);
-          setValidationError(null);
-          setSuccessMessage(null);
-        }}
+        onChange={(v) => { setConfirmPassword(v); setValidationError(null); setSuccessMessage(null); }}
         autoComplete="new-password"
         disabled={mutation.isPending}
       />
@@ -304,6 +308,7 @@ const TABS = [
 
 export function AccountSettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
+  const navigate = useNavigate();
   const [tab, setTab] = useState("personal");
 
   useEffect(() => {
@@ -318,6 +323,19 @@ export function AccountSettings() {
 
   return (
     <div className="max-w-4xl space-y-6">
+      {/* Header with close button */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Account Settings</h1>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => navigate(-1)}
+          aria-label="Close account settings"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
       <Tabs value={tab} onValueChange={setTab}>
         <PageTabBar items={TABS} value={tab} onValueChange={setTab} align="start" />
 
