@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentJoinGrantsFromDefaults } from "../routes/access.js";
+import { agentJoinGrantsFromDefaults, humanInviteGrants } from "../routes/access.js";
 
 describe("agentJoinGrantsFromDefaults", () => {
   it("adds tasks:assign when invite defaults do not specify agent grants", () => {
@@ -53,5 +53,11 @@ describe("agentJoinGrantsFromDefaults", () => {
         scope: { projectId: "project-1" },
       },
     ]);
+  });
+});
+
+describe("humanInviteGrants", () => {
+  it("starts newly invited human members with restricted baseline grants", () => {
+    expect(humanInviteGrants()).toEqual([]);
   });
 });

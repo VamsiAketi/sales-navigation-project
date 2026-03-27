@@ -11,10 +11,12 @@ import { instanceSettingsApi } from "../api/instanceSettings";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
+import { ApiError } from "../api/client";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { formatAssigneeUserLabel } from "../lib/assignees";
+import { assigneeUpdateErrorMessage } from "../lib/permission-feedback";
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
@@ -193,6 +195,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const companyId = issue.companyId ?? selectedCompanyId;
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState("");
+  const [assigneeUpdateError, setAssigneeUpdateError] = useState<string | null>(null);
+  const [assigneeUpdating, setAssigneeUpdating] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   const [labelsOpen, setLabelsOpen] = useState(false);
@@ -228,11 +232,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     enabled: !!companyId,
   });
 
-  const { data: members } = useQuery({
+  const { data: members, error: membersError } = useQuery({
     queryKey: queryKeys.access.members(companyId!),
     queryFn: () => accessApi.listMembers(companyId!),
     enabled: !!companyId,
   });
+  const membersPermissionDenied = membersError instanceof ApiError && membersError.status === 403;
 
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(companyId!),
@@ -551,7 +556,19 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
             !issue.assigneeAgentId && !issue.assigneeUserId && "bg-accent"
           )}
-          onClick={() => { onUpdate({ assigneeAgentId: null, assigneeUserId: null }); setAssigneeOpen(false); }}
+          disabled={assigneeUpdating}
+          onClick={async () => {
+            setAssigneeUpdateError(null);
+            setAssigneeUpdating(true);
+            try {
+              await onUpdate({ assigneeAgentId: null, assigneeUserId: null });
+              setAssigneeOpen(false);
+            } catch (error) {
+              setAssigneeUpdateError(assigneeUpdateErrorMessage(error));
+            } finally {
+              setAssigneeUpdating(false);
+            }
+          }}
         >
           No assignee
         </button>
@@ -561,9 +578,18 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
               issue.assigneeUserId === currentUserId && "bg-accent",
             )}
-            onClick={() => {
-              onUpdate({ assigneeAgentId: null, assigneeUserId: currentUserId });
-              setAssigneeOpen(false);
+            disabled={assigneeUpdating}
+            onClick={async () => {
+              setAssigneeUpdateError(null);
+              setAssigneeUpdating(true);
+              try {
+                await onUpdate({ assigneeAgentId: null, assigneeUserId: currentUserId });
+                setAssigneeOpen(false);
+              } catch (error) {
+                setAssigneeUpdateError(assigneeUpdateErrorMessage(error));
+              } finally {
+                setAssigneeUpdating(false);
+              }
             }}
           >
             <User className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -576,9 +602,18 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
               issue.assigneeUserId === issue.createdByUserId && "bg-accent",
             )}
-            onClick={() => {
-              onUpdate({ assigneeAgentId: null, assigneeUserId: issue.createdByUserId });
-              setAssigneeOpen(false);
+            disabled={assigneeUpdating}
+            onClick={async () => {
+              setAssigneeUpdateError(null);
+              setAssigneeUpdating(true);
+              try {
+                await onUpdate({ assigneeAgentId: null, assigneeUserId: issue.createdByUserId });
+                setAssigneeOpen(false);
+              } catch (error) {
+                setAssigneeUpdateError(assigneeUpdateErrorMessage(error));
+              } finally {
+                setAssigneeUpdating(false);
+              }
             }}
           >
             <User className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -599,7 +634,19 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                 "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
                 issue.assigneeUserId === m.user!.id && "bg-accent"
               )}
-              onClick={() => { onUpdate({ assigneeAgentId: null, assigneeUserId: m.user!.id }); setAssigneeOpen(false); }}
+              disabled={assigneeUpdating}
+              onClick={async () => {
+                setAssigneeUpdateError(null);
+                setAssigneeUpdating(true);
+                try {
+                  await onUpdate({ assigneeAgentId: null, assigneeUserId: m.user!.id });
+                  setAssigneeOpen(false);
+                } catch (error) {
+                  setAssigneeUpdateError(assigneeUpdateErrorMessage(error));
+                } finally {
+                  setAssigneeUpdating(false);
+                }
+              }}
             >
               <User className="h-3 w-3 shrink-0 text-muted-foreground" />
               {m.user!.name}
@@ -618,13 +665,34 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
               a.id === issue.assigneeAgentId && "bg-accent"
             )}
-            onClick={() => { trackRecentAssignee(a.id); onUpdate({ assigneeAgentId: a.id, assigneeUserId: null }); setAssigneeOpen(false); }}
+            disabled={assigneeUpdating}
+            onClick={async () => {
+              setAssigneeUpdateError(null);
+              setAssigneeUpdating(true);
+              try {
+                trackRecentAssignee(a.id);
+                await onUpdate({ assigneeAgentId: a.id, assigneeUserId: null });
+                setAssigneeOpen(false);
+              } catch (error) {
+                setAssigneeUpdateError(assigneeUpdateErrorMessage(error));
+              } finally {
+                setAssigneeUpdating(false);
+              }
+            }}
           >
             <AgentIcon icon={a.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
             {a.name}
           </button>
         ))}
       </div>
+      {membersPermissionDenied ? (
+        <div className="px-2 py-1 text-[11px] text-muted-foreground">
+          You can reassign this issue, but full member directory access requires <code>users:manage_permissions</code>.
+        </div>
+      ) : null}
+      {assigneeUpdateError ? (
+        <div className="px-2 py-1 text-[11px] text-destructive">{assigneeUpdateError}</div>
+      ) : null}
     </>
   );
 

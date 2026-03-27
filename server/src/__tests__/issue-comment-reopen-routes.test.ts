@@ -44,7 +44,16 @@ vi.mock("../services/index.js", () => ({
   workProductService: () => ({}),
 }));
 
-function createApp() {
+function createApp(
+  actorOverrides: Partial<{
+    type: "board" | "agent";
+    userId: string | null;
+    companyIds: string[];
+    source: "local_implicit" | "session" | "api_key";
+    isInstanceAdmin: boolean;
+    agentId: string | null;
+  }> = {},
+) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -54,6 +63,8 @@ function createApp() {
       companyIds: ["company-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
+      agentId: null,
+      ...actorOverrides,
     };
     next();
   });
@@ -78,6 +89,8 @@ function makeIssue(status: "todo" | "done") {
 describe("issue comment reopen routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAccessService.canUser.mockResolvedValue(true);
+    mockAccessService.hasPermission.mockResolvedValue(false);
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: "11111111-1111-4111-8111-111111111111",
@@ -141,6 +154,50 @@ describe("issue comment reopen routes", () => {
           status: "todo",
         }),
       }),
+    );
+  });
+
+  it("rejects assignee changes when a signed-in board user lacks tasks:assign", async () => {
+    mockIssueService.getById.mockResolvedValue(makeIssue("todo"));
+    mockAccessService.canUser.mockResolvedValue(false);
+
+    const res = await request(
+      createApp({
+        source: "session",
+        userId: "user-1",
+        isInstanceAdmin: false,
+      }),
+    )
+      .patch("/api/issues/11111111-1111-4111-8111-111111111111")
+      .send({ assigneeAgentId: "33333333-3333-4333-8333-333333333333" });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("tasks:assign");
+    expect(mockIssueService.update).not.toHaveBeenCalled();
+  });
+
+  it("allows assignee changes when a signed-in board user has tasks:assign", async () => {
+    mockIssueService.getById.mockResolvedValue(makeIssue("todo"));
+    mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+      ...makeIssue("todo"),
+      ...patch,
+    }));
+    mockAccessService.canUser.mockResolvedValue(true);
+
+    const res = await request(
+      createApp({
+        source: "session",
+        userId: "user-1",
+        isInstanceAdmin: false,
+      }),
+    )
+      .patch("/api/issues/11111111-1111-4111-8111-111111111111")
+      .send({ assigneeAgentId: "33333333-3333-4333-8333-333333333333" });
+
+    expect(res.status).toBe(200);
+    expect(mockIssueService.update).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      { assigneeAgentId: "33333333-3333-4333-8333-333333333333" },
     );
   });
 });
