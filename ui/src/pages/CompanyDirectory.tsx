@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "../api/client";
+import { isPermissionDeniedError } from "../lib/permission-feedback";
 import {
   Dialog,
   DialogContent,
@@ -76,6 +77,7 @@ const AGENT_ROLE_OPTIONS = [
 
 const CUSTOM_ROLE_VALUE = "__custom__";
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
+const MANAGED_INVITED_PERMISSION = "tasks:assign";
 
 function normalizeRoleLabel(input: string) {
   return input.trim().replace(/\s+/g, " ");
@@ -111,6 +113,11 @@ function memberDisplayName(member: CompanyMember) {
 function memberSecondaryLine(member: CompanyMember) {
   if (member.principalType === "user") return member.user?.email ?? "unknown email";
   return member.agent?.role ?? "agent";
+}
+
+function memberHasPermission(member: CompanyMember | null, permissionKey: string) {
+  if (!member) return false;
+  return member.grants.some((grant) => grant.permissionKey === permissionKey);
 }
 
 function apiErrorMessage(error: unknown): string {
@@ -173,13 +180,18 @@ export function CompanyDirectory() {
     temporaryPassword: string;
   } | null>(null);
 
-  const { data: companyMembers, isLoading: membersLoading } = useQuery({
+  const {
+    data: companyMembers,
+    isLoading: membersLoading,
+    error: membersError,
+  } = useQuery({
     queryKey: selectedCompanyId
       ? queryKeys.access.members(selectedCompanyId)
       : ["access", "members", "none"],
     queryFn: () => accessApi.listMembers(selectedCompanyId!),
     enabled: !!selectedCompanyId
   });
+  const membersPermissionDenied = isPermissionDeniedError(membersError);
 
   const { data: agentsList } = useQuery({
     queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none"],
@@ -389,6 +401,11 @@ export function CompanyDirectory() {
     mutationFn: (memberId: string) => accessApi.removeMember(selectedCompanyId!, memberId),
     onSuccess: invalidateMembers
   });
+  const humanPermissionMutation = useMutation({
+    mutationFn: (input: { memberId: string; grants: Array<{ permissionKey: string; scope: Record<string, unknown> | null }> }) =>
+      accessApi.updateMemberPermissions(selectedCompanyId!, input.memberId, input.grants),
+    onSuccess: invalidateMembers
+  });
 
   const agentSaveMutation = useMutation({
     mutationFn: (input: { memberId: string; principalId: string; membershipRole: string | null; reportsTo: string | null }) =>
@@ -431,6 +448,7 @@ export function CompanyDirectory() {
   const selectedHumanManagerId = selectedHumanMember
     ? (memberManagerDrafts[selectedHumanMember.id] ?? "").trim()
     : "";
+  const selectedHumanCanAssignTasks = memberHasPermission(selectedHumanMember, MANAGED_INVITED_PERMISSION);
   const selectedHumanManagerIsAgent =
     !!selectedHumanManagerId && memberPrincipalTypeById.get(selectedHumanManagerId) === "agent";
 
@@ -884,6 +902,21 @@ export function CompanyDirectory() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "agents")}>
+        {membersPermissionDenied ? (
+          <div className="rounded-lg border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
+            <div className="font-medium text-foreground">You do not have permission to view Teams members.</div>
+            <div className="mt-2">
+              Ask a company admin for the <code>users:manage_permissions</code> permission.
+            </div>
+          </div>
+        ) : null}
+        {!membersPermissionDenied && membersError ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            {apiErrorMessage(membersError)}
+          </div>
+        ) : null}
+        {!membersPermissionDenied && !membersError ? (
+          <>
         <TabsList variant="line" className="px-0">
           <TabsTrigger value="users">
             Users <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeHumanMembers.length})`}</span>
@@ -1001,6 +1034,45 @@ export function CompanyDirectory() {
                       <div className="mt-1 text-xs text-muted-foreground">
                         Assigning which agents a human manages is done by setting each agent’s “Reports to”.
                       </div>
+                    </div>
+
+                    <div className="rounded-md border border-border/60 bg-background px-3 py-3">
+                      <div className="text-xs font-medium text-foreground">Permissions</div>
+                      <label className="mt-2 flex items-start gap-2 text-sm text-foreground">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={selectedHumanCanAssignTasks}
+                          disabled={humanPermissionMutation.isPending || !selectedCompanyId}
+                          onChange={(event) => {
+                            if (!selectedHumanMember || !selectedCompanyId) return;
+                            const currentNonTaskAssignGrants = selectedHumanMember.grants.filter(
+                              (grant) => grant.permissionKey !== MANAGED_INVITED_PERMISSION,
+                            );
+                            const nextGrants = event.target.checked
+                              ? [
+                                  ...currentNonTaskAssignGrants,
+                                  { permissionKey: MANAGED_INVITED_PERMISSION, scope: null },
+                                ]
+                              : currentNonTaskAssignGrants;
+                            humanPermissionMutation.mutate({
+                              memberId: selectedHumanMember.id,
+                              grants: nextGrants,
+                            });
+                          }}
+                        />
+                        <span>
+                          Allow issue reassignment (<code>tasks:assign</code>)
+                        </span>
+                      </label>
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        Newly invited humans start restricted. Grant this only when the teammate should reassign issues.
+                      </div>
+                      {humanPermissionMutation.isError ? (
+                        <div className="mt-2 text-[11px] text-destructive">
+                          {apiErrorMessage(humanPermissionMutation.error)}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1212,8 +1284,9 @@ export function CompanyDirectory() {
             </div>
           </div>
         </TabsContent>
+          </>
+        ) : null}
       </Tabs>
     </div>
   );
 }
-

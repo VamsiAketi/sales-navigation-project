@@ -17,7 +17,8 @@ import {
   authUsers,
   companyMemberships,
   invites,
-  joinRequests
+  joinRequests,
+  principalPermissionGrants
 } from "@paperclipai/db";
 import {
   acceptInviteSchema,
@@ -1514,6 +1515,13 @@ export function agentJoinGrantsFromDefaults(
   ];
 }
 
+export function humanInviteGrants(): Array<{
+  permissionKey: (typeof PERMISSION_KEYS)[number];
+  scope: Record<string, unknown> | null;
+}> {
+  return [];
+}
+
 type JoinRequestManagerCandidate = {
   id: string;
   role: string;
@@ -2118,6 +2126,13 @@ export function accessRoutes(
         createdAuthUser.userId,
         "member",
         "active"
+      );
+      await access.setPrincipalGrants(
+        companyId,
+        "user",
+        createdAuthUser.userId,
+        humanInviteGrants(),
+        req.actor.userId ?? null
       );
       const signInBaseUrl = requestBaseUrl(req);
       const signInUrl = signInBaseUrl ? `${signInBaseUrl}/auth` : "/auth";
@@ -3061,13 +3076,79 @@ export function accessRoutes(
             .where(inArray(dbAgents.id, agentIds))
         : Promise.resolve([] as Array<{ id: string; name: string; role: string }>)
     ]);
+    const [userGrants, agentGrants] = await Promise.all([
+      userIds.length > 0
+        ? db
+            .select({
+              principalId: principalPermissionGrants.principalId,
+              permissionKey: principalPermissionGrants.permissionKey,
+              scope: principalPermissionGrants.scope,
+            })
+            .from(principalPermissionGrants)
+            .where(
+              and(
+                eq(principalPermissionGrants.companyId, companyId),
+                eq(principalPermissionGrants.principalType, "user"),
+                inArray(principalPermissionGrants.principalId, userIds),
+              ),
+            )
+        : Promise.resolve(
+            [] as Array<{
+              principalId: string;
+              permissionKey: (typeof PERMISSION_KEYS)[number];
+              scope: Record<string, unknown> | null;
+            }>,
+          ),
+      agentIds.length > 0
+        ? db
+            .select({
+              principalId: principalPermissionGrants.principalId,
+              permissionKey: principalPermissionGrants.permissionKey,
+              scope: principalPermissionGrants.scope,
+            })
+            .from(principalPermissionGrants)
+            .where(
+              and(
+                eq(principalPermissionGrants.companyId, companyId),
+                eq(principalPermissionGrants.principalType, "agent"),
+                inArray(principalPermissionGrants.principalId, agentIds),
+              ),
+            )
+        : Promise.resolve(
+            [] as Array<{
+              principalId: string;
+              permissionKey: (typeof PERMISSION_KEYS)[number];
+              scope: Record<string, unknown> | null;
+            }>,
+          ),
+    ]);
 
     const usersById = new Map(users.map((user) => [user.id, user]));
     const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+    const grantsByPrincipal = new Map<
+      string,
+      Array<{
+        permissionKey: (typeof PERMISSION_KEYS)[number];
+        scope: Record<string, unknown> | null;
+      }>
+    >();
+    const grants = [...userGrants, ...agentGrants];
+    for (const grant of grants) {
+      const permissionKey = grant.permissionKey as (typeof PERMISSION_KEYS)[number];
+      const existing = grantsByPrincipal.get(grant.principalId);
+      if (existing) {
+        existing.push({ permissionKey, scope: grant.scope });
+      } else {
+        grantsByPrincipal.set(grant.principalId, [
+          { permissionKey, scope: grant.scope },
+        ]);
+      }
+    }
 
     res.json(
       members.map((member) => ({
         ...member,
+        grants: grantsByPrincipal.get(member.principalId) ?? [],
         user:
           member.principalType === "user"
             ? usersById.get(member.principalId) ?? null

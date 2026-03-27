@@ -80,12 +80,14 @@ function createApp(db: Record<string, unknown>) {
   return app;
 }
 
-describe.skip("POST /companies/:companyId/human-invites", () => {
+describe("POST /companies/:companyId/human-invites", () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
+    vi.clearAllMocks();
     mockAccessService.canUser.mockResolvedValue(true);
     mockAccessService.ensureMembership.mockResolvedValue({ id: "membership-1" });
+    mockAccessService.setPrincipalGrants.mockResolvedValue(undefined);
     mockLogActivity.mockResolvedValue(undefined);
     mockSendHumanInviteEmail.mockResolvedValue({
       status: "skipped",
@@ -120,6 +122,13 @@ describe.skip("POST /companies/:companyId/human-invites", () => {
     expect(typeof res.body.temporaryPassword).toBe("string");
     expect(res.body.temporaryPassword.length).toBeGreaterThanOrEqual(8);
     expect(res.body.emailDelivery?.status).toBe("skipped");
+    expect(mockAccessService.setPrincipalGrants).toHaveBeenCalledWith(
+      "company-1",
+      "user",
+      "new-user-1",
+      [],
+      "user-1",
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const call = fetchMock.mock.calls[0];
     expect(typeof call?.[0]).toBe("string");
@@ -143,6 +152,7 @@ describe.skip("POST /companies/:companyId/human-invites", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.error).toContain("already has access");
+    expect(mockAccessService.setPrincipalGrants).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -161,10 +171,11 @@ describe.skip("POST /companies/:companyId/human-invites", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("Sign-up is disabled");
+    expect(mockAccessService.setPrincipalGrants).not.toHaveBeenCalled();
   });
 });
 
-describe.skip("GET /companies/:companyId/members", () => {
+describe("GET /companies/:companyId/members", () => {
   beforeEach(() => {
     mockAccessService.canUser.mockResolvedValue(true);
     mockAccessService.listMembers.mockResolvedValue([
@@ -195,6 +206,8 @@ describe.skip("GET /companies/:companyId/members", () => {
     const db = createDbStub([
       [{ id: "user-2", name: "User Two", email: "user.two@example.com" }],
       [{ id: "agent-1", name: "Agent One", role: "engineer" }],
+      [{ principalId: "user-2", permissionKey: "tasks:assign", scope: null }],
+      [],
     ]);
     const app = createApp(db);
 
@@ -205,6 +218,7 @@ describe.skip("GET /companies/:companyId/members", () => {
     expect(res.body[0]).toMatchObject({
       id: "member-user-1",
       principalType: "user",
+      grants: [{ permissionKey: "tasks:assign", scope: null }],
       user: {
         id: "user-2",
         name: "User Two",
@@ -215,6 +229,7 @@ describe.skip("GET /companies/:companyId/members", () => {
     expect(res.body[1]).toMatchObject({
       id: "member-agent-1",
       principalType: "agent",
+      grants: [],
       user: null,
       agent: {
         id: "agent-1",
@@ -222,5 +237,52 @@ describe.skip("GET /companies/:companyId/members", () => {
         role: "engineer",
       },
     });
+  });
+});
+
+describe("PATCH /companies/:companyId/members/:memberId/permissions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAccessService.canUser.mockResolvedValue(true);
+    mockAccessService.setMemberPermissions.mockResolvedValue({
+      id: "member-user-1",
+      companyId: "company-1",
+      principalType: "user",
+      principalId: "user-2",
+      status: "active",
+      membershipRole: "member",
+      reportsToMembershipId: null,
+      createdAt: new Date("2026-03-16T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-16T00:00:00.000Z"),
+    });
+  });
+
+  it("updates member grants when actor can manage permissions", async () => {
+    const app = createApp(createDbStub([]));
+    const grants = [{ permissionKey: "tasks:assign", scope: null }];
+
+    const res = await request(app)
+      .patch("/api/companies/company-1/members/member-user-1/permissions")
+      .send({ grants });
+
+    expect(res.status).toBe(200);
+    expect(mockAccessService.setMemberPermissions).toHaveBeenCalledWith(
+      "company-1",
+      "member-user-1",
+      grants,
+      "user-1",
+    );
+  });
+
+  it("returns 403 when actor lacks users:manage_permissions", async () => {
+    mockAccessService.canUser.mockResolvedValue(false);
+    const app = createApp(createDbStub([]));
+
+    const res = await request(app)
+      .patch("/api/companies/company-1/members/member-user-1/permissions")
+      .send({ grants: [{ permissionKey: "tasks:assign", scope: null }] });
+
+    expect(res.status).toBe(403);
+    expect(mockAccessService.setMemberPermissions).not.toHaveBeenCalled();
   });
 });

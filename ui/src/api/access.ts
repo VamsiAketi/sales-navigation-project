@@ -114,6 +114,10 @@ export type CompanyMember = {
   reportsToMembershipId: string | null;
   createdAt: string;
   updatedAt: string;
+  grants: Array<{
+    permissionKey: string;
+    scope: Record<string, unknown> | null;
+  }>;
   user: { id: string; name: string; email: string } | null;
   agent: { id: string; name: string; role: string } | null;
 };
@@ -177,6 +181,16 @@ export const accessApi = {
     api.patch<CompanyMember>(
       `/companies/${companyId}/members/${encodeURIComponent(memberId)}/status`,
       { status },
+    ),
+
+  updateMemberPermissions: (
+    companyId: string,
+    memberId: string,
+    grants: Array<{ permissionKey: string; scope: Record<string, unknown> | null }>,
+  ) =>
+    api.patch<CompanyMember>(
+      `/companies/${companyId}/members/${encodeURIComponent(memberId)}/permissions`,
+      { grants },
     ),
 
   removeMember: (companyId: string, memberId: string) =>
