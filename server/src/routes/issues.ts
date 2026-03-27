@@ -806,6 +806,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       reason: "issue_assigned",
       mutation: "create",
       contextSource: "issue.create",
+      allowBacklog: true,
       requestedByActorType: actor.actorType,
       requestedByActorId: actor.actorId,
     });
