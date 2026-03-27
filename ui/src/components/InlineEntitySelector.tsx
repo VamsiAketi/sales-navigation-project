@@ -14,6 +14,7 @@ interface InlineEntitySelectorProps {
   options: InlineEntityOption[];
   placeholder: string;
   noneLabel: string;
+  includeNoneOption?: boolean;
   searchPlaceholder: string;
   emptyMessage: string;
   onChange: (id: string) => void;
@@ -25,6 +26,15 @@ interface InlineEntitySelectorProps {
   disablePortal?: boolean;
 }
 
+export function buildInlineEntityOptions(
+  options: InlineEntityOption[],
+  noneLabel: string,
+  includeNoneOption: boolean,
+): InlineEntityOption[] {
+  if (!includeNoneOption) return options;
+  return [{ id: "", label: noneLabel, searchText: noneLabel }, ...options];
+}
+
 export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySelectorProps>(
   function InlineEntitySelector(
     {
@@ -32,6 +42,7 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
       options,
       placeholder,
       noneLabel,
+      includeNoneOption = true,
       searchPlaceholder,
       emptyMessage,
       onChange,
@@ -51,8 +62,8 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
     const isPointerDownRef = useRef(false);
 
     const allOptions = useMemo<InlineEntityOption[]>(
-      () => [{ id: "", label: noneLabel, searchText: noneLabel }, ...options],
-      [noneLabel, options],
+      () => buildInlineEntityOptions(options, noneLabel, includeNoneOption),
+      [includeNoneOption, noneLabel, options],
     );
 
     const filteredOptions = useMemo(() => {

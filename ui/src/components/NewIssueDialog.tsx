@@ -270,6 +270,10 @@ function issueExecutionWorkspaceModeForExistingWorkspace(mode: string | null | u
   return "shared_workspace";
 }
 
+export function canSubmitNewIssue(input: { title: string; projectId: string; isPending: boolean }) {
+  return Boolean(input.title.trim()) && Boolean(input.projectId) && !input.isPending;
+}
+
 export function NewIssueDialog() {
   const { newIssueOpen, newIssueDefaults, closeNewIssue } = useDialog();
   const { companies, selectedCompanyId, selectedCompany } = useCompany();
@@ -293,6 +297,7 @@ export function NewIssueDialog() {
   const [dialogCompanyId, setDialogCompanyId] = useState<string | null>(null);
   const [stagedFiles, setStagedFiles] = useState<StagedIssueFile[]>([]);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
+  const [projectValidationError, setProjectValidationError] = useState<string | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
 
@@ -623,6 +628,7 @@ export function NewIssueDialog() {
     setDialogCompanyId(null);
     setStagedFiles([]);
     setIsFileDragOver(false);
+    setProjectValidationError(null);
     setCompanyOpen(false);
     executionWorkspaceDefaultProjectId.current = null;
   }
@@ -648,7 +654,13 @@ export function NewIssueDialog() {
   }
 
   function handleSubmit() {
-    if (!effectiveCompanyId || !title.trim() || createIssue.isPending) return;
+    if (!effectiveCompanyId || createIssue.isPending) return;
+    if (!projectId) {
+      setProjectValidationError("Project is required.");
+      return;
+    }
+    if (!title.trim()) return;
+    setProjectValidationError(null);
     const assigneeAdapterOverrides = buildAssigneeAdapterOverrides({
       adapterType: assigneeAdapterType,
       modelOverride: assigneeModelOverride,
@@ -837,6 +849,7 @@ export function NewIssueDialog() {
   const canDiscardDraft = hasDraft || hasSavedDraft;
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
+  const canSubmit = canSubmitNewIssue({ title, projectId, isPending: createIssue.isPending });
   const stagedDocuments = stagedFiles.filter((file) => file.kind === "document");
   const stagedAttachments = stagedFiles.filter((file) => file.kind === "attachment");
   const visibleLabels = useMemo(
@@ -854,6 +867,9 @@ export function NewIssueDialog() {
 
   const handleProjectChange = useCallback((nextProjectId: string) => {
     setProjectId(nextProjectId);
+    if (nextProjectId) {
+      setProjectValidationError(null);
+    }
     const nextProject = orderedProjects.find((project) => project.id === nextProjectId);
     executionWorkspaceDefaultProjectId.current = nextProjectId || null;
     setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(nextProject));
@@ -1114,6 +1130,7 @@ export function NewIssueDialog() {
                 placeholder="Project"
                 disablePortal
                 noneLabel="No project"
+                includeNoneOption={false}
                 searchPlaceholder="Search projects..."
                 emptyMessage="No projects found."
                 onChange={handleProjectChange}
@@ -1529,12 +1546,14 @@ export function NewIssueDialog() {
                 </span>
               ) : createIssue.isError ? (
                 <span className="text-xs text-destructive">{createIssueErrorMessage}</span>
+              ) : projectValidationError ? (
+                <span className="text-xs text-destructive">{projectValidationError}</span>
               ) : null}
             </div>
             <Button
               size="sm"
               className="min-w-[8.5rem] disabled:opacity-100"
-              disabled={!title.trim() || createIssue.isPending}
+              disabled={!canSubmit}
               onClick={handleSubmit}
               aria-busy={createIssue.isPending}
             >
