@@ -120,6 +120,7 @@ export {
 } from "./project.js";
 
 export {
+  manualIssueProjectIdRequiredMessage,
   createIssueSchema,
   createIssueLabelSchema,
   updateIssueSchema,

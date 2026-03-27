@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants.js";
 
+export const manualIssueProjectIdRequiredMessage = "Manual task creation requires a projectId.";
+
 const executionWorkspaceStrategySchema = z
   .object({
     type: z.enum(["project_primary", "git_worktree", "adapter_managed", "cloud_sandbox"]).optional(),

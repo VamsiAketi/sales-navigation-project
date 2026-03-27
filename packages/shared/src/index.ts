@@ -372,6 +372,7 @@ export {
   type CreateProjectWorkspace,
   type UpdateProjectWorkspace,
   projectExecutionWorkspacePolicySchema,
+  manualIssueProjectIdRequiredMessage,
   createIssueSchema,
   createIssueLabelSchema,
   updateIssueSchema,
