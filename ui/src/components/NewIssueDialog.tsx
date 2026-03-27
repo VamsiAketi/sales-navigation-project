@@ -520,6 +520,7 @@ export function NewIssueDialog() {
   useEffect(() => {
     if (!newIssueOpen) return;
     setDialogCompanyId(selectedCompanyId);
+    setProjectValidationError(null);
     executionWorkspaceDefaultProjectId.current = null;
 
     const draft = loadDraft();
@@ -645,6 +646,7 @@ export function NewIssueDialog() {
     setAssigneeChrome(false);
     setExecutionWorkspaceMode("shared_workspace");
     setSelectedExecutionWorkspaceId("");
+    setProjectValidationError(null);
   }
 
   function discardDraft() {

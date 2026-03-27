@@ -10,6 +10,7 @@ const mockIssueService = vi.hoisted(() => ({
   findMentionedProjectIds: vi.fn(),
   getCommentCursor: vi.fn(),
   getComment: vi.fn(),
+  create: vi.fn(),
 }));
 
 const mockProjectService = vi.hoisted(() => ({
@@ -115,6 +116,19 @@ describe("issue goal context routes", () => {
       latestCommentAt: null,
     });
     mockIssueService.getComment.mockResolvedValue(null);
+    mockIssueService.create.mockResolvedValue({
+      ...legacyProjectLinkedIssue,
+      id: "99999999-9999-4999-8999-999999999999",
+      identifier: "PAP-999",
+      title: "Created issue",
+      goalId: null,
+      originKind: "manual",
+      originId: null,
+      originRunId: null,
+      createdByAgentId: null,
+      createdByUserId: "local-board",
+      createdAt: new Date("2026-03-24T12:00:00Z"),
+    });
     mockProjectService.getById.mockResolvedValue({
       id: legacyProjectLinkedIssue.projectId,
       companyId: "company-1",
@@ -183,5 +197,37 @@ describe("issue goal context routes", () => {
       }),
     );
     expect(mockGoalService.getDefaultCompanyGoal).not.toHaveBeenCalled();
+  });
+
+  it("rejects manual create without projectId", async () => {
+    const res = await request(createApp()).post("/api/companies/company-1/issues").send({
+      title: "Unscoped task",
+      status: "todo",
+      priority: "medium",
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe("Manual task creation requires a projectId.");
+    expect(res.body.details).toEqual({ field: "projectId" });
+    expect(mockIssueService.create).not.toHaveBeenCalled();
+  });
+
+  it("creates issue when projectId is provided", async () => {
+    const res = await request(createApp()).post("/api/companies/company-1/issues").send({
+      title: "Scoped task",
+      status: "todo",
+      priority: "medium",
+      projectId: legacyProjectLinkedIssue.projectId,
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.projectId).toBe(legacyProjectLinkedIssue.projectId);
+    expect(mockIssueService.create).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({
+        title: "Scoped task",
+        projectId: legacyProjectLinkedIssue.projectId,
+      }),
+    );
   });
 });
