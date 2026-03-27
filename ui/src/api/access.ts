@@ -1,4 +1,4 @@
-import type { AgentAdapterType, JoinRequest } from "@paperclipai/shared";
+import type { AgentAdapterType, JoinRequest, PermissionKey } from "@paperclipai/shared";
 import { api } from "./client";
 
 type InviteSummary = {
@@ -115,7 +115,7 @@ export type CompanyMember = {
   createdAt: string;
   updatedAt: string;
   grants: Array<{
-    permissionKey: string;
+    permissionKey: PermissionKey;
     scope: Record<string, unknown> | null;
   }>;
   user: { id: string; name: string; email: string } | null;
@@ -149,6 +149,7 @@ export const accessApi = {
     input: {
       email: string;
       name?: string;
+      grants?: Array<{ permissionKey: PermissionKey; scope: Record<string, unknown> | null }>;
     },
   ) =>
     api.post<HumanInviteCreated>(
@@ -186,7 +187,7 @@ export const accessApi = {
   updateMemberPermissions: (
     companyId: string,
     memberId: string,
-    grants: Array<{ permissionKey: string; scope: Record<string, unknown> | null }>,
+    grants: Array<{ permissionKey: PermissionKey; scope: Record<string, unknown> | null }>,
   ) =>
     api.patch<CompanyMember>(
       `/companies/${companyId}/members/${encodeURIComponent(memberId)}/permissions`,

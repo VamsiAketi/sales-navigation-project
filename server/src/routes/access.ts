@@ -2127,11 +2127,21 @@ export function accessRoutes(
         "member",
         "active"
       );
+      const inviteGrants =
+        Array.isArray(req.body.grants) && req.body.grants.length > 0
+          ? req.body.grants.map((grant: {
+              permissionKey: (typeof PERMISSION_KEYS)[number];
+              scope?: Record<string, unknown> | null;
+            }) => ({
+              permissionKey: grant.permissionKey,
+              scope: grant.scope ?? null,
+            }))
+          : humanInviteGrants();
       await access.setPrincipalGrants(
         companyId,
         "user",
         createdAuthUser.userId,
-        humanInviteGrants(),
+        inviteGrants,
         req.actor.userId ?? null
       );
       const signInBaseUrl = requestBaseUrl(req);
