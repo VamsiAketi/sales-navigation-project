@@ -96,7 +96,10 @@ describe("issue create routes", () => {
       });
 
     expect(res.status).toBe(422);
-    expect(res.body).toEqual({ error: "projectId is required for manual issue creation" });
+    expect(res.body).toEqual({
+      error: "Manual task creation requires a projectId.",
+      details: { field: "projectId" },
+    });
     expect(mockIssueService.create).not.toHaveBeenCalled();
   });
 
