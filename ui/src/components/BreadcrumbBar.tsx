@@ -1,5 +1,5 @@
-import { Link } from "@/lib/router";
-import { Menu } from "lucide-react";
+import { Link, useNavigate } from "@/lib/router";
+import { LogOut, Menu } from "lucide-react";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useCompany } from "../context/CompanyContext";
@@ -12,9 +12,58 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Fragment, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { authApi } from "../api/auth";
+import { queryKeys } from "../lib/queryKeys";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
+
+function UserMenu() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    staleTime: 60_000,
+  });
+
+  if (!session?.user) return null;
+
+  const initial = (session.user.name ?? session.user.email ?? "?")[0]?.toUpperCase() ?? "?";
+
+  const handleLogout = async () => {
+    await authApi.signOut();
+    queryClient.clear();
+    navigate("/auth");
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="User menu"
+        >
+          {initial}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-36">
+        <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+          <LogOut className="mr-2 h-4 w-4" />
+          Logout
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 type GlobalToolbarContext = { companyId: string | null; companyPrefix: string | null };
 
@@ -49,6 +98,7 @@ export function BreadcrumbBar() {
     return (
       <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center justify-end">
         {globalToolbarSlots}
+        <UserMenu />
       </div>
     );
   }
@@ -76,6 +126,7 @@ export function BreadcrumbBar() {
           </h1>
         </div>
         {globalToolbarSlots}
+        <UserMenu />
       </div>
     );
   }
@@ -108,6 +159,7 @@ export function BreadcrumbBar() {
         </Breadcrumb>
       </div>
       {globalToolbarSlots}
+      <UserMenu />
     </div>
   );
 }
