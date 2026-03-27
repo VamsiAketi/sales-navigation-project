@@ -51,6 +51,7 @@ import {
   resolveExecutionWorkspaceMode,
 } from "./execution-workspace-policy.js";
 import { instanceSettingsService } from "./instance-settings.js";
+import { githubRepoUrlsEquivalent, resolveProjectGitHubCredentials } from "./project-git.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
 import {
   hasSessionCompactionThresholds,
@@ -2512,12 +2513,48 @@ export function heartbeatService(db: Db) {
           "local agent jwt secret missing or invalid; running without injected PAPERCLIP_API_KEY",
         );
       }
+
+      let workspaceGitAuth: { provider: "github"; repoOwner: string; repoName: string; token: string } | null = null;
+      const gitCredProjectId = resolvedProjectId ?? executionWorkspace.projectId;
+      const gitCredRepoUrl = executionWorkspace.repoUrl;
+      if (gitCredProjectId && gitCredRepoUrl) {
+        try {
+          const creds = await resolveProjectGitHubCredentials(db, gitCredProjectId);
+          if (creds && githubRepoUrlsEquivalent(creds.repoUrl, gitCredRepoUrl)) {
+            workspaceGitAuth = {
+              provider: "github",
+              repoOwner: creds.repoOwner,
+              repoName: creds.repoName,
+              token: creds.token,
+            };
+          }
+        } catch (err) {
+          logger.warn(
+            {
+              runId: run.id,
+              companyId: agent.companyId,
+              projectId: gitCredProjectId,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "resolveProjectGitHubCredentials failed",
+          );
+        }
+      }
+      const paperclipWorkspaceForAdapter = {
+        ...parseObject(context.paperclipWorkspace),
+        ...(workspaceGitAuth ? { gitAuth: workspaceGitAuth } : {}),
+      };
+      const adapterContext: Record<string, unknown> = {
+        ...context,
+        paperclipWorkspace: paperclipWorkspaceForAdapter,
+      };
+
       const adapterResult = await adapter.execute({
         runId: run.id,
         agent,
         runtime: runtimeForAdapter,
         config: runtimeConfig,
-        context,
+        context: adapterContext,
         onLog,
         onMeta: onAdapterMeta,
         onSpawn: async (meta) => {

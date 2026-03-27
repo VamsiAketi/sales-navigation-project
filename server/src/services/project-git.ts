@@ -17,6 +17,30 @@ export interface ProjectGitHubCredentials extends ProjectGitHubBinding {
   token: string;
 }
 
+/**
+ * Compare two GitHub repo URLs for the same repository (ignores trailing slash,
+ * optional `.git` suffix, and host casing).
+ */
+export function githubRepoUrlsEquivalent(a: string, b: string): boolean {
+  const norm = (raw: string) => {
+    const trimmed = raw.trim();
+    try {
+      const u = new URL(trimmed);
+      if (u.hostname.toLowerCase() !== "github.com") {
+        return trimmed.toLowerCase();
+      }
+      let pathPart = u.pathname.replace(/\/+$/, "");
+      if (pathPart.toLowerCase().endsWith(".git")) {
+        pathPart = pathPart.slice(0, -4);
+      }
+      return `https://github.com${pathPart.toLowerCase()}`;
+    } catch {
+      return trimmed.toLowerCase();
+    }
+  };
+  return norm(a) === norm(b);
+}
+
 function parseGitHubRepoUrl(repoUrl: string): { owner: string; name: string } {
   try {
     const url = new URL(repoUrl);

@@ -144,6 +144,25 @@ export function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+export function injectWorkspaceGitHubEnv(
+  workspaceContext: Record<string, unknown>,
+  env: Record<string, string>,
+) {
+  const workspaceGitAuth = parseObject(workspaceContext.gitAuth);
+  const workspaceGitProvider = asString(workspaceGitAuth.provider, "");
+  const workspaceGitToken = asString(workspaceGitAuth.token, "");
+  const workspaceGitOwner = asString(workspaceGitAuth.repoOwner, "");
+  const workspaceGitRepo = asString(workspaceGitAuth.repoName, "");
+  if (workspaceGitProvider !== "github" || !workspaceGitToken) return;
+
+  env.PAPERCLIP_WORKSPACE_GITHUB_PAT = workspaceGitToken;
+  if (workspaceGitOwner && workspaceGitRepo) {
+    env.PAPERCLIP_WORKSPACE_GITHUB_OWNER = workspaceGitOwner;
+    env.PAPERCLIP_WORKSPACE_GITHUB_REPO = workspaceGitRepo;
+    env.PAPERCLIP_WORKSPACE_REPO_AUTH_URL = `https://${workspaceGitToken}@github.com/${workspaceGitOwner}/${workspaceGitRepo}.git`;
+  }
+}
+
 export function parseJson(value: string): Record<string, unknown> | null {
   try {
     return JSON.parse(value) as Record<string, unknown>;

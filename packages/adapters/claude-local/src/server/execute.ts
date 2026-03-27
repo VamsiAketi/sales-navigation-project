@@ -18,6 +18,7 @@ import {
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
   ensurePathInEnv,
+  injectWorkspaceGitHubEnv,
   renderTemplate,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
@@ -115,11 +116,6 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
   const workspaceRepoRef = asString(workspaceContext.repoRef, "") || null;
   const workspaceBranch = asString(workspaceContext.branchName, "") || null;
   const workspaceWorktreePath = asString(workspaceContext.worktreePath, "") || null;
-  const workspaceGitAuth = parseObject(workspaceContext.gitAuth);
-  const workspaceGitProvider = asString(workspaceGitAuth.provider, "");
-  const workspaceGitToken = asString(workspaceGitAuth.token, "");
-  const workspaceGitOwner = asString(workspaceGitAuth.repoOwner, "");
-  const workspaceGitRepo = asString(workspaceGitAuth.repoName, "");
   const agentHome = asString(workspaceContext.agentHome, "") || null;
   const workspaceHints = Array.isArray(context.paperclipWorkspaces)
     ? context.paperclipWorkspaces.filter(
@@ -230,15 +226,7 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
   if (runtimePrimaryUrl) {
     env.PAPERCLIP_RUNTIME_PRIMARY_URL = runtimePrimaryUrl;
   }
-
-  if (workspaceGitProvider === "github" && workspaceGitToken) {
-    env.PAPERCLIP_WORKSPACE_GITHUB_PAT = workspaceGitToken;
-    if (workspaceGitOwner && workspaceGitRepo) {
-      env.PAPERCLIP_WORKSPACE_GITHUB_OWNER = workspaceGitOwner;
-      env.PAPERCLIP_WORKSPACE_GITHUB_REPO = workspaceGitRepo;
-      env.PAPERCLIP_WORKSPACE_REPO_AUTH_URL = `https://${workspaceGitToken}@github.com/${workspaceGitOwner}/${workspaceGitRepo}.git`;
-    }
-  }
+  injectWorkspaceGitHubEnv(workspaceContext, env);
 
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
