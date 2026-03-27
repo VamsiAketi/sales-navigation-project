@@ -163,7 +163,7 @@ export function OrgChart() {
   }, [agents]);
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Org Chart" }]);
+    setBreadcrumbs([{ label: "Hybrid Org Chart" }]);
   }, [setBreadcrumbs]);
 
   // Layout computation
