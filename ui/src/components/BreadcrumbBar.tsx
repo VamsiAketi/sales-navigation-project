@@ -1,5 +1,5 @@
-import { Link } from "@/lib/router";
-import { Menu } from "lucide-react";
+import { Link, useNavigate } from "@/lib/router";
+import { LogOut, Menu, Settings } from "lucide-react";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useCompany } from "../context/CompanyContext";
@@ -12,9 +12,92 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Fragment, useMemo } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Fragment, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { authApi } from "../api/auth";
+import { queryKeys } from "../lib/queryKeys";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
+
+function UserMenu() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    staleTime: 60_000,
+  });
+
+  if (!session?.user) return null;
+
+  const initial = (session.user.name ?? session.user.email ?? "?")[0]?.toUpperCase() ?? "?";
+
+  const handleLogoutConfirm = async () => {
+    await authApi.signOut();
+    queryClient.clear();
+    navigate("/auth");
+  };
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="User menu"
+          >
+            {initial}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem onClick={() => navigate("/account/settings")} className="cursor-pointer">
+            <Settings className="mr-2 h-4 w-4" />
+            Account Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setShowLogoutDialog(true)} className="cursor-pointer">
+            <LogOut className="mr-2 h-4 w-4" />
+            Logout
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Confirm Logout</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to logout?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:justify-end">
+            <Button variant="outline" onClick={() => setShowLogoutDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleLogoutConfirm}>
+              Logout
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 type GlobalToolbarContext = { companyId: string | null; companyPrefix: string | null };
 
@@ -49,6 +132,7 @@ export function BreadcrumbBar() {
     return (
       <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center justify-end">
         {globalToolbarSlots}
+        <UserMenu />
       </div>
     );
   }
@@ -76,6 +160,7 @@ export function BreadcrumbBar() {
           </h1>
         </div>
         {globalToolbarSlots}
+        <UserMenu />
       </div>
     );
   }
@@ -108,6 +193,7 @@ export function BreadcrumbBar() {
         </Breadcrumb>
       </div>
       {globalToolbarSlots}
+      <UserMenu />
     </div>
   );
 }
