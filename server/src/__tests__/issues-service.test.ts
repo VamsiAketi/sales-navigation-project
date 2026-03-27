@@ -13,6 +13,7 @@ import {
   ensurePostgresDatabase,
   issueComments,
   issues,
+  labels,
 } from "@paperclipai/db";
 import { issueService } from "../services/issues.ts";
 
@@ -280,5 +281,41 @@ describe("issueService.list participantAgentId", () => {
     });
 
     expect(result.map((issue) => issue.id)).toEqual([matchedIssueId]);
+  });
+
+  it("persists labelIds on create and returns attached labels", async () => {
+    const companyId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    const [urgent] = await db.insert(labels).values({
+      companyId,
+      name: "Urgent",
+      color: "#ef4444",
+    }).returning();
+    const [backend] = await db.insert(labels).values({
+      companyId,
+      name: "Backend",
+      color: "#2563eb",
+    }).returning();
+
+    const created = await svc.create(companyId, {
+      title: "Issue with labels",
+      status: "todo",
+      priority: "medium",
+      labelIds: [backend.id, urgent.id],
+    });
+
+    expect(created.labelIds.sort()).toEqual([backend.id, urgent.id].sort());
+
+    const fetched = await svc.getById(created.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched!.labelIds.sort()).toEqual([backend.id, urgent.id].sort());
+    expect((fetched!.labels ?? []).map((entry) => entry.id).sort()).toEqual([backend.id, urgent.id].sort());
   });
 });
