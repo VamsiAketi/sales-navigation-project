@@ -5,6 +5,8 @@ import { Loader2, Users } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { accessApi, type CompanyMember } from "../api/access";
+import { agentsApi } from "../api/agents";
+import type { Agent } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -152,6 +154,7 @@ export function CompanyDirectory() {
   const [selectedAgentMemberId, setSelectedAgentMemberId] = useState<string | null>(null);
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
   const [memberManagerDrafts, setMemberManagerDrafts] = useState<Record<string, string>>({});
+  const [agentReportsDrafts, setAgentReportsDrafts] = useState<Record<string, string>>({});
   const [memberSaveStates, setMemberSaveStates] = useState<Record<string, SaveState>>({});
   const [memberSaveErrors, setMemberSaveErrors] = useState<Record<string, string>>({});
   const [customHumanRoles, setCustomHumanRoles] = useState<string[]>([]);
@@ -175,6 +178,12 @@ export function CompanyDirectory() {
       ? queryKeys.access.members(selectedCompanyId)
       : ["access", "members", "none"],
     queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId
+  });
+
+  const { data: agentsList } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none"],
+    queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId
   });
 
@@ -244,13 +253,29 @@ export function CompanyDirectory() {
     return map;
   }, [companyMembers]);
 
+  const agentByPrincipalId = useMemo(() => {
+    const map = new Map<string, Agent>();
+    for (const a of agentsList ?? []) map.set(a.id, a);
+    return map;
+  }, [agentsList]);
+
   const childrenByMemberId = useMemo(() => {
     const parentById: Record<string, string> = {};
-    for (const member of [...activeHumanMembers, ...activeAgentMembers]) {
+    for (const member of activeHumanMembers) {
       parentById[member.id] = (memberManagerDrafts[member.id] ?? member.reportsToMembershipId ?? "").trim();
     }
     return buildChildrenIndex(parentById);
-  }, [activeHumanMembers, activeAgentMembers, memberManagerDrafts]);
+  }, [activeHumanMembers, memberManagerDrafts]);
+
+  const agentChildrenByPrincipalId = useMemo(() => {
+    const parentById: Record<string, string> = {};
+    for (const member of activeAgentMembers) {
+      const draft = agentReportsDrafts[member.id];
+      const fromServer = agentByPrincipalId.get(member.principalId)?.reportsTo ?? "";
+      parentById[member.principalId] = (draft !== undefined ? draft : fromServer).trim();
+    }
+    return buildChildrenIndex(parentById);
+  }, [activeAgentMembers, agentReportsDrafts, agentByPrincipalId]);
 
   const invalidManagersForSelectedHuman = useMemo(() => {
     if (!selectedHumanMember) return new Set<string>();
@@ -261,10 +286,10 @@ export function CompanyDirectory() {
 
   const invalidManagersForSelectedAgent = useMemo(() => {
     if (!selectedAgentMember) return new Set<string>();
-    const invalid = descendantsOf(selectedAgentMember.id, childrenByMemberId);
-    invalid.add(selectedAgentMember.id);
+    const invalid = descendantsOf(selectedAgentMember.principalId, agentChildrenByPrincipalId);
+    invalid.add(selectedAgentMember.principalId);
     return invalid;
-  }, [selectedAgentMember?.id, childrenByMemberId]);
+  }, [selectedAgentMember?.principalId, agentChildrenByPrincipalId]);
 
   useEffect(() => {
     setBreadcrumbs([
@@ -292,17 +317,19 @@ export function CompanyDirectory() {
   useEffect(() => {
     const nextRoleDrafts: Record<string, string> = {};
     const nextManagerDrafts: Record<string, string> = {};
+    const nextAgentReportsDrafts: Record<string, string> = {};
     for (const member of activeHumanMembers) {
       nextRoleDrafts[member.id] = member.membershipRole ?? "";
       nextManagerDrafts[member.id] = member.reportsToMembershipId ?? "";
     }
     for (const member of activeAgentMembers) {
       nextRoleDrafts[member.id] = member.membershipRole ?? "";
-      nextManagerDrafts[member.id] = member.reportsToMembershipId ?? "";
+      nextAgentReportsDrafts[member.id] = agentByPrincipalId.get(member.principalId)?.reportsTo ?? "";
     }
     setMemberRoleDrafts(nextRoleDrafts);
     setMemberManagerDrafts(nextManagerDrafts);
-  }, [activeHumanMembers, activeAgentMembers]);
+    setAgentReportsDrafts(nextAgentReportsDrafts);
+  }, [activeHumanMembers, activeAgentMembers, agentByPrincipalId]);
 
   const invalidateMembers = async () => {
     await queryClient.invalidateQueries({
@@ -310,6 +337,9 @@ export function CompanyDirectory() {
     });
     await queryClient.invalidateQueries({
       queryKey: queryKeys.org(selectedCompanyId!)
+    });
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.agents.list(selectedCompanyId!)
     });
   };
 
@@ -361,11 +391,8 @@ export function CompanyDirectory() {
   });
 
   const agentSaveMutation = useMutation({
-    mutationFn: (input: { memberId: string; membershipRole: string | null; reportsToMembershipId: string | null }) =>
-      accessApi.updateMemberOrgConfig(selectedCompanyId!, input.memberId, {
-        membershipRole: input.membershipRole,
-        reportsToMembershipId: input.reportsToMembershipId
-      }),
+    mutationFn: (input: { memberId: string; principalId: string; membershipRole: string | null; reportsTo: string | null }) =>
+      agentsApi.update(input.principalId, { reportsTo: input.reportsTo }, selectedCompanyId ?? undefined),
     onSuccess: invalidateMembers
   });
 
@@ -390,8 +417,17 @@ export function CompanyDirectory() {
     return roleDraft !== roleNow || mgrDraft !== mgrNow;
   }
 
+  function computeAgentDirty(member: CompanyMember | null) {
+    if (!member) return false;
+    const roleDraft = (memberRoleDrafts[member.id] ?? "").trim();
+    const reportsDraft = (agentReportsDrafts[member.id] ?? "").trim();
+    const roleNow = (member.membershipRole ?? "").trim();
+    const reportsNow = (agentByPrincipalId.get(member.principalId)?.reportsTo ?? "").trim();
+    return roleDraft !== roleNow || reportsDraft !== reportsNow;
+  }
+
   const humanIsDirty = computeDirty(selectedHumanMember);
-  const agentIsDirty = computeDirty(selectedAgentMember);
+  const agentIsDirty = computeAgentDirty(selectedAgentMember);
   const selectedHumanManagerId = selectedHumanMember
     ? (memberManagerDrafts[selectedHumanMember.id] ?? "").trim()
     : "";
@@ -477,8 +513,9 @@ export function CompanyDirectory() {
       agentSaveMutation.mutate(
         {
           memberId: selectedAgentMember.id,
+          principalId: selectedAgentMember.principalId,
           membershipRole: (memberRoleDrafts[selectedAgentMember.id] ?? "").trim() || null,
-          reportsToMembershipId: (memberManagerDrafts[selectedAgentMember.id] ?? "").trim() || null
+          reportsTo: (agentReportsDrafts[selectedAgentMember.id] ?? "").trim() || null
         },
         {
           onSuccess: () => {
@@ -489,13 +526,18 @@ export function CompanyDirectory() {
               return rest;
             });
             window.setTimeout(() => {
-              if (!computeDirty(selectedAgentMember)) setMemberSaveState(selectedAgentMember.id, "idle");
+              if (!computeAgentDirty(selectedAgentMember)) setMemberSaveState(selectedAgentMember.id, "idle");
             }, 900);
           },
           onError: (err) => {
             setMemberSaveState(selectedAgentMember.id, "error");
             setMemberSaveErrors((prev) => ({ ...prev, [selectedAgentMember.id]: apiErrorMessage(err) }));
-            revertDraftsToServer(selectedAgentMember.id);
+            const serverMember = memberById.get(selectedAgentMember.id) ?? null;
+            setMemberRoleDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: serverMember?.membershipRole ?? "" }));
+            setAgentReportsDrafts((prev) => ({
+              ...prev,
+              [selectedAgentMember.id]: agentByPrincipalId.get(selectedAgentMember.principalId)?.reportsTo ?? ""
+            }));
           }
         }
       );
@@ -507,7 +549,7 @@ export function CompanyDirectory() {
     selectedCompanyId,
     selectedAgentMember?.id,
     memberRoleDrafts[selectedAgentMember?.id ?? ""],
-    memberManagerDrafts[selectedAgentMember?.id ?? ""]
+    agentReportsDrafts[selectedAgentMember?.id ?? ""]
   ]);
 
   function SaveStatusPill({ state }: { state: SaveState }) {
@@ -1104,7 +1146,7 @@ export function CompanyDirectory() {
                         <div className="text-xs text-muted-foreground">Reports to</div>
                         <select
                           className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
-                          value={memberManagerDrafts[selectedAgentMember.id] ?? ""}
+                          value={agentReportsDrafts[selectedAgentMember.id] ?? ""}
                           onChange={(e) => {
                             const next = e.target.value;
                             setMemberSaveErrors((prev) => {
@@ -1112,29 +1154,18 @@ export function CompanyDirectory() {
                               const { [selectedAgentMember.id]: _drop, ...rest } = prev;
                               return rest;
                             });
-                            setMemberManagerDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: next }));
+                            setAgentReportsDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: next }));
                           }}
                         >
                           <option value="">None</option>
-                          <optgroup label="Humans">
-                            {activeHumanMembers.map((candidate) => (
-                              <option
-                                key={candidate.id}
-                                value={candidate.id}
-                                disabled={invalidManagersForSelectedAgent.has(candidate.id)}
-                              >
-                                {memberDisplayName(candidate)}
-                              </option>
-                            ))}
-                          </optgroup>
                           <optgroup label="Agents">
                             {activeAgentMembers
                               .filter((candidate) => candidate.id !== selectedAgentMember.id)
                               .map((candidate) => (
                                 <option
                                   key={candidate.id}
-                                  value={candidate.id}
-                                  disabled={invalidManagersForSelectedAgent.has(candidate.id)}
+                                  value={candidate.principalId}
+                                  disabled={invalidManagersForSelectedAgent.has(candidate.principalId)}
                                 >
                                   {memberDisplayName(candidate)}
                                 </option>
@@ -1163,8 +1194,9 @@ export function CompanyDirectory() {
                         if (!selectedAgentMember) return;
                         agentSaveMutation.mutate({
                           memberId: selectedAgentMember.id,
+                          principalId: selectedAgentMember.principalId,
                           membershipRole: (memberRoleDrafts[selectedAgentMember.id] ?? "").trim() || null,
-                          reportsToMembershipId: (memberManagerDrafts[selectedAgentMember.id] ?? "").trim() || null
+                          reportsTo: (agentReportsDrafts[selectedAgentMember.id] ?? "").trim() || null
                         });
                       }}
                     >

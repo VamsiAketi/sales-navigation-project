@@ -7,6 +7,7 @@ import { activityApi } from "../api/activity";
 import { heartbeatsApi } from "../api/heartbeats";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
+import { accessApi } from "../api/access";
 import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
 import { usePanel } from "../context/PanelContext";
@@ -305,6 +306,12 @@ export function IssueDetail() {
     enabled: !!selectedCompanyId,
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+
+  const { data: members } = useQuery({
+    queryKey: queryKeys.access.members(selectedCompanyId!),
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
   const { orderedProjects } = useProjectOrder({
     projects: projects ?? [],
     companyId: selectedCompanyId,
@@ -373,11 +380,14 @@ export function IssueDetail() {
     for (const agent of activeAgents) {
       options.push({ id: `agent:${agent.id}`, label: agent.name });
     }
-    if (currentUserId) {
-      options.push({ id: `user:${currentUserId}`, label: "Me" });
+    for (const member of members ?? []) {
+      if (member.principalType === "user" && member.user) {
+        const label = member.user.id === currentUserId ? "Me" : member.user.name;
+        options.push({ id: `user:${member.user.id}`, label });
+      }
     }
     return options;
-  }, [agents, currentUserId]);
+  }, [agents, currentUserId, members]);
 
   const actualAssigneeValue = useMemo(
     () => assigneeValueFromSelection(issue ?? {}),

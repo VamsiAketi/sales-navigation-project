@@ -3,6 +3,7 @@ import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link } from "@/lib/router";
 import type { Issue } from "@paperclipai/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
@@ -214,6 +215,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     enabled: !!companyId,
   });
 
+  const { data: members } = useQuery({
+    queryKey: queryKeys.access.members(companyId!),
+    queryFn: () => accessApi.listMembers(companyId!),
+    enabled: !!companyId,
+  });
+
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(companyId!),
     queryFn: () => projectsApi.list(companyId!),
@@ -332,7 +339,13 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const assignee = issue.assigneeAgentId
     ? agents?.find((a) => a.id === issue.assigneeAgentId)
     : null;
-  const userLabel = (userId: string | null | undefined) => formatAssigneeUserLabel(userId, currentUserId);
+  const userLabel = (userId: string | null | undefined) => {
+    if (userId && userId !== currentUserId && userId !== "local-board") {
+      const member = (members ?? []).find((m) => m.user?.id === userId);
+      if (member?.user?.name) return member.user.name;
+    }
+    return formatAssigneeUserLabel(userId, currentUserId);
+  };
   const assigneeUserLabel = userLabel(issue.assigneeUserId);
   const creatorUserLabel = userLabel(issue.createdByUserId);
 
@@ -498,6 +511,26 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             {creatorUserLabel ? `Assign to ${creatorUserLabel}` : "Assign to requester"}
           </button>
         )}
+        {(members ?? [])
+          .filter((m) => m.principalType === "user" && m.user && m.user.id !== currentUserId && m.user.id !== issue.createdByUserId)
+          .filter((m) => {
+            if (!assigneeSearch.trim()) return true;
+            const q = assigneeSearch.toLowerCase();
+            return m.user!.name.toLowerCase().includes(q);
+          })
+          .map((m) => (
+            <button
+              key={m.user!.id}
+              className={cn(
+                "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                issue.assigneeUserId === m.user!.id && "bg-accent"
+              )}
+              onClick={() => { onUpdate({ assigneeAgentId: null, assigneeUserId: m.user!.id }); setAssigneeOpen(false); }}
+            >
+              <User className="h-3 w-3 shrink-0 text-muted-foreground" />
+              {m.user!.name}
+            </button>
+          ))}
         {sortedAgents
           .filter((a) => {
             if (!assigneeSearch.trim()) return true;
