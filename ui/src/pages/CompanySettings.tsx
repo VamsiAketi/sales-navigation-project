@@ -1,11 +1,12 @@
 import { ChangeEvent, useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
+import { secretsApi } from "../api/secrets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Settings, Check, Download, Upload } from "lucide-react";
@@ -52,6 +53,9 @@ export function CompanySettings() {
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
+  const [newSecretName, setNewSecretName] = useState("");
+  const [newSecretValue, setNewSecretValue] = useState("");
+  const [newSecretDescription, setNewSecretDescription] = useState("");
 
   const generalDirty =
     !!selectedCompany &&
@@ -195,6 +199,36 @@ export function CompanySettings() {
         queryKey: queryKeys.companies.stats
       });
     }
+  });
+
+  const { data: companySecrets = [] } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
+    queryFn: () => secretsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const createSecretMutation = useMutation({
+    mutationFn: (input: { name: string; value: string; description?: string | null }) =>
+      secretsApi.create(selectedCompanyId!, input),
+    onSuccess: () => {
+      setNewSecretName("");
+      setNewSecretValue("");
+      setNewSecretDescription("");
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
+      }
+      pushToast({ title: "Secret created", tone: "success" });
+    },
+  });
+
+  const deleteSecretMutation = useMutation({
+    mutationFn: (secretId: string) => secretsApi.remove(secretId),
+    onSuccess: () => {
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
+      }
+      pushToast({ title: "Secret deleted", tone: "success" });
+    },
   });
 
   useEffect(() => {
@@ -375,6 +409,98 @@ export function CompanySettings() {
           )}
         </div>
       )}
+
+      {/* Hiring */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Secrets
+        </div>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <p className="text-sm text-muted-foreground">
+            Company-level secrets can be referenced by agents and project configuration.
+          </p>
+          <div className="grid gap-2">
+            <input
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              placeholder="Secret name (e.g. github_pat)"
+              value={newSecretName}
+              onChange={(e) => setNewSecretName(e.target.value)}
+            />
+            <input
+              type="password"
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              placeholder="Secret value"
+              value={newSecretValue}
+              onChange={(e) => setNewSecretValue(e.target.value)}
+            />
+            <input
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              placeholder="Description (optional)"
+              value={newSecretDescription}
+              onChange={(e) => setNewSecretDescription(e.target.value)}
+            />
+            <div>
+              <Button
+                size="sm"
+                onClick={() =>
+                  createSecretMutation.mutate({
+                    name: newSecretName.trim(),
+                    value: newSecretValue,
+                    description: newSecretDescription.trim() || null,
+                  })
+                }
+                disabled={
+                  createSecretMutation.isPending ||
+                  newSecretName.trim().length === 0 ||
+                  newSecretValue.length === 0
+                }
+              >
+                {createSecretMutation.isPending ? "Creating..." : "Create secret"}
+              </Button>
+            </div>
+            {createSecretMutation.isError && (
+              <span className="text-xs text-destructive">
+                {createSecretMutation.error instanceof Error
+                  ? createSecretMutation.error.message
+                  : "Failed to create secret"}
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            {companySecrets.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No secrets yet.</p>
+            ) : (
+              companySecrets.map((secret) => (
+                <div
+                  key={secret.id}
+                  className="flex items-center justify-between gap-3 rounded border border-border/70 px-2.5 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{secret.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {secret.description ?? "No description"}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive"
+                    disabled={deleteSecretMutation.isPending}
+                    onClick={() => {
+                      const confirmed = window.confirm(`Delete secret "${secret.name}"?`);
+                      if (!confirmed) return;
+                      deleteSecretMutation.mutate(secret.id);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Hiring */}
       <div className="space-y-4">
