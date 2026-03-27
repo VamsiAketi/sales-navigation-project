@@ -156,6 +156,44 @@ describe("POST /companies/:companyId/human-invites", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("applies explicitly provided invite grants", async () => {
+    const db = createDbStub([[]]);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: {
+          id: "new-user-2",
+          email: "granted.user@example.com",
+          name: "Granted User",
+        },
+      }),
+    } as Response);
+    const app = createApp(db);
+
+    const res = await request(app)
+      .post("/api/companies/company-1/human-invites")
+      .send({
+        email: "granted.user@example.com",
+        grants: [
+          { permissionKey: "tasks:assign", scope: null },
+          { permissionKey: "users:invite", scope: null },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockAccessService.setPrincipalGrants).toHaveBeenCalledWith(
+      "company-1",
+      "user",
+      "new-user-2",
+      [
+        { permissionKey: "tasks:assign", scope: null },
+        { permissionKey: "users:invite", scope: null },
+      ],
+      "user-1",
+    );
+  });
+
   it("surfaces actionable error when sign-up is disabled", async () => {
     const db = createDbStub([[]]);
     fetchMock.mockResolvedValue({

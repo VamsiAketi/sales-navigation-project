@@ -6,7 +6,7 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { accessApi, type CompanyMember } from "../api/access";
 import { agentsApi } from "../api/agents";
-import type { Agent } from "@paperclipai/shared";
+import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,7 +77,15 @@ const AGENT_ROLE_OPTIONS = [
 
 const CUSTOM_ROLE_VALUE = "__custom__";
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
-const MANAGED_INVITED_PERMISSION = "tasks:assign";
+const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
+const PERMISSION_LABELS: Record<PermissionKey, string> = {
+  "agents:create": "Create agents",
+  "users:invite": "Invite users",
+  "users:manage_permissions": "Manage member permissions",
+  "tasks:assign": "Assign and reassign issues",
+  "tasks:assign_scope": "Manage assignment scope",
+  "joins:approve": "Approve join requests",
+};
 
 function normalizeRoleLabel(input: string) {
   return input.trim().replace(/\s+/g, " ");
@@ -113,11 +121,6 @@ function memberDisplayName(member: CompanyMember) {
 function memberSecondaryLine(member: CompanyMember) {
   if (member.principalType === "user") return member.user?.email ?? "unknown email";
   return member.agent?.role ?? "agent";
-}
-
-function memberHasPermission(member: CompanyMember | null, permissionKey: string) {
-  if (!member) return false;
-  return member.grants.some((grant) => grant.permissionKey === permissionKey);
 }
 
 function apiErrorMessage(error: unknown): string {
@@ -173,6 +176,7 @@ export function CompanyDirectory() {
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
   const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
+  const [humanInvitePermissionKeys, setHumanInvitePermissionKeys] = useState<PermissionKey[]>([]);
   const [humanInviteCredentials, setHumanInviteCredentials] = useState<{
     name: string;
     email: string;
@@ -360,6 +364,10 @@ export function CompanyDirectory() {
       accessApi.createHumanInvite(selectedCompanyId!, {
         email: humanInviteEmail.trim(),
         name: humanInviteName.trim() || undefined,
+        grants: humanInvitePermissionKeys.map((permissionKey) => ({
+          permissionKey,
+          scope: null,
+        })),
       }),
     onSuccess: async (created) => {
       setHumanInviteError(null);
@@ -371,6 +379,7 @@ export function CompanyDirectory() {
       });
       setHumanInviteName("");
       setHumanInviteEmail("");
+      setHumanInvitePermissionKeys([]);
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
       });
@@ -402,7 +411,7 @@ export function CompanyDirectory() {
     onSuccess: invalidateMembers
   });
   const humanPermissionMutation = useMutation({
-    mutationFn: (input: { memberId: string; grants: Array<{ permissionKey: string; scope: Record<string, unknown> | null }> }) =>
+    mutationFn: (input: { memberId: string; grants: Array<{ permissionKey: PermissionKey; scope: Record<string, unknown> | null }> }) =>
       accessApi.updateMemberPermissions(selectedCompanyId!, input.memberId, input.grants),
     onSuccess: invalidateMembers
   });
@@ -448,7 +457,6 @@ export function CompanyDirectory() {
   const selectedHumanManagerId = selectedHumanMember
     ? (memberManagerDrafts[selectedHumanMember.id] ?? "").trim()
     : "";
-  const selectedHumanCanAssignTasks = memberHasPermission(selectedHumanMember, MANAGED_INVITED_PERMISSION);
   const selectedHumanManagerIsAgent =
     !!selectedHumanManagerId && memberPrincipalTypeById.get(selectedHumanManagerId) === "agent";
 
@@ -720,6 +728,36 @@ export function CompanyDirectory() {
                     value={humanInviteEmail}
                     onChange={(e) => setHumanInviteEmail(e.target.value)}
                   />
+                </div>
+                <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+                  <div className="text-xs font-medium text-foreground">Initial permissions</div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    New invites start restricted unless you select grants below.
+                  </div>
+                  <div className="mt-2 grid gap-1">
+                    {ALL_PERMISSION_KEYS.map((permissionKey) => {
+                      const checked = humanInvitePermissionKeys.includes(permissionKey);
+                      return (
+                        <label key={permissionKey} className="flex items-center gap-2 text-xs text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              setHumanInvitePermissionKeys((prev) => {
+                                const next = new Set(prev);
+                                if (event.target.checked) next.add(permissionKey);
+                                else next.delete(permissionKey);
+                                return Array.from(next);
+                              });
+                            }}
+                          />
+                          <span>
+                            {PERMISSION_LABELS[permissionKey]} (<code>{permissionKey}</code>)
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -1038,35 +1076,43 @@ export function CompanyDirectory() {
 
                     <div className="rounded-md border border-border/60 bg-background px-3 py-3">
                       <div className="text-xs font-medium text-foreground">Permissions</div>
-                      <label className="mt-2 flex items-start gap-2 text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={selectedHumanCanAssignTasks}
-                          disabled={humanPermissionMutation.isPending || !selectedCompanyId}
-                          onChange={(event) => {
-                            if (!selectedHumanMember || !selectedCompanyId) return;
-                            const currentNonTaskAssignGrants = selectedHumanMember.grants.filter(
-                              (grant) => grant.permissionKey !== MANAGED_INVITED_PERMISSION,
-                            );
-                            const nextGrants = event.target.checked
-                              ? [
-                                  ...currentNonTaskAssignGrants,
-                                  { permissionKey: MANAGED_INVITED_PERMISSION, scope: null },
-                                ]
-                              : currentNonTaskAssignGrants;
-                            humanPermissionMutation.mutate({
-                              memberId: selectedHumanMember.id,
-                              grants: nextGrants,
-                            });
-                          }}
-                        />
-                        <span>
-                          Allow issue reassignment (<code>tasks:assign</code>)
-                        </span>
-                      </label>
+                      <div className="mt-2 grid gap-1">
+                        {ALL_PERMISSION_KEYS.map((permissionKey) => {
+                          const checked = selectedHumanMember.grants.some(
+                            (grant) => grant.permissionKey === permissionKey,
+                          );
+                          return (
+                            <label key={permissionKey} className="flex items-center gap-2 text-xs text-foreground">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={humanPermissionMutation.isPending || !selectedCompanyId}
+                                onChange={(event) => {
+                                  if (!selectedHumanMember || !selectedCompanyId) return;
+                                  const nextGrants = selectedHumanMember.grants.filter(
+                                    (grant) => grant.permissionKey !== permissionKey,
+                                  );
+                                  if (event.target.checked) {
+                                    nextGrants.push({
+                                      permissionKey,
+                                      scope: null,
+                                    });
+                                  }
+                                  humanPermissionMutation.mutate({
+                                    memberId: selectedHumanMember.id,
+                                    grants: nextGrants,
+                                  });
+                                }}
+                              />
+                              <span>
+                                {PERMISSION_LABELS[permissionKey]} (<code>{permissionKey}</code>)
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
                       <div className="mt-2 text-[11px] text-muted-foreground">
-                        Newly invited humans start restricted. Grant this only when the teammate should reassign issues.
+                        Changes apply immediately and are enforced server-side.
                       </div>
                       {humanPermissionMutation.isError ? (
                         <div className="mt-2 text-[11px] text-destructive">

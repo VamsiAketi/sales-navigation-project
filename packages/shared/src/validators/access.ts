@@ -27,6 +27,14 @@ export type CreateOpenClawInvitePrompt = z.infer<
 export const createHumanInviteSchema = z.object({
   email: z.string().trim().email().max(320),
   name: z.string().trim().min(1).max(120).optional(),
+  grants: z
+    .array(
+      z.object({
+        permissionKey: z.enum(PERMISSION_KEYS),
+        scope: z.record(z.string(), z.unknown()).optional().nullable(),
+      }),
+    )
+    .optional(),
 });
 
 export type CreateHumanInvite = z.infer<typeof createHumanInviteSchema>;
