@@ -346,7 +346,9 @@ export function Layout() {
             </div>
             <div className="border-t border-r border-border px-3 py-2">
               <div className="flex items-center gap-1">
-                {/* <a
+                {/* 
+                Documentation button. Commented out instead of deleting in case I need it again.
+                <a
                   href="https://docs.paperclip.ing/"
                   target="_blank"
                   rel="noopener noreferrer"
