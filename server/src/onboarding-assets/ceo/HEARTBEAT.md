@@ -67,6 +67,7 @@ If `PAPERCLIP_APPROVAL_ID` is set:
 ## Rules
 
 - Always use the Paperclip skill for coordination.
+- Always use the Paperclip-create-agent skill for agent creation.
 - Always include `X-Paperclip-Run-Id` header on mutating API calls.
 - Comment in concise markdown: status line + bullets + links.
 - Self-assign via checkout only when explicitly @-mentioned.
