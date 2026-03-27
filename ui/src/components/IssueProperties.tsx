@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link } from "@/lib/router";
 import type { Issue } from "@paperclipai/shared";
@@ -15,6 +15,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { formatAssigneeUserLabel } from "../lib/assignees";
+import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
@@ -22,7 +23,7 @@ import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check } from "lucide-react";
+import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2 } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
 const EXECUTION_WORKSPACE_OPTIONS = [
@@ -68,7 +69,7 @@ function shouldPresentExistingWorkspaceSelection(issue: Issue) {
 
 interface IssuePropertiesProps {
   issue: Issue;
-  onUpdate: (data: Record<string, unknown>) => void;
+  onUpdate: (data: Record<string, unknown>) => Promise<unknown>;
   inline?: boolean;
 }
 
@@ -196,8 +197,20 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [projectSearch, setProjectSearch] = useState("");
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelSearch, setLabelSearch] = useState("");
+  const [labelDraftIds, setLabelDraftIds] = useState<string[]>(issue.labelIds ?? []);
+  const [labelsDirty, setLabelsDirty] = useState(false);
+  const [labelsSaving, setLabelsSaving] = useState(false);
+  const [labelSaveError, setLabelSaveError] = useState<string | null>(null);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#6366f1");
+  const persistedLabelSignature = (issue.labelIds ?? []).join(",");
+
+  useEffect(() => {
+    setLabelDraftIds(issue.labelIds ?? []);
+    setLabelsDirty(false);
+    setLabelsSaving(false);
+    setLabelSaveError(null);
+  }, [issue.id, persistedLabelSignature]);
 
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
@@ -246,14 +259,19 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     mutationFn: (data: { name: string; color: string }) => issuesApi.createLabel(companyId!, data),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.issues.labels(companyId!) });
-      onUpdate({ labelIds: [...(issue.labelIds ?? []), created.id] });
+      setLabelDraftIds((current) => (current.includes(created.id) ? current : [...current, created.id]));
+      setLabelsDirty(true);
+      setLabelSaveError(null);
       setNewLabelName("");
     },
   });
 
   const deleteLabel = useMutation({
     mutationFn: (labelId: string) => issuesApi.deleteLabel(labelId),
-    onSuccess: () => {
+    onSuccess: (_, labelId) => {
+      setLabelDraftIds((current) => current.filter((id) => id !== labelId));
+      setLabelsDirty(true);
+      setLabelSaveError(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.labels(companyId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issue.id) });
@@ -261,12 +279,30 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   });
 
   const toggleLabel = (labelId: string) => {
-    const ids = issue.labelIds ?? [];
-    const next = ids.includes(labelId)
-      ? ids.filter((id) => id !== labelId)
-      : [...ids, labelId];
-    onUpdate({ labelIds: next });
+    setLabelDraftIds((current) => toggleIssueLabelSelection(current, labelId));
+    setLabelsDirty(true);
+    setLabelSaveError(null);
   };
+
+  const resetLabels = useCallback(() => {
+    setLabelDraftIds(issue.labelIds ?? []);
+    setLabelsDirty(false);
+    setLabelSaveError(null);
+  }, [issue.labelIds]);
+
+  const saveLabels = useCallback(async () => {
+    if (labelsSaving || !labelsDirty) return;
+    setLabelsSaving(true);
+    setLabelSaveError(null);
+    try {
+      await onUpdate({ labelIds: labelDraftIds });
+      setLabelsDirty(false);
+    } catch (error) {
+      setLabelSaveError(error instanceof Error ? error.message : "Failed to update labels. Try again.");
+    } finally {
+      setLabelsSaving(false);
+    }
+  }, [labelDraftIds, labelsDirty, labelsSaving, onUpdate]);
 
   const agentName = (id: string | null) => {
     if (!id || !agents) return null;
@@ -349,9 +385,13 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const assigneeUserLabel = userLabel(issue.assigneeUserId);
   const creatorUserLabel = userLabel(issue.createdByUserId);
 
-  const labelsTrigger = (issue.labels ?? []).length > 0 ? (
+  const selectedLabels = labelDraftIds
+    .map((id) => (labels ?? []).find((label) => label.id === id) ?? (issue.labels ?? []).find((label) => label.id === id))
+    .filter((label): label is NonNullable<Issue["labels"]>[number] => Boolean(label));
+
+  const labelsTrigger = selectedLabels.length > 0 ? (
     <div className="flex items-center gap-1 flex-wrap">
-      {(issue.labels ?? []).slice(0, 3).map((label) => (
+      {selectedLabels.slice(0, 3).map((label) => (
         <span
           key={label.id}
           className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border"
@@ -364,8 +404,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           {label.name}
         </span>
       ))}
-      {(issue.labels ?? []).length > 3 && (
-        <span className="text-xs text-muted-foreground">+{(issue.labels ?? []).length - 3}</span>
+      {selectedLabels.length > 3 && (
+        <span className="text-xs text-muted-foreground">+{selectedLabels.length - 3}</span>
       )}
     </div>
   ) : (
@@ -391,7 +431,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             return label.name.toLowerCase().includes(labelSearch.toLowerCase());
           })
           .map((label) => {
-            const selected = (issue.labelIds ?? []).includes(label.id);
+            const selected = labelDraftIds.includes(label.id);
             return (
               <div key={label.id} className="flex items-center gap-1">
                 <button
@@ -400,6 +440,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                     selected && "bg-accent"
                   )}
                   onClick={() => toggleLabel(label.id)}
+                  disabled={labelsSaving}
                 >
                   <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
                   <span className="truncate">{label.name}</span>
@@ -409,6 +450,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                   className="p-1 text-muted-foreground hover:text-destructive rounded"
                   onClick={() => deleteLabel.mutate(label.id)}
                   title={`Delete ${label.name}`}
+                  disabled={deleteLabel.isPending || labelsSaving}
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -417,6 +459,28 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           })}
       </div>
       <div className="mt-2 border-t border-border pt-2 space-y-1">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="flex-1 px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
+            onClick={resetLabels}
+            disabled={labelsSaving || !labelsDirty}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
+            onClick={() => { void saveLabels(); }}
+            disabled={labelsSaving || !labelsDirty}
+          >
+            {labelsSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            {labelsSaving ? "Saving..." : "Save labels"}
+          </button>
+        </div>
+        {labelSaveError ? (
+          <div className="text-[11px] text-destructive">{labelSaveError}</div>
+        ) : null}
         <div className="flex items-center gap-1">
           <input
             className="h-7 w-7 p-0 rounded bg-transparent"
@@ -433,7 +497,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         </div>
         <button
           className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
-          disabled={!newLabelName.trim() || createLabel.isPending}
+          disabled={!newLabelName.trim() || createLabel.isPending || labelsSaving}
           onClick={() =>
             createLabel.mutate({
               name: newLabelName.trim(),
@@ -444,6 +508,16 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <Plus className="h-3 w-3" />
           {createLabel.isPending ? "Creating…" : "Create label"}
         </button>
+        {createLabel.isError ? (
+          <div className="text-[11px] text-destructive">
+            {createLabel.error instanceof Error ? createLabel.error.message : "Failed to create label."}
+          </div>
+        ) : null}
+        {deleteLabel.isError ? (
+          <div className="text-[11px] text-destructive">
+            {deleteLabel.error instanceof Error ? deleteLabel.error.message : "Failed to delete label."}
+          </div>
+        ) : null}
       </div>
     </>
   );

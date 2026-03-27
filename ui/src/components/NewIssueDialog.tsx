@@ -46,10 +46,12 @@ import {
   FileText,
   Loader2,
   X,
+  Check,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { extractProviderIdWithFallback } from "../lib/model-utils";
 import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDefault } from "../lib/status-colors";
+import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
@@ -63,6 +65,7 @@ interface IssueDraft {
   description: string;
   status: string;
   priority: string;
+  labelIds?: string[];
   assigneeValue: string;
   assigneeId?: string;
   projectId: string;
@@ -276,6 +279,7 @@ export function NewIssueDialog() {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("todo");
   const [priority, setPriority] = useState("");
+  const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
   const [assigneeValue, setAssigneeValue] = useState("");
   const [projectId, setProjectId] = useState("");
   const [projectWorkspaceId, setProjectWorkspaceId] = useState("");
@@ -298,6 +302,8 @@ export function NewIssueDialog() {
   // Popover states
   const [statusOpen, setStatusOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [labelSearch, setLabelSearch] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
   const [companyOpen, setCompanyOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
@@ -314,6 +320,11 @@ export function NewIssueDialog() {
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(effectiveCompanyId!),
     queryFn: () => projectsApi.list(effectiveCompanyId!),
+    enabled: !!effectiveCompanyId && newIssueOpen,
+  });
+  const { data: labels } = useQuery({
+    queryKey: queryKeys.issues.labels(effectiveCompanyId!),
+    queryFn: () => issuesApi.listLabels(effectiveCompanyId!),
     enabled: !!effectiveCompanyId && newIssueOpen,
   });
   const { data: reusableExecutionWorkspaces } = useQuery({
@@ -472,6 +483,7 @@ export function NewIssueDialog() {
       description,
       status,
       priority,
+      labelIds: selectedLabelIds,
       assigneeValue,
       projectId,
       projectWorkspaceId,
@@ -486,6 +498,7 @@ export function NewIssueDialog() {
     description,
     status,
     priority,
+    selectedLabelIds,
     assigneeValue,
     projectId,
     projectWorkspaceId,
@@ -510,6 +523,7 @@ export function NewIssueDialog() {
       setDescription(newIssueDefaults.description ?? "");
       setStatus(newIssueDefaults.status ?? "todo");
       setPriority(newIssueDefaults.priority ?? "");
+      setSelectedLabelIds([]);
       const defaultProjectId = newIssueDefaults.projectId ?? "";
       const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
       setProjectId(defaultProjectId);
@@ -528,6 +542,7 @@ export function NewIssueDialog() {
       setDescription(draft.description);
       setStatus(draft.status || "todo");
       setPriority(draft.priority);
+      setSelectedLabelIds(Array.isArray(draft.labelIds) ? draft.labelIds : []);
       setAssigneeValue(
         newIssueDefaults.assigneeAgentId || newIssueDefaults.assigneeUserId
           ? assigneeValueFromSelection(newIssueDefaults)
@@ -549,6 +564,7 @@ export function NewIssueDialog() {
       const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
       setStatus(newIssueDefaults.status ?? "todo");
       setPriority(newIssueDefaults.priority ?? "");
+      setSelectedLabelIds([]);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
@@ -593,6 +609,7 @@ export function NewIssueDialog() {
     setDescription("");
     setStatus("todo");
     setPriority("");
+    setSelectedLabelIds([]);
     setAssigneeValue("");
     setProjectId("");
     setProjectWorkspaceId("");
@@ -613,6 +630,7 @@ export function NewIssueDialog() {
   function handleCompanyChange(companyId: string) {
     if (companyId === effectiveCompanyId) return;
     setDialogCompanyId(companyId);
+    setSelectedLabelIds([]);
     setAssigneeValue("");
     setProjectId("");
     setProjectWorkspaceId("");
@@ -661,6 +679,7 @@ export function NewIssueDialog() {
       priority: priority || "medium",
       ...(selectedAssigneeAgentId ? { assigneeAgentId: selectedAssigneeAgentId } : {}),
       ...(selectedAssigneeUserId ? { assigneeUserId: selectedAssigneeUserId } : {}),
+      ...(selectedLabelIds.length > 0 ? { labelIds: selectedLabelIds } : {}),
       ...(projectId ? { projectId } : {}),
       ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
       ...(assigneeAdapterOverrides ? { assigneeAdapterOverrides } : {}),
@@ -742,9 +761,15 @@ export function NewIssueDialog() {
     setStagedFiles((current) => current.filter((file) => file.id !== id));
   }
 
-  const hasDraft = title.trim().length > 0 || description.trim().length > 0 || stagedFiles.length > 0;
+  const hasDraft = title.trim().length > 0 || description.trim().length > 0 || stagedFiles.length > 0 || selectedLabelIds.length > 0;
   const currentStatus = statuses.find((s) => s.value === status) ?? statuses[1]!;
   const currentPriority = priorities.find((p) => p.value === priority);
+  const selectedLabels = useMemo(
+    () => selectedLabelIds
+      .map((labelId) => (labels ?? []).find((label) => label.id === labelId))
+      .filter((label): label is NonNullable<typeof labels>[number] => Boolean(label)),
+    [labels, selectedLabelIds],
+  );
   const currentAssignee = selectedAssigneeAgentId
     ? (agents ?? []).find((a) => a.id === selectedAssigneeAgentId)
     : null;
@@ -808,12 +833,24 @@ export function NewIssueDialog() {
     [orderedProjects],
   );
   const savedDraft = loadDraft();
-  const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim());
+  const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
   const canDiscardDraft = hasDraft || hasSavedDraft;
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
   const stagedDocuments = stagedFiles.filter((file) => file.kind === "document");
   const stagedAttachments = stagedFiles.filter((file) => file.kind === "attachment");
+  const visibleLabels = useMemo(
+    () =>
+      (labels ?? []).filter((label) => {
+        if (!labelSearch.trim()) return true;
+        return label.name.toLowerCase().includes(labelSearch.toLowerCase());
+      }),
+    [labels, labelSearch],
+  );
+
+  const toggleSelectedLabel = useCallback((labelId: string) => {
+    setSelectedLabelIds((current) => toggleIssueLabelSelection(current, labelId));
+  }, []);
 
   const handleProjectChange = useCallback((nextProjectId: string) => {
     setProjectId(nextProjectId);
@@ -1387,11 +1424,53 @@ export function NewIssueDialog() {
             </PopoverContent>
           </Popover>
 
-          {/* Labels chip (placeholder) */}
-          <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors text-muted-foreground">
-            <Tag className="h-3 w-3" />
-            Labels
-          </button>
+          <Popover open={labelsOpen} onOpenChange={(open) => { setLabelsOpen(open); if (!open) setLabelSearch(""); }}>
+            <PopoverTrigger asChild>
+              <button className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors text-muted-foreground">
+                <Tag className="h-3 w-3 shrink-0" />
+                {selectedLabels.length === 0 ? (
+                  <span>Labels</span>
+                ) : (
+                  <span className="truncate">
+                    {selectedLabels.slice(0, 2).map((label) => label.name).join(", ")}
+                    {selectedLabels.length > 2 ? ` +${selectedLabels.length - 2}` : ""}
+                  </span>
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-1" align="start">
+              <input
+                className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
+                placeholder="Search labels..."
+                value={labelSearch}
+                onChange={(e) => setLabelSearch(e.target.value)}
+                autoFocus
+              />
+              <div className="max-h-44 overflow-y-auto overscroll-contain space-y-0.5">
+                {visibleLabels.map((label) => {
+                  const selected = selectedLabelIds.includes(label.id);
+                  return (
+                    <button
+                      key={label.id}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-left",
+                        selected && "bg-accent",
+                      )}
+                      onClick={() => toggleSelectedLabel(label.id)}
+                      disabled={createIssue.isPending}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+                      <span className="truncate flex-1">{label.name}</span>
+                      {selected ? <Check className="h-3 w-3 shrink-0" /> : null}
+                    </button>
+                  );
+                })}
+                {visibleLabels.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">No matching labels.</div>
+                ) : null}
+              </div>
+            </PopoverContent>
+          </Popover>
 
           <input
             ref={stageFileInputRef}
