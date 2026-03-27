@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@/lib/router";
-import { LogOut, Menu } from "lucide-react";
+import { LogOut, Menu, Settings } from "lucide-react";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useCompany } from "../context/CompanyContext";
@@ -55,7 +55,11 @@ function UserMenu() {
           {initial}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-36">
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem onClick={() => navigate("/account/settings")} className="cursor-pointer">
+          <Settings className="mr-2 h-4 w-4" />
+          Account Settings
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
           <LogOut className="mr-2 h-4 w-4" />
           Logout
