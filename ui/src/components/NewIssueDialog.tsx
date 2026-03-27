@@ -240,6 +240,12 @@ const EXECUTION_WORKSPACE_MODES = [
   { value: "reuse_existing", label: "Reuse existing workspace" },
 ] as const;
 
+const REQUIRED_FIELD_MARKER = "*";
+
+export function formatRequiredFieldLabel(label: string) {
+  return `${label} ${REQUIRED_FIELD_MARKER}`;
+}
+
 function defaultProjectWorkspaceIdForProject(project: { workspaces?: Array<{ id: string; isPrimary: boolean }>; executionWorkspacePolicy?: { defaultProjectWorkspaceId?: string | null } | null } | null | undefined) {
   if (!project) return "";
   return project.executionWorkspacePolicy?.defaultProjectWorkspaceId
@@ -852,6 +858,8 @@ export function NewIssueDialog() {
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
   const canSubmit = canSubmitNewIssue({ title, projectId, isPending: createIssue.isPending });
+  const projectFieldLabel = formatRequiredFieldLabel("Project");
+  const projectMarkerClassName = cn("text-muted-foreground/90", projectValidationError && "text-destructive");
   const stagedDocuments = stagedFiles.filter((file) => file.kind === "document");
   const stagedAttachments = stagedFiles.filter((file) => file.kind === "attachment");
   const visibleLabels = useMemo(
@@ -1133,6 +1141,9 @@ export function NewIssueDialog() {
                 disablePortal
                 noneLabel="No project"
                 includeNoneOption={false}
+                triggerAriaLabel={projectFieldLabel}
+                triggerAriaRequired
+                triggerAriaInvalid={Boolean(projectValidationError)}
                 searchPlaceholder="Search projects..."
                 emptyMessage="No projects found."
                 onChange={handleProjectChange}
@@ -1147,9 +1158,12 @@ export function NewIssueDialog() {
                         style={{ backgroundColor: currentProject.color ?? "#6366f1" }}
                       />
                       <span className="truncate">{option.label}</span>
+                      <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
                     </>
                   ) : (
-                    <span className="text-muted-foreground">Project</span>
+                    <span className="text-muted-foreground">
+                      Project <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
+                    </span>
                   )
                 }
                 renderOption={(option) => {
