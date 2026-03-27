@@ -15,6 +15,13 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AlertCircle, Archive, ArchiveRestore, Check, ExternalLink, Github, Loader2, Plus, Trash2, X } from "lucide-react";
 import { ChoosePathButton } from "./PathInstructionsModal";
 import { DraftInput } from "./agent-config-primitives";
@@ -40,12 +47,12 @@ function stableProjectEnvKey(env: Record<string, string> | null | undefined): st
 function ProjectSecretBindingsEditor({
   envConfig,
   companySecrets,
-  companyPrefix,
+  companySettingsPath,
   onSave,
 }: {
   envConfig: Record<string, string> | null;
   companySecrets: CompanySecret[];
-  companyPrefix: string;
+  companySettingsPath: string;
   onSave: (next: Record<string, string> | null) => void;
 }) {
   const [rows, setRows] = useState(() => rowsFromEnvConfig(envConfig));
@@ -78,7 +85,7 @@ function ProjectSecretBindingsEditor({
       <p className="text-[11px] text-muted-foreground leading-relaxed">
         For each row: <span className="font-medium text-foreground">env var name</span> (what the agent sees) →{" "}
         <span className="font-medium text-foreground">company secret</span> (name from{" "}
-        <Link to={`/${companyPrefix}/company/settings`} className="underline underline-offset-2">
+        <Link to={companySettingsPath} className="underline underline-offset-2">
           Company settings
         </Link>
         ).
@@ -92,7 +99,7 @@ function ProjectSecretBindingsEditor({
         {rows.map((row, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2">
             <input
-              className="min-w-[7rem] flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
+              className="min-w-28 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
               placeholder="ENV_VAR_NAME"
               value={row.envKey}
               onChange={(e) => {
@@ -103,7 +110,7 @@ function ProjectSecretBindingsEditor({
             />
             <span className="text-xs text-muted-foreground shrink-0">→</span>
             <select
-              className="min-w-[8rem] flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
+              className="min-w-32 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
               value={row.secretName}
               onChange={(e) => {
                 const v = e.target.value;
@@ -180,6 +187,7 @@ export type ProjectConfigFieldKey =
   | "description"
   | "status"
   | "goals"
+  | "env_config"
   | "execution_workspace_enabled"
   | "execution_workspace_default_mode"
   | "execution_workspace_base_ref"
@@ -354,9 +362,12 @@ function ArchiveDangerZone({
 }
 
 export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSaveState, onArchive, archivePending }: ProjectPropertiesProps) {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, selectedCompany } = useCompany();
+  const companyPrefix = selectedCompany?.issuePrefix?.trim() ?? "";
+  const companySettingsPath = companyPrefix ? `/${companyPrefix}/company/settings` : "/company/settings";
   const queryClient = useQueryClient();
   const [goalOpen, setGoalOpen] = useState(false);
+  const [projectSecretsModalOpen, setProjectSecretsModalOpen] = useState(false);
   const [executionWorkspaceAdvancedOpen, setExecutionWorkspaceAdvancedOpen] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"local" | "repo" | null>(null);
   const [workspaceCwd, setWorkspaceCwd] = useState("");
@@ -375,6 +386,11 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const { data: allGoals } = useQuery({
     queryKey: queryKeys.goals.list(selectedCompanyId!),
     queryFn: () => goalsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const { data: companySecrets = [] } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
+    queryFn: () => secretsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
   const { data: experimentalSettings } = useQuery({
@@ -399,6 +415,10 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const workspaces = project.workspaces ?? [];
   const codebase = project.codebase;
   const primaryCodebaseWorkspace = project.primaryWorkspace ?? null;
+  const repoWorkspaceForSecretBinding =
+    primaryCodebaseWorkspace && primaryCodebaseWorkspace.repoUrl
+      ? primaryCodebaseWorkspace
+      : workspaces.find((workspace) => Boolean(workspace.repoUrl)) ?? null;
   const hasAdditionalLegacyWorkspaces = workspaces.some((workspace) => workspace.id !== primaryCodebaseWorkspace?.id);
   const executionWorkspacePolicy = project.executionWorkspacePolicy ?? null;
   const executionWorkspacesEnabled = executionWorkspacePolicy?.enabled === true;
@@ -791,6 +811,26 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             <span className="text-sm">{formatDate(project.targetDate)}</span>
           </PropertyRow>
         )}
+        <PropertyRow label={<FieldLabel label="Secrets" state="idle" />}>
+          <div className="flex w-full items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+              {project.envConfig && Object.keys(project.envConfig).length > 0
+                ? `${Object.keys(project.envConfig).length} mapping${
+                    Object.keys(project.envConfig).length === 1 ? "" : "s"
+                  } configured`
+                : "No mappings configured yet."}
+            </span>
+            <Button
+              type="button"
+              size="xs"
+              className="h-7 shrink-0"
+              onClick={() => setProjectSecretsModalOpen(true)}
+              disabled={!(onUpdate || onFieldUpdate)}
+            >
+              Configure secrets
+            </Button>
+          </div>
+        </PropertyRow>
       </div>
 
       <Separator className="my-4" />
@@ -818,45 +858,71 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             <div className="space-y-1">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Repo</div>
               {codebase.repoUrl ? (
-                <div className="flex items-center justify-between gap-2">
-                  {isSafeExternalUrl(codebase.repoUrl) ? (
-                    <a
-                      href={codebase.repoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
-                    >
-                      <Github className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{formatRepoUrl(codebase.repoUrl)}</span>
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                    </a>
-                  ) : (
-                    <div className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                      <Github className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{codebase.repoUrl}</span>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    {isSafeExternalUrl(codebase.repoUrl) ? (
+                      <a
+                        href={codebase.repoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                      >
+                        <Github className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{formatRepoUrl(codebase.repoUrl)}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    ) : (
+                      <div className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                        <Github className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{codebase.repoUrl}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        className="h-6 px-2"
+                        onClick={() => {
+                          setWorkspaceMode("repo");
+                          setWorkspaceRepoUrl(codebase.repoUrl ?? "");
+                          setWorkspaceError(null);
+                        }}
+                      >
+                        Change repo
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={clearRepoWorkspace}
+                        aria-label="Clear repo"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
                     </div>
-                  )}
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      className="h-6 px-2"
-                      onClick={() => {
-                        setWorkspaceMode("repo");
-                        setWorkspaceRepoUrl(codebase.repoUrl ?? "");
-                        setWorkspaceError(null);
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[11px] text-muted-foreground">GitHub PAT secret</div>
+                    <select
+                      className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
+                      value={repoWorkspaceForSecretBinding ? getWorkspaceGitHubSecretId(repoWorkspaceForSecretBinding) : ""}
+                      onChange={(e) => {
+                        if (!repoWorkspaceForSecretBinding) return;
+                        setWorkspaceGitHubSecretId(repoWorkspaceForSecretBinding, e.target.value);
                       }}
+                      disabled={!repoWorkspaceForSecretBinding || updateWorkspace.isPending}
                     >
-                      Change repo
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={clearRepoWorkspace}
-                      aria-label="Clear repo"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                      <option value="">None</option>
+                      {companySecrets.map((secret) => (
+                        <option key={secret.id} value={secret.id}>
+                          {secret.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-[11px] text-muted-foreground">
+                      {companySecrets.length > 0
+                        ? "Select the company secret containing a GitHub PAT for this repo."
+                        : "No company secrets found. Create one in Company settings first."}
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1304,6 +1370,27 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
         ) : null}
 
       </div>
+
+      {onUpdate || onFieldUpdate ? (
+        <Dialog open={projectSecretsModalOpen} onOpenChange={setProjectSecretsModalOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Project secret mappings</DialogTitle>
+              <DialogDescription className="text-xs">
+                Map env var names to company secret names. Agents on this project get these env vars at runtime.
+              </DialogDescription>
+            </DialogHeader>
+            <ProjectSecretBindingsEditor
+              envConfig={project.envConfig ?? null}
+              companySecrets={companySecrets}
+              companySettingsPath={companySettingsPath}
+              onSave={(next) => {
+                commitField("env_config", { envConfig: next });
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {onArchive && (
         <>

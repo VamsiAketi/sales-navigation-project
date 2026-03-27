@@ -63,6 +63,11 @@ export interface Project {
   pauseReason: PauseReason | null;
   pausedAt: Date | null;
   executionWorkspacePolicy: ProjectExecutionWorkspacePolicy | null;
+  /**
+   * Project-level env mapping: env var name -> company secret name.
+   * The runtime resolves secret names to concrete secret values when agents run project issues.
+   */
+  envConfig: Record<string, string> | null;
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;
