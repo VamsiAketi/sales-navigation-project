@@ -11,7 +11,7 @@ services:
       timeout: 5s
       retries: 30
     ports:
-      - "5432:5432"
+      - "8900:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -20,13 +20,21 @@ services:
     ports:
       - "3100:3100"
     environment:
+      HOST: "0.0.0.0"
       DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip
       PORT: "3100"
+      NODE_ENV: "production"
+      HOME: "/paperclip"
+      PAPERCLIP_HOME: "/paperclip"
+      PAPERCLIP_INSTANCE_ID: "default"
+      PAPERCLIP_ONBOARD_AUTO_RUN: "false"
+      PAPERCLIP_CONFIG: "/paperclip/instances/default/config.json"
       SERVE_UI: "true"
       PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
       PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
       PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
       BETTER_AUTH_SECRET: "iZiDCE3TANXA/ZFEHObBlpxnIqOyEqil9YVwnU6duMM="
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
     volumes:
       - paperclip-data:/paperclip
       - ./bootstrap-output:/bootstrap-output 
@@ -35,7 +43,15 @@ services:
         condition: service_healthy
     command: >
       sh -c '
+      if [ -n "${OPENAI_API_KEY:-}" ]; then
+        printenv OPENAI_API_KEY | codex login --with-api-key;
+      else
+        echo "OPENAI_API_KEY is not set; skipping codex login.";
+      fi;
       if [ ! -f "${PAPERCLIP_CONFIG:-/paperclip/instances/default/config.json}" ]; then
+        echo "=== WAITING FOR 30 SECONDS ===";
+        sleep 30;
+        echo "=== WAITING FOR 30 SECONDS DONE ===";
         echo "=== ONBOARDING PAPERCLIP INSTANCE ===";
         pnpm paperclipai onboard --yes;
         echo "=== STARTING SERVER FOR BOOTSTRAP ===";
