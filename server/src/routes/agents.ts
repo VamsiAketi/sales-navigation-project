@@ -925,6 +925,18 @@ export function agentRoutes(db: Db) {
     res.json(leanTree);
   });
 
+  router.patch("/companies/:companyId/org/child-order", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const { managerId, childIds } = req.body;
+    if (typeof managerId !== "string" || !Array.isArray(childIds) || !childIds.every((id) => typeof id === "string")) {
+      res.status(400).json({ error: "managerId (string) and childIds (string[]) are required" });
+      return;
+    }
+    const result = await svc.updateDirectReportOrder(companyId, managerId, childIds);
+    res.json(result);
+  });
+
   router.get("/companies/:companyId/org.svg", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
