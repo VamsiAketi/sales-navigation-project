@@ -106,6 +106,15 @@ export {
 } from "./agent.js";
 
 export {
+  createProjectIssueStatusSchema,
+  updateProjectIssueStatusSchema,
+  reorderProjectIssueStatusesSchema,
+  type CreateProjectIssueStatus,
+  type UpdateProjectIssueStatus,
+  type ReorderProjectIssueStatuses,
+} from "./project-issue-status.js";
+
+export {
   createProjectSchema,
   updateProjectSchema,
   createProjectWorkspaceSchema,

@@ -35,9 +35,12 @@ import { getDefaultCompanyGoal } from "./goals.js";
 const ALL_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"];
 const MAX_ISSUE_COMMENT_PAGE_LIMIT = 500;
 
-function assertTransition(from: string, to: string) {
+// Validation of status values for project-specific issues is handled at the route level,
+// where the project's custom statuses can be looked up. Here we only block obvious unknown
+// values for issues that have no project (non-project issues still use the global list).
+function assertTransition(from: string, to: string, hasProject: boolean) {
   if (from === to) return;
-  if (!ALL_ISSUE_STATUSES.includes(to)) {
+  if (!hasProject && !ALL_ISSUE_STATUSES.includes(to)) {
     throw conflict(`Unknown issue status: ${to}`);
   }
 }
@@ -891,7 +894,7 @@ export function issueService(db: Db) {
       }
 
       if (issueData.status) {
-        assertTransition(existing.status, issueData.status);
+        assertTransition(existing.status, issueData.status, !!existing.projectId);
       }
 
       const patch: Partial<typeof issues.$inferInsert> = {

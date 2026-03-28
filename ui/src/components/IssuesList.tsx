@@ -23,7 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search } from "lucide-react";
 import { KanbanBoard } from "./KanbanBoard";
-import type { Issue } from "@paperclipai/shared";
+import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Helpers ── */
 
@@ -172,6 +172,7 @@ interface IssuesListProps {
   };
   onSearchChange?: (search: string) => void;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
+  projectStatuses?: ProjectIssueStatus[];
 }
 
 export function IssuesList({
@@ -189,6 +190,7 @@ export function IssuesList({
   searchFilters,
   onSearchChange,
   onUpdateIssue,
+  projectStatuses,
 }: IssuesListProps) {
   const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialog();
@@ -432,14 +434,17 @@ export function IssuesList({
                   <div className="space-y-1">
                     <span className="text-xs text-muted-foreground">Status</span>
                     <div className="space-y-0.5">
-                      {statusOrder.map((s) => (
-                        <label key={s} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                      {(projectStatuses && projectStatuses.length > 0
+                        ? projectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position)
+                        : statusOrder.map((s) => ({ value: s, name: statusLabel(s), color: undefined }))
+                      ).map((s) => (
+                        <label key={s.value} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
                           <Checkbox
-                            checked={viewState.statuses.includes(s)}
-                            onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s) })}
+                            checked={viewState.statuses.includes(s.value)}
+                            onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s.value) })}
                           />
-                          <StatusIcon status={s} />
-                          <span className="text-sm">{statusLabel(s)}</span>
+                          <StatusIcon status={s.value} projectStatuses={projectStatuses} />
+                          <span className="text-sm">{s.name}</span>
                         </label>
                       ))}
                     </div>
@@ -634,6 +639,7 @@ export function IssuesList({
           agents={agents}
           liveIssueIds={liveIssueIds}
           onUpdateIssue={onUpdateIssue}
+          projectStatuses={projectStatuses}
         />
       ) : (
         groupedContent.map((group) => (

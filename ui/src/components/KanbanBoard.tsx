@@ -20,7 +20,7 @@ import {
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
-import type { Issue } from "@paperclipai/shared";
+import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 const boardStatuses = [
   "backlog",
@@ -46,17 +46,23 @@ interface KanbanBoardProps {
   agents?: Agent[];
   liveIssueIds?: Set<string>;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
+  /** When provided, use these as the board columns instead of the default hardcoded list */
+  projectStatuses?: ProjectIssueStatus[];
 }
 
 /* ── Droppable Column ── */
 
 function KanbanColumn({
   status,
+  columnLabel,
+  columnColor,
   issues,
   agents,
   liveIssueIds,
 }: {
   status: string;
+  columnLabel?: string;
+  columnColor?: string;
   issues: Issue[];
   agents?: Agent[];
   liveIssueIds?: Set<string>;
@@ -66,9 +72,15 @@ function KanbanColumn({
   return (
     <div className="flex flex-col min-w-[260px] w-[260px] shrink-0">
       <div className="flex items-center gap-2 px-2 py-2 mb-1">
-        <StatusIcon status={status} />
+        {columnColor ? (
+          <span className="relative inline-flex h-4 w-4 rounded-full border-2 shrink-0" style={{ borderColor: columnColor, color: columnColor }}>
+            {status === "done" && <span className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-current" />}
+          </span>
+        ) : (
+          <StatusIcon status={status} />
+        )}
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {statusLabel(status)}
+          {columnLabel ?? statusLabel(status)}
         </span>
         <span className="text-xs text-muted-foreground/60 ml-auto tabular-nums">
           {issues.length}
@@ -185,6 +197,7 @@ export function KanbanBoard({
   agents,
   liveIssueIds,
   onUpdateIssue,
+  projectStatuses,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -192,18 +205,33 @@ export function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
+  // Use project-specific statuses when available, otherwise fall back to defaults
+  const activeColumns: string[] = useMemo(() => {
+    if (projectStatuses && projectStatuses.length > 0) {
+      return projectStatuses
+        .filter((s) => s.isActive)
+        .sort((a, b) => a.position - b.position)
+        .map((s) => s.value);
+    }
+    return boardStatuses;
+  }, [projectStatuses]);
+
   const columnIssues = useMemo(() => {
     const grouped: Record<string, Issue[]> = {};
-    for (const status of boardStatuses) {
+    for (const status of activeColumns) {
       grouped[status] = [];
     }
     for (const issue of issues) {
       if (grouped[issue.status]) {
         grouped[issue.status].push(issue);
+      } else {
+        // Issues with inactive/unknown statuses go into an "other" bucket keyed by their value
+        if (!grouped[issue.status]) grouped[issue.status] = [];
+        grouped[issue.status]!.push(issue);
       }
     }
     return grouped;
-  }, [issues]);
+  }, [issues, activeColumns]);
 
   const activeIssue = useMemo(
     () => (activeId ? issues.find((i) => i.id === activeId) : null),
@@ -227,7 +255,7 @@ export function KanbanBoard({
     // or another card's id. Find which column the "over" belongs to.
     let targetStatus: string | null = null;
 
-    if (boardStatuses.includes(over.id as string)) {
+    if (activeColumns.includes(over.id as string)) {
       targetStatus = over.id as string;
     } else {
       // It's a card - find which column it's in
@@ -254,15 +282,20 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
     >
       <div className="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2">
-        {boardStatuses.map((status) => (
-          <KanbanColumn
-            key={status}
-            status={status}
-            issues={columnIssues[status] ?? []}
-            agents={agents}
-            liveIssueIds={liveIssueIds}
-          />
-        ))}
+        {activeColumns.map((status) => {
+          const ps = projectStatuses?.find((s) => s.value === status);
+          return (
+            <KanbanColumn
+              key={status}
+              status={status}
+              columnLabel={ps?.name}
+              columnColor={ps?.color}
+              issues={columnIssues[status] ?? []}
+              agents={agents}
+              liveIssueIds={liveIssueIds}
+            />
+          );
+        })}
       </div>
       <DragOverlay>
         {activeIssue ? (
