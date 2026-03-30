@@ -349,7 +349,7 @@ export function OrgChart() {
   // ── Reorg mutation ──────────────────────────────────────────────────────
   const reorgMutation = useMutation({
     mutationFn: ({ agentId, reportsTo }: { agentId: string; reportsTo: string | null }) =>
-      agentsApi.update(agentId, { reportsTo }, selectedCompanyId),
+      agentsApi.update(agentId, { reportsTo }, selectedCompanyId ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.org(selectedCompanyId!) });
     },
