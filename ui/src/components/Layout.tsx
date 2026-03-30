@@ -39,7 +39,7 @@ const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
 export function buildVisibleVersionLabel(version?: string | null): string | null {
   const normalized = version?.trim();
   if (!normalized) return null;
-  return `Version ${normalized}`;
+  return normalized;
 }
 
 function readRememberedInstanceSettingsPath(): string {
