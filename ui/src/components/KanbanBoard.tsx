@@ -16,6 +16,7 @@ import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
+  arrayMove,
 } from "@dnd-kit/sortable";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
@@ -48,6 +49,15 @@ interface KanbanBoardProps {
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
   /** When provided, use these as the board columns instead of the default hardcoded list */
   projectStatuses?: ProjectIssueStatus[];
+}
+
+/** Compute a kanbanPosition value that places `item` between `before` and `after`. */
+function computePosition(before: Issue | null, after: Issue | null): number {
+  const prev = before?.kanbanPosition ?? 0;
+  const next = after?.kanbanPosition ?? prev + 2;
+  if (before === null) return next - 1;
+  if (after === null) return prev + 1;
+  return (prev + next) / 2;
 }
 
 /* ── Droppable Column ── */
@@ -230,6 +240,14 @@ export function KanbanBoard({
         grouped[issue.status]!.push(issue);
       }
     }
+    // Sort each column by kanbanPosition (fall back to createdAt for unpositioned issues)
+    for (const status of Object.keys(grouped)) {
+      grouped[status].sort((a, b) => {
+        const ap = a.kanbanPosition ?? new Date(a.createdAt).getTime() / 1e10;
+        const bp = b.kanbanPosition ?? new Date(b.createdAt).getTime() / 1e10;
+        return ap - bp;
+      });
+    }
     return grouped;
   }, [issues, activeColumns]);
 
@@ -254,19 +272,40 @@ export function KanbanBoard({
     // Determine target status: the "over" could be a column id (status string)
     // or another card's id. Find which column the "over" belongs to.
     let targetStatus: string | null = null;
+    let targetIssue: Issue | null = null;
 
     if (activeColumns.includes(over.id as string)) {
       targetStatus = over.id as string;
     } else {
-      // It's a card - find which column it's in
-      const targetIssue = issues.find((i) => i.id === over.id);
+      targetIssue = issues.find((i) => i.id === over.id) ?? null;
       if (targetIssue) {
         targetStatus = targetIssue.status;
       }
     }
 
-    if (targetStatus && targetStatus !== issue.status) {
-      onUpdateIssue(issueId, { status: targetStatus });
+    if (!targetStatus) return;
+
+    const isStatusChange = targetStatus !== issue.status;
+
+    if (isStatusChange) {
+      // Cross-column move: update status and place at the end of the target column
+      const targetColumn = columnIssues[targetStatus] ?? [];
+      const lastInTarget = targetColumn[targetColumn.length - 1] ?? null;
+      const newPosition = computePosition(lastInTarget, null);
+      onUpdateIssue(issueId, { status: targetStatus, kanbanPosition: newPosition });
+    } else if (targetIssue && targetIssue.id !== issueId) {
+      // Within-column reorder: compute new fractional position
+      const column = columnIssues[issue.status] ?? [];
+      const oldIndex = column.findIndex((i) => i.id === issueId);
+      const newIndex = column.findIndex((i) => i.id === targetIssue!.id);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+
+      const reordered = arrayMove(column, oldIndex, newIndex);
+      const insertedIndex = reordered.findIndex((i) => i.id === issueId);
+      const before = insertedIndex > 0 ? reordered[insertedIndex - 1] : null;
+      const after = insertedIndex < reordered.length - 1 ? reordered[insertedIndex + 1] : null;
+      const newPosition = computePosition(before ?? null, after ?? null);
+      onUpdateIssue(issueId, { kanbanPosition: newPosition });
     }
   }
 
