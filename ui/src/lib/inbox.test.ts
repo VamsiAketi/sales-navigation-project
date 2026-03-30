@@ -164,6 +164,7 @@ function makeIssue(id: string, isUnreadForMe: boolean): Issue {
     myLastTouchAt: new Date("2026-03-11T00:00:00.000Z"),
     lastExternalCommentAt: new Date("2026-03-11T01:00:00.000Z"),
     isUnreadForMe,
+    kanbanPosition: null,
   };
 }
 
