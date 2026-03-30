@@ -33,9 +33,14 @@ import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 import { NotFoundPage } from "../pages/NotFound";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
+
+export function buildVisibleVersionLabel(version?: string | null): string | null {
+  const normalized = version?.trim();
+  if (!normalized) return null;
+  return `Version ${normalized}`;
+}
 
 function readRememberedInstanceSettingsPath(): string {
   if (typeof window === "undefined") return DEFAULT_INSTANCE_SETTINGS_PATH;
@@ -137,6 +142,7 @@ export function Layout() {
   ]);
 
   const togglePanel = togglePanelVisible;
+  const versionLabel = buildVisibleVersionLabel(health?.version);
 
   useCompanyPageMemory();
 
@@ -295,15 +301,14 @@ export function Layout() {
               {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar />}
             </div>
             <div className="border-t border-r border-border px-3 py-2 bg-background">
-              <div className="flex items-center gap-1">
-
-                {health?.version && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="px-2 text-xs text-muted-foreground shrink-0 cursor-default">v</span>
-                    </TooltipTrigger>
-                    <TooltipContent>v{health.version}</TooltipContent>
-                  </Tooltip>
+              <div className="flex items-center gap-1 min-w-0">
+                {versionLabel && (
+                  <span
+                    className="px-2 text-xs text-muted-foreground min-w-0 flex-1 truncate"
+                    title={versionLabel}
+                  >
+                    {versionLabel}
+                  </span>
                 )}
                 <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
                   <Link
@@ -345,7 +350,7 @@ export function Layout() {
               </div>
             </div>
             <div className="border-t border-r border-border px-3 py-2">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 min-w-0">
                 {/* 
                 Documentation button. Commented out instead of deleting in case I need it again.
                 <a
@@ -357,13 +362,13 @@ export function Layout() {
                   <BookOpen className="h-4 w-4 shrink-0" />
                   <span className="truncate">Documentation</span>
                 </a> */}
-                {health?.version && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="px-2 text-xs text-muted-foreground shrink-0 cursor-default">v</span>
-                    </TooltipTrigger>
-                    <TooltipContent>v{health.version}</TooltipContent>
-                  </Tooltip>
+                {versionLabel && (
+                  <span
+                    className="px-2 text-xs text-muted-foreground min-w-0 flex-1 truncate"
+                    title={versionLabel}
+                  >
+                    {versionLabel}
+                  </span>
                 )}
                 <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
                   <Link
