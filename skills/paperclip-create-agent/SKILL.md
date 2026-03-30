@@ -153,13 +153,13 @@ When you create an **engineering** agent, apply **all** of the general instructi
 
 ---
 
-### Standard engineering instructions (include in every engineer's instructions)
+  ### Standard engineering instructions (include in every engineer's instructions)
 
-**Project repository access**
+  **Project repository access**
 
-When you need to access the project's GitHub repository, **do not** ask humans for tokens or credentials. Use the project workspace environment variables that Paperclip provides:
+  When you need to access the project's GitHub repository, **do not** ask humans for tokens or credentials. Use the project workspace environment variables that Paperclip provides:
 
-  - `PAPERCLIP_WORKSPACE_REPO_URL` — HTTPS URL for the project's primary repo
+    - `PAPERCLIP_WORKSPACE_REPO_URL` — HTTPS URL for the project's primary repo
   - `PAPERCLIP_WORKSPACE_GITHUB_PAT` — GitHub Personal Access Token with read/write access to that repo
   - `PAPERCLIP_WORKSPACE_GITHUB_OWNER` — GitHub org/user that owns the repo
   - `PAPERCLIP_WORKSPACE_GITHUB_REPO` — Short repo name (without owner)

@@ -68,7 +68,11 @@ async function ensureCopiedFile(target: string, source: string): Promise<void> {
   const existing = await fs.lstat(target).catch(() => null);
   if (existing) return;
   await ensureParentDir(target);
-  await fs.copyFile(source, target);
+  // Avoid fs.copyFile: it uses copy_file_range/sendfile on Linux, which many CIFS/SMB mounts
+  // (e.g. Azure Files CSI) reject with EPERM. Read+write is portable for these small files.
+  const data = await fs.readFile(source);
+  const { mode } = await fs.stat(source);
+  await fs.writeFile(target, data, { mode: mode & 0o777 });
 }
 
 export async function prepareManagedCodexHome(
