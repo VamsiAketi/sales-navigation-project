@@ -12,6 +12,7 @@ import { authApi } from "../api/auth";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
+import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { useToast } from "../context/ToastContext";
 import {
@@ -309,6 +310,9 @@ export function NewIssueDialog() {
 
   const effectiveCompanyId = dialogCompanyId ?? selectedCompanyId;
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
+
+  const rawProjectStatuses = useProjectIssueStatuses(projectId || null);
+  const activeProjectStatuses = rawProjectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
 
   // Popover states
   const [statusOpen, setStatusOpen] = useState(false);
@@ -782,7 +786,12 @@ export function NewIssueDialog() {
   }
 
   const hasDraft = title.trim().length > 0 || description.trim().length > 0 || stagedFiles.length > 0 || selectedLabelIds.length > 0;
-  const currentStatus = statuses.find((s) => s.value === status) ?? statuses[1]!;
+  const currentStatus = activeProjectStatuses.length > 0
+    ? (activeProjectStatuses.find((s) => s.value === status) ?? activeProjectStatuses[0])
+    : (statuses.find((s) => s.value === status) ?? statuses[1]!);
+  const currentStatusLabel = activeProjectStatuses.length > 0
+    ? (currentStatus as typeof activeProjectStatuses[number]).name
+    : (currentStatus as typeof statuses[number]).label;
   const currentPriority = priorities.find((p) => p.value === priority);
   const selectedLabels = useMemo(
     () => selectedLabelIds
@@ -1402,24 +1411,55 @@ export function NewIssueDialog() {
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
               <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
-                <CircleDot className={cn("h-3 w-3", currentStatus.color)} />
-                {currentStatus.label}
+                {activeProjectStatuses.length > 0 ? (
+                  <span
+                    className="relative inline-flex h-3 w-3 rounded-full border-2 shrink-0"
+                    style={{ borderColor: (currentStatus as typeof activeProjectStatuses[number]).color, color: (currentStatus as typeof activeProjectStatuses[number]).color }}
+                  >
+                    {(currentStatus as typeof activeProjectStatuses[number]).value === "done" && (
+                      <span className="absolute inset-0 m-auto h-1.5 w-1.5 rounded-full bg-current" />
+                    )}
+                  </span>
+                ) : (
+                  <CircleDot className={cn("h-3 w-3", (currentStatus as typeof statuses[number]).color)} />
+                )}
+                {currentStatusLabel}
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-36 p-1" align="start">
-              {statuses.map((s) => (
-                <button
-                  key={s.value}
-                  className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                    s.value === status && "bg-accent"
-                  )}
-                  onClick={() => { setStatus(s.value); setStatusOpen(false); }}
-                >
-                  <CircleDot className={cn("h-3 w-3", s.color)} />
-                  {s.label}
-                </button>
-              ))}
+              {activeProjectStatuses.length > 0
+                ? activeProjectStatuses.map((s) => (
+                    <button
+                      key={s.value}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                        s.value === status && "bg-accent"
+                      )}
+                      onClick={() => { setStatus(s.value); setStatusOpen(false); }}
+                    >
+                      <span
+                        className="relative inline-flex h-3 w-3 rounded-full border-2 shrink-0"
+                        style={{ borderColor: s.color, color: s.color }}
+                      >
+                        {s.value === "done" && <span className="absolute inset-0 m-auto h-1.5 w-1.5 rounded-full bg-current" />}
+                      </span>
+                      {s.name}
+                    </button>
+                  ))
+                : statuses.map((s) => (
+                    <button
+                      key={s.value}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                        s.value === status && "bg-accent"
+                      )}
+                      onClick={() => { setStatus(s.value); setStatusOpen(false); }}
+                    >
+                      <CircleDot className={cn("h-3 w-3", s.color)} />
+                      {s.label}
+                    </button>
+                  ))
+              }
             </PopoverContent>
           </Popover>
 

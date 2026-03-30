@@ -46,6 +46,19 @@ export interface ProjectCodebase {
   origin: ProjectCodebaseOrigin;
 }
 
+export interface ProjectIssueStatus {
+  id: string;
+  projectId: string;
+  companyId: string;
+  name: string;
+  value: string;
+  color: string;
+  position: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Project {
   id: string;
   companyId: string;

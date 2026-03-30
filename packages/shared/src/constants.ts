@@ -119,6 +119,16 @@ export const ISSUE_STATUSES = [
 ] as const;
 export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 
+export const DEFAULT_PROJECT_ISSUE_STATUSES = [
+  { name: "Backlog",     value: "backlog",     color: "#6b7280", position: 0 },
+  { name: "Todo",        value: "todo",        color: "#3b82f6", position: 1 },
+  { name: "In Progress", value: "in_progress", color: "#eab308", position: 2 },
+  { name: "In Review",   value: "in_review",   color: "#8b5cf6", position: 3 },
+  { name: "Blocked",     value: "blocked",     color: "#ef4444", position: 4 },
+  { name: "Done",        value: "done",        color: "#22c55e", position: 5 },
+  { name: "Cancelled",   value: "cancelled",   color: "#6b7280", position: 6 },
+] as const;
+
 export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
 

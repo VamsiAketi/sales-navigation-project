@@ -3,18 +3,22 @@ import type { Db } from "@paperclipai/db";
 import {
   createProjectSchema,
   createProjectWorkspaceSchema,
+  createProjectIssueStatusSchema,
+  updateProjectIssueStatusSchema,
+  reorderProjectIssueStatusesSchema,
   isUuidLike,
   updateProjectSchema,
   updateProjectWorkspaceSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { projectService, secretService, logActivity } from "../services/index.js";
+import { projectService, projectIssueStatusService, secretService, logActivity } from "../services/index.js";
 import { conflict, unprocessable } from "../errors.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 
 export function projectRoutes(db: Db) {
   const router = Router();
   const svc = projectService(db);
+  const statusSvc = projectIssueStatusService(db);
   const secretsSvc = secretService(db);
 
   async function validateProjectSecretBindings(
@@ -115,6 +119,7 @@ export function projectRoutes(db: Db) {
     };
 
     const project = await svc.create(companyId, projectData);
+    await statusSvc.seedDefaults(project.id, companyId);
     let createdWorkspaceId: string | null = null;
     if (workspace) {
       const createdWorkspace = await svc.createWorkspace(project.id, workspace);
@@ -296,6 +301,61 @@ export function projectRoutes(db: Db) {
     });
 
     res.json(workspace);
+  });
+
+  // ── Issue status routes ──────────────────────────────────────────────────
+
+  router.get("/projects/:id/issue-statuses", async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    // Seed defaults lazily if none exist yet (handles projects created before this migration)
+    const statuses = await statusSvc.list(id);
+    if (statuses.length === 0) {
+      await statusSvc.seedDefaults(id, project.companyId);
+      res.json(await statusSvc.list(id));
+    } else {
+      res.json(statuses);
+    }
+  });
+
+  router.post("/projects/:id/issue-statuses", validate(createProjectIssueStatusSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    const status = await statusSvc.create(id, project.companyId, req.body);
+    res.status(201).json(status);
+  });
+
+  router.patch("/projects/:id/issue-statuses/:statusId", validate(updateProjectIssueStatusSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const statusId = req.params.statusId as string;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    const status = await statusSvc.update(statusId, id, req.body);
+    res.json(status);
+  });
+
+  router.post("/projects/:id/issue-statuses/reorder", validate(reorderProjectIssueStatusesSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    const statuses = await statusSvc.reorder(id, req.body.orderedIds);
+    res.json(statuses);
+  });
+
+  router.delete("/projects/:id/issue-statuses/:statusId", async (req, res) => {
+    const id = req.params.id as string;
+    const statusId = req.params.statusId as string;
+    const project = await svc.getById(id);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    assertCompanyAccess(req, project.companyId);
+    const status = await statusSvc.remove(statusId, id);
+    res.json(status);
   });
 
   router.delete("/projects/:id", async (req, res) => {

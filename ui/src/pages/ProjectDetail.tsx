@@ -18,6 +18,8 @@ import { InlineEditor } from "../components/InlineEditor";
 import { StatusBadge } from "../components/StatusBadge";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
+import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
+import { ProjectIssueStatusSettings } from "../components/ProjectIssueStatusSettings";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { projectRouteRef, cn } from "../lib/utils";
@@ -149,6 +151,7 @@ function ColorPicker({
 
 function ProjectIssuesList({ projectId, companyId }: { projectId: string; companyId: string }) {
   const queryClient = useQueryClient();
+  const projectStatuses = useProjectIssueStatuses(projectId);
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(companyId),
@@ -196,6 +199,7 @@ function ProjectIssuesList({ projectId, companyId }: { projectId: string; compan
       projectId={projectId}
       viewStateKey={`paperclip:project-view:${projectId}`}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+      projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
     />
   );
 }
@@ -241,6 +245,7 @@ export function ProjectDetail() {
   const canonicalProjectRef = project ? projectRouteRef(project) : routeProjectRef;
   const projectLookupRef = project?.id ?? routeProjectRef;
   const resolvedCompanyId = project?.companyId ?? selectedCompanyId;
+  const configStatuses = useProjectIssueStatuses(project?.id ?? null);
   const {
     slots: pluginDetailSlots,
     isLoading: pluginDetailSlotsLoading,
@@ -590,7 +595,7 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "configuration" && (
-        <div className="max-w-4xl">
+        <div className="max-w-4xl space-y-8">
           <ProjectProperties
             project={project}
             onUpdate={(data) => updateProject.mutate(data)}
@@ -599,6 +604,14 @@ export function ProjectDetail() {
             onArchive={(archived) => archiveProject.mutate(archived)}
             archivePending={archiveProject.isPending}
           />
+          {project?.id && (
+            <div className="border-t border-border pt-6">
+              <ProjectIssueStatusSettings
+                projectId={project.id}
+                statuses={configStatuses}
+              />
+            </div>
+          )}
         </div>
       )}
 
