@@ -380,6 +380,7 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
           completedAt: null,
           cancelledAt: null,
           hiddenAt: null,
+          kanbanPosition: null,
           createdAt: now,
           updatedAt: now,
         };
