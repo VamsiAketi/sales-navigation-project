@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useSearchParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Issue } from "@paperclipai/shared";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
@@ -92,10 +93,36 @@ export function Issues() {
     enabled: !!selectedCompanyId,
   });
 
+  const issuesQueryKey = [
+    ...queryKeys.issues.list(selectedCompanyId!),
+    "participant-agent",
+    participantAgentId ?? "__all__",
+  ];
+
   const updateIssue = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       issuesApi.update(id, data),
-    onSuccess: () => {
+    onMutate: async ({ id, data }) => {
+      // Cancel any in-flight refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: issuesQueryKey });
+      // Snapshot the current cache value for rollback on error
+      const previousIssues = queryClient.getQueryData<Issue[]>(issuesQueryKey);
+      // Optimistically apply the change to the cached issue list
+      queryClient.setQueryData<Issue[]>(issuesQueryKey, (old) =>
+        old?.map((issue) =>
+          issue.id === id ? { ...issue, ...(data as Partial<Issue>) } : issue
+        ) ?? []
+      );
+      return { previousIssues };
+    },
+    onError: (_err, _vars, context) => {
+      // Roll back to the snapshot if the mutation fails
+      if (context?.previousIssues) {
+        queryClient.setQueryData(issuesQueryKey, context.previousIssues);
+      }
+    },
+    onSettled: () => {
+      // Always re-sync with the server after a mutation
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId!) });
     },
   });
