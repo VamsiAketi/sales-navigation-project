@@ -18,19 +18,20 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
+import { useOrgChartViewMemory } from "../hooks/useOrgChartViewMemory";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Download, Network, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Network, Upload, User } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 
-// Layout constants
+// Layout constants — extra spacing so hierarchy reads clearly (matches pre–drag-drop polish)
 const CARD_W = 200;
 const CARD_H = 100;
-const GAP_X = 32;
-const GAP_Y = 80;
-const PADDING = 60;
+const GAP_X = 56;
+const GAP_Y = 120;
+const PADDING = 80;
 
 // ── Tree layout types ───────────────────────────────────────────────────
 
@@ -39,31 +40,36 @@ interface LayoutNode {
   name: string;
   role: string;
   status: string;
+  nodeType: "agent" | "human";
   x: number;
   y: number;
   children: LayoutNode[];
+  directReportCount: number;
 }
 
-// ── Layout algorithm ────────────────────────────────────────────────────
+// ── Layout algorithm (respects expand/collapse) ─────────────────────────
 
-function subtreeWidth(node: OrgNode): number {
-  if (node.reports.length === 0) return CARD_W;
-  const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
+function subtreeWidth(node: OrgNode, isExpanded: (id: string) => boolean): number {
+  const expanded = isExpanded(node.id);
+  if (!expanded || node.reports.length === 0) return CARD_W;
+  const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c, isExpanded), 0);
   const gaps = (node.reports.length - 1) * GAP_X;
   return Math.max(CARD_W, childrenW + gaps);
 }
 
-function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
-  const totalW = subtreeWidth(node);
+function layoutTree(node: OrgNode, x: number, y: number, isExpanded: (id: string) => boolean): LayoutNode {
+  const expanded = isExpanded(node.id);
+  const totalW = subtreeWidth(node, isExpanded);
   const layoutChildren: LayoutNode[] = [];
 
-  if (node.reports.length > 0) {
-    const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
+  if (expanded && node.reports.length > 0) {
+    const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c, isExpanded), 0);
     const gaps = (node.reports.length - 1) * GAP_X;
     let cx = x + (totalW - childrenW - gaps) / 2;
+
     for (const child of node.reports) {
-      const cw = subtreeWidth(child);
-      layoutChildren.push(layoutTree(child, cx, y + CARD_H + GAP_Y));
+      const cw = subtreeWidth(child, isExpanded);
+      layoutChildren.push(layoutTree(child, cx, y + CARD_H + GAP_Y, isExpanded));
       cx += cw + GAP_X;
     }
   }
@@ -73,20 +79,23 @@ function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
     name: node.name,
     role: node.role,
     status: node.status,
+    nodeType: node.nodeType ?? "agent",
     x: x + (totalW - CARD_W) / 2,
     y,
     children: layoutChildren,
+    directReportCount: node.reports.length,
   };
 }
 
-function layoutForest(roots: OrgNode[]): LayoutNode[] {
+function layoutForest(roots: OrgNode[], isExpanded: (id: string) => boolean): LayoutNode[] {
   if (roots.length === 0) return [];
+
   let x = PADDING;
   const y = PADDING;
   const result: LayoutNode[] = [];
   for (const root of roots) {
-    result.push(layoutTree(root, x, y));
-    x += subtreeWidth(root) + GAP_X;
+    result.push(layoutTree(root, x, y, isExpanded));
+    x += subtreeWidth(root, isExpanded) + GAP_X;
   }
   return result;
 }
@@ -113,15 +122,13 @@ function collectEdges(nodes: LayoutNode[]): Array<{ parent: LayoutNode; child: L
   return edges;
 }
 
-// ── Tree manipulation helpers ───────────────────────────────────────────
+// ── Tree manipulation helpers (for drag reorg) ─────────────────────────
 
-/** Collect all descendant IDs of a given node (not including itself). */
 function collectDescendants(nodes: OrgNode[], nodeId: string): Set<string> {
   const result = new Set<string>();
   function findAndCollect(nodes: OrgNode[]) {
     for (const n of nodes) {
       if (n.id === nodeId) {
-        // Collect all descendants
         function collectAll(node: OrgNode) {
           for (const r of node.reports) {
             result.add(r.id);
@@ -139,7 +146,6 @@ function collectDescendants(nodes: OrgNode[], nodeId: string): Set<string> {
   return result;
 }
 
-/** Move nodeId to report to newParentId. Removes it from its current location and appends under newParentId. */
 function moveNodeToParent(nodes: OrgNode[], nodeId: string, newParentId: string | null): OrgNode[] {
   let extracted: OrgNode | null = null;
 
@@ -158,7 +164,6 @@ function moveNodeToParent(nodes: OrgNode[], nodeId: string, newParentId: string 
   const node = extracted as OrgNode;
 
   if (newParentId === null) {
-    // Make it a root node
     return [...withoutNode, node];
   }
 
@@ -172,7 +177,7 @@ function moveNodeToParent(nodes: OrgNode[], nodeId: string, newParentId: string 
   return insert(withoutNode);
 }
 
-// ── Status colors ───────────────────────────────────────────────────────
+// ── Status / adapter labels ─────────────────────────────────────────────
 
 const adapterLabels: Record<string, string> = {
   claude_local: "Claude",
@@ -195,21 +200,27 @@ const statusDotColor: Record<string, string> = {
 };
 const defaultDotColor = "#a3a3a3";
 
-// ── Shared card content ─────────────────────────────────────────────────
+// ── Card body (shared with drag overlay) ───────────────────────────────
 
 function CardContent({
   node,
   agent,
+  isAgentNode,
 }: {
   node: { id: string; name: string; role: string; status: string };
   agent: Agent | undefined;
+  isAgentNode: boolean;
 }) {
   const dotColor = statusDotColor[node.status] ?? defaultDotColor;
   return (
     <div className="flex items-center px-4 py-3 gap-3">
       <div className="relative shrink-0">
         <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
-          <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
+          {isAgentNode ? (
+            <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
+          ) : (
+            <User className="h-4.5 w-4.5 text-foreground/70" />
+          )}
         </div>
         <span
           className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card"
@@ -221,9 +232,9 @@ function CardContent({
           {node.name}
         </span>
         <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-          {agent?.title ?? roleLabel(node.role)}
+          {isAgentNode ? agent?.title ?? roleLabel(node.role) : node.role}
         </span>
-        {agent && (
+        {isAgentNode && agent && (
           <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
             {adapterLabels[agent.adapterType] ?? agent.adapterType}
           </span>
@@ -238,16 +249,29 @@ function CardContent({
 interface OrgCardProps {
   node: LayoutNode;
   agent: Agent | undefined;
-  /** true = this card is a valid drop target (another card is being dragged over it) */
   isDropTarget: boolean;
-  /** true = this card can't accept a drop (self or descendant of dragged node) */
   isInvalidTarget: boolean;
+  isExpanded: boolean;
+  hasReports: boolean;
+  onToggleExpand: (expand: boolean) => void;
   onNavigate: () => void;
 }
 
-function OrgCard({ node, agent, isDropTarget, isInvalidTarget, onNavigate }: OrgCardProps) {
+function OrgCard({
+  node,
+  agent,
+  isDropTarget,
+  isInvalidTarget,
+  isExpanded,
+  hasReports,
+  onToggleExpand,
+  onNavigate,
+}: OrgCardProps) {
+  const isAgentNode = node.nodeType === "agent";
+
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: node.id,
+    disabled: !isAgentNode,
   });
   const { setNodeRef: setDropRef } = useDroppable({
     id: node.id,
@@ -267,27 +291,65 @@ function OrgCard({ node, agent, isDropTarget, isInvalidTarget, onNavigate }: Org
       ref={setRef}
       data-org-card
       className={[
-        "absolute bg-card rounded-lg shadow-sm select-none transition-[box-shadow,border-color,opacity,outline] duration-150",
-        "border",
+        "absolute bg-card/95 backdrop-blur border border-border/80 rounded-2xl shadow-sm select-none transition-[box-shadow,border-color,opacity,outline] duration-150",
         isDragging
-          ? "opacity-25 cursor-grabbing border-border"
+          ? "opacity-25 cursor-grabbing border-border/80"
           : isDropTarget
             ? "border-primary ring-2 ring-primary/40 shadow-lg cursor-grab"
             : isInvalidTarget
-              ? "border-border opacity-60 cursor-not-allowed"
-              : "border-border hover:shadow-md hover:border-foreground/20 cursor-grab",
+              ? "border-border/60 opacity-60 cursor-not-allowed"
+              : isAgentNode
+                ? "hover:shadow-md hover:border-foreground/20 cursor-grab"
+                : "hover:shadow-md hover:border-foreground/20 cursor-default",
       ].join(" ")}
       style={{ left: node.x, top: node.y, width: CARD_W, minHeight: CARD_H }}
       onClick={onNavigate}
-      {...listeners}
-      {...attributes}
+      {...(isAgentNode ? listeners : {})}
+      {...(isAgentNode ? attributes : {})}
     >
-      <CardContent node={node} agent={agent} />
+      <CardContent node={node} agent={agent} isAgentNode={isAgentNode} />
+
+      {hasReports && (
+        <div className="px-4 pb-3 -mt-1">
+          <div className="flex items-center justify-between gap-2">
+            {isExpanded ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleExpand(false);
+                }}
+                title="Collapse direct reports"
+                aria-label="Collapse direct reports"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleExpand(true);
+                }}
+                title="Expand direct reports"
+                aria-label="Expand direct reports"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+                <span className="tabular-nums">+ {node.directReportCount}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// ── Root drop zone (appears while dragging to detach a node) ────────────
 
 const ROOT_DROP_ZONE_ID = "__root__";
 
@@ -309,24 +371,31 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
   );
 }
 
-// ── Main component ──────────────────────────────────────────────────────
+// ── Main component (keyed per company so view memory + pan/zoom stay consistent) ──
 
 export function OrgChart() {
   const { selectedCompanyId } = useCompany();
+  if (!selectedCompanyId) {
+    return <EmptyState icon={Network} message="Select a company to view the org chart." />;
+  }
+  return <OrgChartImpl key={selectedCompanyId} companyId={selectedCompanyId} />;
+}
+
+function OrgChartImpl({ companyId }: { companyId: string }) {
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const { memory, expandedSet, setExpandedNodeIds, toggleExpanded, setViewport } = useOrgChartViewMemory(companyId);
+
   const { data: orgTree, isLoading } = useQuery({
-    queryKey: queryKeys.org(selectedCompanyId!),
-    queryFn: () => agentsApi.org(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.org(companyId),
+    queryFn: () => agentsApi.org(companyId),
   });
 
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.list(selectedCompanyId!),
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
   });
 
   const agentMap = useMemo(() => {
@@ -339,34 +408,64 @@ export function OrgChart() {
     setBreadcrumbs([{ label: "Hybrid Org Chart" }]);
   }, [setBreadcrumbs]);
 
-  // ── Local tree for optimistic updates ──────────────────────────────────
   const [localOrgTree, setLocalOrgTree] = useState<OrgNode[] | null>(null);
   useEffect(() => {
     if (orgTree) setLocalOrgTree(orgTree);
   }, [orgTree]);
   const effectiveTree = localOrgTree ?? orgTree ?? [];
 
-  // ── Reorg mutation ──────────────────────────────────────────────────────
+  const orgIndex = useMemo(() => {
+    const nodeById = new Map<string, OrgNode>();
+    const parentById = new Map<string, string | null>();
+    function walk(nodes: OrgNode[], parentId: string | null) {
+      for (const n of nodes) {
+        nodeById.set(n.id, n);
+        parentById.set(n.id, parentId);
+        if (n.reports.length > 0) walk(n.reports, n.id);
+      }
+    }
+    walk(effectiveTree, null);
+    return { nodeById, parentById };
+  }, [effectiveTree]);
+
+  const defaultExpandedIds = useMemo(() => {
+    const ids: string[] = [];
+    function walk(nodes: OrgNode[], depth: number) {
+      for (const n of nodes) {
+        if (depth <= 1) ids.push(n.id);
+        if (n.reports.length > 0) walk(n.reports, depth + 1);
+      }
+    }
+    walk(orgTree ?? [], 0);
+    return ids;
+  }, [orgTree]);
+
+  useEffect(() => {
+    if (!orgTree || orgTree.length === 0) return;
+    if (memory.expandedNodeIds.length > 0) return;
+    setExpandedNodeIds(defaultExpandedIds);
+  }, [orgTree, memory.expandedNodeIds.length, defaultExpandedIds, setExpandedNodeIds]);
+
+  const isExpanded = useCallback((id: string) => expandedSet.has(id), [expandedSet]);
+
   const reorgMutation = useMutation({
     mutationFn: ({ agentId, reportsTo }: { agentId: string; reportsTo: string | null }) =>
-      agentsApi.update(agentId, { reportsTo }, selectedCompanyId ?? undefined),
+      agentsApi.update(agentId, { reportsTo }, companyId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.org(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.org(companyId) });
     },
     onError: () => {
       setLocalOrgTree(orgTree ?? null);
     },
   });
 
-  // ── Drag state ──────────────────────────────────────────────────────────
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
-  // Compute descendants of the currently-dragged node (invalid drop targets)
   const invalidTargets = useMemo<Set<string>>(() => {
     if (!activeId) return new Set();
     const descendants = collectDescendants(effectiveTree, activeId);
-    descendants.add(activeId); // can't drop onto self
+    descendants.add(activeId);
     return descendants;
   }, [activeId, effectiveTree]);
 
@@ -392,10 +491,8 @@ export function OrgChart() {
 
       const newParentId = targetId === ROOT_DROP_ZONE_ID ? null : targetId;
 
-      // Ignore drop onto self or own descendant
       if (newParentId !== null && invalidTargets.has(newParentId)) return;
 
-      // Optimistic update
       const newTree = moveNodeToParent(effectiveTree, draggedId, newParentId);
       setLocalOrgTree(newTree);
 
@@ -404,8 +501,7 @@ export function OrgChart() {
     [invalidTargets, effectiveTree, reorgMutation],
   );
 
-  // ── Layout ──────────────────────────────────────────────────────────────
-  const layout = useMemo(() => layoutForest(effectiveTree), [effectiveTree]);
+  const layout = useMemo(() => layoutForest(effectiveTree, isExpanded), [effectiveTree, isExpanded]);
   const allNodes = useMemo(() => flattenLayout(layout), [layout]);
   const edges = useMemo(() => collectEdges(layout), [layout]);
 
@@ -419,17 +515,19 @@ export function OrgChart() {
     return { width: maxX + PADDING, height: maxY + PADDING };
   }, [allNodes]);
 
-  // ── Pan & zoom ──────────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
-
   const hasInitialized = useRef(false);
+
   useEffect(() => {
     if (hasInitialized.current || allNodes.length === 0 || !containerRef.current) return;
     hasInitialized.current = true;
+
+    if (memory.viewport) return;
+
     const container = containerRef.current;
     const scaleX = (container.clientWidth - 40) / bounds.width;
     const scaleY = (container.clientHeight - 40) / bounds.height;
@@ -437,8 +535,59 @@ export function OrgChart() {
     const chartW = bounds.width * fitZoom;
     const chartH = bounds.height * fitZoom;
     setZoom(fitZoom);
-    setPan({ x: (container.clientWidth - chartW) / 2, y: (container.clientHeight - chartH) / 2 });
-  }, [allNodes, bounds]);
+    setPan({
+      x: (container.clientWidth - chartW) / 2,
+      y: (container.clientHeight - chartH) / 2,
+    });
+  }, [allNodes, bounds, memory.viewport]);
+
+  useEffect(() => {
+    setViewport({ pan, zoom });
+  }, [pan, zoom, setViewport]);
+
+  const focusNode = useCallback(
+    (nodeId: string) => {
+      const n = allNodes.find((x) => x.id === nodeId);
+      const container = containerRef.current;
+      if (!n || !container) return;
+
+      const cx = container.clientWidth / 2;
+      const cy = container.clientHeight / 2;
+      const nodeCenterX = n.x + CARD_W / 2;
+      const nodeCenterY = n.y + CARD_H / 2;
+      setPan({
+        x: cx - nodeCenterX * zoom,
+        y: cy - nodeCenterY * zoom,
+      });
+    },
+    [allNodes, zoom],
+  );
+
+  const expandAncestors = useCallback(
+    (nodeId: string) => {
+      const ids: string[] = [];
+      let cur: string | null = nodeId;
+      while (cur) {
+        ids.push(cur);
+        cur = orgIndex.parentById.get(cur) ?? null;
+      }
+      const next = new Set(expandedSet);
+      for (const id of ids) next.add(id);
+      setExpandedNodeIds(Array.from(next));
+    },
+    [orgIndex.parentById, expandedSet, setExpandedNodeIds],
+  );
+
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || !(agents ?? []).length) return [];
+    return (agents ?? [])
+      .filter((a) => a.status !== "terminated")
+      .filter((a) => a.name.toLowerCase().includes(q) || (a.title ?? "").toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [search, agents]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -465,13 +614,14 @@ export function OrgChart() {
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
+      if (e.ctrlKey) return;
       e.preventDefault();
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const factor = e.deltaY < 0 ? 1.06 : 0.94;
       const newZoom = Math.min(Math.max(zoom * factor, 0.2), 2);
       const scale = newZoom / zoom;
       setPan({ x: mouseX - scale * (mouseX - pan.x), y: mouseY - scale * (mouseY - pan.y) });
@@ -480,9 +630,36 @@ export function OrgChart() {
     [zoom, pan],
   );
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Network} message="Select a company to view the org chart." />;
-  }
+  useEffect(() => {
+    const onWheelNative = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      const container = containerRef.current;
+      if (!container) return;
+      const target = e.target as Node | null;
+      if (!target || !container.contains(target)) return;
+
+      e.preventDefault();
+
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const factor = e.deltaY < 0 ? 1.12 : 0.88;
+      setZoom((prevZoom) => {
+        const nextZoom = Math.min(Math.max(prevZoom * factor, 0.2), 2);
+        const scale = nextZoom / prevZoom;
+        setPan((prev) => ({
+          x: mouseX - scale * (mouseX - prev.x),
+          y: mouseY - scale * (mouseY - prev.y),
+        }));
+        return nextZoom;
+      });
+    };
+
+    window.addEventListener("wheel", onWheelNative, { passive: false });
+    return () => window.removeEventListener("wheel", onWheelNative as EventListener);
+  }, []);
+
   if (isLoading) return <PageSkeleton variant="org-chart" />;
   if (orgTree && orgTree.length === 0) {
     return <EmptyState icon={Network} message="No organizational hierarchy defined." />;
@@ -490,6 +667,7 @@ export function OrgChart() {
 
   const activeNode = activeId ? allNodes.find((n) => n.id === activeId) : null;
   const activeAgent = activeNode ? agentMap.get(activeNode.id) : undefined;
+  const activeIsAgent = activeNode ? activeNode.nodeType === "agent" : true;
 
   return (
     <div className="flex flex-col h-full">
@@ -524,12 +702,55 @@ export function OrgChart() {
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
         >
-          {/* Root drop zone — shown while dragging */}
           {activeId && <RootDropZone isOver={overId === ROOT_DROP_ZONE_ID} />}
 
-          {/* Zoom controls */}
+          <div className="absolute top-3 left-3 z-10 w-[320px] max-w-[calc(100%-8rem)]">
+            <div className="relative">
+              <input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setSearchOpen(true);
+                }}
+                onFocus={() => setSearchOpen(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setSearchOpen(false), 150);
+                }}
+                placeholder="Search agents…"
+                className="w-full h-9 px-3 rounded-md bg-background border border-border text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+              />
+              {searchOpen && searchResults.length > 0 && (
+                <div className="absolute mt-2 w-full rounded-md border border-border bg-background shadow-lg overflow-hidden z-20">
+                  {searchResults.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-accent/50 transition-colors"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSearchOpen(false);
+                        setSearch("");
+                        expandAncestors(a.id);
+                        window.setTimeout(() => focusNode(a.id), 0);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <AgentIcon icon={a.icon} className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="font-medium truncate">{a.name}</span>
+                        {a.title && (
+                          <span className="text-xs text-muted-foreground truncate">· {a.title}</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
             <button
+              type="button"
               className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
               onClick={() => {
                 const newZoom = Math.min(zoom * 1.2, 2);
@@ -547,6 +768,7 @@ export function OrgChart() {
               +
             </button>
             <button
+              type="button"
               className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
               onClick={() => {
                 const newZoom = Math.max(zoom * 0.8, 0.2);
@@ -564,6 +786,7 @@ export function OrgChart() {
               &minus;
             </button>
             <button
+              type="button"
               className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-[10px] hover:bg-accent transition-colors"
               onClick={() => {
                 if (!containerRef.current) return;
@@ -583,32 +806,32 @@ export function OrgChart() {
             </button>
           </div>
 
-          {/* SVG edges */}
-          <svg
-            className="absolute inset-0 pointer-events-none"
-            style={{ width: "100%", height: "100%" }}
-          >
+          <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
             <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
               {edges.map(({ parent, child }) => {
                 const x1 = parent.x + CARD_W / 2;
                 const y1 = parent.y + CARD_H;
                 const x2 = child.x + CARD_W / 2;
                 const y2 = child.y;
-                const midY = (y1 + y2) / 2;
+                const dy = Math.max(40, Math.min(140, (y2 - y1) / 2));
+
                 return (
                   <path
                     key={`${parent.id}-${child.id}`}
-                    d={`M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`}
+                    d={`M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`}
                     fill="none"
-                    stroke="var(--border)"
-                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    className="text-foreground/45"
+                    strokeWidth={1.6}
+                    strokeLinecap="round"
+                    strokeDasharray="2 10"
+                    vectorEffect="non-scaling-stroke"
                   />
                 );
               })}
             </g>
           </svg>
 
-          {/* Cards */}
           <div
             className="absolute inset-0"
             style={{
@@ -620,6 +843,9 @@ export function OrgChart() {
               const agent = agentMap.get(node.id);
               const invalid = activeId !== null && invalidTargets.has(node.id);
               const isDropTarget = !invalid && overId === node.id && activeId !== null;
+              const expanded = isExpanded(node.id);
+              const hasReports = node.directReportCount > 0;
+
               return (
                 <OrgCard
                   key={node.id}
@@ -627,21 +853,26 @@ export function OrgChart() {
                   agent={agent}
                   isDropTarget={isDropTarget}
                   isInvalidTarget={!!activeId && invalid}
-                  onNavigate={() => navigate(agent ? agentUrl(agent) : `/agents/${node.id}`)}
+                  isExpanded={expanded}
+                  hasReports={hasReports}
+                  onToggleExpand={(expand) => toggleExpanded(node.id, expand)}
+                  onNavigate={() => {
+                    if (node.nodeType !== "agent") return;
+                    navigate(agent ? agentUrl(agent) : `/agents/${node.id}`);
+                  }}
                 />
               );
             })}
           </div>
         </div>
 
-        {/* Ghost card following the cursor */}
         <DragOverlay dropAnimation={null}>
           {activeNode ? (
             <div
-              className="bg-card border border-primary rounded-lg shadow-2xl opacity-90 pointer-events-none"
+              className="bg-card/95 backdrop-blur border border-primary rounded-2xl shadow-2xl opacity-90 pointer-events-none"
               style={{ width: CARD_W, minHeight: CARD_H }}
             >
-              <CardContent node={activeNode} agent={activeAgent} />
+              <CardContent node={activeNode} agent={activeAgent} isAgentNode={activeIsAgent} />
             </div>
           ) : null}
         </DragOverlay>
