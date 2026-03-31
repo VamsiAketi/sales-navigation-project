@@ -14,6 +14,12 @@ export type HumanInviteEmailDelivery = {
   message: string;
 };
 
+export type SystemEmailInput = {
+  toEmail: string;
+  subject: string;
+  textBody: string;
+};
+
 type SmtpConfig = {
   host: string;
   port: number;
@@ -236,6 +242,31 @@ async function sendViaSmtp(input: {
 export async function sendHumanInviteEmail(
   input: HumanInviteEmailInput
 ): Promise<HumanInviteEmailDelivery> {
+  const delivery = await sendSystemEmail({
+    toEmail: input.toEmail,
+    subject: "You have been invited to Paperclip",
+    textBody: [
+      `Hello ${input.toName},`,
+      "",
+      "You have been granted access to Paperclip.",
+      "",
+      `Sign in: ${input.signInUrl}`,
+      `Email: ${input.temporaryUsername}`,
+      `Temporary password: ${input.temporaryPassword}`,
+      "",
+      "Please sign in and change your password."
+    ].join("\n"),
+  });
+  if (delivery.status === "sent") {
+    return { ...delivery, message: `Invite email sent to ${input.toEmail}` };
+  }
+  if (delivery.status === "failed") {
+    return { ...delivery, message: delivery.message.replace("Failed to send email:", "Failed to send invite email:") };
+  }
+  return delivery;
+}
+
+export async function sendSystemEmail(input: SystemEmailInput): Promise<HumanInviteEmailDelivery> {
   try {
     const smtpConfig = resolveSmtpConfig();
     if (!smtpConfig) {
@@ -249,29 +280,19 @@ export async function sendHumanInviteEmail(
     await sendViaSmtp({
       config: smtpConfig,
       toEmail: input.toEmail,
-      subject: "You have been invited to Paperclip",
-      textBody: [
-        `Hello ${input.toName},`,
-        "",
-        "You have been granted access to Paperclip.",
-        "",
-        `Sign in: ${input.signInUrl}`,
-        `Email: ${input.temporaryUsername}`,
-        `Temporary password: ${input.temporaryPassword}`,
-        "",
-        "Please sign in and change your password."
-      ].join("\n")
+      subject: input.subject,
+      textBody: input.textBody,
     });
 
     return {
       status: "sent",
-      message: `Invite email sent to ${input.toEmail}`
+      message: `Email sent to ${input.toEmail}`
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
       status: "failed",
-      message: `Failed to send invite email: ${message}`
+      message: `Failed to send email: ${message}`
     };
   }
 }

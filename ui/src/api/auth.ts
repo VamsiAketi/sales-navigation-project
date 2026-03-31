@@ -3,6 +3,16 @@ export type AuthSession = {
   user: { id: string; email: string | null; name: string | null };
 };
 
+export type NotificationChannelType = "email" | "sms" | "whatsapp";
+export type ProjectNotificationEventType = "issue.status_changed" | "issue.comment_added" | "issue.assigned";
+
+export type UserNotificationPreferences = {
+  enabled: boolean;
+  defaultChannels: NotificationChannelType[];
+  channels: Record<NotificationChannelType, { enabled: boolean; destination: string | null }>;
+  events: Partial<Record<ProjectNotificationEventType, { enabled?: boolean; channels?: NotificationChannelType[] }>>;
+};
+
 function toSession(value: unknown): AuthSession | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -89,5 +99,36 @@ export const authApi = {
       }
       throw err;
     }
+  },
+
+  getNotificationPreferences: async (): Promise<UserNotificationPreferences> => {
+    const res = await fetch("/api/users/me/notification-preferences", {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(`Failed to load notification preferences (${res.status})`);
+    }
+    return payload as UserNotificationPreferences;
+  },
+
+  updateNotificationPreferences: async (input: Partial<UserNotificationPreferences>): Promise<UserNotificationPreferences> => {
+    const res = await fetch("/api/users/me/notification-preferences", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      const p = payload as Record<string, unknown> | null;
+      const message =
+        (typeof p?.error === "string" ? p.error : null) ??
+        (typeof p?.message === "string" ? p.message : null) ??
+        `Failed to update notification preferences (${res.status})`;
+      throw new Error(message);
+    }
+    return payload as UserNotificationPreferences;
   },
 };

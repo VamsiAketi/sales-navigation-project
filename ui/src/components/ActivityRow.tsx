@@ -52,6 +52,17 @@ function humanizeValue(value: unknown): string {
 function formatVerb(action: string, details?: Record<string, unknown> | null): string {
   if (action === "issue.updated" && details) {
     const previous = (details._previous ?? {}) as Record<string, unknown>;
+    if (details.assigneeUserId !== undefined) {
+      const nextName = typeof details.assigneeUserName === "string"
+        ? details.assigneeUserName
+        : humanizeValue(details.assigneeUserId);
+      const previousName = typeof details.previousAssigneeUserName === "string"
+        ? details.previousAssigneeUserName
+        : (previous.assigneeUserId !== undefined ? humanizeValue(previous.assigneeUserId) : null);
+      return previousName
+        ? `reassigned from ${previousName} to ${nextName} on`
+        : `assigned to ${nextName} on`;
+    }
     if (details.status !== undefined) {
       const from = previous.status;
       return from

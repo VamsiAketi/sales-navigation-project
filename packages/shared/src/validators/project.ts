@@ -12,6 +12,28 @@ const executionWorkspaceStrategySchema = z
   })
   .strict();
 
+const projectNotificationEventSchema = z.enum(["issue.status_changed", "issue.comment_added", "issue.assigned"]);
+const projectNotificationChannelSchema = z.enum(["email"]);
+const projectNotificationRecipientRoleSchema = z.enum(["issue_assignee_user", "issue_creator_user"]);
+
+export const projectNotificationRuleSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    channels: z.array(projectNotificationChannelSchema).optional(),
+    notifyRoles: z.array(projectNotificationRecipientRoleSchema).optional(),
+    onlyIfActorIsAgent: z.boolean().optional(),
+    statuses: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+export const projectNotificationConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    defaultChannels: z.array(projectNotificationChannelSchema).optional(),
+    rules: z.record(projectNotificationEventSchema, projectNotificationRuleSchema).optional(),
+  })
+  .strict();
+
 export const projectExecutionWorkspacePolicySchema = z
   .object({
     enabled: z.boolean(),
@@ -98,6 +120,7 @@ const projectFields = {
   targetDate: z.string().optional().nullable(),
   color: z.string().optional().nullable(),
   executionWorkspacePolicy: projectExecutionWorkspacePolicySchema.optional().nullable(),
+  notificationConfig: projectNotificationConfigSchema.optional().nullable(),
   archivedAt: z.string().datetime().optional().nullable(),
   envConfig: projectSecretBindingsSchema,
 };

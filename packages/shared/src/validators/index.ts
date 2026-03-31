@@ -121,6 +121,8 @@ export {
   updateProjectWorkspaceSchema,
   projectSecretBindingsSchema,
   projectExecutionWorkspacePolicySchema,
+  projectNotificationConfigSchema,
+  projectNotificationRuleSchema,
   type CreateProject,
   type UpdateProject,
   type CreateProjectWorkspace,
@@ -298,3 +300,14 @@ export {
   type SetPluginState,
   type ListPluginState,
 } from "./plugin.js";
+
+export {
+  notificationChannelTypeSchema,
+  projectNotificationEventTypeSchema,
+  notificationChannelPreferenceSchema,
+  notificationEventPreferenceSchema,
+  userNotificationPreferencesSchema,
+  updateUserNotificationPreferencesSchema,
+  type UserNotificationPreferences,
+  type UpdateUserNotificationPreferences,
+} from "./user-notification-preferences.js";

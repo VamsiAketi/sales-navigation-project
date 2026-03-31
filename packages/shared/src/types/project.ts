@@ -59,6 +59,24 @@ export interface ProjectIssueStatus {
   updatedAt: Date;
 }
 
+export type ProjectNotificationEventType = "issue.status_changed" | "issue.comment_added" | "issue.assigned";
+export type ProjectNotificationChannel = "email";
+export type ProjectNotificationRecipientRole = "issue_assignee_user" | "issue_creator_user";
+
+export interface ProjectNotificationRule {
+  enabled?: boolean;
+  channels?: ProjectNotificationChannel[];
+  notifyRoles?: ProjectNotificationRecipientRole[];
+  onlyIfActorIsAgent?: boolean;
+  statuses?: string[];
+}
+
+export interface ProjectNotificationConfig {
+  enabled?: boolean;
+  defaultChannels?: ProjectNotificationChannel[];
+  rules?: Partial<Record<ProjectNotificationEventType, ProjectNotificationRule>>;
+}
+
 export interface Project {
   id: string;
   companyId: string;
@@ -81,6 +99,7 @@ export interface Project {
    * The runtime resolves secret names to concrete secret values when agents run project issues.
    */
   envConfig: Record<string, string> | null;
+  notificationConfig?: ProjectNotificationConfig | null;
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;
