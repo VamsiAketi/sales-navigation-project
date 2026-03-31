@@ -75,6 +75,14 @@ vi.mock("../services/index.js", () => ({
     normalizeAdapterConfigForPersistence: vi.fn(),
     resolveAdapterConfigForRuntime: vi.fn(),
   }),
+  companySkillService: () => ({
+    resolveRequestedSkillKeys: vi.fn(),
+    listRuntimeSkillEntries: vi.fn(),
+  }),
+  instanceSettingsService: () => ({
+    getGeneral: vi.fn(async () => ({ censorUsernameInLogs: false })),
+  }),
+  syncInstructionsBundleConfigFromFilePath: vi.fn(),
 }));
 
 function createSelectResult(rows: unknown[], withWhere: boolean) {
@@ -90,7 +98,7 @@ function createSelectResult(rows: unknown[], withWhere: boolean) {
   };
 }
 
-describe.skip("GET /api/companies/:companyId/org", () => {
+describe("GET /api/companies/:companyId/org", () => {
   it("keeps both human and agent reports under the same human manager", async () => {
     orgForCompanyMock.mockResolvedValueOnce([
       {
