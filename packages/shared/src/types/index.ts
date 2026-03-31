@@ -47,7 +47,25 @@ export type {
   AdapterEnvironmentTestResult,
 } from "./agent.js";
 export type { AssetImage } from "./asset.js";
-export type { Project, ProjectCodebase, ProjectCodebaseOrigin, ProjectGoalRef, ProjectWorkspace, ProjectIssueStatus } from "./project.js";
+export type {
+  Project,
+  ProjectCodebase,
+  ProjectCodebaseOrigin,
+  ProjectGoalRef,
+  ProjectWorkspace,
+  ProjectIssueStatus,
+  ProjectNotificationConfig,
+  ProjectNotificationRule,
+  ProjectNotificationEventType,
+  ProjectNotificationChannel,
+  ProjectNotificationRecipientRole,
+} from "./project.js";
+export type {
+  NotificationChannelType,
+  NotificationChannelPreference,
+  NotificationEventPreference,
+  UserNotificationPreferences,
+} from "./user-notification-preferences.js";
 export type {
   ExecutionWorkspace,
   WorkspaceRuntimeService,

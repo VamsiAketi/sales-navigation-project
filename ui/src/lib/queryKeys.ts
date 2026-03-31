@@ -91,6 +91,11 @@ export const queryKeys = {
     generalSettings: ["instance", "general-settings"] as const,
     schedulerHeartbeats: ["instance", "scheduler-heartbeats"] as const,
     experimentalSettings: ["instance", "experimental-settings"] as const,
+    notificationsHistory: ["instance", "notifications-history"] as const,
+  },
+  notifications: {
+    me: (limit: number = 30) => ["notifications", "me", limit] as const,
+    unreadCount: ["notifications", "unread-count"] as const,
   },
   health: ["health"] as const,
   secrets: {

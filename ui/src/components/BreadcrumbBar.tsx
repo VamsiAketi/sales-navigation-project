@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@/lib/router";
-import { LogOut, Menu, Settings } from "lucide-react";
+import { Bell, LogOut, Menu, Settings } from "lucide-react";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useCompany } from "../context/CompanyContext";
@@ -32,6 +32,126 @@ import { authApi } from "../api/auth";
 import { queryKeys } from "../lib/queryKeys";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
+import { notificationsApi } from "../api/notifications";
+
+function NotificationsBell() {
+  const navigate = useNavigate();
+  const { companies } = useCompany();
+  const queryClient = useQueryClient();
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    staleTime: 60_000,
+  });
+  const { data: unread } = useQuery({
+    queryKey: queryKeys.notifications.unreadCount,
+    queryFn: () => notificationsApi.getUnreadCount(),
+    enabled: !!session?.user?.id,
+    refetchInterval: 15_000,
+  });
+  const { data: notifications } = useQuery({
+    queryKey: queryKeys.notifications.me(10),
+    queryFn: () => notificationsApi.listMine(10),
+    enabled: !!session?.user?.id,
+    refetchInterval: 15_000,
+  });
+  if (!session?.user) return null;
+  const unreadCount = unread?.count ?? 0;
+
+  const toPreviewText = (message: string) => {
+    const lines = message
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !/^hello\b/i.test(line))
+      .filter((line) => !/^this email was sent\b/i.test(line));
+    return lines[0] ?? "Notification update";
+  };
+
+  const buildIssueHref = (item: { companyId: string | null; issueId: string | null }) => {
+    if (!item.companyId || !item.issueId) return null;
+    const company = companies.find((entry) => entry.id === item.companyId);
+    if (!company) return null;
+    return `/${company.issuePrefix}/issues/${encodeURIComponent(item.issueId)}`;
+  };
+
+  const handleNotificationSelect = async (item: {
+    id: string;
+    readAt: string | null;
+    companyId: string | null;
+    issueId: string | null;
+  }) => {
+    if (!item.readAt) {
+      await notificationsApi.markRead(item.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.me(10) }),
+      ]);
+    }
+    const issueHref = buildIssueHref(item);
+    if (issueHref) {
+      navigate(issueHref);
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="relative ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+          aria-label="Notifications"
+        >
+          <Bell className="h-4 w-4" />
+          {unreadCount > 0 ? (
+            <span className="absolute -right-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          ) : null}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-96">
+        <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground">
+          <span>Notifications</span>
+          <button
+            type="button"
+            className="hover:text-foreground"
+            onClick={async () => {
+              await notificationsApi.markAllRead();
+              await Promise.all([
+                queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.notifications.me(10) }),
+              ]);
+            }}
+          >
+            Mark all read
+          </button>
+        </div>
+        <div className="max-h-96 overflow-auto">
+          {(notifications ?? []).length === 0 ? (
+            <div className="px-3 py-3 text-sm text-muted-foreground">No notifications.</div>
+          ) : (
+            (notifications ?? []).map((item) => (
+              <DropdownMenuItem
+                key={item.id}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void handleNotificationSelect(item);
+                }}
+                className="cursor-pointer items-start py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-medium">{item.title}</p>
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{toPreviewText(item.message)}</p>
+                </div>
+              </DropdownMenuItem>
+            ))
+          )}
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function UserMenu() {
   const navigate = useNavigate();
@@ -132,6 +252,7 @@ export function BreadcrumbBar() {
     return (
       <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center justify-end">
         {globalToolbarSlots}
+        <NotificationsBell />
         <UserMenu />
       </div>
     );
@@ -160,6 +281,7 @@ export function BreadcrumbBar() {
           </h1>
         </div>
         {globalToolbarSlots}
+        <NotificationsBell />
         <UserMenu />
       </div>
     );
@@ -193,6 +315,7 @@ export function BreadcrumbBar() {
         </Breadcrumb>
       </div>
       {globalToolbarSlots}
+      <NotificationsBell />
       <UserMenu />
     </div>
   );

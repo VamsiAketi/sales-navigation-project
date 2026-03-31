@@ -37,6 +37,9 @@ vi.mock("../services/index.js", () => ({
     wakeup: vi.fn(async () => undefined),
     reportRunActivity: vi.fn(async () => undefined),
   }),
+  issueNotificationService: () => ({
+    notifyIssueEvent: vi.fn(async () => undefined),
+  }),
   issueApprovalService: () => ({}),
   issueService: () => mockIssueService,
   logActivity: mockLogActivity,

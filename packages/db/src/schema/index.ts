@@ -1,6 +1,8 @@
 export { companies } from "./companies.js";
 export { companyLogos } from "./company_logos.js";
 export { authUsers, authSessions, authAccounts, authVerifications } from "./auth.js";
+export { userNotificationPreferences } from "./user_notification_preferences.js";
+export { userNotifications } from "./user_notifications.js";
 export { instanceSettings } from "./instance_settings.js";
 export { instanceUserRoles } from "./instance_user_roles.js";
 export { agents } from "./agents.js";

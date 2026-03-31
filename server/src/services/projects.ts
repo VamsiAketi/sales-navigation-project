@@ -3,11 +3,13 @@ import type { Db } from "@paperclipai/db";
 import { projects, projectGoals, goals, projectWorkspaces, workspaceRuntimeServices } from "@paperclipai/db";
 import {
   PROJECT_COLORS,
+  projectNotificationConfigSchema,
   deriveProjectUrlKey,
   isUuidLike,
   normalizeProjectUrlKey,
   type ProjectCodebase,
   type ProjectExecutionWorkspacePolicy,
+  type ProjectNotificationConfig,
   type ProjectGoalRef,
   type ProjectWorkspace,
   type WorkspaceRuntimeService,
@@ -38,11 +40,12 @@ type CreateWorkspaceInput = {
 };
 type UpdateWorkspaceInput = Partial<CreateWorkspaceInput>;
 
-interface ProjectWithGoals extends Omit<ProjectRow, "executionWorkspacePolicy"> {
+interface ProjectWithGoals extends Omit<ProjectRow, "executionWorkspacePolicy" | "notificationConfig"> {
   urlKey: string;
   goalIds: string[];
   goals: ProjectGoalRef[];
   executionWorkspacePolicy: ProjectExecutionWorkspacePolicy | null;
+  notificationConfig: ProjectNotificationConfig | null;
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;
@@ -86,12 +89,14 @@ async function attachGoals(db: Db, rows: ProjectRow[]): Promise<ProjectWithGoals
 
   return rows.map((r) => {
     const g = map.get(r.id) ?? [];
+    const parsedNotificationConfig = projectNotificationConfigSchema.safeParse(r.notificationConfig);
     return {
       ...r,
       urlKey: deriveProjectUrlKey(r.name, r.id),
       goalIds: g.map((x) => x.id),
       goals: g,
       executionWorkspacePolicy: parseProjectExecutionWorkspacePolicy(r.executionWorkspacePolicy),
+      notificationConfig: parsedNotificationConfig.success ? parsedNotificationConfig.data : null,
     } as ProjectWithGoals;
   });
 }

@@ -15,3 +15,5 @@ export { sidebarBadgeRoutes } from "./sidebar-badges.js";
 export { llmRoutes } from "./llms.js";
 export { accessRoutes } from "./access.js";
 export { instanceSettingsRoutes } from "./instance-settings.js";
+export { userNotificationPreferencesRoutes } from "./user-notification-preferences.js";
+export { notificationRoutes } from "./notifications.js";

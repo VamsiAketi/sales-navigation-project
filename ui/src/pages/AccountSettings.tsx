@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Eye, EyeOff, KeyRound, User, X } from "lucide-react";
+import { Bell, Eye, EyeOff, KeyRound, User, X } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { PageTabBar } from "@/components/PageTabBar";
@@ -297,6 +297,156 @@ function AccountDetailsTab() {
   );
 }
 
+function NotificationPreferencesTab() {
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { data, isLoading } = useQuery({
+    queryKey: ["user-notification-preferences"],
+    queryFn: () => authApi.getNotificationPreferences(),
+    staleTime: 30_000,
+  });
+
+  const mutation = useMutation({
+    mutationFn: (patch: Parameters<typeof authApi.updateNotificationPreferences>[0]) =>
+      authApi.updateNotificationPreferences(patch),
+    onSuccess: () => {
+      setSavedMessage("Notification preferences saved.");
+      setErrorMessage(null);
+    },
+    onError: (err) => {
+      setErrorMessage(err instanceof Error ? err.message : "Failed to save preferences.");
+      setSavedMessage(null);
+    },
+  });
+
+  const pref = data;
+  const notificationEvents: Array<{
+    key: "issue.status_changed" | "issue.comment_added" | "issue.assigned";
+    label: string;
+    description: string;
+  }> = [
+    {
+      key: "issue.status_changed",
+      label: "Issue status changes",
+      description: "Notify me when an issue moves between states (for example, In Review or Done).",
+    },
+    {
+      key: "issue.comment_added",
+      label: "New comments",
+      description: "Notify me when someone adds a new comment to an issue I am involved in.",
+    },
+    {
+      key: "issue.assigned",
+      label: "Issue assignments",
+      description: "Notify me when an issue is assigned to me.",
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Bell className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Notifications</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Configure how you receive task notifications. Email is available now; SMS and WhatsApp are coming soon.
+        </p>
+      </div>
+
+      <section className="rounded-xl border border-border bg-card p-5 space-y-4 max-w-xl">
+        {isLoading || !pref ? (
+          <p className="text-sm text-muted-foreground">Loading preferences…</p>
+        ) : (
+          <>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={pref.enabled}
+                onChange={(e) => {
+                  setSavedMessage(null);
+                  setErrorMessage(null);
+                  mutation.mutate({ enabled: e.target.checked });
+                }}
+                disabled={mutation.isPending}
+              />
+              Enable notifications
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={pref.channels.email.enabled}
+                onChange={(e) => {
+                  setSavedMessage(null);
+                  setErrorMessage(null);
+                  mutation.mutate({
+                    channels: {
+                      ...pref.channels,
+                      email: { ...pref.channels.email, enabled: e.target.checked },
+                    },
+                  });
+                }}
+                disabled={mutation.isPending}
+              />
+              Email notifications
+            </label>
+
+            <div className="space-y-2 border-t border-border pt-3">
+              <p className="text-sm font-medium">Event preferences</p>
+              {notificationEvents.map((eventType) => (
+                <label key={eventType.key} className="block rounded-md border border-border/70 px-2.5 py-2">
+                  <div className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={pref.events[eventType.key]?.enabled ?? true}
+                      onChange={(e) => {
+                        setSavedMessage(null);
+                        setErrorMessage(null);
+                        mutation.mutate({
+                          events: {
+                            ...pref.events,
+                            [eventType.key]: {
+                              ...(pref.events[eventType.key] ?? {}),
+                              enabled: e.target.checked,
+                            },
+                          },
+                        });
+                      }}
+                      disabled={mutation.isPending}
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium">{eventType.label}</span>
+                      <span className="block text-xs text-muted-foreground">{eventType.description}</span>
+                    </span>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="space-y-1 border-t border-border pt-3">
+              <p className="text-sm font-medium">Future channels</p>
+              <p className="text-xs text-muted-foreground">SMS and WhatsApp support is planned but not yet enabled.</p>
+            </div>
+          </>
+        )}
+
+        {errorMessage && (
+          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {errorMessage}
+          </p>
+        )}
+        {savedMessage && (
+          <p className="rounded-md border border-green-500/40 bg-green-500/5 px-3 py-2 text-sm text-green-600 dark:text-green-400">
+            {savedMessage}
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -304,6 +454,7 @@ function AccountDetailsTab() {
 const TABS = [
   { value: "personal", label: "Personal Details" },
   { value: "account", label: "Account Details" },
+  { value: "notifications", label: "Notifications" },
 ];
 
 export function AccountSettings() {
@@ -348,6 +499,9 @@ export function AccountSettings() {
 
         <TabsContent value="account" className="mt-6">
           <AccountDetailsTab />
+        </TabsContent>
+        <TabsContent value="notifications" className="mt-6">
+          <NotificationPreferencesTab />
         </TabsContent>
       </Tabs>
     </div>

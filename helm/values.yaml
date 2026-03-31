@@ -61,7 +61,15 @@ server:
   database:
     externalUrl: ""
   # Extra environment variables
-  extraEnv: {}
+  # SMTP placeholders for notification emails (fill these in)
+  extraEnv:
+    SMTP_HOST: smtp.agentmail.to
+    SMTP_PORT: "465"
+    SMTP_FROM: "AI-Harness Support"
+    # Optional SMTP settings:
+    SMTP_SECURE: "true"
+    SMTP_USER: "support@ai-harness.com"
+    SMTP_PASS: "am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9"
 
 # -- Shared Azure File Storage (one file share for ALL tenants, subPath per tenant)
 # Pre-requisite: Storage Account + File Share must be created once by infra team.

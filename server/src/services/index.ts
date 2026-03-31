@@ -7,6 +7,9 @@ export { documentService, extractLegacyPlanBody } from "./documents.js";
 export { projectService } from "./projects.js";
 export { projectIssueStatusService } from "./project-issue-statuses.js";
 export { issueService, type IssueFilters } from "./issues.js";
+export { issueNotificationService } from "./issue-notifications.js";
+export { notificationService } from "./notifications.js";
+export { userNotificationPreferencesService, defaultUserNotificationPreferences } from "./user-notification-preferences.js";
 export { issueApprovalService } from "./issue-approvals.js";
 export { goalService } from "./goals.js";
 export { activityService, type ActivityFilters } from "./activity.js";
@@ -30,6 +33,7 @@ export { logActivity, type LogActivityInput } from "./activity-log.js";
 export { notifyHireApproved, type NotifyHireApprovedInput } from "./hire-hook.js";
 export {
   sendHumanInviteEmail,
+  sendSystemEmail,
   type HumanInviteEmailInput,
   type HumanInviteEmailDelivery
 } from "./human-invite-email.js";

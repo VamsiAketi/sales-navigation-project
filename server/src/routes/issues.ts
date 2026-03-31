@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import type { Db } from "@paperclipai/db";
+import { authUsers } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
 import {
   addIssueCommentSchema,
   createIssueAttachmentMetadataSchema,
@@ -26,6 +28,7 @@ import {
   issueApprovalService,
   issueService,
   documentService,
+  issueNotificationService,
   logActivity,
   projectService,
   routineService,
@@ -52,11 +55,18 @@ export function issueRoutes(db: Db, storage: StorageService) {
   const executionWorkspacesSvc = executionWorkspaceService(db);
   const workProductsSvc = workProductService(db);
   const documentsSvc = documentService(db);
+  const issueNotifications = issueNotificationService(db);
   const routinesSvc = routineService(db);
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
   });
+
+  function actorLabel(actorType: "agent" | "user" | "system", actorId: string) {
+    if (actorType === "agent") return `Agent ${actorId}`;
+    if (actorType === "user") return "A user";
+    return "System";
+  }
 
   function withContentPath<T extends { id: string }>(attachment: T) {
     return {
@@ -170,6 +180,16 @@ export function issueRoutes(db: Db, storage: StorageService) {
       }
     }
     return rawId;
+  }
+
+  async function resolveUserNameById(userId: string | null | undefined) {
+    if (!userId) return null;
+    const user = await db
+      .select({ name: authUsers.name })
+      .from(authUsers)
+      .where(eq(authUsers.id, userId))
+      .then((rows) => rows[0] ?? null);
+    return user?.name ?? null;
   }
 
   async function resolveIssueProjectAndGoal(issue: {
@@ -300,6 +320,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       entityId: label.id,
       details: { name: label.name, color: label.color },
     });
+
     res.status(201).json(label);
   });
 
@@ -793,6 +814,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       createdByAgentId: actor.agentId,
       createdByUserId: actor.actorType === "user" ? actor.actorId : null,
     });
+    const assignedUserName = await resolveUserNameById(issue.assigneeUserId);
 
     await logActivity(db, {
       companyId,
@@ -816,6 +838,22 @@ export function issueRoutes(db: Db, storage: StorageService) {
       requestedByActorType: actor.actorType,
       requestedByActorId: actor.actorId,
     });
+
+    if (issue.assigneeUserId) {
+      void issueNotifications.notifyIssueEvent({
+        issueId: issue.id,
+        eventType: "issue.assigned",
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        payload: {
+          issueIdentifier: issue.identifier,
+          issueTitle: issue.title,
+          actorLabel: actor.actorType === "user" ? (await resolveUserNameById(actor.actorId)) : actorLabel(actor.actorType, actor.actorId),
+          assignedUserId: issue.assigneeUserId,
+          assignedUserName,
+        },
+      });
+    }
 
     res.status(201).json(issue);
   });
@@ -849,6 +887,10 @@ export function issueRoutes(db: Db, storage: StorageService) {
     if (!(await assertAgentRunCheckoutOwnership(req, res, existing))) return;
 
     const actor = getActorInfo(req);
+    const actorDisplayName =
+      actor.actorType === "user"
+        ? await resolveUserNameById(actor.actorId)
+        : actorLabel(actor.actorType, actor.actorId);
     const isClosed = existing.status === "done" || existing.status === "cancelled";
     const { comment: commentBody, reopen: reopenRequested, hiddenAt: hiddenAtRaw, ...updateFields } = req.body;
     if (hiddenAtRaw !== undefined) {
@@ -904,6 +946,13 @@ export function issueRoutes(db: Db, storage: StorageService) {
     }
 
     const hasFieldChanges = Object.keys(previous).length > 0;
+    const assigneeUserChanged =
+      updateFields.assigneeUserId !== undefined &&
+      updateFields.assigneeUserId !== existing.assigneeUserId;
+    const [nextAssigneeUserName, previousAssigneeUserName] = await Promise.all([
+      assigneeUserChanged ? resolveUserNameById(issue.assigneeUserId) : Promise.resolve(null),
+      assigneeUserChanged ? resolveUserNameById(existing.assigneeUserId) : Promise.resolve(null),
+    ]);
     const reopened =
       commentBody &&
       reopenRequested === true &&
@@ -925,9 +974,31 @@ export function issueRoutes(db: Db, storage: StorageService) {
         identifier: issue.identifier,
         ...(commentBody ? { source: "comment" } : {}),
         ...(reopened ? { reopened: true, reopenedFrom: reopenFromStatus } : {}),
+        ...(assigneeUserChanged
+          ? { assigneeUserName: nextAssigneeUserName, previousAssigneeUserName }
+          : {}),
         _previous: hasFieldChanges ? previous : undefined,
       },
     });
+
+    if (
+      updateFields.status !== undefined &&
+      existing.status !== issue.status
+    ) {
+      void issueNotifications.notifyIssueEvent({
+        issueId: issue.id,
+        eventType: "issue.status_changed",
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        payload: {
+          issueIdentifier: issue.identifier,
+          issueTitle: issue.title,
+          actorLabel: actorDisplayName,
+          oldStatus: existing.status,
+          newStatus: issue.status,
+        },
+      });
+    }
 
     let comment = null;
     if (commentBody) {
@@ -955,6 +1026,35 @@ export function issueRoutes(db: Db, storage: StorageService) {
         },
       });
 
+      void issueNotifications.notifyIssueEvent({
+        issueId: issue.id,
+        eventType: "issue.comment_added",
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        payload: {
+          issueIdentifier: issue.identifier,
+          issueTitle: issue.title,
+          actorLabel: actorDisplayName,
+          commentSnippet: comment.body.slice(0, 120),
+        },
+      });
+
+    }
+
+    if (assigneeWillChange && issue.assigneeUserId && issue.assigneeUserId !== existing.assigneeUserId) {
+      void issueNotifications.notifyIssueEvent({
+        issueId: issue.id,
+        eventType: "issue.assigned",
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        payload: {
+          issueIdentifier: issue.identifier,
+          issueTitle: issue.title,
+          actorLabel: actorDisplayName,
+          assignedUserId: issue.assigneeUserId,
+          assignedUserName: nextAssigneeUserName,
+        },
+      });
     }
 
     const assigneeChanged = assigneeWillChange;
@@ -1346,6 +1446,22 @@ export function issueRoutes(db: Db, storage: StorageService) {
         issueTitle: currentIssue.title,
         ...(reopened ? { reopened: true, reopenedFrom: reopenFromStatus, source: "comment" } : {}),
         ...(interruptedRunId ? { interruptedRunId } : {}),
+      },
+    });
+
+    void issueNotifications.notifyIssueEvent({
+      issueId: currentIssue.id,
+      eventType: "issue.comment_added",
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      payload: {
+        issueIdentifier: currentIssue.identifier,
+        issueTitle: currentIssue.title,
+        actorLabel:
+          actor.actorType === "user"
+            ? await resolveUserNameById(actor.actorId)
+            : actorLabel(actor.actorType, actor.actorId),
+        commentSnippet: comment.body.slice(0, 120),
       },
     });
 

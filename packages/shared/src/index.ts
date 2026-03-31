@@ -187,6 +187,11 @@ export type {
   ProjectGoalRef,
   ProjectWorkspace,
   ProjectIssueStatus,
+  ProjectNotificationConfig,
+  ProjectNotificationRule,
+  ProjectNotificationEventType,
+  ProjectNotificationChannel,
+  ProjectNotificationRecipientRole,
   ExecutionWorkspace,
   WorkspaceRuntimeService,
   WorkspaceOperation,
@@ -315,6 +320,12 @@ export type {
   QuotaWindow,
   ProviderQuotaResult,
 } from "./types/index.js";
+export type {
+  NotificationChannelType,
+  NotificationChannelPreference,
+  NotificationEventPreference,
+  UserNotificationPreferences,
+} from "./types/user-notification-preferences.js";
 
 export {
   instanceGeneralSettingsSchema,
@@ -375,6 +386,8 @@ export {
   createProjectWorkspaceSchema,
   updateProjectWorkspaceSchema,
   projectSecretBindingsSchema,
+  projectNotificationConfigSchema,
+  projectNotificationRuleSchema,
   type CreateProject,
   type UpdateProject,
   type CreateProjectWorkspace,
@@ -553,6 +566,16 @@ export {
   type SetPluginState,
   type ListPluginState,
 } from "./validators/index.js";
+export {
+  notificationChannelTypeSchema,
+  projectNotificationEventTypeSchema,
+  notificationChannelPreferenceSchema,
+  notificationEventPreferenceSchema,
+  userNotificationPreferencesSchema,
+  updateUserNotificationPreferencesSchema,
+  type UserNotificationPreferences as UserNotificationPreferencesInput,
+  type UpdateUserNotificationPreferences,
+} from "./validators/user-notification-preferences.js";
 
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
