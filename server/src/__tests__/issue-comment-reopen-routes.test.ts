@@ -27,6 +27,15 @@ const mockAgentService = vi.hoisted(() => ({
 
 const mockLogActivity = vi.hoisted(() => vi.fn(async () => undefined));
 
+/** Minimal db stub for `resolveUserNameById` (issues route queries auth users by id). */
+const mockDb = {
+  select: () => ({
+    from: () => ({
+      where: () => Promise.resolve([] as { name: string | null }[]),
+    }),
+  }),
+};
+
 vi.mock("../services/index.js", () => ({
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
@@ -34,6 +43,9 @@ vi.mock("../services/index.js", () => ({
   executionWorkspaceService: () => ({}),
   goalService: () => ({}),
   heartbeatService: () => mockHeartbeatService,
+  issueNotificationService: () => ({
+    notifyIssueEvent: vi.fn(async () => undefined),
+  }),
   issueApprovalService: () => ({}),
   issueService: () => mockIssueService,
   logActivity: mockLogActivity,
@@ -68,7 +80,7 @@ function createApp(
     };
     next();
   });
-  app.use("/api", issueRoutes({} as any, {} as any));
+  app.use("/api", issueRoutes(mockDb as any, {} as any));
   app.use(errorHandler);
   return app;
 }
