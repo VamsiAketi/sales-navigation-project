@@ -231,6 +231,26 @@ jobs:
           TMP_DIR="$(mktemp -d)"
           COOKIE_JAR="$TMP_DIR/cookies.txt"
 
+          # Ingress/LB can briefly return 502/503/504 right after rollout.
+          # Wait for the public endpoint to be consistently reachable first.
+          echo "Waiting for public health endpoint at ${BASE_URL}/api/health ..."
+          HEALTH_OK=0
+          for i in $(seq 1 24); do
+            HEALTH_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "$BASE_URL/api/health" || true)"
+            if [ "$HEALTH_STATUS" = "200" ]; then
+              HEALTH_OK=1
+              echo "Health endpoint is ready."
+              break
+            fi
+            echo "Health check attempt ${i}/24 returned ${HEALTH_STATUS:-curl_error}; retrying in 5s..."
+            sleep 5
+          done
+
+          if [ "$HEALTH_OK" -ne 1 ]; then
+            echo "Public health endpoint did not become ready in time." >&2
+            exit 1
+          fi
+
           post_json_with_cookies() {
             local url="$1"
             local body="$2"
@@ -247,21 +267,54 @@ jobs:
               --data "$body"
           }
 
+          post_json_with_cookies_retry() {
+            local url="$1"
+            local body="$2"
+            local output_file="$3"
+            local label="$4"
+            local attempts="${5:-5}"
+            local sleep_seconds="${6:-8}"
+            local status=""
+
+            for i in $(seq 1 "$attempts"); do
+              status="$(post_json_with_cookies "$url" "$body" "$output_file")"
+              if [[ "$status" =~ ^2 ]]; then
+                echo "$status"
+                return 0
+              fi
+
+              if [[ "$status" = "502" || "$status" = "503" || "$status" = "504" ]]; then
+                echo "${label}: transient HTTP ${status} on attempt ${i}/${attempts}; retrying in ${sleep_seconds}s..."
+                sleep "$sleep_seconds"
+                continue
+              fi
+
+              echo "$status"
+              return 0
+            done
+
+            # Return final status after retries (likely still 5xx).
+            echo "$status"
+            return 0
+          }
+
           # 1) Sign up or sign in the CEO user
           SIGNUP_RESP="$TMP_DIR/signup.json"
-          SIGNUP_STATUS="$(post_json_with_cookies \
+          SIGNUP_STATUS="$(post_json_with_cookies_retry \
             "$BASE_URL/api/auth/sign-up/email" \
             "{\"name\":\"$USER_NAME\",\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}" \
-            "$SIGNUP_RESP")"
+            "$SIGNUP_RESP" \
+            "sign-up")"
 
           if [[ "$SIGNUP_STATUS" =~ ^2 ]]; then
             echo "Created CEO user ${USER_EMAIL}"
           else
             SIGNIN_RESP="$TMP_DIR/signin.json"
-            SIGNIN_STATUS="$(post_json_with_cookies \
+            SIGNIN_STATUS="$(post_json_with_cookies_retry \
               "$BASE_URL/api/auth/sign-in/email" \
               "{\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}" \
-              "$SIGNIN_RESP")"
+              "$SIGNIN_RESP" \
+              "sign-in")"
 
             if [[ "$SIGNIN_STATUS" =~ ^2 ]]; then
               echo "Signed in existing CEO user ${USER_EMAIL}"
@@ -280,10 +333,11 @@ jobs:
 
           # 2) Accept the invite as this user
           ACCEPT_RESP="$TMP_DIR/accept.json"
-          ACCEPT_STATUS="$(post_json_with_cookies \
+          ACCEPT_STATUS="$(post_json_with_cookies_retry \
             "$BASE_URL/api/invites/$INVITE_TOKEN/accept" \
             '{"requestType":"human"}' \
-            "$ACCEPT_RESP")"
+            "$ACCEPT_RESP" \
+            "accept-invite")"
 
           if ! [[ "$ACCEPT_STATUS" =~ ^2 ]]; then
             echo "Failed to accept invite (HTTP $ACCEPT_STATUS)" >&2
