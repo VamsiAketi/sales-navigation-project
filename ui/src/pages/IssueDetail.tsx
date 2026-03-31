@@ -184,14 +184,17 @@ function formatAction(action: string, details?: Record<string, unknown> | null):
   return ACTION_LABELS[action] ?? action.replace(/[._]/g, " ");
 }
 
-function ActorIdentity({ evt, agentMap }: { evt: ActivityEvent; agentMap: Map<string, Agent> }) {
+function ActorIdentity({ evt, agentMap, userNameMap }: { evt: ActivityEvent; agentMap: Map<string, Agent>; userNameMap: Map<string, string> }) {
   const id = evt.actorId;
   if (evt.actorType === "agent") {
     const agent = agentMap.get(id);
     return <Identity name={agent?.name ?? id.slice(0, 8)} size="sm" />;
   }
   if (evt.actorType === "system") return <Identity name="System" size="sm" />;
-  if (evt.actorType === "user") return <Identity name="Board" size="sm" />;
+  if (evt.actorType === "user") {
+    const resolved = userNameMap.get(id) ?? (id === "local-board" ? "Board" : id.slice(0, 8));
+    return <Identity name={resolved} size="sm" />;
+  }
   return <Identity name={id || "Unknown"} size="sm" />;
 }
 
@@ -338,6 +341,16 @@ export function IssueDetail() {
     for (const a of agents ?? []) map.set(a.id, a);
     return map;
   }, [agents]);
+
+  const userNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of members ?? []) {
+      if (member.principalType === "user" && member.user) {
+        map.set(member.user.id, member.user.name);
+      }
+    }
+    return map;
+  }, [members]);
 
   const mentionOptions = useMemo<MentionOption[]>(() => {
     const options: MentionOption[] = [];
@@ -1119,7 +1132,7 @@ export function IssueDetail() {
             <div className="space-y-1.5">
               {activity.slice(0, 20).map((evt) => (
                 <div key={evt.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <ActorIdentity evt={evt} agentMap={agentMap} />
+                  <ActorIdentity evt={evt} agentMap={agentMap} userNameMap={userNameMap} />
                   <span>{formatAction(evt.action, evt.details)}</span>
                   <span className="ml-auto shrink-0">{relativeTime(evt.createdAt)}</span>
                 </div>

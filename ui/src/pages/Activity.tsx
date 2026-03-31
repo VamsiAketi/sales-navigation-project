@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { activityApi } from "../api/activity";
+import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
@@ -42,6 +43,12 @@ export function Activity() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: members } = useQuery({
+    queryKey: queryKeys.access.members(selectedCompanyId!),
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
   const { data: issues } = useQuery({
     queryKey: queryKeys.issues.list(selectedCompanyId!),
     queryFn: () => issuesApi.list(selectedCompanyId!),
@@ -80,6 +87,16 @@ export function Activity() {
     for (const i of issues ?? []) map.set(`issue:${i.id}`, i.title);
     return map;
   }, [issues]);
+
+  const userNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of members ?? []) {
+      if (member.principalType === "user" && member.user) {
+        map.set(member.user.id, member.user.name);
+      }
+    }
+    return map;
+  }, [members]);
 
   if (!selectedCompanyId) {
     return <EmptyState icon={History} message="Select a company to view activity." />;
@@ -129,6 +146,7 @@ export function Activity() {
               key={event.id}
               event={event}
               agentMap={agentMap}
+              userNameMap={userNameMap}
               entityNameMap={entityNameMap}
               entityTitleMap={entityTitleMap}
             />
