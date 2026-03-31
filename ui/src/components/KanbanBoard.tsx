@@ -46,6 +46,7 @@ interface KanbanBoardProps {
   issues: Issue[];
   agents?: Agent[];
   liveIssueIds?: Set<string>;
+  issueLinkState?: unknown;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
   /** When provided, use these as the board columns instead of the default hardcoded list */
   projectStatuses?: ProjectIssueStatus[];
@@ -69,6 +70,7 @@ function KanbanColumn({
   issues,
   agents,
   liveIssueIds,
+  issueLinkState,
 }: {
   status: string;
   columnLabel?: string;
@@ -76,6 +78,7 @@ function KanbanColumn({
   issues: Issue[];
   agents?: Agent[];
   liveIssueIds?: Set<string>;
+  issueLinkState?: unknown;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
@@ -112,6 +115,7 @@ function KanbanColumn({
               issue={issue}
               agents={agents}
               isLive={liveIssueIds?.has(issue.id)}
+              issueLinkState={issueLinkState}
             />
           ))}
         </SortableContext>
@@ -127,11 +131,13 @@ function KanbanCard({
   agents,
   isLive,
   isOverlay,
+  issueLinkState,
 }: {
   issue: Issue;
   agents?: Agent[];
   isLive?: boolean;
   isOverlay?: boolean;
+  issueLinkState?: unknown;
 }) {
   const {
     attributes,
@@ -164,6 +170,7 @@ function KanbanCard({
     >
       <Link
         to={`/issues/${issue.identifier ?? issue.id}`}
+        state={issueLinkState}
         className="block no-underline text-inherit"
         onClick={(e) => {
           // Prevent navigation during drag
@@ -206,6 +213,7 @@ export function KanbanBoard({
   issues,
   agents,
   liveIssueIds,
+  issueLinkState,
   onUpdateIssue,
   projectStatuses,
 }: KanbanBoardProps) {
@@ -332,6 +340,7 @@ export function KanbanBoard({
               issues={columnIssues[status] ?? []}
               agents={agents}
               liveIssueIds={liveIssueIds}
+              issueLinkState={issueLinkState}
             />
           );
         })}
