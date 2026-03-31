@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Db } from "@paperclipai/db";
-import { agents as agentsTable, companies, heartbeatRuns } from "@paperclipai/db";
+import { agents as agentsTable, authUsers, companies, companyMemberships, heartbeatRuns } from "@paperclipai/db";
 import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import {
   agentSkillSyncSchema,
@@ -650,6 +650,7 @@ export function agentRoutes(db: Db) {
       name: String(node.name),
       role: String(node.role),
       status: String(node.status),
+      nodeType: node.nodeType === "human" ? "human" : "agent",
       reports,
     };
   }
@@ -920,8 +921,121 @@ export function agentRoutes(db: Db) {
   router.get("/companies/:companyId/org", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const tree = await svc.orgForCompany(companyId);
-    const leanTree = tree.map((node) => toLeanOrgNode(node as Record<string, unknown>));
+    const [tree, memberships, users] = await Promise.all([
+      svc.orgForCompany(companyId),
+      db
+        .select()
+        .from(companyMemberships)
+        .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.status, "active"))),
+      db
+        .select({
+          id: authUsers.id,
+          name: authUsers.name,
+          email: authUsers.email,
+        })
+        .from(authUsers),
+    ]);
+
+    const usersById = new Map(
+      users.map((user) => [user.id, user.name?.trim() || user.email || "Unknown User"]),
+    );
+
+    const nodesByKey = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        role: string;
+        status: string;
+        nodeType: "agent" | "human";
+        reports: unknown[];
+      }
+    >();
+    const fallbackParentByKey = new Map<string, string | null>();
+
+    const walkAgentTree = (node: Record<string, unknown>, parentKey: string | null) => {
+      const id = String(node.id);
+      const key = `agent:${id}`;
+      nodesByKey.set(key, {
+        id,
+        name: String(node.name),
+        role: String(node.role),
+        status: String(node.status),
+        nodeType: "agent",
+        reports: [],
+      });
+      fallbackParentByKey.set(key, parentKey);
+
+      const reports = Array.isArray(node.reports) ? (node.reports as Array<Record<string, unknown>>) : [];
+      for (const report of reports) walkAgentTree(report, key);
+    };
+
+    for (const rootNode of tree as Array<Record<string, unknown>>) {
+      walkAgentTree(rootNode, null);
+    }
+
+    for (const member of memberships) {
+      if (member.principalType !== "user") continue;
+      const humanName = usersById.get(member.principalId) ?? "Unknown User";
+      nodesByKey.set(`human:${member.id}`, {
+        id: member.id,
+        name: humanName,
+        role: member.membershipRole ?? "member",
+        status: member.status,
+        nodeType: "human",
+        reports: [],
+      });
+    }
+
+    const membershipsById = new Map(memberships.map((member) => [member.id, member]));
+    const explicitParentByKey = new Map<string, string>();
+
+    for (const member of memberships) {
+      const childKey =
+        member.principalType === "user"
+          ? `human:${member.id}`
+          : member.principalType === "agent"
+            ? `agent:${member.principalId}`
+            : null;
+      if (!childKey || !nodesByKey.has(childKey)) continue;
+
+      const parentMemberId = member.reportsToMembershipId;
+      if (!parentMemberId) continue;
+      const parentMembership = membershipsById.get(parentMemberId) ?? null;
+      if (!parentMembership || parentMembership.companyId !== companyId) continue;
+
+      const parentKey =
+        parentMembership.principalType === "user"
+          ? `human:${parentMembership.id}`
+          : parentMembership.principalType === "agent"
+            ? `agent:${parentMembership.principalId}`
+            : null;
+      if (!parentKey || !nodesByKey.has(parentKey) || parentKey === childKey) continue;
+      explicitParentByKey.set(childKey, parentKey);
+    }
+
+    for (const [childKey, childNode] of nodesByKey.entries()) {
+      const parentKey = explicitParentByKey.get(childKey) ?? fallbackParentByKey.get(childKey) ?? null;
+      if (!parentKey) continue;
+      const parentNode = nodesByKey.get(parentKey);
+      if (!parentNode || parentNode.id === childNode.id) continue;
+      parentNode.reports.push(childNode);
+    }
+
+    const roots: Array<{
+      id: string;
+      name: string;
+      role: string;
+      status: string;
+      nodeType: "agent" | "human";
+      reports: unknown[];
+    }> = [];
+
+    for (const [key, node] of nodesByKey.entries()) {
+      if (!explicitParentByKey.has(key) && !(fallbackParentByKey.get(key) ?? null)) roots.push(node);
+    }
+
+    const leanTree = roots.map((node) => toLeanOrgNode(node as Record<string, unknown>));
     res.json(leanTree);
   });
 
