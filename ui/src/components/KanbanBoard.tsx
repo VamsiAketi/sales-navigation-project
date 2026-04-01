@@ -42,9 +42,15 @@ interface Agent {
   name: string;
 }
 
+interface Member {
+  id: string;
+  name: string;
+}
+
 interface KanbanBoardProps {
   issues: Issue[];
   agents?: Agent[];
+  members?: Member[];
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
@@ -69,6 +75,7 @@ function KanbanColumn({
   columnColor,
   issues,
   agents,
+  members,
   liveIssueIds,
   issueLinkState,
 }: {
@@ -77,6 +84,7 @@ function KanbanColumn({
   columnColor?: string;
   issues: Issue[];
   agents?: Agent[];
+  members?: Member[];
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
 }) {
@@ -114,6 +122,7 @@ function KanbanColumn({
               key={issue.id}
               issue={issue}
               agents={agents}
+              members={members}
               isLive={liveIssueIds?.has(issue.id)}
               issueLinkState={issueLinkState}
             />
@@ -129,12 +138,14 @@ function KanbanColumn({
 function KanbanCard({
   issue,
   agents,
+  members,
   isLive,
   isOverlay,
   issueLinkState,
 }: {
   issue: Issue;
   agents?: Agent[];
+  members?: Member[];
   isLive?: boolean;
   isOverlay?: boolean;
   issueLinkState?: unknown;
@@ -153,10 +164,14 @@ function KanbanCard({
     transition,
   };
 
-  const agentName = (id: string | null) => {
-    if (!id || !agents) return null;
-    return agents.find((a) => a.id === id)?.name ?? null;
-  };
+  const resolvedAgentName = issue.assigneeAgentId
+    ? (agents?.find((a) => a.id === issue.assigneeAgentId)?.name ?? null)
+    : null;
+
+  const resolvedUserName = issue.assigneeUserId
+    ? (members?.find((m) => m.id === issue.assigneeUserId)?.name ??
+       (issue.assigneeUserId === "local-board" ? "Board" : null))
+    : null;
 
   return (
     <div
@@ -191,16 +206,21 @@ function KanbanCard({
         <p className="text-sm leading-snug line-clamp-2 mb-2">{issue.title}</p>
         <div className="flex items-center gap-2">
           <PriorityIcon priority={issue.priority} />
-          {issue.assigneeAgentId && (() => {
-            const name = agentName(issue.assigneeAgentId);
-            return name ? (
-              <Identity name={name} size="xs" />
-            ) : (
-              <span className="text-xs text-muted-foreground font-mono">
-                {issue.assigneeAgentId.slice(0, 8)}
-              </span>
-            );
-          })()}
+          {/* Agent assignee */}
+          {resolvedAgentName ? (
+            <Identity name={resolvedAgentName} size="xs" />
+          ) : issue.assigneeAgentId ? (
+            <span className="text-xs text-muted-foreground font-mono">
+              {issue.assigneeAgentId.slice(0, 8)}
+            </span>
+          ) : resolvedUserName ? (
+            /* Human assignee */
+            <Identity name={resolvedUserName} size="xs" />
+          ) : issue.assigneeUserId ? (
+            <span className="text-xs text-muted-foreground font-mono">
+              {issue.assigneeUserId.slice(0, 8)}
+            </span>
+          ) : null}
         </div>
       </Link>
     </div>
@@ -212,6 +232,7 @@ function KanbanCard({
 export function KanbanBoard({
   issues,
   agents,
+  members,
   liveIssueIds,
   issueLinkState,
   onUpdateIssue,
@@ -339,6 +360,7 @@ export function KanbanBoard({
               columnColor={ps?.color}
               issues={columnIssues[status] ?? []}
               agents={agents}
+              members={members}
               liveIssueIds={liveIssueIds}
               issueLinkState={issueLinkState}
             />
@@ -347,7 +369,7 @@ export function KanbanBoard({
       </div>
       <DragOverlay>
         {activeIssue ? (
-          <KanbanCard issue={activeIssue} agents={agents} isOverlay />
+          <KanbanCard issue={activeIssue} agents={agents} members={members} issueLinkState={issueLinkState} isOverlay />
         ) : null}
       </DragOverlay>
     </DndContext>
