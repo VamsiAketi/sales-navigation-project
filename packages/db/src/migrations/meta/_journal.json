@@ -351,6 +351,13 @@
       "when": 1775200000000,
       "tag": "0049_user_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1775300000000,
+      "tag": "0050_project_issue_prefix",
+      "breakpoints": true
     }
   ]
 }
