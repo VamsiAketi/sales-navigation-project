@@ -454,7 +454,7 @@ export function CommentThread({
             />
             Re-open
           </label>
-          {enableReassign && reassignOptions.length > 0 && (
+          {/* {enableReassign && reassignOptions.length > 0 && (
             <InlineEntitySelector
               value={reassignTarget}
               options={reassignOptions}
@@ -491,7 +491,7 @@ export function CommentThread({
                 );
               }}
             />
-          )}
+          )} */}
           <Button size="sm" disabled={!canSubmit} onClick={handleSubmit}>
             {submitting ? "Posting..." : "Comment"}
           </Button>
