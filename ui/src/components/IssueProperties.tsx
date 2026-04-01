@@ -802,7 +802,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           open={labelsOpen}
           onOpenChange={(open) => { setLabelsOpen(open); if (!open) setLabelSearch(""); }}
           triggerContent={labelsTrigger}
-          triggerClassName="min-w-0 max-w-full"
+          triggerClassName="min-w-0 w-full"
           popoverClassName="w-64"
         >
           {labelsContent}
