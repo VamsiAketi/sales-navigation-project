@@ -5,6 +5,7 @@ import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { issuesApi } from "../api/issues";
 import { authApi } from "../api/auth";
+import { accessApi } from "../api/access";
 import { queryKeys } from "../lib/queryKeys";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { groupBy } from "../lib/groupBy";
@@ -270,6 +271,21 @@ export function IssuesList({
     queryFn: () => issuesApi.listLabels(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+
+  const { data: companyMembers } = useQuery({
+    queryKey: queryKeys.access.members(selectedCompanyId!),
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  // Build a flat list of human members with id + name for the Kanban board
+  const humanMembers = useMemo(
+    () =>
+      (companyMembers ?? [])
+        .filter((m) => m.principalType === "user" && m.user)
+        .map((m) => ({ id: m.user!.id, name: m.user!.name })),
+    [companyMembers]
+  );
 
   const activeFilterCount = countActiveFilters(viewState);
 
@@ -637,8 +653,8 @@ export function IssuesList({
         <KanbanBoard
           issues={filtered}
           agents={agents}
+          members={humanMembers}
           liveIssueIds={liveIssueIds}
-          issueLinkState={issueLinkState}
           onUpdateIssue={onUpdateIssue}
           projectStatuses={projectStatuses}
         />
