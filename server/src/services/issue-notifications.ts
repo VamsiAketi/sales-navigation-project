@@ -274,7 +274,7 @@ export function issueNotificationService(db: Db) {
         }
         const delivery = await sendSystemEmail({
           toEmail: recipient.email!,
-          subject: `[Paperclip] ${title}`,
+          subject: `[AI-Harness] ${title}`,
           textBody: message,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
