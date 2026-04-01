@@ -20,6 +20,7 @@ import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { ProjectIssueStatusSettings } from "../components/ProjectIssueStatusSettings";
+import { ProjectNotificationSettings } from "../components/ProjectNotificationSettings";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { projectRouteRef, cn } from "../lib/utils";
@@ -605,12 +606,22 @@ export function ProjectDetail() {
             archivePending={archiveProject.isPending}
           />
           {project?.id && (
-            <div className="border-t border-border pt-6">
-              <ProjectIssueStatusSettings
-                projectId={project.id}
-                statuses={configStatuses}
-              />
-            </div>
+            <>
+              <div className="border-t border-border pt-6">
+                <ProjectNotificationSettings
+                  project={project}
+                  issueStatuses={configStatuses}
+                  onSave={(data) => updateProjectField("notification_config", data)}
+                  saveState={fieldSaveStates.notification_config ?? "idle"}
+                />
+              </div>
+              <div className="border-t border-border pt-6">
+                <ProjectIssueStatusSettings
+                  projectId={project.id}
+                  statuses={configStatuses}
+                />
+              </div>
+            </>
           )}
         </div>
       )}

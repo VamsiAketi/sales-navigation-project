@@ -350,7 +350,7 @@ function NotificationPreferencesTab() {
           <h2 className="text-lg font-semibold">Notifications</h2>
         </div>
         <p className="text-sm text-muted-foreground">
-          Configure how you receive task notifications. Email is available now; SMS and WhatsApp are coming soon.
+          Configure how you receive task notifications.
         </p>
       </div>
 
@@ -423,11 +423,6 @@ function NotificationPreferencesTab() {
                   </div>
                 </label>
               ))}
-            </div>
-
-            <div className="space-y-1 border-t border-border pt-3">
-              <p className="text-sm font-medium">Future channels</p>
-              <p className="text-xs text-muted-foreground">SMS and WhatsApp support is planned but not yet enabled.</p>
             </div>
           </>
         )}

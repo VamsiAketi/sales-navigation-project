@@ -188,6 +188,7 @@ export type ProjectConfigFieldKey =
   | "status"
   | "goals"
   | "env_config"
+  | "notification_config"
   | "execution_workspace_enabled"
   | "execution_workspace_default_mode"
   | "execution_workspace_base_ref"

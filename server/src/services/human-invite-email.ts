@@ -244,11 +244,11 @@ export async function sendHumanInviteEmail(
 ): Promise<HumanInviteEmailDelivery> {
   const delivery = await sendSystemEmail({
     toEmail: input.toEmail,
-    subject: "You have been invited to Paperclip",
+    subject: "You have been invited to AI-Harness",
     textBody: [
       `Hello ${input.toName},`,
       "",
-      "You have been granted access to Paperclip.",
+      "You have been granted access to AI-Harness.",
       "",
       `Sign in: ${input.signInUrl}`,
       `Email: ${input.temporaryUsername}`,
