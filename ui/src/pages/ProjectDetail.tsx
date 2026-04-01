@@ -24,6 +24,7 @@ import { ProjectNotificationSettings } from "../components/ProjectNotificationSe
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { projectRouteRef, cn } from "../lib/utils";
+import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { Tabs } from "@/components/ui/tabs";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
@@ -150,7 +151,7 @@ function ColorPicker({
 
 /* ── List (issues) tab content ── */
 
-function ProjectIssuesList({ projectId, companyId }: { projectId: string; companyId: string }) {
+function ProjectIssuesList({ projectId, companyId, issueLinkState }: { projectId: string; companyId: string; issueLinkState?: unknown }) {
   const queryClient = useQueryClient();
   const projectStatuses = useProjectIssueStatuses(projectId);
 
@@ -199,6 +200,7 @@ function ProjectIssuesList({ projectId, companyId }: { projectId: string; compan
       liveIssueIds={liveIssueIds}
       projectId={projectId}
       viewStateKey={`paperclip:project-view:${projectId}`}
+      issueLinkState={issueLinkState}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
       projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
     />
@@ -592,7 +594,11 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "list" && project?.id && resolvedCompanyId && (
-        <ProjectIssuesList projectId={project.id} companyId={resolvedCompanyId} />
+        <ProjectIssuesList
+          projectId={project.id}
+          companyId={resolvedCompanyId}
+          issueLinkState={createIssueDetailLocationState(project.name, `/projects/${canonicalProjectRef}/issues`)}
+        />
       )}
 
       {activeTab === "configuration" && (

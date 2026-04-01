@@ -442,7 +442,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                 <button
                   className={cn(
                     "flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-left",
-                    selected && "bg-accent"
+                    selected && "bg-accent border border-white"
                   )}
                   onClick={() => toggleLabel(label.id)}
                   disabled={labelsSaving}
@@ -494,7 +494,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             onChange={(e) => setNewLabelColor(e.target.value)}
           />
           <input
-            className="flex-1 px-2 py-1.5 text-xs bg-transparent outline-none rounded placeholder:text-muted-foreground/50"
+            className="flex-1 px-2 py-1.5 text-xs bg-transparent outline outline-[#cecee4] rounded border placeholder:text-muted-foreground/50"
             placeholder="New label"
             value={newLabelName}
             onChange={(e) => setNewLabelName(e.target.value)}
@@ -802,7 +802,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           open={labelsOpen}
           onOpenChange={(open) => { setLabelsOpen(open); if (!open) setLabelSearch(""); }}
           triggerContent={labelsTrigger}
-          triggerClassName="min-w-0 max-w-full"
+          triggerClassName="min-w-0 w-full"
           popoverClassName="w-64"
         >
           {labelsContent}

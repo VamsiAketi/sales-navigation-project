@@ -638,6 +638,7 @@ export function IssuesList({
           issues={filtered}
           agents={agents}
           liveIssueIds={liveIssueIds}
+          issueLinkState={issueLinkState}
           onUpdateIssue={onUpdateIssue}
           projectStatuses={projectStatuses}
         />
