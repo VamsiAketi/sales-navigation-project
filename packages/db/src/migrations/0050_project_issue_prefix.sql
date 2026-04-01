@@ -4,15 +4,17 @@ ALTER TABLE "projects"
   ADD COLUMN IF NOT EXISTS "issue_counter" integer NOT NULL DEFAULT 0;
 --> statement-breakpoint
 
--- Unique index: a prefix must be unique within a company (NULLs are excluded automatically)
+-- Unique index: a prefix must be globally unique across all projects/companies because
+-- issue identifiers (e.g. "PORTA-1") are stored in a globally-unique index on issues.
+-- NULLs are excluded automatically by the WHERE clause.
 CREATE UNIQUE INDEX IF NOT EXISTS "projects_issue_prefix_company_idx"
-  ON "projects" ("company_id", "issue_prefix")
+  ON "projects" ("issue_prefix")
   WHERE "issue_prefix" IS NOT NULL;
 --> statement-breakpoint
 
 -- Seed issue_prefix for every existing project from its name.
--- Strategy: take up to 5 uppercase letters, then deduplicate within the company
--- by appending a numeric suffix ("AIH", "AIHA", "AIH2", …).
+-- Strategy: take up to 5 uppercase letters, then deduplicate GLOBALLY (across all companies)
+-- by appending a numeric suffix ("AIH", "AIH2", "AIH3", …).
 DO $$
 DECLARE
   r RECORD;
@@ -36,12 +38,11 @@ BEGIN
     candidate := base_prefix;
     suffix_n  := 1;
 
-    -- keep incrementing suffix until we find one not taken in this company
+    -- keep incrementing suffix until we find one not taken globally
     LOOP
       EXIT WHEN NOT EXISTS (
         SELECT 1 FROM projects
-        WHERE company_id = r.company_id
-          AND issue_prefix = candidate
+        WHERE issue_prefix = candidate
           AND id <> r.id
       );
       suffix_n  := suffix_n + 1;

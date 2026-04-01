@@ -347,7 +347,9 @@ export function deriveProjectIssuePrefix(name: string): string {
 }
 
 /**
- * Given a desired prefix and a set of already-used prefixes within the same company,
+ * Given a desired prefix and a set of already-used prefixes (must be the GLOBAL set across
+ * all companies — project prefixes must be globally unique because issue identifiers such as
+ * "PORTA-1" are stored in a globally-unique index with no company scope),
  * return the desired prefix if free, otherwise append numeric suffixes until unique.
  */
 export function resolveUniqueIssuePrefix(desired: string, usedPrefixes: Set<string>): string {
@@ -473,13 +475,17 @@ export function projectService(db: Db) {
       projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects);
 
       // Auto-assign a unique issuePrefix for the project (e.g. "AIH", "ENG").
+      // Issue identifiers are globally unique (issues_identifier_idx has no company scope),
+      // so project prefixes must also be globally unique — not just per-company.
       if (!projectData.issuePrefix) {
-        const usedPrefixes = new Set(
-          existingProjects.map((p) => p.issuePrefix).filter((v): v is string => v != null),
-        );
+        const allProjectPrefixes = await db
+          .select({ issuePrefix: projects.issuePrefix })
+          .from(projects)
+          .then((rows) => rows.map((r) => r.issuePrefix).filter((v): v is string => v != null));
+        const globalUsedPrefixes = new Set(allProjectPrefixes);
         projectData.issuePrefix = resolveUniqueIssuePrefix(
           deriveProjectIssuePrefix(projectData.name),
-          usedPrefixes,
+          globalUsedPrefixes,
         );
       }
 

@@ -30,6 +30,8 @@ export const projects = pgTable(
   },
   (table) => ({
     companyIdx: index("projects_company_idx").on(table.companyId),
-    issuePrefixCompanyUniqueIdx: uniqueIndex("projects_issue_prefix_company_idx").on(table.companyId, table.issuePrefix),
+    // Issue identifiers are globally unique (issues_identifier_idx has no company scope),
+    // so project prefixes must be globally unique too — no company_id scoping here.
+    issuePrefixUniqueIdx: uniqueIndex("projects_issue_prefix_company_idx").on(table.issuePrefix),
   }),
 );
