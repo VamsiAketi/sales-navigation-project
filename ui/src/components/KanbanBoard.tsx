@@ -21,6 +21,7 @@ import {
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
+import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 const boardStatuses = [
@@ -204,6 +205,28 @@ function KanbanCard({
           )}
         </div>
         <p className="text-sm leading-snug line-clamp-2 mb-2">{issue.title}</p>
+        {(issue.labels ?? []).length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 mb-2">
+            {(issue.labels ?? []).slice(0, 2).map((label) => (
+              <span
+                key={label.id}
+                className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
+                style={{
+                  borderColor: label.color,
+                  color: pickTextColorForPillBg(label.color, 0.12),
+                  backgroundColor: `${label.color}1f`,
+                }}
+              >
+                {label.name}
+              </span>
+            ))}
+            {(issue.labels ?? []).length > 2 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{(issue.labels ?? []).length - 2}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <PriorityIcon priority={issue.priority} />
           {/* Agent assignee */}

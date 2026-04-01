@@ -133,6 +133,7 @@ export function Issues() {
 
   return (
     <IssuesList
+      forceListView
       issues={issues ?? []}
       isLoading={isLoading}
       error={error as Error | null}
