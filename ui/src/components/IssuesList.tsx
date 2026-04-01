@@ -174,6 +174,7 @@ interface IssuesListProps {
   onSearchChange?: (search: string) => void;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
   projectStatuses?: ProjectIssueStatus[];
+  forceListView?: boolean;
 }
 
 export function IssuesList({
@@ -192,6 +193,7 @@ export function IssuesList({
   onSearchChange,
   onUpdateIssue,
   projectStatuses,
+  forceListView = false,
 }: IssuesListProps) {
   const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialog();
@@ -367,23 +369,25 @@ export function IssuesList({
         </div>
 
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-          {/* View mode toggle */}
-          <div className="flex items-center border border-border rounded-md overflow-hidden mr-1">
-            <button
-              className={`p-1.5 transition-colors ${viewState.viewMode === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              onClick={() => updateView({ viewMode: "list" })}
-              title="List view"
-            >
-              <List className="h-3.5 w-3.5" />
-            </button>
-            <button
-              className={`p-1.5 transition-colors ${viewState.viewMode === "board" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              onClick={() => updateView({ viewMode: "board" })}
-              title="Board view"
-            >
-              <Columns3 className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          {/* View mode toggle — hidden on the global Tasks page (forceListView), visible on project pages */}
+          {!forceListView && (
+            <div className="flex items-center border border-border rounded-md overflow-hidden mr-1">
+              <button
+                className={`p-1.5 transition-colors ${viewState.viewMode === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => updateView({ viewMode: "list" })}
+                title="List view"
+              >
+                <List className="h-3.5 w-3.5" />
+              </button>
+              <button
+                className={`p-1.5 transition-colors ${viewState.viewMode === "board" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => updateView({ viewMode: "board" })}
+                title="Board view"
+              >
+                <Columns3 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Filter */}
           <Popover>
@@ -412,7 +416,7 @@ export function IssuesList({
                   {activeFilterCount > 0 && (
                     <button
                       className="text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => updateView({ statuses: [], priorities: [], assignees: [], labels: [] })}
+                      onClick={() => updateView({ statuses: [], priorities: [], assignees: [], labels: [], projects: [] })}
                     >
                       Clear
                     </button>
@@ -559,7 +563,7 @@ export function IssuesList({
           </Popover>
 
           {/* Sort (list view only) */}
-          {viewState.viewMode === "list" && (
+          {(forceListView || viewState.viewMode === "list") && (
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" className="text-xs">
@@ -603,7 +607,7 @@ export function IssuesList({
           )}
 
           {/* Group (list view only) */}
-          {viewState.viewMode === "list" && (
+          {(forceListView || viewState.viewMode === "list") && (
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" className="text-xs">
@@ -640,7 +644,7 @@ export function IssuesList({
       {isLoading && <PageSkeleton variant="issues-list" />}
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
-      {!isLoading && filtered.length === 0 && viewState.viewMode === "list" && (
+      {!isLoading && filtered.length === 0 && (forceListView || viewState.viewMode === "list") && (
         <EmptyState
           icon={CircleDot}
           message="No tasks match the current filters or search."
@@ -649,7 +653,21 @@ export function IssuesList({
         />
       )}
 
-      {viewState.viewMode === "board" ? (
+      {!isLoading && filtered.length > 0 && (forceListView || viewState.viewMode === "list") && (
+        <div className="hidden sm:flex items-center gap-2 border-b border-border bg-muted/30 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground select-none">
+          <span className="w-3.5 shrink-0" />
+          <span className="h-4 w-4 shrink-0" />
+          <span className="shrink-0">ID</span>
+          <span className="min-w-0 flex-1">Title</span>
+          <span className="ml-auto flex shrink-0 items-center gap-3">
+            <span className="hidden md:block">Labels</span>
+            <span className="w-[180px] px-2">Assignee</span>
+            <span>Created</span>
+          </span>
+        </div>
+      )}
+
+      {!forceListView && viewState.viewMode === "board" ? (
         <KanbanBoard
           issues={filtered}
           agents={agents}
@@ -786,7 +804,9 @@ export function IssuesList({
                                 <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
                                   <User className="h-3 w-3" />
                                 </span>
-                                {formatAssigneeUserLabel(issue.assigneeUserId, currentUserId) ?? "User"}
+                                {humanMembers.find((m) => m.id === issue.assigneeUserId)?.name
+                                  ?? formatAssigneeUserLabel(issue.assigneeUserId, currentUserId)
+                                  ?? "User"}
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

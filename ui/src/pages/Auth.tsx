@@ -38,11 +38,12 @@ export function AuthPage() {
         await authApi.signInEmail({ email: email.trim(), password });
         return;
       }
-      await authApi.signUpEmail({
-        name: name.trim(),
-        email: email.trim(),
-        password,
-      });
+      // Sign-up disabled: users cannot create their own accounts
+      // await authApi.signUpEmail({
+      //   name: name.trim(),
+      //   email: email.trim(),
+      //   password,
+      // });
     },
     onSuccess: async () => {
       setError(null);
@@ -101,6 +102,7 @@ export function AuthPage() {
               mutation.mutate();
             }}
           >
+            {/* Sign-up disabled: name field hidden
             {mode === "sign_up" && (
               <div>
                 <label htmlFor="name" className="text-xs text-muted-foreground mb-1 block">Name</label>
@@ -115,6 +117,7 @@ export function AuthPage() {
                 />
               </div>
             )}
+            */}
             <div>
               <label htmlFor="email" className="text-xs text-muted-foreground mb-1 block">Email</label>
               <input
@@ -155,6 +158,7 @@ export function AuthPage() {
             </Button>
           </form>
 
+          {/* Sign-up disabled: account creation link hidden
           <div className="mt-5 text-sm text-muted-foreground">
             {mode === "sign_in" ? "Need an account?" : "Already have an account?"}{" "}
             <button
@@ -168,6 +172,7 @@ export function AuthPage() {
               {mode === "sign_in" ? "Create one" : "Sign in"}
             </button>
           </div>
+          */}
         </div>
       </div>
 
