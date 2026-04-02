@@ -103,6 +103,7 @@ function applyFilters(issues: Issue[], state: IssueViewState, currentUserId?: st
         if (assignee === "__unassigned" && !issue.assigneeAgentId && !issue.assigneeUserId) return true;
         if (assignee === "__me" && currentUserId && issue.assigneeUserId === currentUserId) return true;
         if (issue.assigneeAgentId === assignee) return true;
+        if (issue.assigneeUserId === assignee) return true;
       }
       return false;
     });
