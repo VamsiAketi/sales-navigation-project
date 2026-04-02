@@ -23,16 +23,14 @@ import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Avatar helpers ─────────────────────────────────────────────────────────── */
-const AVATAR_PALETTE = [
-  "bg-orange-500", "bg-blue-500",   "bg-emerald-500", "bg-violet-500",
-  "bg-pink-500",   "bg-teal-500",   "bg-red-500",     "bg-indigo-500",
-  "bg-amber-500",  "bg-cyan-500",   "bg-lime-500",    "bg-rose-500",
-];
-
+/** Derive a unique HSL background colour from a name string.
+ *  Hue spans the full 360° wheel; saturation and lightness are fixed so
+ *  every colour is vivid and readable with white text. */
 function nameToColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length]!;
+  const hue = hash % 360;
+  return `hsl(${hue}, 65%, 42%)`;
 }
 
 export function nameToInitials(name: string): string {
@@ -41,7 +39,9 @@ export function nameToInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-/** Coloured circle avatar with initials — used on cards and in the filter strip. */
+/** Coloured circle avatar with initials — used on cards and in the filter strip.
+ *  Background colour is derived dynamically from the name so every person
+ *  gets their own consistent, unique hue. */
 export function AssigneeAvatar({
   name,
   isAgent = false,
@@ -53,13 +53,14 @@ export function AssigneeAvatar({
   size?: "sm" | "md";
   active?: boolean;
 }) {
-  const bg    = isAgent ? "bg-violet-600" : nameToColor(name);
-  const dim   = size === "md" ? "h-7 w-7 text-[11px]" : "h-6 w-6 text-[10px]";
-  const ring  = active ? "ring-2 ring-white ring-offset-1 ring-offset-background" : "";
+  const bgColor = isAgent ? "#7c3aed" : nameToColor(name);
+  const dim     = size === "md" ? "h-7 w-7 text-[11px]" : "h-6 w-6 text-[10px]";
+  const ring    = active ? "ring-2 ring-white ring-offset-1 ring-offset-background" : "";
   return (
     <span
       title={name}
-      className={`inline-flex items-center justify-center rounded-full font-semibold text-white select-none shrink-0 ${bg} ${dim} ${ring}`}
+      style={{ backgroundColor: bgColor }}
+      className={`inline-flex items-center justify-center rounded-full font-semibold text-white select-none shrink-0 ${dim} ${ring}`}
     >
       {nameToInitials(name)}
     </span>

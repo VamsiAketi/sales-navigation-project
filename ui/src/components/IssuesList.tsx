@@ -103,7 +103,6 @@ function applyFilters(issues: Issue[], state: IssueViewState, currentUserId?: st
         if (assignee === "__unassigned" && !issue.assigneeAgentId && !issue.assigneeUserId) return true;
         if (assignee === "__me" && currentUserId && issue.assigneeUserId === currentUserId) return true;
         if (issue.assigneeAgentId === assignee) return true;
-        if (issue.assigneeUserId === assignee) return true;
       }
       return false;
     });
@@ -179,69 +178,12 @@ interface IssuesListProps {
 }
 
 /* ── Assignee filter strip component ─────────────────────────────────────────
- * Shows up to MAX_VISIBLE avatar bubbles. When there are more assignees, a
- * clickable "+N" badge opens a full dropdown listing every assignee with
- * checkboxes (Jira-style).
+ * Shows up to MAX_VISIBLE avatar bubbles + an overflow badge, and a "Filter"
+ * dropdown that lists every assignee with a checkbox and their full name.
  * ─────────────────────────────────────────────────────────────────────────── */
-const MAX_VISIBLE = 4;
+const MAX_VISIBLE = 6;
 
 type BoardAssignee = { id: string; label: string; kind: "user" | "agent" };
-
-/** Popover body for the +N overflow badge — lists all assignees with checkboxes. */
-function AssigneePopoverBody({
-  boardAssignees,
-  activeIds,
-  onToggle,
-  onClear,
-}: {
-  boardAssignees: BoardAssignee[];
-  activeIds: string[];
-  onToggle: (id: string) => void;
-  onClear: () => void;
-}) {
-  const hasActive = activeIds.length > 0;
-  return (
-    <>
-      <div className="flex items-center justify-between mb-2 px-1">
-        <span className="text-xs font-medium text-foreground">Assignee</span>
-        {hasActive && (
-          <button onClick={onClear} className="text-[10px] text-muted-foreground hover:text-foreground">
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Unassigned row */}
-      <button
-        onClick={() => onToggle("__unassigned")}
-        className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-      >
-        <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${activeIds.includes("__unassigned") ? "border-primary bg-primary" : "border-border"}`}>
-          {activeIds.includes("__unassigned") && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-        </div>
-        <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-muted-foreground">
-          <User className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-xs truncate">Unassigned</span>
-      </button>
-
-      {/* Member / agent rows */}
-      {boardAssignees.map((member) => (
-        <button
-          key={member.id}
-          onClick={() => onToggle(member.id)}
-          className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-        >
-          <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${activeIds.includes(member.id) ? "border-primary bg-primary" : "border-border"}`}>
-            {activeIds.includes(member.id) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-          </div>
-          <AssigneeAvatar name={member.label} isAgent={member.kind === "agent"} size="sm" />
-          <span className="text-xs truncate">{member.label}</span>
-        </button>
-      ))}
-    </>
-  );
-}
 
 function AssigneeFilterStrip({
   boardAssignees,
@@ -255,8 +197,7 @@ function AssigneeFilterStrip({
   onClear: () => void;
 }) {
   const visible  = boardAssignees.slice(0, MAX_VISIBLE);
-  const hidden   = boardAssignees.slice(MAX_VISIBLE);
-  const overflow = hidden.length;
+  const overflow = boardAssignees.length - MAX_VISIBLE;
   const hasActive = activeIds.length > 0;
 
   return (
@@ -274,7 +215,7 @@ function AssigneeFilterStrip({
         <User className="h-3.5 w-3.5" />
       </button>
 
-      {/* Avatar bubbles — first MAX_VISIBLE only */}
+      {/* Avatar bubbles (first MAX_VISIBLE) */}
       {visible.map((member) => {
         const isActive = activeIds.includes(member.id);
         return (
@@ -294,36 +235,70 @@ function AssigneeFilterStrip({
         );
       })}
 
-      {/* +N overflow badge — clickable, opens full assignee list */}
+      {/* Overflow badge */}
       {overflow > 0 && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              title={`${overflow} more assignees`}
-              className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-medium transition-all
-                ${hidden.some((m) => activeIds.includes(m.id))
-                  ? "border-primary bg-primary/10 text-primary ring-2 ring-primary ring-offset-1 ring-offset-background"
-                  : "border-border bg-muted text-muted-foreground hover:text-foreground hover:border-foreground/40"
-                }`}
-            >
-              +{overflow}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-56 p-2">
-            <AssigneePopoverBody
-              boardAssignees={boardAssignees}
-              activeIds={activeIds}
-              onToggle={onToggle}
-              onClear={onClear}
-            />
-          </PopoverContent>
-        </Popover>
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+          +{overflow}
+        </span>
       )}
 
+      {/* Filter dropdown — full names + checkboxes */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors
+              ${hasActive
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
+              }`}
+          >
+            <Filter className="h-3 w-3" />
+            <span className="hidden sm:inline">Filter</span>
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-56 p-2">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-xs font-medium text-foreground">Assignee</span>
+            {hasActive && (
+              <button onClick={onClear} className="text-[10px] text-muted-foreground hover:text-foreground">
+                Clear
+              </button>
+            )}
+          </div>
+          {/* Unassigned row */}
+          <button
+            onClick={() => onToggle("__unassigned")}
+            className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+          >
+            <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${activeIds.includes("__unassigned") ? "border-primary bg-primary" : "border-border"}`}>
+              {activeIds.includes("__unassigned") && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+            </div>
+            <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-muted-foreground">
+              <User className="h-3.5 w-3.5" />
+            </span>
+            <span className="text-xs truncate">Unassigned</span>
+          </button>
+          {/* Member / agent rows */}
+          {boardAssignees.map((member) => (
+            <button
+              key={member.id}
+              onClick={() => onToggle(member.id)}
+              className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+            >
+              <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${activeIds.includes(member.id) ? "border-primary bg-primary" : "border-border"}`}>
+                {activeIds.includes(member.id) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+              </div>
+              <AssigneeAvatar name={member.label} isAgent={member.kind === "agent"} size="sm" />
+              <span className="text-xs truncate">{member.label}</span>
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
 
-      {/* Active filter summary label */}
+      {/* Active filter label */}
       {hasActive && (
-        <span className="hidden sm:block max-w-[120px] truncate text-xs text-muted-foreground">
+        <span className="hidden sm:block max-w-[100px] truncate text-xs text-muted-foreground">
           {activeIds
             .filter((id) => id !== "__unassigned")
             .map((id) => boardAssignees.find((m) => m.id === id)?.label ?? id.slice(0, 6))
