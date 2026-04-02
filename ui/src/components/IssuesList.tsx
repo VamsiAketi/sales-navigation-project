@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search } from "lucide-react";
+import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, Bot } from "lucide-react";
 import { KanbanBoard } from "./KanbanBoard";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
@@ -289,6 +289,23 @@ export function IssuesList({
     [companyMembers]
   );
 
+  // Build the ordered assignee strip: humans first, then agents
+  const boardAssignees = useMemo(() => {
+    const humans = humanMembers.map((m) => ({
+      id: m.id,
+      label: m.name,
+      kind: "user" as const,
+      initial: m.name.trim()[0]?.toUpperCase() ?? "?",
+    }));
+    const agentItems = (agents ?? []).map((a) => ({
+      id: a.id,
+      label: a.name,
+      kind: "agent" as const,
+      initial: a.name.trim()[0]?.toUpperCase() ?? "?",
+    }));
+    return [...humans, ...agentItems];
+  }, [humanMembers, agents]);
+
   const activeFilterCount = countActiveFilters(viewState);
 
   const groupedContent = useMemo(() => {
@@ -367,6 +384,47 @@ export function IssuesList({
             />
           </div>
         </div>
+
+          {/* ── Jira-style assignee filter strip ── */}
+          {boardAssignees.length > 0 && (
+            <div className="flex items-center gap-0.5">
+              {boardAssignees.map((member) => {
+                const isActive = viewState.assignees.includes(member.id);
+                return (
+                  <button
+                    key={member.id}
+                    title={member.label}
+                    onClick={() =>
+                      updateView({ assignees: toggleInArray(viewState.assignees, member.id) })
+                    }
+                    className={`relative flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-all select-none
+                      ${isActive
+                        ? "ring-2 ring-primary ring-offset-1 ring-offset-background opacity-100"
+                        : "opacity-60 hover:opacity-100 hover:ring-2 hover:ring-border hover:ring-offset-1 hover:ring-offset-background"
+                      }
+                      ${member.kind === "agent"
+                        ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+                        : "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                      }`}
+                  >
+                    {member.kind === "agent" ? (
+                      <Bot className="h-3.5 w-3.5" />
+                    ) : (
+                      member.initial
+                    )}
+                  </button>
+                );
+              })}
+              {/* Show name(s) of active assignee(s) */}
+              {viewState.assignees.length > 0 && (
+                <span className="ml-1.5 text-xs text-muted-foreground hidden sm:block max-w-[120px] truncate">
+                  {viewState.assignees
+                    .map((id) => boardAssignees.find((m) => m.id === id)?.label ?? id.slice(0, 8))
+                    .join(", ")}
+                </span>
+              )}
+            </div>
+          )}
 
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
           {/* View mode toggle — hidden on the global Tasks page (forceListView), visible on project pages */}

@@ -1,23 +1,22 @@
-import { useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@/lib/router";
 import {
   DndContext,
   DragOverlay,
+  MeasuringStrategy,
   PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useDraggable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragStartEvent,
   type DragEndEvent,
-  type DragOverEvent,
 } from "@dnd-kit/core";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
+import { arrayMove } from "@dnd-kit/sortable";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
@@ -55,28 +54,177 @@ interface KanbanBoardProps {
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
-  /** When provided, use these as the board columns instead of the default hardcoded list */
   projectStatuses?: ProjectIssueStatus[];
 }
 
-/** Compute a kanbanPosition value that places `item` between `before` and `after`. */
+function getSortKey(issue: Issue): number {
+  if (issue.kanbanPosition !== null && issue.kanbanPosition !== undefined) {
+    return issue.kanbanPosition;
+  }
+  return new Date(issue.createdAt).getTime() / 1e10;
+}
+
 function computePosition(before: Issue | null, after: Issue | null): number {
-  const prev = before?.kanbanPosition ?? 0;
-  const next = after?.kanbanPosition ?? prev + 2;
+  const prev = before ? getSortKey(before) : 0;
+  const next = after ? getSortKey(after) : prev + 2;
   if (before === null) return next - 1;
   if (after === null) return prev + 1;
   return (prev + next) / 2;
 }
 
-/* ── Droppable Column ── */
+// pointerWithin narrows to the column the cursor is inside (O(columns)),
+// then closestCenter runs only on that subset instead of every card on the board.
+const kanbanCollision: CollisionDetection = (args) => {
+  const withinColumn = pointerWithin(args);
+  if (withinColumn.length > 0) {
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter((c) =>
+        withinColumn.some((w) => w.id === c.id)
+      ),
+    });
+  }
+  return closestCenter(args);
+};
 
-function KanbanColumn({
+/* ── Card content — pure presentational, no dnd-kit hooks ─────────────────── */
+const KanbanCardContent = memo(function KanbanCardContent({
+  issue,
+  agentName,
+  memberName,
+  isLive,
+}: {
+  issue: Issue;
+  agentName: string | null;
+  memberName: string | null;
+  isLive: boolean;
+}) {
+  return (
+    <>
+      <div className="flex items-start gap-1.5 mb-1.5">
+        <span className="text-xs text-muted-foreground font-mono shrink-0">
+          {issue.identifier ?? issue.id.slice(0, 8)}
+        </span>
+        {isLive && (
+          <span className="relative flex h-2 w-2 shrink-0 mt-0.5">
+            <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+          </span>
+        )}
+      </div>
+      <p className="text-sm leading-snug line-clamp-2 mb-2">{issue.title}</p>
+      {(issue.labels ?? []).length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 mb-2">
+          {(issue.labels ?? []).slice(0, 2).map((label) => (
+            <span
+              key={label.id}
+              className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
+              style={{
+                borderColor: label.color,
+                color: pickTextColorForPillBg(label.color, 0.12),
+                backgroundColor: `${label.color}1f`,
+              }}
+            >
+              {label.name}
+            </span>
+          ))}
+          {(issue.labels ?? []).length > 2 && (
+            <span className="text-[10px] text-muted-foreground">
+              +{(issue.labels ?? []).length - 2}
+            </span>
+          )}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <PriorityIcon priority={issue.priority} />
+        {/* Agent assignee */}
+        {agentName ? (
+          <Identity name={agentName} size="xs" />
+        ) : issue.assigneeAgentId ? (
+          <span className="text-xs text-muted-foreground font-mono">
+            {issue.assigneeAgentId.slice(0, 8)}
+          </span>
+        ) : memberName ? (
+          /* Human assignee */
+          <Identity name={memberName} size="xs" />
+        ) : issue.assigneeUserId ? (
+          <span className="text-xs text-muted-foreground font-mono">
+            {issue.assigneeUserId.slice(0, 8)}
+          </span>
+        ) : null}
+      </div>
+    </>
+  );
+});
+
+/* ── Card wrapper ──────────────────────────────────────────────────────────────
+ * Uses useDraggable instead of useSortable.
+ *
+ * useSortable = useDraggable + useDroppable + SortableContext subscription.
+ * The SortableContext subscription is the culprit: it recomputes displacement
+ * transforms for every card in the column on every pointermove event, causing
+ * all cards to re-render at 60 fps during a drag — regardless of React.memo.
+ *
+ * useDraggable carries none of that. Non-active cards only re-render when the
+ * drag starts or ends (isDragging flips). Zero re-renders during movement.
+ * ─────────────────────────────────────────────────────────────────────────── */
+function KanbanCard({
+  issue,
+  agentName,
+  memberName,
+  isLive,
+  isOverlay,
+  issueLinkState,
+}: {
+  issue: Issue;
+  agentName: string | null;
+  memberName: string | null;
+  isLive: boolean;
+  isOverlay?: boolean;
+  issueLinkState?: unknown;
+}) {
+  const data = useMemo(() => ({ issue }), [issue]);
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({ id: issue.id, data });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    visibility: isDragging && !isOverlay ? ("hidden" as const) : undefined,
+    willChange: isOverlay ? "transform" : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="rounded-md border bg-card p-2.5 cursor-grab active:cursor-grabbing hover:shadow-sm"
+    >
+      <Link
+        to={`/issues/${issue.identifier ?? issue.id}`}
+        state={issueLinkState}
+        className="block no-underline text-inherit"
+      >
+        <KanbanCardContent
+          issue={issue}
+          agentName={agentName}
+          memberName={memberName}
+          isLive={isLive}
+        />
+      </Link>
+    </div>
+  );
+}
+
+/* ── Column ─────────────────────────────────────────────────────────────────── */
+const KanbanColumn = memo(function KanbanColumn({
   status,
   columnLabel,
   columnColor,
   issues,
-  agents,
-  members,
+  agentMap,
+  memberMap,
   liveIssueIds,
   issueLinkState,
 }: {
@@ -84,8 +232,8 @@ function KanbanColumn({
   columnLabel?: string;
   columnColor?: string;
   issues: Issue[];
-  agents?: Agent[];
-  members?: Member[];
+  agentMap: Map<string, string>;
+  memberMap: Map<string, string>;
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
 }) {
@@ -95,8 +243,13 @@ function KanbanColumn({
     <div className="flex flex-col min-w-[260px] w-[260px] shrink-0">
       <div className="sticky top-12 md:top-0 z-10 flex items-center gap-2 px-2 py-2 mb-1 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90 border-b border-border/50">
         {columnColor ? (
-          <span className="relative inline-flex h-4 w-4 rounded-full border-2 shrink-0" style={{ borderColor: columnColor, color: columnColor }}>
-            {status === "done" && <span className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-current" />}
+          <span
+            className="relative inline-flex h-4 w-4 rounded-full border-2 shrink-0"
+            style={{ borderColor: columnColor, color: columnColor }}
+          >
+            {status === "done" && (
+              <span className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-current" />
+            )}
           </span>
         ) : (
           <StatusIcon status={status} />
@@ -110,148 +263,30 @@ function KanbanColumn({
       </div>
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-[120px] rounded-md p-1 space-y-1 transition-colors ${
+        className={`flex-1 min-h-[120px] rounded-md p-1 space-y-1 ${
           isOver ? "bg-accent/40" : "bg-muted/20"
         }`}
       >
-        <SortableContext
-          items={issues.map((i) => i.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {issues.map((issue) => (
-            <KanbanCard
-              key={issue.id}
-              issue={issue}
-              agents={agents}
-              members={members}
-              isLive={liveIssueIds?.has(issue.id)}
-              issueLinkState={issueLinkState}
-            />
-          ))}
-        </SortableContext>
+        {issues.map((issue) => (
+          <KanbanCard
+            key={issue.id}
+            issue={issue}
+            agentName={agentMap.get(issue.assigneeAgentId ?? "") ?? null}
+            memberName={
+              issue.assigneeUserId === "local-board"
+                ? "Board"
+                : (memberMap.get(issue.assigneeUserId ?? "") ?? null)
+            }
+            isLive={liveIssueIds?.has(issue.id) ?? false}
+            issueLinkState={issueLinkState}
+          />
+        ))}
       </div>
     </div>
   );
-}
+});
 
-/* ── Draggable Card ── */
-
-function KanbanCard({
-  issue,
-  agents,
-  members,
-  isLive,
-  isOverlay,
-  issueLinkState,
-}: {
-  issue: Issue;
-  agents?: Agent[];
-  members?: Member[];
-  isLive?: boolean;
-  isOverlay?: boolean;
-  issueLinkState?: unknown;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: issue.id, data: { issue } });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  const resolvedAgentName = issue.assigneeAgentId
-    ? (agents?.find((a) => a.id === issue.assigneeAgentId)?.name ?? null)
-    : null;
-
-  const resolvedUserName = issue.assigneeUserId
-    ? (members?.find((m) => m.id === issue.assigneeUserId)?.name ??
-       (issue.assigneeUserId === "local-board" ? "Board" : null))
-    : null;
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={`rounded-md border bg-card p-2.5 cursor-grab active:cursor-grabbing transition-shadow ${
-        isDragging && !isOverlay ? "opacity-30" : ""
-      } ${isOverlay ? "shadow-lg ring-1 ring-primary/20" : "hover:shadow-sm"}`}
-    >
-      <Link
-        to={`/issues/${issue.identifier ?? issue.id}`}
-        state={issueLinkState}
-        className="block no-underline text-inherit"
-        onClick={(e) => {
-          // Prevent navigation during drag
-          if (isDragging) e.preventDefault();
-        }}
-      >
-        <div className="flex items-start gap-1.5 mb-1.5">
-          <span className="text-xs text-muted-foreground font-mono shrink-0">
-            {issue.identifier ?? issue.id.slice(0, 8)}
-          </span>
-          {isLive && (
-            <span className="relative flex h-2 w-2 shrink-0 mt-0.5">
-              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-            </span>
-          )}
-        </div>
-        <p className="text-sm leading-snug line-clamp-2 mb-2">{issue.title}</p>
-        {(issue.labels ?? []).length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 mb-2">
-            {(issue.labels ?? []).slice(0, 2).map((label) => (
-              <span
-                key={label.id}
-                className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
-                style={{
-                  borderColor: label.color,
-                  color: pickTextColorForPillBg(label.color, 0.12),
-                  backgroundColor: `${label.color}1f`,
-                }}
-              >
-                {label.name}
-              </span>
-            ))}
-            {(issue.labels ?? []).length > 2 && (
-              <span className="text-[10px] text-muted-foreground">
-                +{(issue.labels ?? []).length - 2}
-              </span>
-            )}
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <PriorityIcon priority={issue.priority} />
-          {/* Agent assignee */}
-          {resolvedAgentName ? (
-            <Identity name={resolvedAgentName} size="xs" />
-          ) : issue.assigneeAgentId ? (
-            <span className="text-xs text-muted-foreground font-mono">
-              {issue.assigneeAgentId.slice(0, 8)}
-            </span>
-          ) : resolvedUserName ? (
-            /* Human assignee */
-            <Identity name={resolvedUserName} size="xs" />
-          ) : issue.assigneeUserId ? (
-            <span className="text-xs text-muted-foreground font-mono">
-              {issue.assigneeUserId.slice(0, 8)}
-            </span>
-          ) : null}
-        </div>
-      </Link>
-    </div>
-  );
-}
-
-/* ── Main Board ── */
-
+/* ── Board ───────────────────────────────────────────────────────────────────── */
 export function KanbanBoard({
   issues,
   agents,
@@ -262,13 +297,41 @@ export function KanbanBoard({
   projectStatuses,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  // optimisticMoves: issueId → targetStatus applied immediately on drop so the
+  // card never flashes back into the source column while the network request
+  // is in-flight. Cleared once the real `issues` prop reflects the change.
+  const [optimisticMoves, setOptimisticMoves] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setOptimisticMoves((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of Object.keys(next)) {
+        const issue = issues.find((i) => i.id === id);
+        if (issue && issue.status === next[id]) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [issues]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } })
   );
 
-  // Use project-specific statuses when available, otherwise fall back to defaults
-  const activeColumns: string[] = useMemo(() => {
+  const agentMap = useMemo(
+    () => new Map((agents ?? []).map((a) => [a.id, a.name])),
+    [agents]
+  );
+
+  const memberMap = useMemo(
+    () => new Map((members ?? []).map((m) => [m.id, m.name])),
+    [members]
+  );
+
+  const activeColumns = useMemo<string[]>(() => {
     if (projectStatuses && projectStatuses.length > 0) {
       return projectStatuses
         .filter((s) => s.isActive)
@@ -280,97 +343,83 @@ export function KanbanBoard({
 
   const columnIssues = useMemo(() => {
     const grouped: Record<string, Issue[]> = {};
-    for (const status of activeColumns) {
-      grouped[status] = [];
-    }
+    for (const status of activeColumns) grouped[status] = [];
     for (const issue of issues) {
-      if (grouped[issue.status]) {
-        grouped[issue.status].push(issue);
-      } else {
-        // Issues with inactive/unknown statuses go into an "other" bucket keyed by their value
-        if (!grouped[issue.status]) grouped[issue.status] = [];
-        grouped[issue.status]!.push(issue);
-      }
+      // Apply optimistic move so the card appears in the target column
+      // instantly, before the server response arrives.
+      const effectiveStatus = optimisticMoves[issue.id] ?? issue.status;
+      if (!grouped[effectiveStatus]) grouped[effectiveStatus] = [];
+      grouped[effectiveStatus].push(issue);
     }
-    // Sort each column by kanbanPosition (fall back to createdAt for unpositioned issues)
     for (const status of Object.keys(grouped)) {
-      grouped[status].sort((a, b) => {
-        const ap = a.kanbanPosition ?? new Date(a.createdAt).getTime() / 1e10;
-        const bp = b.kanbanPosition ?? new Date(b.createdAt).getTime() / 1e10;
-        return ap - bp;
-      });
+      grouped[status].sort((a, b) => getSortKey(a) - getSortKey(b));
     }
     return grouped;
-  }, [issues, activeColumns]);
+  }, [issues, activeColumns, optimisticMoves]);
 
   const activeIssue = useMemo(
-    () => (activeId ? issues.find((i) => i.id === activeId) : null),
+    () => (activeId ? (issues.find((i) => i.id === activeId) ?? null) : null),
     [activeId, issues]
   );
 
-  function handleDragStart(event: DragStartEvent) {
+  const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string);
-  }
+  }, []);
 
-  function handleDragEnd(event: DragEndEvent) {
-    setActiveId(null);
-    const { active, over } = event;
-    if (!over) return;
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveId(null);
+      const { active, over } = event;
+      if (!over) return;
 
-    const issueId = active.id as string;
-    const issue = issues.find((i) => i.id === issueId);
-    if (!issue) return;
+      const issueId = active.id as string;
+      const issue = issues.find((i) => i.id === issueId);
+      if (!issue) return;
 
-    // Determine target status: the "over" could be a column id (status string)
-    // or another card's id. Find which column the "over" belongs to.
-    let targetStatus: string | null = null;
-    let targetIssue: Issue | null = null;
+      let targetStatus: string | null = null;
+      let targetIssue: Issue | null = null;
 
-    if (activeColumns.includes(over.id as string)) {
-      targetStatus = over.id as string;
-    } else {
-      targetIssue = issues.find((i) => i.id === over.id) ?? null;
-      if (targetIssue) {
-        targetStatus = targetIssue.status;
+      if (activeColumns.includes(over.id as string)) {
+        targetStatus = over.id as string;
+      } else {
+        targetIssue = issues.find((i) => i.id === over.id) ?? null;
+        if (targetIssue) targetStatus = targetIssue.status;
       }
-    }
 
-    if (!targetStatus) return;
+      if (!targetStatus) return;
 
-    const isStatusChange = targetStatus !== issue.status;
+      if (targetStatus !== issue.status) {
+        // Optimistically move the card now so it never flashes back in the
+        // source column while the async onUpdateIssue round-trip completes.
+        setOptimisticMoves((prev) => ({ ...prev, [issueId]: targetStatus! }));
+        const col = columnIssues[targetStatus] ?? [];
+        const newPosition = computePosition(col[col.length - 1] ?? null, null);
+        onUpdateIssue(issueId, { status: targetStatus, kanbanPosition: newPosition });
+      } else if (targetIssue && targetIssue.id !== issueId) {
+        const col = columnIssues[issue.status] ?? [];
+        const oldIdx = col.findIndex((i) => i.id === issueId);
+        const newIdx = col.findIndex((i) => i.id === targetIssue!.id);
+        if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
+        const reordered = arrayMove(col, oldIdx, newIdx);
+        const pos = reordered.findIndex((i) => i.id === issueId);
+        const before = pos > 0 ? reordered[pos - 1] : null;
+        const after = pos < reordered.length - 1 ? reordered[pos + 1] : null;
+        onUpdateIssue(issueId, { kanbanPosition: computePosition(before, after) });
+      }
+    },
+    [issues, activeColumns, columnIssues, onUpdateIssue]
+  );
 
-    if (isStatusChange) {
-      // Cross-column move: update status and place at the end of the target column
-      const targetColumn = columnIssues[targetStatus] ?? [];
-      const lastInTarget = targetColumn[targetColumn.length - 1] ?? null;
-      const newPosition = computePosition(lastInTarget, null);
-      onUpdateIssue(issueId, { status: targetStatus, kanbanPosition: newPosition });
-    } else if (targetIssue && targetIssue.id !== issueId) {
-      // Within-column reorder: compute new fractional position
-      const column = columnIssues[issue.status] ?? [];
-      const oldIndex = column.findIndex((i) => i.id === issueId);
-      const newIndex = column.findIndex((i) => i.id === targetIssue!.id);
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
-
-      const reordered = arrayMove(column, oldIndex, newIndex);
-      const insertedIndex = reordered.findIndex((i) => i.id === issueId);
-      const before = insertedIndex > 0 ? reordered[insertedIndex - 1] : null;
-      const after = insertedIndex < reordered.length - 1 ? reordered[insertedIndex + 1] : null;
-      const newPosition = computePosition(before ?? null, after ?? null);
-      onUpdateIssue(issueId, { kanbanPosition: newPosition });
-    }
-  }
-
-  function handleDragOver(_event: DragOverEvent) {
-    // Could be used for visual feedback; keeping simple for now
-  }
+  const handleDragCancel = useCallback(() => setActiveId(null), []);
 
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={kanbanCollision}
+      measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
       onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2">
         {activeColumns.map((status) => {
@@ -382,17 +431,29 @@ export function KanbanBoard({
               columnLabel={ps?.name}
               columnColor={ps?.color}
               issues={columnIssues[status] ?? []}
-              agents={agents}
-              members={members}
+              agentMap={agentMap}
+              memberMap={memberMap}
               liveIssueIds={liveIssueIds}
               issueLinkState={issueLinkState}
             />
           );
         })}
       </div>
-      <DragOverlay>
+
+      <DragOverlay dropAnimation={null}>
         {activeIssue ? (
-          <KanbanCard issue={activeIssue} agents={agents} members={members} issueLinkState={issueLinkState} isOverlay />
+          <KanbanCard
+            issue={activeIssue}
+            agentName={agentMap.get(activeIssue.assigneeAgentId ?? "") ?? null}
+            memberName={
+              activeIssue.assigneeUserId === "local-board"
+                ? "Board"
+                : (memberMap.get(activeIssue.assigneeUserId ?? "") ?? null)
+            }
+            isLive={liveIssueIds?.has(activeIssue.id) ?? false}
+            issueLinkState={issueLinkState}
+            isOverlay
+          />
         ) : null}
       </DragOverlay>
     </DndContext>
