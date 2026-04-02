@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Bell, Eye, EyeOff, KeyRound, User, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bell, Eye, EyeOff, KeyRound, User, X, Pencil, Check } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { PageTabBar } from "@/components/PageTabBar";
@@ -144,10 +144,112 @@ function PasswordField({
 }
 
 // ---------------------------------------------------------------------------
+// Editable profile field
+// ---------------------------------------------------------------------------
+
+function EditableField({
+  id,
+  label,
+  value,
+  type = "text",
+  disabled,
+  onSave,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  type?: string;
+  disabled?: boolean;
+  onSave: (value: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Keep draft in sync if parent value changes (e.g. after save)
+  useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
+
+  async function handleSave() {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === value) { setEditing(false); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(trimmed);
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-xs text-muted-foreground block">{label}</label>
+      <div className="flex items-center gap-2">
+        {editing ? (
+          <>
+            <input
+              id={id}
+              type={type}
+              value={draft}
+              autoFocus
+              disabled={saving || disabled}
+              onChange={(e) => { setDraft(e.target.value); setError(null); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSave();
+                if (e.key === "Escape") { setEditing(false); setDraft(value); setError(null); }
+              }}
+              className="flex-1 rounded-md border border-ring bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 disabled:opacity-50"
+            />
+            <button
+              onClick={handleSave}
+              disabled={saving || disabled}
+              title="Save"
+              className="shrink-0 h-8 w-8 flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              <Check className="h-4 w-4" />
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              id={id}
+              type={type}
+              value={value || "—"}
+              readOnly
+              className="flex-1 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm outline-none cursor-default text-foreground/80"
+            />
+            <button
+              onClick={() => { setEditing(true); setDraft(value); }}
+              disabled={disabled}
+              title={`Edit ${label.toLowerCase()}`}
+              className="shrink-0 h-8 w-8 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Personal Details tab
 // ---------------------------------------------------------------------------
 
 function PersonalDetailsTab({ name, email }: { name: string | null; email: string | null }) {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: (input: { name?: string; email?: string }) => authApi.updateProfile(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.auth.session }),
+  });
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -159,8 +261,21 @@ function PersonalDetailsTab({ name, email }: { name: string | null; email: strin
       </div>
 
       <section className="rounded-xl border border-border bg-card p-5 space-y-4 max-w-lg">
-        <ReadOnlyField id="pd-name" label="Name" value={name ?? "—"} />
-        <ReadOnlyField id="pd-email" label="Email" value={email ?? "—"} />
+        <EditableField
+          id="pd-name"
+          label="Name"
+          value={name ?? ""}
+          disabled={mutation.isPending}
+          onSave={(value) => mutation.mutateAsync({ name: value })}
+        />
+        <EditableField
+          id="pd-email"
+          label="Email"
+          value={email ?? ""}
+          type="email"
+          disabled={mutation.isPending}
+          onSave={(value) => mutation.mutateAsync({ email: value })}
+        />
       </section>
     </div>
   );

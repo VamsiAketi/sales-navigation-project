@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -20,8 +20,93 @@ import { Input } from "@/components/ui/input";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
-import { ColorPickerPopover } from "./ColorPickerPopover";
 import type { ProjectIssueStatus } from "@paperclipai/shared";
+
+/* ── Swatch color palette ───────────────────────────────────────────────────── */
+// null = "no color" (renders as strikethrough circle)
+const PALETTE: (string | null)[][] = [
+  [null,      "#ffffff", "#f1f5f9", "#e2e8f0", "#cbd5e1", "#94a3b8", "#64748b", "#475569", "#334155", "#0f172a"],
+  ["#ede9fe", "#fce7f3", "#ffe4e6", "#ffedd5", "#fef9c3", "#d1fae5", "#ccfbf1", "#e0f2fe", "#dbeafe", "#f0f9ff"],
+  ["#ddd6fe", "#fbcfe8", "#fda4af", "#fed7aa", "#fde68a", "#a7f3d0", "#99f6e4", "#bae6fd", "#bfdbfe", "#c7d2fe"],
+  ["#a78bfa", "#f472b6", "#fb7185", "#fb923c", "#fbbf24", "#34d399", "#2dd4bf", "#38bdf8", "#60a5fa", "#818cf8"],
+  ["#7c3aed", "#db2777", "#e11d48", "#ea580c", "#d97706", "#059669", "#0d9488", "#0284c7", "#2563eb", "#4f46e5"],
+];
+
+function ColorSwatchPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      {/* Trigger swatch */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Change color"
+        className="inline-flex h-6 w-6 rounded-full border-2 shrink-0 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-transform hover:scale-110"
+        style={{ borderColor: value, backgroundColor: value + "55" }}
+      />
+
+      {/* Palette popover */}
+      {open && (
+        <div className="absolute left-0 top-8 z-50 rounded-xl border border-border bg-popover p-2.5 shadow-xl w-[236px]">
+          <div className="space-y-1">
+            {PALETTE.map((row, ri) => (
+              <div key={ri} className="flex gap-1">
+                {row.map((color, ci) =>
+                  color === null ? (
+                    /* "No color" / strikethrough circle */
+                    <button
+                      key={ci}
+                      type="button"
+                      onClick={() => { onChange("#94a3b8"); setOpen(false); }}
+                      title="Default"
+                      className="h-[20px] w-[20px] rounded-full border border-border flex items-center justify-center hover:scale-110 transition-transform"
+                    >
+                      <svg viewBox="0 0 20 20" className="h-full w-full">
+                        <circle cx="10" cy="10" r="9" fill="none" stroke="#94a3b8" strokeWidth="1.5" />
+                        <line x1="4" y1="16" x2="16" y2="4" stroke="#94a3b8" strokeWidth="1.5" />
+                      </svg>
+                    </button>
+                  ) : (
+                    <button
+                      key={ci}
+                      type="button"
+                      onClick={() => { onChange(color); setOpen(false); }}
+                      title={color}
+                      className="h-[20px] w-[20px] rounded-full transition-transform hover:scale-110 focus:outline-none"
+                      style={{
+                        backgroundColor: color,
+                        border: value === color ? "2.5px solid #3b82f6" : color === "#ffffff" ? "1px solid #e2e8f0" : "none",
+                        boxShadow: value === color ? "0 0 0 1px #3b82f6" : undefined,
+                      }}
+                    />
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   projectId: string;
@@ -45,6 +130,7 @@ function StatusRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: status.id });
   const [localName, setLocalName] = useState(status.name);
+  const [localColor, setLocalColor] = useState(status.color);
 
   const style = { transform: CSS.Transform.toString(transform), transition };
 
@@ -58,17 +144,14 @@ function StatusRow({
         <GripVertical className="h-4 w-4" />
       </button>
 
-      {/* Color picker */}
-      <ColorPickerPopover
-        value={status.color ?? "#6b7280"}
-        onChange={(color) => onColorChange(status.id, color)}
-      >
-        <span
-          className="inline-flex h-5 w-5 rounded-full border-2 cursor-pointer hover:ring-2 hover:ring-foreground/30 transition-[box-shadow]"
-          style={{ borderColor: status.color ?? "#6b7280", backgroundColor: (status.color ?? "#6b7280") + "40" }}
-          title="Change color"
-        />
-      </ColorPickerPopover>
+      {/* Color swatch picker */}
+      <ColorSwatchPicker
+        value={localColor}
+        onChange={(color) => {
+          setLocalColor(color);
+          onColorChange(status.id, color);
+        }}
+      />
 
       {/* Name */}
       <Input
@@ -120,11 +203,9 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
   const [orderedIds, setOrderedIds] = useState<string[]>(() => statuses.map((s) => s.id));
 
   // Keep orderedIds in sync when external data changes (e.g. after creation/deletion)
-  const statusIdKey = useMemo(() => statuses.map((s) => s.id).join(","), [statuses]);
   useEffect(() => {
     setOrderedIds(statuses.map((s) => s.id));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusIdKey]);
+  }, [statuses.map((s) => s.id).join(",")]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -227,13 +308,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
       {showAddForm && (
         <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
           <div className="flex items-center gap-2">
-            <ColorPickerPopover value={newColor} onChange={setNewColor}>
-              <span
-                className="inline-flex h-6 w-6 rounded-full border-2 cursor-pointer hover:ring-2 hover:ring-foreground/30 transition-[box-shadow]"
-                style={{ borderColor: newColor, backgroundColor: newColor + "40" }}
-                title="Pick color"
-              />
-            </ColorPickerPopover>
+            <ColorSwatchPicker value={newColor} onChange={setNewColor} />
             <Input
               placeholder="Status name"
               value={newName}
