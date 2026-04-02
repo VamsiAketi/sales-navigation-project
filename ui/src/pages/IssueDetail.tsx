@@ -405,6 +405,16 @@ export function IssueDetail() {
     return options;
   }, [agents, currentUserId, members]);
 
+  const userMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of members ?? []) {
+      if (member.principalType === "user" && member.user) {
+        map.set(member.user.id, member.user.name);
+      }
+    }
+    return map;
+  }, [members]);
+
   const actualAssigneeValue = useMemo(
     () => assigneeValueFromSelection(issue ?? {}),
     [issue],
@@ -1053,6 +1063,8 @@ export function IssueDetail() {
             projectId={issue.projectId}
             issueStatus={issue.status}
             agentMap={agentMap}
+            userMap={userMap}
+            currentUserId={currentUserId}
             draftKey={`paperclip:issue-comment-draft:${issue.id}`}
             enableReassign
             reassignOptions={commentReassignOptions}

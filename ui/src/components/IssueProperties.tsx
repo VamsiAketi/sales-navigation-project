@@ -25,7 +25,7 @@ import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2 } from "lucide-react";
+import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
 const EXECUTION_WORKSPACE_OPTIONS = [
@@ -189,6 +189,88 @@ function CopyableValue({ value, label, mono, className }: { value: string; label
   );
 }
 
+function LabelRowWithConfirmDelete({
+  label,
+  selected,
+  disabled,
+  confirmingDelete,
+  onSelect,
+  onDeselect,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+}: {
+  label: { id: string; name: string; color: string };
+  selected: boolean;
+  disabled: boolean;
+  confirmingDelete: boolean;
+  onSelect: () => void;
+  onDeselect: () => void;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-1">
+        <div
+          className={cn(
+            "flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded text-left",
+            selected ? "bg-accent border border-white" : "hover:bg-accent/50 cursor-pointer"
+          )}
+          onClick={!selected && !disabled ? onSelect : undefined}
+        >
+          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+          <span className="truncate">{label.name}</span>
+          {selected && (
+            <button
+              type="button"
+              className="ml-auto p-0.5 rounded hover:bg-accent/70 text-muted-foreground hover:text-red-500"
+              onClick={onDeselect}
+              disabled={disabled}
+              title="Remove Label"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          className="p-1 text-muted-foreground hover:text-destructive rounded"
+          onClick={onRequestDelete}
+          title={`Delete ${label.name}`}
+          disabled={disabled}
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </div>
+      {confirmingDelete && (
+        <div className="flex items-center gap-1 mt-0.5 px-2 py-1 rounded border border-destructive/30 bg-destructive/5">
+          <span className="flex-1 text-[11px] text-destructive">
+            Delete "{label.name}"? 
+            <br></br>
+            This label will be removed from ALL tasks.</span>
+          <button
+            type="button"
+            className="px-1.5 py-0.5 text-[11px] rounded hover:bg-accent/50"
+            onClick={onCancelDelete}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="px-1.5 py-0.5 text-[11px] rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+            onClick={onConfirmDelete}
+            disabled={disabled}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProps) {
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
@@ -207,6 +289,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [labelSaveError, setLabelSaveError] = useState<string | null>(null);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#6366f1");
+  const [confirmDeleteLabelId, setConfirmDeleteLabelId] = useState<string | null>(null);
   const persistedLabelSignature = (issue.labelIds ?? []).join(",");
 
   useEffect(() => {
@@ -435,33 +518,20 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             if (!labelSearch.trim()) return true;
             return label.name.toLowerCase().includes(labelSearch.toLowerCase());
           })
-          .map((label) => {
-            const selected = labelDraftIds.includes(label.id);
-            return (
-              <div key={label.id} className="flex items-center gap-1">
-                <button
-                  className={cn(
-                    "flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-left",
-                    selected && "bg-accent border border-white"
-                  )}
-                  onClick={() => toggleLabel(label.id)}
-                  disabled={labelsSaving}
-                >
-                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
-                  <span className="truncate">{label.name}</span>
-                </button>
-                <button
-                  type="button"
-                  className="p-1 text-muted-foreground hover:text-destructive rounded"
-                  onClick={() => deleteLabel.mutate(label.id)}
-                  title={`Delete ${label.name}`}
-                  disabled={deleteLabel.isPending || labelsSaving}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
-            );
-          })}
+          .map((label) => (
+            <LabelRowWithConfirmDelete
+              key={label.id}
+              label={label}
+              selected={labelDraftIds.includes(label.id)}
+              disabled={deleteLabel.isPending || labelsSaving}
+              confirmingDelete={confirmDeleteLabelId === label.id}
+              onSelect={() => toggleLabel(label.id)}
+              onDeselect={() => toggleLabel(label.id)}
+              onRequestDelete={() => setConfirmDeleteLabelId(label.id)}
+              onCancelDelete={() => setConfirmDeleteLabelId(null)}
+              onConfirmDelete={() => { deleteLabel.mutate(label.id); setConfirmDeleteLabelId(null); }}
+            />
+          ))}
       </div>
       <div className="mt-2 border-t border-border pt-2 space-y-1">
         <div className="flex items-center gap-1">
@@ -800,7 +870,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           inline={inline}
           label="Labels"
           open={labelsOpen}
-          onOpenChange={(open) => { setLabelsOpen(open); if (!open) setLabelSearch(""); }}
+          onOpenChange={(open) => { setLabelsOpen(open); if (!open) { setLabelSearch(""); setConfirmDeleteLabelId(null); } }}
           triggerContent={labelsTrigger}
           triggerClassName="min-w-0 w-full"
           popoverClassName="w-64"
