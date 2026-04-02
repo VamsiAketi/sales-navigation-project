@@ -733,6 +733,7 @@ export function IssuesList({
           liveIssueIds={liveIssueIds}
           onUpdateIssue={onUpdateIssue}
           projectStatuses={projectStatuses}
+          issueLinkState={issueLinkState}
         />
       ) : (
         groupedContent.map((group) => (
