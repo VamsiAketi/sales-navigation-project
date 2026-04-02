@@ -50,6 +50,7 @@ function makeProject(id: string, name: string): Project {
     pausedAt: null,
     executionWorkspacePolicy: null,
     envConfig: null,
+    issuePrefix: null,
     archivedAt: null,
     goalIds: [],
     goals: [],

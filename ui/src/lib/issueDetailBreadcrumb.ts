@@ -5,6 +5,7 @@ type IssueDetailBreadcrumb = {
 
 type IssueDetailLocationState = {
   issueDetailBreadcrumb?: IssueDetailBreadcrumb;
+  issueDetailBreadcrumbs?: IssueDetailBreadcrumb[];
 };
 
 function isIssueDetailBreadcrumb(value: unknown): value is IssueDetailBreadcrumb {
@@ -21,4 +22,15 @@ export function readIssueDetailBreadcrumb(state: unknown): IssueDetailBreadcrumb
   if (typeof state !== "object" || state === null) return null;
   const candidate = (state as IssueDetailLocationState).issueDetailBreadcrumb;
   return isIssueDetailBreadcrumb(candidate) ? candidate : null;
+}
+
+export function createIssueDetailBreadcrumbChain(crumbs: { label: string; href: string }[]): IssueDetailLocationState {
+  return { issueDetailBreadcrumbs: crumbs };
+}
+
+export function readIssueDetailBreadcrumbChain(state: unknown): IssueDetailBreadcrumb[] | null {
+  if (typeof state !== "object" || state === null) return null;
+  const candidate = (state as IssueDetailLocationState).issueDetailBreadcrumbs;
+  if (!Array.isArray(candidate) || candidate.length === 0) return null;
+  return candidate.every(isIssueDetailBreadcrumb) ? candidate : null;
 }

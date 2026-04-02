@@ -273,7 +273,6 @@ export function IssueDetail() {
   });
 
   const hasLiveRuns = (liveRuns ?? []).length > 0 || !!activeRun;
-
   const sourceBreadcrumbs = useMemo(() => {
     const chain = readIssueDetailBreadcrumbChain(location.state);
     if (chain) return chain;
@@ -597,7 +596,7 @@ export function IssueDetail() {
   useEffect(() => {
     const titleLabel = issue?.title ?? issueId ?? "Task";
     setBreadcrumbs([
-      sourceBreadcrumbs,
+      ...sourceBreadcrumbs,
       { label: hasLiveRuns ? `🔵 ${titleLabel}` : titleLabel },
     ]);
   }, [setBreadcrumbs, sourceBreadcrumbs, issue, issueId, hasLiveRuns]);
@@ -871,8 +870,8 @@ export function IssueDetail() {
               </button>
             </PopoverContent>
             </Popover>
-            <Link to={sourceBreadcrumbs.href}>
-              <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs.label}`}>
+            <Link to={sourceBreadcrumbs[0].href}>
+              <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs[0].label}`}>
                 <X className="h-4 w-4" />
               </Button>
             </Link>
