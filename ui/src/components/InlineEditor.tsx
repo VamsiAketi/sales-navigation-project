@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "../lib/utils";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { useAutosaveIndicator } from "../hooks/useAutosaveIndicator";
+import { ImageLightbox, type ImageLightboxState } from "./ImageLightbox";
 
 interface InlineEditorProps {
   value: string;
@@ -32,6 +33,7 @@ export function InlineEditor({
   const [editing, setEditing] = useState(false);
   const [multilineFocused, setMultilineFocused] = useState(false);
   const [draft, setDraft] = useState(value);
+  const [lightbox, setLightbox] = useState<ImageLightboxState | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const markdownRef = useRef<MarkdownEditorRef>(null);
   const autosaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -140,6 +142,14 @@ export function InlineEditor({
 
   if (multiline) {
     return (
+      <>
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
       <div
         className={cn(
           markdownPad,
@@ -162,6 +172,14 @@ export function InlineEditor({
           void runSave(() => commit());
         }}
         onKeyDown={handleKeyDown}
+        onClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (target.tagName === "IMG") {
+            const img = target as HTMLImageElement;
+            setLightbox({ src: img.src, alt: img.alt ?? "" });
+            e.stopPropagation();
+          }
+        }}
       >
         <MarkdownEditor
           ref={markdownRef}
@@ -201,6 +219,7 @@ export function InlineEditor({
           </span>
         </div>
       </div>
+      </>
     );
   }
 

@@ -23,16 +23,14 @@ import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Avatar helpers ─────────────────────────────────────────────────────────── */
-const AVATAR_PALETTE = [
-  "bg-orange-500", "bg-blue-500",   "bg-emerald-500", "bg-violet-500",
-  "bg-pink-500",   "bg-teal-500",   "bg-red-500",     "bg-indigo-500",
-  "bg-amber-500",  "bg-cyan-500",   "bg-lime-500",    "bg-rose-500",
-];
-
+/** Derive a unique HSL background colour from a name string.
+ *  Hue spans the full 360° wheel; saturation and lightness are fixed so
+ *  every colour is vivid and readable with white text. */
 function nameToColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length]!;
+  const hue = hash % 360;
+  return `hsl(${hue}, 65%, 42%)`;
 }
 
 export function nameToInitials(name: string): string {
@@ -41,7 +39,9 @@ export function nameToInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-/** Coloured circle avatar with initials — used on cards and in the filter strip. */
+/** Coloured circle avatar with initials — used on cards and in the filter strip.
+ *  Background colour is derived dynamically from the name so every person
+ *  gets their own consistent, unique hue. */
 export function AssigneeAvatar({
   name,
   isAgent = false,
@@ -53,15 +53,40 @@ export function AssigneeAvatar({
   size?: "sm" | "md";
   active?: boolean;
 }) {
-  const bg    = isAgent ? "bg-violet-600" : nameToColor(name);
-  const dim   = size === "md" ? "h-7 w-7 text-[11px]" : "h-6 w-6 text-[10px]";
-  const ring  = active ? "ring-2 ring-white ring-offset-1 ring-offset-background" : "";
+  const bgColor = isAgent ? "#7c3aed" : nameToColor(name);
+  const dim     = size === "md" ? "h-7 w-7 text-[11px]" : "h-6 w-6 text-[10px]";
+  const ring    = active ? "ring-2 ring-white ring-offset-1 ring-offset-background" : "";
   return (
-    <span
-      title={name}
-      className={`inline-flex items-center justify-center rounded-full font-semibold text-white select-none shrink-0 ${bg} ${dim} ${ring}`}
-    >
-      {nameToInitials(name)}
+    <span className={`relative inline-flex shrink-0 select-none ${dim}`}>
+      <span
+        title={`${name} (${isAgent ? "AI Agent" : "Human"})`}
+        style={{ backgroundColor: bgColor }}
+        className={`inline-flex h-full w-full items-center justify-center rounded-full font-semibold text-white ${ring}`}
+      >
+        {nameToInitials(name)}
+      </span>
+      {/* AI Agent indicator badge — only shown for agents */}
+      {isAgent && (
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full border-2 border-background bg-yellow-400 shadow-sm shadow-yellow-300
+            ${size === "md" ? "h-3.5 w-3.5" : "h-3 w-3"}`}
+          title="AI Agent"
+        >
+          {/* Bot icon */}
+          <svg viewBox="0 0 12 12" className={`fill-gray-900 ${size === "md" ? "h-2 w-2" : "h-1.5 w-1.5"}`}>
+            {/* head */}
+            <rect x="2" y="3.5" width="8" height="5.5" rx="1.5" />
+            {/* antenna */}
+            <rect x="5.5" y="1" width="1" height="2.5" rx="0.5" />
+            <circle cx="6" cy="1" r="0.8" />
+            {/* eyes */}
+            <circle cx="4.2" cy="6" r="0.9" fill="white" />
+            <circle cx="7.8" cy="6" r="0.9" fill="white" />
+            {/* mouth */}
+            <rect x="4" y="7.5" width="4" height="0.8" rx="0.4" fill="white" />
+          </svg>
+        </span>
+      )}
     </span>
   );
 }

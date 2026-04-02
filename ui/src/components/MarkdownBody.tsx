@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { cn } from "../lib/utils";
 import { useTheme } from "../context/ThemeContext";
 import { mentionChipInlineStyle, parseMentionChipHref } from "../lib/mention-chips";
+import { ImageLightbox, type ImageLightboxState } from "./ImageLightbox";
 
 interface MarkdownBodyProps {
   children: string;
@@ -93,6 +94,7 @@ function MermaidDiagramBlock({ source, darkMode }: { source: string; darkMode: b
 
 export function MarkdownBody({ children, className, resolveImageSrc }: MarkdownBodyProps) {
   const { theme } = useTheme();
+  const [lightbox, setLightbox] = useState<ImageLightboxState | null>(null);
   const components: Components = {
     pre: ({ node: _node, children: preChildren, ...preProps }) => {
       const mermaidSource = extractMermaidSource(preChildren);
@@ -129,24 +131,42 @@ export function MarkdownBody({ children, className, resolveImageSrc }: MarkdownB
       );
     },
   };
-  if (resolveImageSrc) {
-    components.img = ({ node: _node, src, alt, ...imgProps }) => {
-      const resolved = src ? resolveImageSrc(src) : null;
-      return <img {...imgProps} src={resolved ?? src} alt={alt ?? ""} />;
-    };
-  }
+  /* Always override img so every image is clickable */
+  components.img = ({ node: _node, src, alt, ...imgProps }) => {
+    const resolved = resolveImageSrc && src ? (resolveImageSrc(src) ?? src) : src;
+    return (
+      <img
+        {...imgProps}
+        src={resolved}
+        alt={alt ?? ""}
+        onClick={() => resolved && setLightbox({ src: resolved, alt: alt ?? "" })}
+        className="cursor-zoom-in rounded transition-opacity hover:opacity-90"
+        title="Click to enlarge"
+      />
+    );
+  };
 
   return (
-    <div
-      className={cn(
-        "paperclip-markdown prose prose-sm max-w-none break-words overflow-hidden",
-        theme === "dark" && "prose-invert",
-        className,
+    <>
+      <div
+        className={cn(
+          "paperclip-markdown prose prose-sm max-w-none break-words overflow-hidden",
+          theme === "dark" && "prose-invert",
+          className,
+        )}
+      >
+        <Markdown remarkPlugins={[remarkGfm]} components={components} urlTransform={(url) => url}>
+          {children}
+        </Markdown>
+      </div>
+
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
       )}
-    >
-      <Markdown remarkPlugins={[remarkGfm]} components={components} urlTransform={(url) => url}>
-        {children}
-      </Markdown>
-    </div>
+    </>
   );
 }

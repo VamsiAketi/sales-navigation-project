@@ -36,7 +36,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ImageLightbox, type ImageLightboxState } from "../components/ImageLightbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -54,9 +54,6 @@ import {
   Repeat,
   SlidersHorizontal,
   Trash2,
-  X,
-  ZoomIn,
-  ZoomOut,
   X,
 } from "lucide-react";
 import type { ActivityEvent } from "@paperclipai/shared";
@@ -215,9 +212,7 @@ export function IssueDetail() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mobilePropsOpen, setMobilePropsOpen] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [lightboxName, setLightboxName] = useState<string>("");
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [lightbox, setLightbox] = useState<ImageLightboxState | null>(null);
   const [detailTab, setDetailTab] = useState("comments");
   const [secondaryOpen, setSecondaryOpen] = useState({
     approvals: false,
@@ -633,17 +628,10 @@ export function IssueDetail() {
 
   const copyIssueToClipboard = async () => {
     if (!issue) return;
-    const decodeEntities = (text: string) => {
-      const el = document.createElement("textarea");
-      el.innerHTML = text;
-      return el.value;
-    };
-    const title = decodeEntities(issue.title);
-    const body = decodeEntities(issue.description ?? "");
-    const md = `# ${issue.identifier}: ${title}\n\n${body}`.trimEnd();
-    await navigator.clipboard.writeText(md);
+    const url = `${window.location.origin}${window.location.pathname.split("/issues/")[0]}/issues/${issueId}`;
+    await navigator.clipboard.writeText(url);
     setCopied(true);
-    pushToast({ title: "Copied to clipboard", tone: "success" });
+    pushToast({ title: "Link copied to clipboard", tone: "success" });
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -819,7 +807,7 @@ export function IssueDetail() {
               variant="ghost"
               size="icon-xs"
               onClick={copyIssueToClipboard}
-              title="Copy issue as markdown"
+              title="Copy link to ticket"
             >
               {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>
@@ -838,7 +826,7 @@ export function IssueDetail() {
               variant="ghost"
               size="icon-xs"
               onClick={copyIssueToClipboard}
-              title="Copy issue as markdown"
+              title="Copy link to ticket"
             >
               {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>
@@ -1018,11 +1006,9 @@ export function IssueDetail() {
                   type="button"
                   className="mt-2 w-full cursor-zoom-in"
                   title="Click to zoom"
-                  onClick={() => {
-                    setLightboxSrc(attachment.contentPath);
-                    setLightboxName(attachment.originalFilename ?? "attachment");
-                    setZoomLevel(1);
-                  }}
+                  onClick={() =>
+                    setLightbox({ src: attachment.contentPath, alt: attachment.originalFilename ?? "attachment" })
+                  }
                 >
                   <img
                     src={attachment.contentPath}
@@ -1232,65 +1218,14 @@ export function IssueDetail() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
-      {/* Image lightbox with zoom */}
-      <Dialog
-        open={!!lightboxSrc}
-        onOpenChange={(open) => { if (!open) { setLightboxSrc(null); setZoomLevel(1); } }}
-      >
-        <DialogContent className="max-w-4xl w-full p-0 gap-0 overflow-hidden bg-black/90 border-border">
-          {/* Toolbar */}
-          <div className="flex items-center justify-between px-3 py-2 bg-background/10 backdrop-blur border-b border-white/10">
-            <span className="text-xs text-white/70 truncate max-w-xs">{lightboxName}</span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="text-white/70 hover:text-white hover:bg-white/10"
-                onClick={() => setZoomLevel((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
-                title="Zoom out"
-                disabled={zoomLevel <= 0.25}
-              >
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-              <span className="text-xs text-white/60 w-10 text-center tabular-nums">
-                {Math.round(zoomLevel * 100)}%
-              </span>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="text-white/70 hover:text-white hover:bg-white/10"
-                onClick={() => setZoomLevel((z) => Math.min(4, +(z + 0.25).toFixed(2)))}
-                title="Zoom in"
-                disabled={zoomLevel >= 4}
-              >
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="text-white/70 hover:text-white hover:bg-white/10 ml-1"
-                onClick={() => { setLightboxSrc(null); setZoomLevel(1); }}
-                title="Close"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Scrollable image area */}
-          <div className="overflow-auto flex items-center justify-center"
-               style={{ maxHeight: "80vh", minHeight: "200px" }}>
-            {lightboxSrc && (
-              <img
-                src={lightboxSrc}
-                alt={lightboxName}
-                style={{ transform: `scale(${zoomLevel})`, transformOrigin: "center center", transition: "transform 0.15s ease" }}
-                className="max-w-none m-8"
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Image lightbox */}
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
 
       <ScrollToBottom />
     </div>
