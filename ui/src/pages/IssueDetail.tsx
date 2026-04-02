@@ -36,6 +36,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ImageLightbox, type ImageLightboxState } from "../components/ImageLightbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -211,6 +212,7 @@ export function IssueDetail() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mobilePropsOpen, setMobilePropsOpen] = useState(false);
+  const [lightbox, setLightbox] = useState<ImageLightboxState | null>(null);
   const [detailTab, setDetailTab] = useState("comments");
   const [secondaryOpen, setSecondaryOpen] = useState({
     approvals: false,
@@ -636,17 +638,10 @@ export function IssueDetail() {
 
   const copyIssueToClipboard = async () => {
     if (!issue) return;
-    const decodeEntities = (text: string) => {
-      const el = document.createElement("textarea");
-      el.innerHTML = text;
-      return el.value;
-    };
-    const title = decodeEntities(issue.title);
-    const body = decodeEntities(issue.description ?? "");
-    const md = `# ${issue.identifier}: ${title}\n\n${body}`.trimEnd();
-    await navigator.clipboard.writeText(md);
+    const url = `${window.location.origin}${window.location.pathname.split("/issues/")[0]}/issues/${issueId}`;
+    await navigator.clipboard.writeText(url);
     setCopied(true);
-    pushToast({ title: "Copied to clipboard", tone: "success" });
+    pushToast({ title: "Link copied to clipboard", tone: "success" });
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -822,7 +817,7 @@ export function IssueDetail() {
               variant="ghost"
               size="icon-xs"
               onClick={copyIssueToClipboard}
-              title="Copy issue as markdown"
+              title="Copy link to ticket"
             >
               {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>
@@ -841,7 +836,7 @@ export function IssueDetail() {
               variant="ghost"
               size="icon-xs"
               onClick={copyIssueToClipboard}
-              title="Copy issue as markdown"
+              title="Copy link to ticket"
             >
               {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>
@@ -1017,14 +1012,21 @@ export function IssueDetail() {
                 {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
               </p>
               {isImageAttachment(attachment) && (
-                <a href={attachment.contentPath} target="_blank" rel="noreferrer">
+                <button
+                  type="button"
+                  className="mt-2 w-full cursor-zoom-in"
+                  title="Click to zoom"
+                  onClick={() =>
+                    setLightbox({ src: attachment.contentPath, alt: attachment.originalFilename ?? "attachment" })
+                  }
+                >
                   <img
                     src={attachment.contentPath}
                     alt={attachment.originalFilename ?? "attachment"}
-                    className="mt-2 max-h-56 rounded border border-border object-contain bg-accent/10"
+                    className="max-h-56 w-full rounded border border-border object-contain bg-accent/10"
                     loading="lazy"
                   />
-                </a>
+                </button>
               )}
             </div>
           ))}
@@ -1228,6 +1230,15 @@ export function IssueDetail() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+      {/* Image lightbox */}
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+
       <ScrollToBottom />
     </div>
   );

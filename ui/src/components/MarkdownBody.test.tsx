@@ -14,7 +14,10 @@ describe("MarkdownBody", () => {
       </ThemeProvider>,
     );
 
-    expect(html).toContain('<img src="/api/attachments/test/content" alt=""/>');
+    expect(html).toContain('src="/api/attachments/test/content"');
+    expect(html).toContain('alt=""');
+    expect(html).toContain('class="cursor-zoom-in rounded transition-opacity hover:opacity-90"');
+    expect(html).toContain('title="Click to enlarge"');
   });
 
   it("resolves relative image paths when a resolver is provided", () => {

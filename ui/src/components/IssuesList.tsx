@@ -22,8 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, Bot } from "lucide-react";
-import { KanbanBoard } from "./KanbanBoard";
+import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, ChevronDown } from "lucide-react";
+import { KanbanBoard, AssigneeAvatar, nameToInitials } from "./KanbanBoard";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Helpers ── */
@@ -103,6 +103,7 @@ function applyFilters(issues: Issue[], state: IssueViewState, currentUserId?: st
         if (assignee === "__unassigned" && !issue.assigneeAgentId && !issue.assigneeUserId) return true;
         if (assignee === "__me" && currentUserId && issue.assigneeUserId === currentUserId) return true;
         if (issue.assigneeAgentId === assignee) return true;
+        if (issue.assigneeUserId === assignee) return true;
       }
       return false;
     });
@@ -175,6 +176,195 @@ interface IssuesListProps {
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
   projectStatuses?: ProjectIssueStatus[];
   forceListView?: boolean;
+}
+
+/* ── Assignee filter strip component ─────────────────────────────────────────
+ * Shows up to MAX_VISIBLE avatar bubbles. When there are more assignees, a
+ * clickable "+N" badge opens a full dropdown listing every assignee with
+ * checkboxes (Jira-style).
+ * ─────────────────────────────────────────────────────────────────────────── */
+const MAX_VISIBLE = 4;
+
+type BoardAssignee = { id: string; label: string; kind: "user" | "agent" };
+
+/** Popover body for the +N overflow badge — lists all assignees with checkboxes. */
+function AssigneePopoverBody({
+  boardAssignees,
+  activeIds,
+  onToggle,
+  onClear,
+}: {
+  boardAssignees: BoardAssignee[];
+  activeIds: string[];
+  onToggle: (id: string) => void;
+  onClear: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const hasActive = activeIds.length > 0;
+
+  const filtered = boardAssignees.filter((m) =>
+    m.label.toLowerCase().includes(search.toLowerCase())
+  );
+  const showUnassigned = "unassigned".includes(search.toLowerCase());
+
+  return (
+    <div className="flex flex-col">
+      {/* Window title bar */}
+      <div className="flex items-center justify-between border-b border-border bg-muted/60 px-3 py-2">
+        <span className="text-xs font-semibold tracking-wide text-foreground uppercase">Assignee</span>
+        {hasActive && (
+          <button
+            onClick={onClear}
+            className="text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* Search input */}
+      <div className="relative border-b border-border">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search assignees…"
+          className="w-full bg-background py-2 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
+        />
+      </div>
+
+      {/* Scrollable list — max 10 rows (~240px) */}
+      <div className="max-h-[240px] overflow-y-auto">
+        {/* Unassigned row */}
+        {showUnassigned && (
+          <button
+            onClick={() => onToggle("__unassigned")}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors"
+          >
+            <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors ${activeIds.includes("__unassigned") ? "border-primary bg-primary" : "border-border"}`}>
+              {activeIds.includes("__unassigned") && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+            </div>
+            <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-muted-foreground">
+              <User className="h-3.5 w-3.5" />
+            </span>
+            <span className="text-xs truncate">Unassigned</span>
+          </button>
+        )}
+
+        {/* Member / agent rows */}
+        {filtered.map((member) => (
+          <button
+            key={member.id}
+            onClick={() => onToggle(member.id)}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors"
+          >
+            <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors ${activeIds.includes(member.id) ? "border-primary bg-primary" : "border-border"}`}>
+              {activeIds.includes(member.id) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+            </div>
+            <AssigneeAvatar name={member.label} isAgent={member.kind === "agent"} size="sm" />
+            <span className="text-xs truncate">{member.label}</span>
+          </button>
+        ))}
+
+        {/* Empty state */}
+        {!showUnassigned && filtered.length === 0 && (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">No assignees found</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AssigneeFilterStrip({
+  boardAssignees,
+  activeIds,
+  onToggle,
+  onClear,
+}: {
+  boardAssignees: BoardAssignee[];
+  activeIds: string[];
+  onToggle: (id: string) => void;
+  onClear: () => void;
+}) {
+  const visible  = boardAssignees.slice(0, MAX_VISIBLE);
+  const hidden   = boardAssignees.slice(MAX_VISIBLE);
+  const overflow = hidden.length;
+  const hasActive = activeIds.length > 0;
+
+  return (
+    <div className="flex items-center gap-1">
+      {/* Unassigned toggle */}
+      <button
+        title="Unassigned"
+        onClick={() => onToggle("__unassigned")}
+        className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all
+          ${activeIds.includes("__unassigned")
+            ? "border-primary bg-accent text-foreground ring-2 ring-primary ring-offset-1 ring-offset-background"
+            : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
+          }`}
+      >
+        <User className="h-3.5 w-3.5" />
+      </button>
+
+      {/* Avatar bubbles — first MAX_VISIBLE only */}
+      {visible.map((member) => {
+        const isActive = activeIds.includes(member.id);
+        return (
+          <button
+            key={member.id}
+            title={member.label}
+            onClick={() => onToggle(member.id)}
+            className={`transition-all rounded-full ${isActive ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "opacity-70 hover:opacity-100"}`}
+          >
+            <AssigneeAvatar
+              name={member.label}
+              isAgent={member.kind === "agent"}
+              size="md"
+              active={isActive}
+            />
+          </button>
+        );
+      })}
+
+      {/* +N overflow badge — clickable, opens full assignee list */}
+      {overflow > 0 && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              title={`${overflow} more assignees`}
+              className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-medium transition-all
+                ${hidden.some((m) => activeIds.includes(m.id))
+                  ? "border-primary bg-primary/10 text-primary ring-2 ring-primary ring-offset-1 ring-offset-background"
+                  : "border-border bg-muted text-muted-foreground hover:text-foreground hover:border-foreground/40"
+                }`}
+            >
+              +{overflow}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-64 p-0 rounded-none border border-border shadow-lg overflow-hidden">
+            <AssigneePopoverBody
+              boardAssignees={boardAssignees}
+              activeIds={activeIds}
+              onToggle={onToggle}
+              onClear={onClear}
+            />
+          </PopoverContent>
+        </Popover>
+      )}
+
+
+      {/* Active filter summary label */}
+      {hasActive && (
+        <span className="hidden sm:block max-w-[120px] truncate text-xs text-muted-foreground">
+          {activeIds
+            .filter((id) => id !== "__unassigned")
+            .map((id) => boardAssignees.find((m) => m.id === id)?.label ?? id.slice(0, 6))
+            .concat(activeIds.includes("__unassigned") ? ["Unassigned"] : [])
+            .join(", ")}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function IssuesList({
@@ -383,48 +573,16 @@ export function IssuesList({
               aria-label="Search issues"
             />
           </div>
-        </div>
-
-          {/* ── Jira-style assignee filter strip ── */}
+          {/* ── Assignee avatar filter strip + dropdown ── */}
           {boardAssignees.length > 0 && (
-            <div className="flex items-center gap-0.5">
-              {boardAssignees.map((member) => {
-                const isActive = viewState.assignees.includes(member.id);
-                return (
-                  <button
-                    key={member.id}
-                    title={member.label}
-                    onClick={() =>
-                      updateView({ assignees: toggleInArray(viewState.assignees, member.id) })
-                    }
-                    className={`relative flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-all select-none
-                      ${isActive
-                        ? "ring-2 ring-primary ring-offset-1 ring-offset-background opacity-100"
-                        : "opacity-60 hover:opacity-100 hover:ring-2 hover:ring-border hover:ring-offset-1 hover:ring-offset-background"
-                      }
-                      ${member.kind === "agent"
-                        ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
-                        : "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                      }`}
-                  >
-                    {member.kind === "agent" ? (
-                      <Bot className="h-3.5 w-3.5" />
-                    ) : (
-                      member.initial
-                    )}
-                  </button>
-                );
-              })}
-              {/* Show name(s) of active assignee(s) */}
-              {viewState.assignees.length > 0 && (
-                <span className="ml-1.5 text-xs text-muted-foreground hidden sm:block max-w-[120px] truncate">
-                  {viewState.assignees
-                    .map((id) => boardAssignees.find((m) => m.id === id)?.label ?? id.slice(0, 8))
-                    .join(", ")}
-                </span>
-              )}
-            </div>
+            <AssigneeFilterStrip
+              boardAssignees={boardAssignees}
+              activeIds={viewState.assignees}
+              onToggle={(id) => updateView({ assignees: toggleInArray(viewState.assignees, id) })}
+              onClear={() => updateView({ assignees: [] })}
+            />
           )}
+        </div>
 
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
           {/* View mode toggle — hidden on the global Tasks page (forceListView), visible on project pages */}

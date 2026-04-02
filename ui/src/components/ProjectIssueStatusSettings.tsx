@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
+import { ColorPickerPopover } from "./ColorPickerPopover";
 import type { ProjectIssueStatus } from "@paperclipai/shared";
 
 interface Props {
@@ -44,7 +45,6 @@ function StatusRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: status.id });
   const [localName, setLocalName] = useState(status.name);
-  const [localColor, setLocalColor] = useState(status.color);
 
   const style = { transform: CSS.Transform.toString(transform), transition };
 
@@ -58,22 +58,17 @@ function StatusRow({
         <GripVertical className="h-4 w-4" />
       </button>
 
-      {/* Color swatch + picker */}
-      <label className="shrink-0 cursor-pointer" title="Change color">
+      {/* Color picker */}
+      <ColorPickerPopover
+        value={status.color ?? "#6b7280"}
+        onChange={(color) => onColorChange(status.id, color)}
+      >
         <span
-          className="inline-flex h-5 w-5 rounded-full border-2 shrink-0"
-          style={{ borderColor: localColor, backgroundColor: localColor + "40" }}
+          className="inline-flex h-5 w-5 rounded-full border-2 cursor-pointer hover:ring-2 hover:ring-foreground/30 transition-[box-shadow]"
+          style={{ borderColor: status.color ?? "#6b7280", backgroundColor: (status.color ?? "#6b7280") + "40" }}
+          title="Change color"
         />
-        <input
-          type="color"
-          value={localColor}
-          className="sr-only"
-          onChange={(e) => setLocalColor(e.target.value)}
-          onBlur={() => {
-            if (localColor !== status.color) onColorChange(status.id, localColor);
-          }}
-        />
-      </label>
+      </ColorPickerPopover>
 
       {/* Name */}
       <Input
@@ -125,9 +120,11 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
   const [orderedIds, setOrderedIds] = useState<string[]>(() => statuses.map((s) => s.id));
 
   // Keep orderedIds in sync when external data changes (e.g. after creation/deletion)
+  const statusIdKey = useMemo(() => statuses.map((s) => s.id).join(","), [statuses]);
   useEffect(() => {
     setOrderedIds(statuses.map((s) => s.id));
-  }, [statuses.map((s) => s.id).join(",")]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusIdKey]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -230,18 +227,13 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
       {showAddForm && (
         <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
           <div className="flex items-center gap-2">
-            <label className="shrink-0 cursor-pointer" title="Pick color">
+            <ColorPickerPopover value={newColor} onChange={setNewColor}>
               <span
-                className="inline-flex h-6 w-6 rounded-full border-2 shrink-0"
+                className="inline-flex h-6 w-6 rounded-full border-2 cursor-pointer hover:ring-2 hover:ring-foreground/30 transition-[box-shadow]"
                 style={{ borderColor: newColor, backgroundColor: newColor + "40" }}
+                title="Pick color"
               />
-              <input
-                type="color"
-                value={newColor}
-                className="sr-only"
-                onChange={(e) => setNewColor(e.target.value)}
-              />
-            </label>
+            </ColorPickerPopover>
             <Input
               placeholder="Status name"
               value={newName}
