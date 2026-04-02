@@ -21,6 +21,7 @@ import {
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
+import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 const boardStatuses = [
@@ -42,10 +43,17 @@ interface Agent {
   name: string;
 }
 
+interface Member {
+  id: string;
+  name: string;
+}
+
 interface KanbanBoardProps {
   issues: Issue[];
   agents?: Agent[];
+  members?: Member[];
   liveIssueIds?: Set<string>;
+  issueLinkState?: unknown;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
   /** When provided, use these as the board columns instead of the default hardcoded list */
   projectStatuses?: ProjectIssueStatus[];
@@ -68,20 +76,24 @@ function KanbanColumn({
   columnColor,
   issues,
   agents,
+  members,
   liveIssueIds,
+  issueLinkState,
 }: {
   status: string;
   columnLabel?: string;
   columnColor?: string;
   issues: Issue[];
   agents?: Agent[];
+  members?: Member[];
   liveIssueIds?: Set<string>;
+  issueLinkState?: unknown;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
     <div className="flex flex-col min-w-[260px] w-[260px] shrink-0">
-      <div className="flex items-center gap-2 px-2 py-2 mb-1">
+      <div className="sticky top-12 md:top-0 z-10 flex items-center gap-2 px-2 py-2 mb-1 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90 border-b border-border/50">
         {columnColor ? (
           <span className="relative inline-flex h-4 w-4 rounded-full border-2 shrink-0" style={{ borderColor: columnColor, color: columnColor }}>
             {status === "done" && <span className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-current" />}
@@ -111,7 +123,9 @@ function KanbanColumn({
               key={issue.id}
               issue={issue}
               agents={agents}
+              members={members}
               isLive={liveIssueIds?.has(issue.id)}
+              issueLinkState={issueLinkState}
             />
           ))}
         </SortableContext>
@@ -125,13 +139,17 @@ function KanbanColumn({
 function KanbanCard({
   issue,
   agents,
+  members,
   isLive,
   isOverlay,
+  issueLinkState,
 }: {
   issue: Issue;
   agents?: Agent[];
+  members?: Member[];
   isLive?: boolean;
   isOverlay?: boolean;
+  issueLinkState?: unknown;
 }) {
   const {
     attributes,
@@ -147,10 +165,14 @@ function KanbanCard({
     transition,
   };
 
-  const agentName = (id: string | null) => {
-    if (!id || !agents) return null;
-    return agents.find((a) => a.id === id)?.name ?? null;
-  };
+  const resolvedAgentName = issue.assigneeAgentId
+    ? (agents?.find((a) => a.id === issue.assigneeAgentId)?.name ?? null)
+    : null;
+
+  const resolvedUserName = issue.assigneeUserId
+    ? (members?.find((m) => m.id === issue.assigneeUserId)?.name ??
+       (issue.assigneeUserId === "local-board" ? "Board" : null))
+    : null;
 
   return (
     <div
@@ -164,6 +186,7 @@ function KanbanCard({
     >
       <Link
         to={`/issues/${issue.identifier ?? issue.id}`}
+        state={issueLinkState}
         className="block no-underline text-inherit"
         onClick={(e) => {
           // Prevent navigation during drag
@@ -182,18 +205,45 @@ function KanbanCard({
           )}
         </div>
         <p className="text-sm leading-snug line-clamp-2 mb-2">{issue.title}</p>
+        {(issue.labels ?? []).length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 mb-2">
+            {(issue.labels ?? []).slice(0, 2).map((label) => (
+              <span
+                key={label.id}
+                className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
+                style={{
+                  borderColor: label.color,
+                  color: pickTextColorForPillBg(label.color, 0.12),
+                  backgroundColor: `${label.color}1f`,
+                }}
+              >
+                {label.name}
+              </span>
+            ))}
+            {(issue.labels ?? []).length > 2 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{(issue.labels ?? []).length - 2}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <PriorityIcon priority={issue.priority} />
-          {issue.assigneeAgentId && (() => {
-            const name = agentName(issue.assigneeAgentId);
-            return name ? (
-              <Identity name={name} size="xs" />
-            ) : (
-              <span className="text-xs text-muted-foreground font-mono">
-                {issue.assigneeAgentId.slice(0, 8)}
-              </span>
-            );
-          })()}
+          {/* Agent assignee */}
+          {resolvedAgentName ? (
+            <Identity name={resolvedAgentName} size="xs" />
+          ) : issue.assigneeAgentId ? (
+            <span className="text-xs text-muted-foreground font-mono">
+              {issue.assigneeAgentId.slice(0, 8)}
+            </span>
+          ) : resolvedUserName ? (
+            /* Human assignee */
+            <Identity name={resolvedUserName} size="xs" />
+          ) : issue.assigneeUserId ? (
+            <span className="text-xs text-muted-foreground font-mono">
+              {issue.assigneeUserId.slice(0, 8)}
+            </span>
+          ) : null}
         </div>
       </Link>
     </div>
@@ -205,7 +255,9 @@ function KanbanCard({
 export function KanbanBoard({
   issues,
   agents,
+  members,
   liveIssueIds,
+  issueLinkState,
   onUpdateIssue,
   projectStatuses,
 }: KanbanBoardProps) {
@@ -331,14 +383,16 @@ export function KanbanBoard({
               columnColor={ps?.color}
               issues={columnIssues[status] ?? []}
               agents={agents}
+              members={members}
               liveIssueIds={liveIssueIds}
+              issueLinkState={issueLinkState}
             />
           );
         })}
       </div>
       <DragOverlay>
         {activeIssue ? (
-          <KanbanCard issue={activeIssue} agents={agents} isOverlay />
+          <KanbanCard issue={activeIssue} agents={agents} members={members} issueLinkState={issueLinkState} isOverlay />
         ) : null}
       </DragOverlay>
     </DndContext>

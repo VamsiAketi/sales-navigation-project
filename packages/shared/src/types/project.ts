@@ -100,6 +100,8 @@ export interface Project {
    */
   envConfig: Record<string, string> | null;
   notificationConfig?: ProjectNotificationConfig | null;
+  /** Short uppercase key used as the prefix for issue identifiers in this project (e.g. "AIH"). */
+  issuePrefix: string | null;
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;

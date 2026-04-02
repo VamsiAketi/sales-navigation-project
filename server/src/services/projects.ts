@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { projects, projectGoals, goals, projectWorkspaces, workspaceRuntimeServices } from "@paperclipai/db";
 import {
@@ -337,6 +337,30 @@ function deriveWorkspaceName(input: {
   return "Workspace";
 }
 
+/**
+ * Derive a short uppercase issue-prefix from a project name (e.g. "AI Harness" → "AIH").
+ * Strips non-alpha chars, takes up to 5 uppercase letters, falls back to "PRJ".
+ */
+export function deriveProjectIssuePrefix(name: string): string {
+  const letters = name.toUpperCase().replace(/[^A-Z]/g, "");
+  return letters.slice(0, 5) || "PRJ";
+}
+
+/**
+ * Given a desired prefix and a set of already-used prefixes (must be the GLOBAL set across
+ * all companies — project prefixes must be globally unique because issue identifiers such as
+ * "PORTA-1" are stored in a globally-unique index with no company scope),
+ * return the desired prefix if free, otherwise append numeric suffixes until unique.
+ */
+export function resolveUniqueIssuePrefix(desired: string, usedPrefixes: Set<string>): string {
+  if (!usedPrefixes.has(desired)) return desired;
+  for (let n = 2; n < 10_000; n++) {
+    const candidate = `${desired}${n}`;
+    if (!usedPrefixes.has(candidate)) return candidate;
+  }
+  return `${desired}${Date.now()}`;
+}
+
 export function resolveProjectNameForUniqueShortname(
   requestedName: string,
   existingProjects: ProjectShortnameRow[],
@@ -445,10 +469,25 @@ export function projectService(db: Db) {
       }
 
       const existingProjects = await db
-        .select({ id: projects.id, name: projects.name })
+        .select({ id: projects.id, name: projects.name, issuePrefix: projects.issuePrefix })
         .from(projects)
         .where(eq(projects.companyId, companyId));
       projectData.name = resolveProjectNameForUniqueShortname(projectData.name, existingProjects);
+
+      // Auto-assign a unique issuePrefix for the project (e.g. "AIH", "ENG").
+      // Issue identifiers are globally unique (issues_identifier_idx has no company scope),
+      // so project prefixes must also be globally unique — not just per-company.
+      if (!projectData.issuePrefix) {
+        const allProjectPrefixes = await db
+          .select({ issuePrefix: projects.issuePrefix })
+          .from(projects)
+          .then((rows) => rows.map((r) => r.issuePrefix).filter((v): v is string => v != null));
+        const globalUsedPrefixes = new Set(allProjectPrefixes);
+        projectData.issuePrefix = resolveUniqueIssuePrefix(
+          deriveProjectIssuePrefix(projectData.name),
+          globalUsedPrefixes,
+        );
+      }
 
       // Also write goalId to the legacy column (first goal or null)
       const legacyGoalId = ids && ids.length > 0 ? ids[0] : projectData.goalId ?? null;

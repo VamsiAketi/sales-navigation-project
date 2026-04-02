@@ -168,7 +168,11 @@ function UserMenu() {
   const initial = (session.user.name ?? session.user.email ?? "?")[0]?.toUpperCase() ?? "?";
 
   const handleLogoutConfirm = async () => {
-    await authApi.signOut();
+    try {
+      await authApi.signOut();
+    } catch {
+      // proceed with local cleanup even if the server call fails
+    }
     queryClient.clear();
     navigate("/auth");
   };

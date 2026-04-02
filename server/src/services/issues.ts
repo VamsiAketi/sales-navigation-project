@@ -834,14 +834,37 @@ export function issueService(db: Db) {
               .then((rows) => rows[0]?.id ?? null);
           }
         }
-        const [company] = await tx
-          .update(companies)
-          .set({ issueCounter: sql`${companies.issueCounter} + 1` })
-          .where(eq(companies.id, companyId))
-          .returning({ issueCounter: companies.issueCounter, issuePrefix: companies.issuePrefix });
+        // When the issue belongs to a project, use the project's own prefix and
+        // per-project counter.  Fall back to the company-level counter for
+        // issues that have no project (e.g. ad-hoc tasks).
+        let issueNumber: number;
+        let identifier: string;
 
-        const issueNumber = company.issueCounter;
-        const identifier = `${company.issuePrefix}-${issueNumber}`;
+        if (issueData.projectId) {
+          const [project] = await tx
+            .update(projects)
+            .set({ issueCounter: sql`${projects.issueCounter} + 1` })
+            .where(and(eq(projects.id, issueData.projectId), eq(projects.companyId, companyId)))
+            .returning({ issueCounter: projects.issueCounter, issuePrefix: projects.issuePrefix });
+
+          issueNumber = project.issueCounter;
+          identifier = project.issuePrefix
+            ? `${project.issuePrefix}-${issueNumber}`
+            : (() => {
+                // Fallback: project exists but has no prefix yet (legacy row) –
+                // use the company prefix so the identifier is never null.
+                return `${companyId.slice(0, 3).toUpperCase()}-${issueNumber}`;
+              })();
+        } else {
+          const [company] = await tx
+            .update(companies)
+            .set({ issueCounter: sql`${companies.issueCounter} + 1` })
+            .where(eq(companies.id, companyId))
+            .returning({ issueCounter: companies.issueCounter, issuePrefix: companies.issuePrefix });
+
+          issueNumber = company.issueCounter;
+          identifier = `${company.issuePrefix}-${issueNumber}`;
+        }
 
         const values = {
           ...issueData,

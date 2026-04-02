@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, date, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, date, index, uniqueIndex, jsonb, integer } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { goals } from "./goals.js";
 import { agents } from "./agents.js";
@@ -20,11 +20,18 @@ export const projects = pgTable(
     executionWorkspacePolicy: jsonb("execution_workspace_policy").$type<Record<string, unknown>>(),
     envConfig: jsonb("env_config").$type<Record<string, unknown> | null>(),
     notificationConfig: jsonb("notification_config").$type<Record<string, unknown> | null>(),
+    /** Short uppercase key used as the prefix for issue identifiers (e.g. "AIH" → "AIH-1"). */
+    issuePrefix: text("issue_prefix"),
+    /** Per-project counter; incremented atomically on each new issue in this project. */
+    issueCounter: integer("issue_counter").notNull().default(0),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     companyIdx: index("projects_company_idx").on(table.companyId),
+    // Issue identifiers are globally unique (issues_identifier_idx has no company scope),
+    // so project prefixes must be globally unique too — no company_id scoping here.
+    issuePrefixUniqueIdx: uniqueIndex("projects_issue_prefix_company_idx").on(table.issuePrefix),
   }),
 );
