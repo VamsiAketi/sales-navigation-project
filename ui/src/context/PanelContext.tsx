@@ -32,7 +32,7 @@ function writePreference(visible: boolean) {
 
 export function PanelProvider({ children }: { children: ReactNode }) {
   const [panelContent, setPanelContent] = useState<ReactNode | null>(null);
-  const [panelVisible, setPanelVisibleState] = useState(readPreference);
+  const [panelVisible, setPanelVisibleState] = useState(true);
 
   const openPanel = useCallback((content: ReactNode) => {
     setPanelContent(content);

@@ -36,9 +36,9 @@ export function PropertiesPanel() {
               {selectedCompany?.name ? `${selectedCompany.name} • Properties` : "Properties"}
             </span>
           </div>
-          <Button variant="ghost" size="icon-xs" onClick={() => setPanelVisible(false)}>
+          {/* <Button variant="ghost" size="icon-xs" onClick={() => setPanelVisible(false)}>
             <X className="h-4 w-4" />
-          </Button>
+          </Button> */}
         </div>
         <ScrollArea className="flex-1">
           <div className="p-4">{panelContent}</div>

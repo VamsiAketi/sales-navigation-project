@@ -53,6 +53,7 @@ import {
   Repeat,
   SlidersHorizontal,
   Trash2,
+  X,
 } from "lucide-react";
 import type { ActivityEvent } from "@paperclipai/shared";
 import type { Agent, IssueAttachment } from "@paperclipai/shared";
@@ -865,10 +866,15 @@ export function IssueDetail() {
                 }}
               >
                 <EyeOff className="h-3 w-3" />
-                Hide this Issue
+                Hide this Task
               </button>
             </PopoverContent>
             </Popover>
+            <Link to={sourceBreadcrumbs[0].href}>
+              <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs[0].label}`}>
+                <X className="h-4 w-4" />
+              </Button>
+            </Link>
           </div>
         </div>
 
