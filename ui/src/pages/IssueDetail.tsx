@@ -273,7 +273,7 @@ export function IssueDetail() {
   });
 
   const hasLiveRuns = (liveRuns ?? []).length > 0 || !!activeRun;
-  const sourceBreadcrumb = useMemo(
+  const sourceBreadcrumbs = useMemo(
     () => readIssueDetailBreadcrumb(location.state) ?? { label: "Tasks", href: "/issues" },
     [location.state],
   );
@@ -594,10 +594,10 @@ export function IssueDetail() {
   useEffect(() => {
     const titleLabel = issue?.title ?? issueId ?? "Task";
     setBreadcrumbs([
-      sourceBreadcrumb,
+      sourceBreadcrumbs,
       { label: hasLiveRuns ? `🔵 ${titleLabel}` : titleLabel },
     ]);
-  }, [setBreadcrumbs, sourceBreadcrumb, issue, issueId, hasLiveRuns]);
+  }, [setBreadcrumbs, sourceBreadcrumbs, issue, issueId, hasLiveRuns]);
 
   // Redirect to identifier-based URL if navigated via UUID
   useEffect(() => {
@@ -868,8 +868,8 @@ export function IssueDetail() {
               </button>
             </PopoverContent>
             </Popover>
-            <Link to={sourceBreadcrumb.href}>
-              <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumb.label}`}>
+            <Link to={sourceBreadcrumbs.href}>
+              <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs.label}`}>
                 <X className="h-4 w-4" />
               </Button>
             </Link>
