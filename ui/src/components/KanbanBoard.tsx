@@ -19,9 +19,52 @@ import { CSS } from "@dnd-kit/utilities";
 import { arrayMove } from "@dnd-kit/sortable";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
-import { Identity } from "./Identity";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
+
+/* ── Avatar helpers ─────────────────────────────────────────────────────────── */
+const AVATAR_PALETTE = [
+  "bg-orange-500", "bg-blue-500",   "bg-emerald-500", "bg-violet-500",
+  "bg-pink-500",   "bg-teal-500",   "bg-red-500",     "bg-indigo-500",
+  "bg-amber-500",  "bg-cyan-500",   "bg-lime-500",    "bg-rose-500",
+];
+
+function nameToColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length]!;
+}
+
+export function nameToInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0]! + parts[parts.length - 1]![0]!).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+/** Coloured circle avatar with initials — used on cards and in the filter strip. */
+export function AssigneeAvatar({
+  name,
+  isAgent = false,
+  size = "sm",
+  active = false,
+}: {
+  name: string;
+  isAgent?: boolean;
+  size?: "sm" | "md";
+  active?: boolean;
+}) {
+  const bg    = isAgent ? "bg-violet-600" : nameToColor(name);
+  const dim   = size === "md" ? "h-7 w-7 text-[11px]" : "h-6 w-6 text-[10px]";
+  const ring  = active ? "ring-2 ring-white ring-offset-1 ring-offset-background" : "";
+  return (
+    <span
+      title={name}
+      className={`inline-flex items-center justify-center rounded-full font-semibold text-white select-none shrink-0 ${bg} ${dim} ${ring}`}
+    >
+      {nameToInitials(name)}
+    </span>
+  );
+}
 
 const boardStatuses = [
   "backlog",
@@ -135,21 +178,20 @@ const KanbanCardContent = memo(function KanbanCardContent({
           )}
         </div>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 mt-1">
         <PriorityIcon priority={issue.priority} />
-        {/* Agent assignee */}
+        {/* Assignee avatar — bottom-right of card */}
         {agentName ? (
-          <Identity name={agentName} size="xs" />
-        ) : issue.assigneeAgentId ? (
-          <span className="text-xs text-muted-foreground font-mono">
-            {issue.assigneeAgentId.slice(0, 8)}
-          </span>
+          <AssigneeAvatar name={agentName} isAgent />
         ) : memberName ? (
-          /* Human assignee */
-          <Identity name={memberName} size="xs" />
+          <AssigneeAvatar name={memberName} />
+        ) : issue.assigneeAgentId ? (
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {issue.assigneeAgentId.slice(0, 6)}
+          </span>
         ) : issue.assigneeUserId ? (
-          <span className="text-xs text-muted-foreground font-mono">
-            {issue.assigneeUserId.slice(0, 8)}
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {issue.assigneeUserId.slice(0, 6)}
           </span>
         ) : null}
       </div>
