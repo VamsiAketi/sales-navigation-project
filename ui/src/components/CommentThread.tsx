@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import type { IssueComment, Agent } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { Check, Copy, Paperclip } from "lucide-react";
-import { Identity } from "./Identity";
+import { Identity, deriveInitials } from "./Identity";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 import { MarkdownBody } from "./MarkdownBody";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
@@ -38,6 +38,9 @@ interface CommentThreadProps {
   onAdd: (body: string, reopen?: boolean, reassignment?: CommentReassignment) => Promise<void>;
   issueStatus?: string;
   agentMap?: Map<string, Agent>;
+  /** Map of userId → display name for resolving human comment authors. */
+  userMap?: Map<string, string>;
+  currentUserId?: string | null;
   imageUploadHandler?: (file: File) => Promise<string>;
   /** Callback to attach an image file to the parent issue (not inline in a comment). */
   onAttachImage?: (file: File) => Promise<void>;
@@ -121,12 +124,16 @@ type TimelineItem =
 const TimelineList = memo(function TimelineList({
   timeline,
   agentMap,
+  userMap,
+  currentUserId,
   companyId,
   projectId,
   highlightCommentId,
 }: {
   timeline: TimelineItem[];
   agentMap?: Map<string, Agent>;
+  userMap?: Map<string, string>;
+  currentUserId?: string | null;
   companyId?: string | null;
   projectId?: string | null;
   highlightCommentId?: string | null;
@@ -184,7 +191,19 @@ const TimelineList = memo(function TimelineList({
                   />
                 </Link>
               ) : (
-                <Identity name="You" size="sm" />
+                <span className="flex items-center gap-1.5">
+                  <Identity
+                    name={
+                      comment.authorUserId
+                        ? (userMap?.get(comment.authorUserId) ?? comment.authorUserId.slice(0, 8))
+                        : "You"
+                    }
+                    size="sm"
+                  />
+                  {comment.authorUserId && comment.authorUserId === currentUserId && (
+                    <span className="text-xs text-muted-foreground">(You)</span>
+                  )}
+                </span>
               )}
               <span className="flex items-center gap-1.5">
                 {companyId ? (
@@ -261,6 +280,8 @@ export function CommentThread({
   projectId,
   onAdd,
   agentMap,
+  userMap,
+  currentUserId,
   imageUploadHandler,
   onAttachImage,
   draftKey,
@@ -406,6 +427,8 @@ export function CommentThread({
       <TimelineList
         timeline={timeline}
         agentMap={agentMap}
+        userMap={userMap}
+        currentUserId={currentUserId}
         companyId={companyId}
         projectId={projectId}
         highlightCommentId={highlightCommentId}

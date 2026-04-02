@@ -228,7 +228,7 @@ function LabelRowWithConfirmDelete({
               className="ml-auto p-0.5 rounded hover:bg-accent/70 text-muted-foreground hover:text-red-500"
               onClick={onDeselect}
               disabled={disabled}
-              title="Deselect"
+              title="Remove Label"
             >
               <X className="h-3 w-3" />
             </button>
