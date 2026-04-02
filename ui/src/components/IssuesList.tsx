@@ -203,6 +203,24 @@ export function IssuesList({
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
 
+  const { data: members } = useQuery({
+  queryKey: queryKeys.access.members(selectedCompanyId!),
+  queryFn: () => accessApi.listMembers(selectedCompanyId!),
+  enabled: !!selectedCompanyId,
+  });
+
+  const userLabel = useCallback(
+    (userId: string | null | undefined): string | null => {
+      if (!userId) return null;
+      if (userId !== currentUserId && userId !== "local-board") {
+        const member = (members ?? []).find((m) => m.user?.id === userId);
+        if (member?.user?.name) return member.user.name;
+      }
+      return formatAssigneeUserLabel(userId, currentUserId);
+    },
+    [members, currentUserId],
+  );
+
   // Scope the storage key per company so folding/view state is independent across companies.
   const scopedKey = selectedCompanyId ? `${viewStateKey}:${selectedCompanyId}` : viewStateKey;
 
@@ -318,11 +336,11 @@ export function IssuesList({
         key === "__unassigned"
           ? "Unassigned"
           : key.startsWith("__user:")
-            ? (formatAssigneeUserLabel(key.slice("__user:".length), currentUserId) ?? "User")
+            ? (userLabel(key.slice("__user:".length)) ?? "User")
             : (agentName(key) ?? key.slice(0, 8)),
       items: groups[key]!,
     }));
-  }, [filtered, viewState.groupBy, agents, agentName, currentUserId]);
+  }, [filtered, viewState.groupBy, agents, agentName, currentUserId, userLabel]);
 
   const newIssueDefaults = (groupKey?: string) => {
     const defaults: Record<string, string> = {};
@@ -805,7 +823,7 @@ export function IssuesList({
                                   <User className="h-3 w-3" />
                                 </span>
                                 {humanMembers.find((m) => m.id === issue.assigneeUserId)?.name
-                                  ?? formatAssigneeUserLabel(issue.assigneeUserId, currentUserId)
+                                  ?? userLabel(issue.assigneeUserId)
                                   ?? "User"}
                               </span>
                             ) : (
