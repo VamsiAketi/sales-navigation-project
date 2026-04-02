@@ -113,6 +113,10 @@ export const authApi = {
     return payload as UserNotificationPreferences;
   },
 
+  updateProfile: async (input: { name?: string; email?: string }): Promise<void> => {
+    await authPost("/update-user", input);
+  },
+
   updateNotificationPreferences: async (input: Partial<UserNotificationPreferences>): Promise<UserNotificationPreferences> => {
     const res = await fetch("/api/users/me/notification-preferences", {
       method: "PATCH",
