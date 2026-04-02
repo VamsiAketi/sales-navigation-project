@@ -181,13 +181,13 @@ interface IssuesListProps {
 /* ── Assignee filter strip component ─────────────────────────────────────────
  * Shows up to MAX_VISIBLE avatar bubbles. When there are more assignees, a
  * clickable "+N" badge opens a full dropdown listing every assignee with
- * checkboxes (Jira-style). A "Filter" button is always present as a fallback.
+ * checkboxes (Jira-style).
  * ─────────────────────────────────────────────────────────────────────────── */
 const MAX_VISIBLE = 4;
 
 type BoardAssignee = { id: string; label: string; kind: "user" | "agent" };
 
-/** Shared popover body used by both the +N overflow and the Filter button. */
+/** Popover body for the +N overflow badge — lists all assignees with checkboxes. */
 function AssigneePopoverBody({
   boardAssignees,
   activeIds,
@@ -320,30 +320,6 @@ function AssigneeFilterStrip({
         </Popover>
       )}
 
-      {/* Filter button — always visible, opens full assignee list */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors
-              ${hasActive
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
-              }`}
-          >
-            <Filter className="h-3 w-3" />
-            <span className="hidden sm:inline">Filter</span>
-            <ChevronDown className="h-3 w-3" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-56 p-2">
-          <AssigneePopoverBody
-            boardAssignees={boardAssignees}
-            activeIds={activeIds}
-            onToggle={onToggle}
-            onClear={onClear}
-          />
-        </PopoverContent>
-      </Popover>
 
       {/* Active filter summary label */}
       {hasActive && (
