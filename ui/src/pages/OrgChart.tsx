@@ -23,15 +23,15 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { ChevronDown, ChevronRight, Download, Network, Upload, User } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Maximize2, Minus, Network, Plus, Upload, User, ZoomIn, ZoomOut } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 
-// Layout constants — extra spacing so hierarchy reads clearly (matches pre–drag-drop polish)
-const CARD_W = 200;
-const CARD_H = 100;
-const GAP_X = 56;
-const GAP_Y = 120;
-const PADDING = 80;
+// Layout constants
+const CARD_W = 224;
+const CARD_H = 128;
+const GAP_X = 72;
+const GAP_Y = 160;
+const PADDING = 96;
 
 // ── Tree layout types ───────────────────────────────────────────────────
 
@@ -185,7 +185,7 @@ const adapterLabels: Record<string, string> = {
   gemini_local: "Gemini",
   opencode_local: "OpenCode",
   cursor: "Cursor",
-  openclaw_gateway: "OpenClaw Gateway",
+  openclaw_gateway: "OpenClaw",
   process: "Process",
   http: "HTTP",
 };
@@ -200,6 +200,27 @@ const statusDotColor: Record<string, string> = {
 };
 const defaultDotColor = "#a3a3a3";
 
+// ── Type accent config ──────────────────────────────────────────────────
+
+const nodeAccent = {
+  human: {
+    iconBg: "bg-blue-50 dark:bg-blue-950/40",
+    iconColor: "text-blue-500 dark:text-blue-400",
+    badgeBg: "bg-blue-50 dark:bg-blue-950/40",
+    badgeText: "text-blue-600 dark:text-blue-400",
+    borderTop: "#3b82f6",
+    label: "Human",
+  },
+  agent: {
+    iconBg: "bg-violet-50 dark:bg-violet-950/40",
+    iconColor: "text-violet-500 dark:text-violet-400",
+    badgeBg: "bg-violet-50 dark:bg-violet-950/40",
+    badgeText: "text-violet-600 dark:text-violet-400",
+    borderTop: "#8b5cf6",
+    label: "AI Agent",
+  },
+};
+
 // ── Card body (shared with drag overlay) ───────────────────────────────
 
 function CardContent({
@@ -212,30 +233,58 @@ function CardContent({
   isAgentNode: boolean;
 }) {
   const dotColor = statusDotColor[node.status] ?? defaultDotColor;
+  const accent = isAgentNode ? nodeAccent.agent : nodeAccent.human;
+  const budgetLabel = agent?.budgetMonthlyCents
+    ? `$${Math.round(agent.budgetMonthlyCents / 100).toLocaleString()}/mo`
+    : null;
+
   return (
-    <div className="flex items-center px-4 py-3 gap-3">
-      <div className="relative shrink-0">
-        <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
-          {isAgentNode ? (
-            <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
-          ) : (
-            <User className="h-4.5 w-4.5 text-foreground/70" />
-          )}
+    <div className="flex flex-col h-full">
+      {/* Top accent bar */}
+      <div
+        className="h-0.5 w-full rounded-t-2xl shrink-0"
+        style={{ backgroundColor: accent.borderTop }}
+      />
+
+      <div className="flex items-start gap-3 px-3.5 pt-3 pb-2.5 flex-1">
+        {/* Avatar */}
+        <div className="relative shrink-0 mt-0.5">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accent.iconBg}`}>
+            {isAgentNode ? (
+              <AgentIcon icon={agent?.icon} className={`h-5 w-5 ${accent.iconColor}`} />
+            ) : (
+              <User className={`h-5 w-5 ${accent.iconColor}`} />
+            )}
+          </div>
+          <span
+            className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-card shadow-sm"
+            style={{ backgroundColor: dotColor }}
+          />
         </div>
-        <span
-          className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card"
-          style={{ backgroundColor: dotColor }}
-        />
+
+        {/* Text block */}
+        <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+          <span className="text-[13px] font-semibold text-foreground leading-tight truncate">
+            {node.name}
+          </span>
+          <span className="text-[11px] text-muted-foreground leading-snug truncate">
+            {isAgentNode ? (agent?.title ?? roleLabel(node.role)) : node.role}
+          </span>
+        </div>
       </div>
-      <div className="flex flex-col items-start min-w-0 flex-1">
-        <span className="text-sm font-semibold text-foreground leading-tight truncate w-full">
-          {node.name}
+
+      {/* Footer */}
+      <div className="flex items-center gap-1.5 px-3.5 pb-3 flex-wrap">
+        <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ${accent.badgeBg} ${accent.badgeText}`}>
+          {accent.label}
         </span>
-        <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-          {isAgentNode ? agent?.title ?? roleLabel(node.role) : node.role}
-        </span>
+        {budgetLabel && (
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/60 font-mono">
+            {budgetLabel}
+          </span>
+        )}
         {isAgentNode && agent && (
-          <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
+          <span className="ml-auto text-[9px] text-muted-foreground/40 font-mono uppercase tracking-wide">
             {adapterLabels[agent.adapterType] ?? agent.adapterType}
           </span>
         )}
@@ -291,16 +340,16 @@ function OrgCard({
       ref={setRef}
       data-org-card
       className={[
-        "absolute bg-card/95 backdrop-blur border border-border/80 rounded-2xl shadow-sm select-none transition-[box-shadow,border-color,opacity,outline] duration-150",
+        "absolute bg-card border rounded-2xl select-none transition-all duration-150",
         isDragging
-          ? "opacity-25 cursor-grabbing border-border/80"
+          ? "opacity-20 cursor-grabbing shadow-sm"
           : isDropTarget
-            ? "border-primary ring-2 ring-primary/40 shadow-lg cursor-grab"
+            ? "border-primary ring-2 ring-primary/30 shadow-xl cursor-grab"
             : isInvalidTarget
-              ? "border-border/60 opacity-60 cursor-not-allowed"
+              ? "opacity-50 cursor-not-allowed shadow-sm border-border/50"
               : isAgentNode
-                ? "hover:shadow-md hover:border-foreground/20 cursor-grab"
-                : "hover:shadow-md hover:border-foreground/20 cursor-default",
+                ? "shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] hover:-translate-y-0.5 cursor-grab border-border/70 hover:border-border"
+                : "shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] hover:-translate-y-0.5 cursor-default border-border/70 hover:border-border",
       ].join(" ")}
       style={{ left: node.x, top: node.y, width: CARD_W, minHeight: CARD_H }}
       onClick={onNavigate}
@@ -310,41 +359,38 @@ function OrgCard({
       <CardContent node={node} agent={agent} isAgentNode={isAgentNode} />
 
       {hasReports && (
-        <div className="px-4 pb-3 -mt-1">
-          <div className="flex items-center justify-between gap-2">
-            {isExpanded ? (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onToggleExpand(false);
-                }}
-                title="Collapse direct reports"
-                aria-label="Collapse direct reports"
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onToggleExpand(true);
-                }}
-                title="Expand direct reports"
-                aria-label="Expand direct reports"
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-                <span className="tabular-nums">+ {node.directReportCount}</span>
-              </button>
-            )}
-          </div>
+        <div className="px-3.5 pb-2.5 -mt-1.5">
+          {isExpanded ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleExpand(false);
+              }}
+              aria-label="Collapse direct reports"
+            >
+              <ChevronDown className="h-3 w-3" />
+              <span>Collapse</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/80 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleExpand(true);
+              }}
+              aria-label="Expand direct reports"
+            >
+              <ChevronRight className="h-3 w-3" />
+              <span className="tabular-nums">+{node.directReportCount} reports</span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -359,15 +405,33 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
     <div
       ref={setNodeRef}
       className={[
-        "absolute top-2 left-1/2 -translate-x-1/2 z-20",
-        "flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-medium transition-colors duration-150",
+        "absolute top-3 left-1/2 -translate-x-1/2 z-20",
+        "flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-medium transition-all duration-150",
         isOver
-          ? "bg-primary text-primary-foreground border-primary shadow-lg"
-          : "bg-background/90 text-muted-foreground border-border backdrop-blur-sm",
+          ? "bg-primary text-primary-foreground border-primary shadow-lg scale-105"
+          : "bg-background/90 text-muted-foreground border-border/60 backdrop-blur-sm shadow-sm",
       ].join(" ")}
     >
       <span>{isOver ? "Release to make top-level" : "Drop here to remove manager"}</span>
     </div>
+  );
+}
+
+// ── Dot-grid background ─────────────────────────────────────────────────
+
+function DotGrid() {
+  return (
+    <svg
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <pattern id="org-dotgrid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="1" className="fill-foreground/[0.07]" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#org-dotgrid)" />
+    </svg>
   );
 }
 
@@ -514,6 +578,14 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
     }
     return { width: maxX + PADDING, height: maxY + PADDING };
   }, [allNodes]);
+
+  // Stats for header
+  const humanCount = useMemo(() => allNodes.filter((n) => n.nodeType === "human").length, [allNodes]);
+  const agentCount = useMemo(() => allNodes.filter((n) => n.nodeType === "agent").length, [allNodes]);
+  const liveCount = useMemo(
+    () => allNodes.filter((n) => n.status === "running" || n.status === "active").length,
+    [allNodes],
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -670,20 +742,39 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   const activeIsAgent = activeNode ? activeNode.nodeType === "agent" : true;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="mb-2 flex items-center justify-start gap-2 shrink-0">
-        <Link to="/company/import">
-          <Button variant="outline" size="sm">
-            <Upload className="mr-1.5 h-3.5 w-3.5" />
-            Import company
-          </Button>
-        </Link>
-        <Link to="/company/export">
-          <Button variant="outline" size="sm">
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export company
-          </Button>
-        </Link>
+    <div className="flex flex-col h-full gap-2">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <Link to="/company/import">
+            <Button variant="outline" size="sm">
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+              Import
+            </Button>
+          </Link>
+          <Link to="/company/export">
+            <Button variant="outline" size="sm">
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export
+            </Button>
+          </Link>
+        </div>
+
+        {/* Stats pills */}
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 px-2.5 py-1 rounded-full">
+            <User className="h-3 w-3" />
+            {humanCount} {humanCount === 1 ? "Human" : "Humans"}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/50 px-2.5 py-1 rounded-full">
+            <Network className="h-3 w-3" />
+            {agentCount} {agentCount === 1 ? "AI Agent" : "AI Agents"}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 px-2.5 py-1 rounded-full">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            {liveCount} Live
+          </span>
+        </div>
       </div>
 
       <DndContext
@@ -694,7 +785,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
       >
         <div
           ref={containerRef}
-          className="w-full flex-1 min-h-0 overflow-hidden relative bg-muted/20 border border-border rounded-lg"
+          className="w-full flex-1 min-h-0 overflow-hidden relative bg-muted/10 dark:bg-muted/5 border border-border/60 rounded-xl"
           style={{ cursor: isPanning ? "grabbing" : "default" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -702,9 +793,12 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
         >
+          <DotGrid />
+
           {activeId && <RootDropZone isOver={overId === ROOT_DROP_ZONE_ID} />}
 
-          <div className="absolute top-3 left-3 z-10 w-[320px] max-w-[calc(100%-8rem)]">
+          {/* Search */}
+          <div className="absolute top-3 left-3 z-10 w-[280px] max-w-[calc(100%-8rem)]">
             <div className="relative">
               <input
                 value={search}
@@ -717,10 +811,10 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
                   window.setTimeout(() => setSearchOpen(false), 150);
                 }}
                 placeholder="Search agents…"
-                className="w-full h-9 px-3 rounded-md bg-background border border-border text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
+                className="w-full h-8 pl-3 pr-3 rounded-lg bg-background/90 backdrop-blur border border-border/60 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
               />
               {searchOpen && searchResults.length > 0 && (
-                <div className="absolute mt-2 w-full rounded-md border border-border bg-background shadow-lg overflow-hidden z-20">
+                <div className="absolute mt-1.5 w-full rounded-lg border border-border bg-background shadow-lg overflow-hidden z-20">
                   {searchResults.map((a) => (
                     <button
                       key={a.id}
@@ -748,10 +842,11 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
             </div>
           </div>
 
-          <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
+          {/* Zoom controls */}
+          <div className="absolute top-3 right-3 z-10 flex flex-col gap-1 bg-background/90 backdrop-blur border border-border/60 rounded-xl p-1 shadow-sm">
             <button
               type="button"
-              className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               onClick={() => {
                 const newZoom = Math.min(zoom * 1.2, 2);
                 const container = containerRef.current;
@@ -765,11 +860,11 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
               }}
               aria-label="Zoom in"
             >
-              +
+              <Plus className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
-              className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               onClick={() => {
                 const newZoom = Math.max(zoom * 0.8, 0.2);
                 const container = containerRef.current;
@@ -783,11 +878,12 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
               }}
               aria-label="Zoom out"
             >
-              &minus;
+              <Minus className="h-3.5 w-3.5" />
             </button>
+            <div className="h-px bg-border/60 mx-1" />
             <button
               type="button"
-              className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-[10px] hover:bg-accent transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               onClick={() => {
                 if (!containerRef.current) return;
                 const cW = containerRef.current.clientWidth;
@@ -802,18 +898,27 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
               title="Fit to screen"
               aria-label="Fit chart to screen"
             >
-              Fit
+              <Maximize2 className="h-3 w-3" />
             </button>
+            <div className="text-[9px] text-muted-foreground/50 text-center tabular-nums pb-0.5">
+              {Math.round(zoom * 100)}%
+            </div>
           </div>
 
+          {/* Connector lines */}
           <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
+            <defs>
+              <marker id="org-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" className="fill-foreground/20" />
+              </marker>
+            </defs>
             <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
               {edges.map(({ parent, child }) => {
                 const x1 = parent.x + CARD_W / 2;
                 const y1 = parent.y + CARD_H;
                 const x2 = child.x + CARD_W / 2;
                 const y2 = child.y;
-                const dy = Math.max(40, Math.min(140, (y2 - y1) / 2));
+                const dy = Math.max(48, Math.min(120, (y2 - y1) * 0.45));
 
                 return (
                   <path
@@ -821,10 +926,9 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
                     d={`M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`}
                     fill="none"
                     stroke="currentColor"
-                    className="text-foreground/45"
-                    strokeWidth={1.6}
+                    className="text-foreground/20 dark:text-foreground/15"
+                    strokeWidth={1.5}
                     strokeLinecap="round"
-                    strokeDasharray="2 10"
                     vectorEffect="non-scaling-stroke"
                   />
                 );
@@ -832,6 +936,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
             </g>
           </svg>
 
+          {/* Cards layer */}
           <div
             className="absolute inset-0"
             style={{
@@ -869,7 +974,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
         <DragOverlay dropAnimation={null}>
           {activeNode ? (
             <div
-              className="bg-card/95 backdrop-blur border border-primary rounded-2xl shadow-2xl opacity-90 pointer-events-none"
+              className="bg-card border border-primary rounded-2xl shadow-2xl opacity-95 pointer-events-none"
               style={{ width: CARD_W, minHeight: CARD_H }}
             >
               <CardContent node={activeNode} agent={activeAgent} isAgentNode={activeIsAgent} />
