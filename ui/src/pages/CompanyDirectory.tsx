@@ -15,8 +15,10 @@ import { ApiError } from "../api/client";
 import { isPermissionDeniedError } from "../lib/permission-feedback";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger
@@ -173,6 +175,8 @@ export function CompanyDirectory() {
   const [newAgentRole, setNewAgentRole] = useState("");
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
   const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
@@ -1205,11 +1209,7 @@ export function CompanyDirectory() {
                           }
                           onClick={() => {
                             if (!selectedHumanMember) return;
-                            const confirmed = window.confirm(
-                              `Deactivate ${memberDisplayName(selectedHumanMember)}? They will lose active access to this company.`
-                            );
-                            if (!confirmed) return;
-                            deactivateHumanMutation.mutate(selectedHumanMember.id);
+                            setDeactivateDialogOpen(true);
                           }}
                         >
                           {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
@@ -1227,11 +1227,7 @@ export function CompanyDirectory() {
                         }
                         onClick={() => {
                           if (!selectedHumanMember) return;
-                          const confirmed = window.confirm(
-                            `Delete ${memberDisplayName(selectedHumanMember)} from this company? This action cannot be undone from the UI.`
-                          );
-                          if (!confirmed) return;
-                          removeHumanMutation.mutate(selectedHumanMember.id);
+                          setDeleteDialogOpen(true);
                         }}
                       >
                         {removeHumanMutation.isPending ? "Deleting…" : "Delete"}
@@ -1383,6 +1379,86 @@ export function CompanyDirectory() {
           </>
         ) : null}
       </Tabs>
+
+      {/* Deactivate confirmation dialog */}
+      <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+              </span>
+              Deactivate user
+            </DialogTitle>
+            <DialogDescription className="pt-1 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This user"}
+              </span>{" "}
+              will lose active access to this company. You can reactivate them at any time.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex gap-2 justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              className="bg-amber-500 hover:bg-amber-600 text-white border-0"
+              disabled={deactivateHumanMutation.isPending}
+              onClick={() => {
+                if (!selectedHumanMember) return;
+                deactivateHumanMutation.mutate(selectedHumanMember.id, {
+                  onSuccess: () => setDeactivateDialogOpen(false),
+                });
+              }}
+            >
+              {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                </svg>
+              </span>
+              Remove user
+            </DialogTitle>
+            <DialogDescription className="pt-1 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This user"}
+              </span>{" "}
+              will be removed from this company. This action cannot be undone from the UI.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex gap-2 justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={removeHumanMutation.isPending}
+              onClick={() => {
+                if (!selectedHumanMember) return;
+                removeHumanMutation.mutate(selectedHumanMember.id, {
+                  onSuccess: () => setDeleteDialogOpen(false),
+                });
+              }}
+            >
+              {removeHumanMutation.isPending ? "Removing…" : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
