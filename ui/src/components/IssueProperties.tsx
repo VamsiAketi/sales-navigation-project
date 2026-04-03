@@ -8,6 +8,7 @@ import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { instanceSettingsApi } from "../api/instanceSettings";
+import { goalsApi } from "../api/goals";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
@@ -25,7 +26,7 @@ import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X } from "lucide-react";
+import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X, Target, AlertTriangle } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
 const EXECUTION_WORKSPACE_OPTIONS = [
@@ -342,6 +343,15 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     queryFn: () => issuesApi.listLabels(companyId!),
     enabled: !!companyId,
   });
+
+  const { data: goals } = useQuery({
+    queryKey: queryKeys.goals.list(companyId!),
+    queryFn: () => goalsApi.list(companyId!),
+    enabled: !!companyId,
+  });
+
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [goalSearch, setGoalSearch] = useState("");
 
   const createLabel = useMutation({
     mutationFn: (data: { name: string; color: string }) => issuesApi.createLabel(companyId!, data),
@@ -918,6 +928,84 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         >
           {projectContent}
         </PropertyPicker>
+
+        {(goals ?? []).length > 0 && (
+          <>
+            {!issue.goalId && (
+              <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 dark:border-amber-500/30 dark:bg-amber-950/40 mb-1">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span className="text-xs text-amber-800 dark:text-amber-200">No goal linked. Assign one below.</span>
+              </div>
+            )}
+            <PropertyPicker
+              inline={inline}
+              label="Goal"
+              open={goalOpen}
+              onOpenChange={(open) => { setGoalOpen(open); if (!open) setGoalSearch(""); }}
+              triggerContent={
+                issue.goalId
+                  ? (() => {
+                      const goal = (goals ?? []).find((g) => g.id === issue.goalId);
+                      return (
+                        <>
+                          <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="text-sm truncate">{goal?.title ?? issue.goalId.slice(0, 8)}</span>
+                        </>
+                      );
+                    })()
+                  : (
+                    <>
+                      <Target className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="text-sm text-amber-600 dark:text-amber-400">No goal</span>
+                    </>
+                  )
+              }
+              extra={issue.goalId ? (
+                <Link
+                  to="/goals"
+                  className="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              ) : undefined}
+              popoverClassName="w-64"
+            >
+              <input
+                className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
+                placeholder="Search goals..."
+                value={goalSearch}
+                onChange={(e) => setGoalSearch(e.target.value)}
+                autoFocus={!inline}
+              />
+              <div className="max-h-48 overflow-y-auto overscroll-contain space-y-0.5">
+                {(goals ?? [])
+                  .filter((g) => g.status !== "cancelled")
+                  .filter((g) => !goalSearch.trim() || g.title.toLowerCase().includes(goalSearch.toLowerCase()))
+                  .map((g) => (
+                    <button
+                      key={g.id}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                        issue.goalId === g.id && "bg-accent",
+                      )}
+                      onClick={async () => {
+                        await onUpdate({ goalId: g.id });
+                        setGoalOpen(false);
+                      }}
+                    >
+                      <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="truncate flex-1 text-left">{g.title}</span>
+                      {g.status !== "active" && (
+                        <span className="text-[10px] text-muted-foreground capitalize shrink-0">{g.status}</span>
+                      )}
+                      {issue.goalId === g.id && <Check className="h-3 w-3 shrink-0" />}
+                    </button>
+                  ))}
+              </div>
+            </PropertyPicker>
+          </>
+        )}
 
         {currentProjectSupportsExecutionWorkspace && (
           <PropertyRow label="Workspace">
