@@ -55,6 +55,8 @@ export interface ProjectIssueStatus {
   color: string;
   position: number;
   isActive: boolean;
+  isHumanApproval: boolean;
+  approverUserIds: string[];
   createdAt: Date;
   updatedAt: Date;
 }

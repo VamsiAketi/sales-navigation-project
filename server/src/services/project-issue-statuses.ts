@@ -16,6 +16,8 @@ function toProjectIssueStatus(row: StatusRow): ProjectIssueStatus {
     color: row.color,
     position: row.position,
     isActive: row.isActive,
+    isHumanApproval: row.isHumanApproval,
+    approverUserIds: (row.approverUserIds as string[]) ?? [],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -42,7 +44,7 @@ export function projectIssueStatusService(db: Db) {
   async function create(
     projectId: string,
     companyId: string,
-    data: { name: string; value: string; color: string; position?: number },
+    data: { name: string; value: string; color: string; position?: number; isHumanApproval?: boolean; approverUserIds?: string[] },
   ): Promise<ProjectIssueStatus> {
     // Resolve position: use provided or max+1
     let position = data.position;
@@ -57,7 +59,7 @@ export function projectIssueStatusService(db: Db) {
     try {
       const [row] = await db
         .insert(projectIssueStatuses)
-        .values({ projectId, companyId, name: data.name, value: data.value, color: data.color, position })
+        .values({ projectId, companyId, name: data.name, value: data.value, color: data.color, position, isHumanApproval: data.isHumanApproval ?? false, approverUserIds: data.approverUserIds ?? [] })
         .returning();
       return toProjectIssueStatus(row!);
     } catch (err: unknown) {
@@ -72,7 +74,7 @@ export function projectIssueStatusService(db: Db) {
   async function update(
     id: string,
     projectId: string,
-    data: { name?: string; color?: string; position?: number; isActive?: boolean },
+    data: { name?: string; color?: string; position?: number; isActive?: boolean; isHumanApproval?: boolean; approverUserIds?: string[] },
   ): Promise<ProjectIssueStatus> {
     const existing = await getById(id);
     if (!existing || existing.projectId !== projectId) throw notFound("Status not found");
@@ -82,6 +84,8 @@ export function projectIssueStatusService(db: Db) {
     if (data.color !== undefined) patch.color = data.color;
     if (data.position !== undefined) patch.position = data.position;
     if (data.isActive !== undefined) patch.isActive = data.isActive;
+    if (data.isHumanApproval !== undefined) patch.isHumanApproval = data.isHumanApproval;
+    if (data.approverUserIds !== undefined) patch.approverUserIds = data.approverUserIds;
 
     const [row] = await db
       .update(projectIssueStatuses)

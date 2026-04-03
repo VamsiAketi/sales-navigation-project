@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, authUsers, companyMemberships, issues, projects, userNotificationPreferences } from "@paperclipai/db";
+import { agents, authUsers, companyMemberships, issues, projectIssueStatuses, projects, userNotificationPreferences } from "@paperclipai/db";
 import {
   projectNotificationConfigSchema,
   userNotificationPreferencesSchema,
@@ -282,6 +282,121 @@ export function issueNotificationService(db: Db) {
           logger.warn(
             { issueId: issue.id, projectId: project.id, recipientUserId: recipient.id, message: delivery.message },
             "Failed to send issue notification email",
+          );
+        }
+      }
+    },
+
+    notifyHumanApprovalRequired: async (input: {
+      issueId: string;
+      newStatusValue: string;
+      actorType: "agent" | "user" | "system";
+      actorId: string | null;
+      payload: {
+        issueIdentifier: string | null;
+        issueTitle: string;
+        actorLabel?: string | null;
+      };
+    }) => {
+      const issue = await db
+        .select({ id: issues.id, companyId: issues.companyId, projectId: issues.projectId })
+        .from(issues)
+        .where(eq(issues.id, input.issueId))
+        .then((rows) => rows[0] ?? null);
+      if (!issue?.projectId) return;
+
+      // Only proceed if the destination status is a human approval step with defined approvers
+      const approvalStatus = await db
+        .select({ id: projectIssueStatuses.id, name: projectIssueStatuses.name, approverUserIds: projectIssueStatuses.approverUserIds })
+        .from(projectIssueStatuses)
+        .where(
+          and(
+            eq(projectIssueStatuses.projectId, issue.projectId),
+            eq(projectIssueStatuses.value, input.newStatusValue),
+            eq(projectIssueStatuses.isHumanApproval, true),
+          ),
+        )
+        .then((rows) => rows[0] ?? null);
+      if (!approvalStatus) return;
+
+      const approverIds = (approvalStatus.approverUserIds as string[]) ?? [];
+      if (approverIds.length === 0) return;
+
+      const project = await db
+        .select({ id: projects.id, name: projects.name, notificationConfig: projects.notificationConfig })
+        .from(projects)
+        .where(and(eq(projects.id, issue.projectId), eq(projects.companyId, issue.companyId)))
+        .then((rows) => rows[0] ?? null);
+      if (!project) return;
+
+      const config = mergeNotificationConfig(project.notificationConfig);
+      if (config.enabled === false) return;
+
+      // Notify only the designated approvers for this step
+      const members = await db
+        .select({ id: authUsers.id, name: authUsers.name, email: authUsers.email })
+        .from(authUsers)
+        .innerJoin(
+          companyMemberships,
+          and(
+            eq(companyMemberships.principalType, "user"),
+            eq(companyMemberships.principalId, authUsers.id),
+            eq(companyMemberships.companyId, issue.companyId),
+            eq(companyMemberships.status, "active"),
+          ),
+        )
+        .where(and(isNotNull(authUsers.email), inArray(authUsers.id, approverIds)));
+
+      const issueRef = input.payload.issueIdentifier ?? input.payload.issueTitle;
+      const title = `[${project.name}] Human Approval Required: ${issueRef}`;
+
+      for (const member of members) {
+        if (input.actorType === "user" && input.actorId && member.id === input.actorId) continue;
+
+        const textBody = [
+          `Hello ${member.name},`,
+          "",
+          `Human approval is required for issue ${issueRef} (${input.payload.issueTitle}).`,
+          "",
+          `The issue has entered the "${approvalStatus.name}" step and is awaiting your review.`,
+          "",
+          "Please log in to review and take action.",
+          "",
+          "This email was sent by your project notification settings.",
+        ].join("\n");
+
+        const createdNotification = await notifications.create({
+          userId: member.id,
+          companyId: issue.companyId,
+          projectId: issue.projectId,
+          issueId: issue.id,
+          eventType: "issue.status_changed",
+          title,
+          message: `Human approval required: issue moved to "${approvalStatus.name}".`,
+          channel: "in_app",
+          emailDeliveryStatus: "queued",
+          payload: {
+            issueIdentifier: input.payload.issueIdentifier,
+            issueTitle: input.payload.issueTitle,
+            oldStatus: null,
+            newStatus: input.newStatusValue,
+            commentSnippet: null,
+            assignedUserId: null,
+            actorLabel: input.payload.actorLabel ?? null,
+            assignedUserName: null,
+          },
+        });
+
+        const delivery = await sendSystemEmail({
+          toEmail: member.email,
+          subject: `[AI-Harness] ${title}`,
+          textBody,
+        });
+        await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
+        if (delivery.status === "failed") {
+          logger.warn(
+            { issueId: issue.id, projectId: project.id, recipientUserId: member.id, message: delivery.message },
+            "Failed to send human approval notification email",
           );
         }
       }
