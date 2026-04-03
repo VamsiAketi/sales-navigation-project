@@ -1,19 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Purple rounded square background -->
-  <rect width="512" height="512" rx="110" fill="#7c3aed"/>
-  <!-- White 4-pointed star / diamond shape matching the AI Harness logo -->
-  <!-- The shape is two overlapping triangles forming a 4-point star with concave sides -->
-  <!-- Top point, Right point, Bottom point, Left point with inward curved sides -->
+  <rect width="512" height="512" rx="108" fill="#8133e0"/>
   <path fill="white" d="
-    M 256 60
-    C 256 60 280 180 340 220
-    C 400 260 450 256 450 256
-    C 450 256 400 252 340 292
-    C 280 332 256 452 256 452
-    C 256 452 232 332 172 292
-    C 112 252 62 256 62 256
-    C 62 256 112 260 172 220
-    C 232 180 256 60 256 60
+    M 256 458
+    C 218 355 162 318  52 256
+    C 162 194 178 128 132  72
+    C 185 120 225 196 256 215
+    C 287 196 327 120 380  72
+    C 334 128 350 194 460 256
+    C 350 318 294 355 256 458
     Z
   "/>
 </svg>
