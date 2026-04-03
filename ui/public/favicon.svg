@@ -1,9 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <style>
-    path { stroke: #18181b; }
-    @media (prefers-color-scheme: dark) {
-      path { stroke: #e4e4e7; }
-    }
-  </style>
-  <path stroke-width="2" d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Purple rounded square background -->
+  <rect width="512" height="512" rx="110" fill="#7c3aed"/>
+  <!-- White 4-pointed star / diamond shape matching the AI Harness logo -->
+  <!-- The shape is two overlapping triangles forming a 4-point star with concave sides -->
+  <!-- Top point, Right point, Bottom point, Left point with inward curved sides -->
+  <path fill="white" d="
+    M 256 60
+    C 256 60 280 180 340 220
+    C 400 260 450 256 450 256
+    C 450 256 400 252 340 292
+    C 280 332 256 452 256 452
+    C 256 452 232 332 172 292
+    C 112 252 62 256 62 256
+    C 62 256 112 260 172 220
+    C 232 180 256 60 256 60
+    Z
+  "/>
 </svg>
