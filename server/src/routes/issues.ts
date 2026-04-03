@@ -998,6 +998,17 @@ export function issueRoutes(db: Db, storage: StorageService) {
           newStatus: issue.status,
         },
       });
+      void issueNotifications.notifyHumanApprovalRequired({
+        issueId: issue.id,
+        newStatusValue: issue.status,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        payload: {
+          issueIdentifier: issue.identifier,
+          issueTitle: issue.title,
+          actorLabel: actorDisplayName,
+        },
+      });
     }
 
     let comment = null;

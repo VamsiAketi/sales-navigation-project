@@ -8,6 +8,8 @@ export const createProjectIssueStatusSchema = z.object({
   value: statusValueSchema,
   color: hexColorSchema,
   position: z.number().int().nonnegative().optional(),
+  isHumanApproval: z.boolean().optional(),
+  approverUserIds: z.array(z.string().uuid()).optional(),
 });
 
 export type CreateProjectIssueStatus = z.infer<typeof createProjectIssueStatusSchema>;
@@ -17,6 +19,8 @@ export const updateProjectIssueStatusSchema = z.object({
   color: hexColorSchema.optional(),
   position: z.number().int().nonnegative().optional(),
   isActive: z.boolean().optional(),
+  isHumanApproval: z.boolean().optional(),
+  approverUserIds: z.array(z.string().uuid()).optional(),
 });
 
 export type UpdateProjectIssueStatus = z.infer<typeof updateProjectIssueStatusSchema>;

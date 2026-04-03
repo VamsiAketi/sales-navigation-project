@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, boolean, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { projects } from "./projects.js";
 
@@ -13,6 +13,8 @@ export const projectIssueStatuses = pgTable(
     color: text("color").notNull(),
     position: integer("position").notNull().default(0),
     isActive: boolean("is_active").notNull().default(true),
+    isHumanApproval: boolean("is_human_approval").notNull().default(false),
+    approverUserIds: jsonb("approver_user_ids").$type<string[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
