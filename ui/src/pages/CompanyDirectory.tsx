@@ -215,10 +215,13 @@ export function CompanyDirectory() {
     writeCompanyRolePrefs(selectedCompanyId, { human: customHumanRoles, agent: customAgentRoles });
   }, [selectedCompanyId, customHumanRoles, customAgentRoles]);
 
+  // Include both active + suspended users in the panel; only exclude deleted
   const activeHumanMembers = useMemo(
     () =>
       (companyMembers ?? []).filter(
-        (member: CompanyMember) => member.principalType === "user" && member.status === "active"
+        (member: CompanyMember) =>
+          member.principalType === "user" &&
+          (member.status === "active" || member.status === "suspended")
       ),
     [companyMembers]
   );
@@ -253,7 +256,10 @@ export function CompanyDirectory() {
   }, [activeAgentMembers, search]);
 
   const selectedHumanMember =
-    activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ?? activeHumanMembers[0] ?? null;
+    activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ??
+    activeHumanMembers.find((m) => m.status === "active") ??
+    activeHumanMembers[0] ??
+    null;
   const selectedAgentMember =
     activeAgentMembers.find((m) => m.id === selectedAgentMemberId) ?? activeAgentMembers[0] ?? null;
 
@@ -403,12 +409,21 @@ export function CompanyDirectory() {
   const deactivateHumanMutation = useMutation({
     mutationFn: (memberId: string) =>
       accessApi.updateMemberStatus(selectedCompanyId!, memberId, "suspended"),
-    onSuccess: invalidateMembers
+    onSuccess: invalidateMembers,
+  });
+
+  const reactivateHumanMutation = useMutation({
+    mutationFn: (memberId: string) =>
+      accessApi.updateMemberStatus(selectedCompanyId!, memberId, "active"),
+    onSuccess: invalidateMembers,
   });
 
   const removeHumanMutation = useMutation({
     mutationFn: (memberId: string) => accessApi.removeMember(selectedCompanyId!, memberId),
-    onSuccess: invalidateMembers
+    onSuccess: () => {
+      setSelectedHumanMemberId(null);
+      invalidateMembers();
+    },
   });
   const humanPermissionMutation = useMutation({
     mutationFn: (input: { memberId: string; grants: Array<{ permissionKey: PermissionKey; scope: Record<string, unknown> | null }> }) =>
@@ -979,6 +994,7 @@ export function CompanyDirectory() {
                 )}
                 {filteredHumanMembers.map((member) => {
                   const selected = selectedHumanMember?.id === member.id;
+                  const isSuspended = member.status === "suspended";
                   return (
                     <button
                       key={member.id}
@@ -986,11 +1002,18 @@ export function CompanyDirectory() {
                       onClick={() => setSelectedHumanMemberId(member.id)}
                       className={`w-full rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 ${
                         selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                      }`}
+                      } ${isSuspended ? "opacity-60" : ""}`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{memberDisplayName(member)}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-medium">{memberDisplayName(member)}</span>
+                            {isSuspended && (
+                              <span className="shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400 border border-orange-200 dark:border-orange-800">
+                                Deactivated
+                              </span>
+                            )}
+                          </div>
                           <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
                         </div>
                         <SaveStatusPill state={getMemberSaveState(member.id)} />
@@ -1009,7 +1032,14 @@ export function CompanyDirectory() {
                 <>
                   <div className="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-foreground">{memberDisplayName(selectedHumanMember)}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-foreground">{memberDisplayName(selectedHumanMember)}</span>
+                        {selectedHumanMember.status === "suspended" && (
+                          <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400 border border-orange-200 dark:border-orange-800">
+                            Deactivated
+                          </span>
+                        )}
+                      </div>
                       <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(selectedHumanMember)}</div>
                     </div>
                     <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
@@ -1146,26 +1176,45 @@ export function CompanyDirectory() {
                       >
                         Save now
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                          !selectedHumanMember ||
-                          !selectedCompanyId ||
-                          deactivateHumanMutation.isPending ||
-                          removeHumanMutation.isPending
-                        }
-                        onClick={() => {
-                          if (!selectedHumanMember) return;
-                          const confirmed = window.confirm(
-                            `Deactivate ${memberDisplayName(selectedHumanMember)}? They will lose active access to this company.`
-                          );
-                          if (!confirmed) return;
-                          deactivateHumanMutation.mutate(selectedHumanMember.id);
-                        }}
-                      >
-                        Deactivate
-                      </Button>
+                      {selectedHumanMember?.status === "suspended" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            !selectedHumanMember ||
+                            !selectedCompanyId ||
+                            reactivateHumanMutation.isPending ||
+                            removeHumanMutation.isPending
+                          }
+                          onClick={() => {
+                            if (!selectedHumanMember) return;
+                            reactivateHumanMutation.mutate(selectedHumanMember.id);
+                          }}
+                        >
+                          {reactivateHumanMutation.isPending ? "Reactivating…" : "Reactivate"}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            !selectedHumanMember ||
+                            !selectedCompanyId ||
+                            deactivateHumanMutation.isPending ||
+                            removeHumanMutation.isPending
+                          }
+                          onClick={() => {
+                            if (!selectedHumanMember) return;
+                            const confirmed = window.confirm(
+                              `Deactivate ${memberDisplayName(selectedHumanMember)}? They will lose active access to this company.`
+                            );
+                            if (!confirmed) return;
+                            deactivateHumanMutation.mutate(selectedHumanMember.id);
+                          }}
+                        >
+                          {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="destructive"
@@ -1173,18 +1222,19 @@ export function CompanyDirectory() {
                           !selectedHumanMember ||
                           !selectedCompanyId ||
                           deactivateHumanMutation.isPending ||
+                          reactivateHumanMutation.isPending ||
                           removeHumanMutation.isPending
                         }
                         onClick={() => {
                           if (!selectedHumanMember) return;
                           const confirmed = window.confirm(
-                            `Remove ${memberDisplayName(selectedHumanMember)} from this company? This removes their membership from Teams.`
+                            `Delete ${memberDisplayName(selectedHumanMember)} from this company? This action cannot be undone from the UI.`
                           );
                           if (!confirmed) return;
                           removeHumanMutation.mutate(selectedHumanMember.id);
                         }}
                       >
-                        Remove
+                        {removeHumanMutation.isPending ? "Deleting…" : "Delete"}
                       </Button>
                     </div>
                   </div>
