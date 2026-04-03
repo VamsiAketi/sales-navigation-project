@@ -17,8 +17,10 @@ import { ApiError } from "../api/client";
 import { isPermissionDeniedError } from "../lib/permission-feedback";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger
@@ -184,6 +186,8 @@ export function CompanyDirectory() {
   const [newAgentRole, setNewAgentRole] = useState("");
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
   const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
@@ -226,10 +230,13 @@ export function CompanyDirectory() {
     writeCompanyRolePrefs(selectedCompanyId, { human: customHumanRoles, agent: customAgentRoles });
   }, [selectedCompanyId, customHumanRoles, customAgentRoles]);
 
+  // Include both active + suspended users in the panel; only exclude deleted
   const activeHumanMembers = useMemo(
     () =>
       (companyMembers ?? []).filter(
-        (member: CompanyMember) => member.principalType === "user" && member.status === "active"
+        (member: CompanyMember) =>
+          member.principalType === "user" &&
+          (member.status === "active" || member.status === "suspended")
       ),
     [companyMembers]
   );
@@ -264,7 +271,10 @@ export function CompanyDirectory() {
   }, [activeAgentMembers, search]);
 
   const selectedHumanMember =
-    activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ?? activeHumanMembers[0] ?? null;
+    activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ??
+    activeHumanMembers.find((m) => m.status === "active") ??
+    activeHumanMembers[0] ??
+    null;
   const selectedAgentMember =
     activeAgentMembers.find((m) => m.id === selectedAgentMemberId) ?? activeAgentMembers[0] ?? null;
 
@@ -414,12 +424,21 @@ export function CompanyDirectory() {
   const deactivateHumanMutation = useMutation({
     mutationFn: (memberId: string) =>
       accessApi.updateMemberStatus(selectedCompanyId!, memberId, "suspended"),
-    onSuccess: invalidateMembers
+    onSuccess: invalidateMembers,
+  });
+
+  const reactivateHumanMutation = useMutation({
+    mutationFn: (memberId: string) =>
+      accessApi.updateMemberStatus(selectedCompanyId!, memberId, "active"),
+    onSuccess: invalidateMembers,
   });
 
   const removeHumanMutation = useMutation({
     mutationFn: (memberId: string) => accessApi.removeMember(selectedCompanyId!, memberId),
-    onSuccess: invalidateMembers
+    onSuccess: () => {
+      setSelectedHumanMemberId(null);
+      invalidateMembers();
+    },
   });
   const humanPermissionMutation = useMutation({
     mutationFn: (input: { memberId: string; grants: Array<{ permissionKey: PermissionKey; scope: Record<string, unknown> | null }> }) =>
@@ -996,6 +1015,7 @@ export function CompanyDirectory() {
                 )}
                 {filteredHumanMembers.map((member) => {
                   const selected = selectedHumanMember?.id === member.id;
+                  const isSuspended = member.status === "suspended";
                   return (
                     <button
                       key={member.id}
@@ -1003,11 +1023,18 @@ export function CompanyDirectory() {
                       onClick={() => setSelectedHumanMemberId(member.id)}
                       className={`w-full rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 ${
                         selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                      }`}
+                      } ${isSuspended ? "opacity-60" : ""}`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{memberDisplayName(member)}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-medium">{memberDisplayName(member)}</span>
+                            {isSuspended && (
+                              <span className="shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400 border border-orange-200 dark:border-orange-800">
+                                Deactivated
+                              </span>
+                            )}
+                          </div>
                           <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
                         </div>
                         <SaveStatusPill state={getMemberSaveState(member.id)} />
@@ -1026,7 +1053,14 @@ export function CompanyDirectory() {
                 <>
                   <div className="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-foreground">{memberDisplayName(selectedHumanMember)}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-foreground">{memberDisplayName(selectedHumanMember)}</span>
+                        {selectedHumanMember.status === "suspended" && (
+                          <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400 border border-orange-200 dark:border-orange-800">
+                            Deactivated
+                          </span>
+                        )}
+                      </div>
                       <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(selectedHumanMember)}</div>
                     </div>
                     <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
@@ -1163,26 +1197,41 @@ export function CompanyDirectory() {
                       >
                         Save now
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                          !selectedHumanMember ||
-                          !selectedCompanyId ||
-                          deactivateHumanMutation.isPending ||
-                          removeHumanMutation.isPending
-                        }
-                        onClick={() => {
-                          if (!selectedHumanMember) return;
-                          const confirmed = window.confirm(
-                            `Deactivate ${memberDisplayName(selectedHumanMember)}? They will lose active access to this company.`
-                          );
-                          if (!confirmed) return;
-                          deactivateHumanMutation.mutate(selectedHumanMember.id);
-                        }}
-                      >
-                        Deactivate
-                      </Button>
+                      {selectedHumanMember?.status === "suspended" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            !selectedHumanMember ||
+                            !selectedCompanyId ||
+                            reactivateHumanMutation.isPending ||
+                            removeHumanMutation.isPending
+                          }
+                          onClick={() => {
+                            if (!selectedHumanMember) return;
+                            reactivateHumanMutation.mutate(selectedHumanMember.id);
+                          }}
+                        >
+                          {reactivateHumanMutation.isPending ? "Reactivating…" : "Reactivate"}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            !selectedHumanMember ||
+                            !selectedCompanyId ||
+                            deactivateHumanMutation.isPending ||
+                            removeHumanMutation.isPending
+                          }
+                          onClick={() => {
+                            if (!selectedHumanMember) return;
+                            setDeactivateDialogOpen(true);
+                          }}
+                        >
+                          {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="destructive"
@@ -1190,18 +1239,15 @@ export function CompanyDirectory() {
                           !selectedHumanMember ||
                           !selectedCompanyId ||
                           deactivateHumanMutation.isPending ||
+                          reactivateHumanMutation.isPending ||
                           removeHumanMutation.isPending
                         }
                         onClick={() => {
                           if (!selectedHumanMember) return;
-                          const confirmed = window.confirm(
-                            `Remove ${memberDisplayName(selectedHumanMember)} from this company? This removes their membership from Teams.`
-                          );
-                          if (!confirmed) return;
-                          removeHumanMutation.mutate(selectedHumanMember.id);
+                          setDeleteDialogOpen(true);
                         }}
                       >
-                        Remove
+                        {removeHumanMutation.isPending ? "Deleting…" : "Delete"}
                       </Button>
                     </div>
                   </div>
@@ -1350,6 +1396,86 @@ export function CompanyDirectory() {
           </>
         ) : null}
       </Tabs>
+
+      {/* Deactivate confirmation dialog */}
+      <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+              </span>
+              Deactivate user
+            </DialogTitle>
+            <DialogDescription className="pt-1 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This user"}
+              </span>{" "}
+              will lose active access to this company. You can reactivate them at any time.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex gap-2 justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              className="bg-amber-500 hover:bg-amber-600 text-white border-0"
+              disabled={deactivateHumanMutation.isPending}
+              onClick={() => {
+                if (!selectedHumanMember) return;
+                deactivateHumanMutation.mutate(selectedHumanMember.id, {
+                  onSuccess: () => setDeactivateDialogOpen(false),
+                });
+              }}
+            >
+              {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                </svg>
+              </span>
+              Remove user
+            </DialogTitle>
+            <DialogDescription className="pt-1 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This user"}
+              </span>{" "}
+              will be removed from this company. This action cannot be undone from the UI.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex gap-2 justify-end">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={removeHumanMutation.isPending}
+              onClick={() => {
+                if (!selectedHumanMember) return;
+                removeHumanMutation.mutate(selectedHumanMember.id, {
+                  onSuccess: () => setDeleteDialogOpen(false),
+                });
+              }}
+            >
+              {removeHumanMutation.isPending ? "Removing…" : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

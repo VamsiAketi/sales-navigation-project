@@ -194,9 +194,11 @@ const TimelineList = memo(function TimelineList({
                 <span className="flex items-center gap-1.5">
                   <Identity
                     name={
-                      comment.authorUserId
-                        ? (userMap?.get(comment.authorUserId) ?? comment.authorUserId.slice(0, 8))
-                        : "You"
+                      // Prefer server-resolved authorName (avoids needing userMap / member permissions)
+                      comment.authorName
+                        ?? (comment.authorUserId
+                          ? (userMap?.get(comment.authorUserId) ?? comment.authorUserId.slice(0, 8))
+                          : "Unknown user")
                     }
                     size="sm"
                   />

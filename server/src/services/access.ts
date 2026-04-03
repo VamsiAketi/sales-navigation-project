@@ -79,8 +79,50 @@ export function accessService(db: Db) {
     return db
       .select()
       .from(companyMemberships)
-      .where(eq(companyMemberships.companyId, companyId))
+      .where(
+        and(
+          eq(companyMemberships.companyId, companyId),
+          // "deleted" is the soft-delete sentinel — never expose to callers
+          sql`${companyMemberships.status} != 'deleted'`,
+        ),
+      )
       .orderBy(sql`${companyMemberships.createdAt} desc`);
+  }
+
+  async function updateMemberStatus(
+    companyId: string,
+    memberId: string,
+    status: "active" | "suspended",
+  ): Promise<MembershipRow | null> {
+    const rows = await db
+      .update(companyMemberships)
+      .set({ status, updatedAt: new Date() })
+      .where(
+        and(
+          eq(companyMemberships.id, memberId),
+          eq(companyMemberships.companyId, companyId),
+          sql`${companyMemberships.status} != 'deleted'`,
+        ),
+      )
+      .returning();
+    return rows[0] ?? null;
+  }
+
+  async function softDeleteMember(
+    companyId: string,
+    memberId: string,
+  ): Promise<MembershipRow | null> {
+    const rows = await db
+      .update(companyMemberships)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(
+        and(
+          eq(companyMemberships.id, memberId),
+          eq(companyMemberships.companyId, companyId),
+        ),
+      )
+      .returning();
+    return rows[0] ?? null;
   }
 
   async function listActiveUserMemberships(companyId: string) {
@@ -369,6 +411,8 @@ export function accessService(db: Db) {
     listActiveUserMemberships,
     copyActiveUserMemberships,
     setMemberPermissions,
+    updateMemberStatus,
+    softDeleteMember,
     promoteInstanceAdmin,
     demoteInstanceAdmin,
     listUserCompanyAccess,

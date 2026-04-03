@@ -3320,6 +3320,40 @@ export function accessRoutes(
     }
   );
 
+  /* ── Member status (deactivate / reactivate) ──────────────────────────────── */
+  router.patch(
+    "/companies/:companyId/members/:memberId/status",
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const memberId  = req.params.memberId  as string;
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+
+      const { status } = req.body as { status?: unknown };
+      if (status !== "active" && status !== "suspended") {
+        res.status(400).json({ error: "status must be 'active' or 'suspended'" });
+        return;
+      }
+
+      const updated = await access.updateMemberStatus(companyId, memberId, status);
+      if (!updated) throw notFound("Member not found");
+      res.json(updated);
+    },
+  );
+
+  /* ── Member soft-delete ────────────────────────────────────────────────────── */
+  router.delete(
+    "/companies/:companyId/members/:memberId",
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const memberId  = req.params.memberId  as string;
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+
+      const deleted = await access.softDeleteMember(companyId, memberId);
+      if (!deleted) throw notFound("Member not found");
+      res.json(deleted);
+    },
+  );
+
   router.post(
     "/admin/users/:userId/promote-instance-admin",
     async (req, res) => {
