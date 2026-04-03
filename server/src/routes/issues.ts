@@ -998,7 +998,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
           newStatus: issue.status,
         },
       });
-      void issueNotifications.notifyHumanApprovalRequired({
+      void issueNotifications.notifyHumanApprovalRequired?.({
         issueId: issue.id,
         newStatusValue: issue.status,
         actorType: actor.actorType,
