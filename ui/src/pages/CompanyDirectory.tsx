@@ -9,7 +9,9 @@ import { agentsApi } from "../api/agents";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "../api/client";
 import { isPermissionDeniedError } from "../lib/permission-feedback";
@@ -81,10 +83,19 @@ const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
 const PERMISSION_LABELS: Record<PermissionKey, string> = {
   "agents:create": "Create agents",
   "users:invite": "Invite users",
-  "users:manage_permissions": "Manage member permissions",
-  "tasks:assign": "Assign and reassign issues",
+  "users:manage_permissions": "Manage permissions",
+  "tasks:assign": "Assign tasks",
   "tasks:assign_scope": "Manage assignment scope",
   "joins:approve": "Approve join requests",
+};
+
+const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
+  "agents:create": "Hire and configure new AI agents",
+  "users:invite": "Send invitations to new team members",
+  "users:manage_permissions": "Edit roles and permissions for other members",
+  "tasks:assign": "Assign and reassign tasks to agents or users",
+  "tasks:assign_scope": "Control which tasks agents can be assigned to",
+  "joins:approve": "Review and approve requests to join this company",
 };
 
 function normalizeRoleLabel(input: string) {
@@ -734,27 +745,33 @@ export function CompanyDirectory() {
                   <div className="mt-1 text-[11px] text-muted-foreground">
                     New invites start restricted unless you select grants below.
                   </div>
-                  <div className="mt-2 grid gap-1">
+                  <div className="mt-2 grid gap-0.5">
                     {ALL_PERMISSION_KEYS.map((permissionKey) => {
                       const checked = humanInvitePermissionKeys.includes(permissionKey);
+                      const id = `invite-perm-${permissionKey}`;
                       return (
-                        <label key={permissionKey} className="flex items-center gap-2 text-xs text-foreground">
-                          <input
-                            type="checkbox"
+                        <div
+                          key={permissionKey}
+                          className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/40 transition-colors"
+                        >
+                          <Checkbox
+                            id={id}
                             checked={checked}
-                            onChange={(event) => {
+                            onCheckedChange={(next) => {
                               setHumanInvitePermissionKeys((prev) => {
-                                const next = new Set(prev);
-                                if (event.target.checked) next.add(permissionKey);
-                                else next.delete(permissionKey);
-                                return Array.from(next);
+                                const set = new Set(prev);
+                                if (next === true) set.add(permissionKey);
+                                else set.delete(permissionKey);
+                                return Array.from(set);
                               });
                             }}
+                            className="mt-0.5"
                           />
-                          <span>
-                            {PERMISSION_LABELS[permissionKey]} (<code>{permissionKey}</code>)
-                          </span>
-                        </label>
+                          <Label htmlFor={id} className="flex cursor-pointer flex-col gap-0.5 font-normal">
+                            <span className="text-xs font-medium text-foreground">{PERMISSION_LABELS[permissionKey]}</span>
+                            <span className="text-[11px] text-muted-foreground">{PERMISSION_DESCRIPTIONS[permissionKey]}</span>
+                          </Label>
+                        </div>
                       );
                     })}
                   </div>
@@ -1076,46 +1093,46 @@ export function CompanyDirectory() {
 
                     <div className="rounded-md border border-border/60 bg-background px-3 py-3">
                       <div className="text-xs font-medium text-foreground">Permissions</div>
-                      <div className="mt-2 grid gap-1">
+                      <div className="mt-3 grid gap-0.5">
                         {ALL_PERMISSION_KEYS.map((permissionKey) => {
                           const checked = selectedHumanMember.grants.some(
                             (grant) => grant.permissionKey === permissionKey,
                           );
+                          const id = `perm-${selectedHumanMember.id}-${permissionKey}`;
                           return (
-                            <label key={permissionKey} className="flex items-center gap-2 text-xs text-foreground">
-                              <input
-                                type="checkbox"
+                            <div
+                              key={permissionKey}
+                              className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/40 transition-colors"
+                            >
+                              <Checkbox
+                                id={id}
                                 checked={checked}
                                 disabled={humanPermissionMutation.isPending || !selectedCompanyId}
-                                onChange={(event) => {
+                                onCheckedChange={(next) => {
                                   if (!selectedHumanMember || !selectedCompanyId) return;
                                   const nextGrants = selectedHumanMember.grants.filter(
                                     (grant) => grant.permissionKey !== permissionKey,
                                   );
-                                  if (event.target.checked) {
-                                    nextGrants.push({
-                                      permissionKey,
-                                      scope: null,
-                                    });
+                                  if (next === true) {
+                                    nextGrants.push({ permissionKey, scope: null });
                                   }
                                   humanPermissionMutation.mutate({
                                     memberId: selectedHumanMember.id,
                                     grants: nextGrants,
                                   });
                                 }}
+                                className="mt-0.5"
                               />
-                              <span>
-                                {PERMISSION_LABELS[permissionKey]} (<code>{permissionKey}</code>)
-                              </span>
-                            </label>
+                              <Label htmlFor={id} className="flex cursor-pointer flex-col gap-0.5 font-normal">
+                                <span className="text-xs font-medium text-foreground">{PERMISSION_LABELS[permissionKey]}</span>
+                                <span className="text-[11px] text-muted-foreground">{PERMISSION_DESCRIPTIONS[permissionKey]}</span>
+                              </Label>
+                            </div>
                           );
                         })}
                       </div>
-                      <div className="mt-2 text-[11px] text-muted-foreground">
-                        Changes apply immediately and are enforced server-side.
-                      </div>
                       {humanPermissionMutation.isError ? (
-                        <div className="mt-2 text-[11px] text-destructive">
+                        <div className="mt-2 px-2 text-[11px] text-destructive">
                           {apiErrorMessage(humanPermissionMutation.error)}
                         </div>
                       ) : null}
