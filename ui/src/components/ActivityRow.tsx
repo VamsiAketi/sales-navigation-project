@@ -76,7 +76,7 @@ function formatVerb(action: string, details?: Record<string, unknown> | null): s
         : `changed priority to ${humanizeValue(details.priority)} on`;
     }
   }
-  return ACTION_VERBS[action] ?? action.replace(/[._]/g, " ");
+  return (ACTION_VERBS[action] ?? action.replace(/[._]/g, " ")).replace("issue", "task");
 }
 
 function entityLink(entityType: string, entityId: string, name?: string | null): string | null {

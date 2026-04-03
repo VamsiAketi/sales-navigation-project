@@ -1197,7 +1197,7 @@ export function OnboardingWizard() {
                       <h3 className="font-medium">Ready to launch</h3>
                       <p className="text-xs text-muted-foreground">
                         Everything is set up. Launching now will create the
-                        starter task, wake the agent, and open the issue.
+                        starter task, wake the agent, and open the task.
                       </p>
                     </div>
                   </div>
@@ -1312,7 +1312,7 @@ export function OnboardingWizard() {
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? "Creating..." : "Create & Open Issue"}
+                      {loading ? "Creating..." : "Create & Open Task"}
                     </Button>
                   )}
                 </div>
