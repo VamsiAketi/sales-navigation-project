@@ -4,6 +4,7 @@ import {
   activityLog,
   agents,
   assets,
+  authUsers,
   companies,
   companyMemberships,
   documents,
@@ -1333,8 +1334,19 @@ export function issueService(db: Db) {
       }
 
       const query = db
-        .select()
+        .select({
+          id: issueComments.id,
+          companyId: issueComments.companyId,
+          issueId: issueComments.issueId,
+          authorAgentId: issueComments.authorAgentId,
+          authorUserId: issueComments.authorUserId,
+          authorName: authUsers.name,
+          body: issueComments.body,
+          createdAt: issueComments.createdAt,
+          updatedAt: issueComments.updatedAt,
+        })
         .from(issueComments)
+        .leftJoin(authUsers, eq(issueComments.authorUserId, authUsers.id))
         .where(and(...conditions))
         .orderBy(
           order === "asc" ? asc(issueComments.createdAt) : desc(issueComments.createdAt),
@@ -1377,8 +1389,19 @@ export function issueService(db: Db) {
     getComment: (commentId: string) =>
       instanceSettings.getGeneral().then(({ censorUsernameInLogs }) =>
         db
-        .select()
+        .select({
+          id: issueComments.id,
+          companyId: issueComments.companyId,
+          issueId: issueComments.issueId,
+          authorAgentId: issueComments.authorAgentId,
+          authorUserId: issueComments.authorUserId,
+          authorName: authUsers.name,
+          body: issueComments.body,
+          createdAt: issueComments.createdAt,
+          updatedAt: issueComments.updatedAt,
+        })
         .from(issueComments)
+        .leftJoin(authUsers, eq(issueComments.authorUserId, authUsers.id))
         .where(eq(issueComments.id, commentId))
         .then((rows) => {
           const comment = rows[0] ?? null;

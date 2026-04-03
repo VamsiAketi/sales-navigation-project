@@ -153,6 +153,8 @@ export interface IssueComment {
   issueId: string;
   authorAgentId: string | null;
   authorUserId: string | null;
+  /** Display name of the human author, resolved server-side. Null for agent or anonymous comments. */
+  authorName?: string | null;
   body: string;
   createdAt: Date;
   updatedAt: Date;
