@@ -30,6 +30,7 @@ import { budgetService, type BudgetEnforcementScope } from "./budgets.js";
 import { secretService } from "./secrets.js";
 import { resolveDefaultAgentWorkspaceDir, resolveManagedProjectWorkspaceDir } from "../home-paths.js";
 import { summarizeHeartbeatRunResultJson } from "./heartbeat-run-summary.js";
+import { calculateModelCostCents } from "./model-pricing.js";
 import {
   buildWorkspaceReadyComment,
   cleanupExecutionWorkspaceArtifacts,
@@ -1855,7 +1856,13 @@ export function heartbeatService(db: Db) {
     const outputTokens = usage?.outputTokens ?? 0;
     const cachedInputTokens = usage?.cachedInputTokens ?? 0;
     const billingType = normalizeLedgerBillingType(result.billingType);
-    const additionalCostCents = normalizeBilledCostCents(result.costUsd, billingType);
+    const reportedCostCents = normalizeBilledCostCents(result.costUsd, billingType);
+    const model = result.model ?? "unknown";
+    const fallbackCostCents =
+      reportedCostCents === 0 && billingType !== "subscription_included"
+        ? calculateModelCostCents(model, inputTokens, cachedInputTokens, outputTokens)
+        : 0;
+    const additionalCostCents = reportedCostCents > 0 ? reportedCostCents : fallbackCostCents;
     const hasTokenUsage = inputTokens > 0 || outputTokens > 0 || cachedInputTokens > 0;
     const provider = result.provider ?? "unknown";
     const biller = resolveLedgerBiller(result);
@@ -1887,7 +1894,7 @@ export function heartbeatService(db: Db) {
         provider,
         biller,
         billingType,
-        model: result.model ?? "unknown",
+        model,
         inputTokens,
         cachedInputTokens,
         outputTokens,
