@@ -114,7 +114,24 @@ export const authApi = {
   },
 
   updateProfile: async (input: { name?: string; email?: string }): Promise<void> => {
-    await authPost("/update-user", input);
+    if (input.name !== undefined) {
+      await authPost("/update-user", { name: input.name });
+    }
+    if (input.email !== undefined) {
+      const callbackURL =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : "/account/settings";
+      try {
+        await authPost("/change-email", { newEmail: input.email, callbackURL });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message.toLowerCase() : "";
+        if (msg.includes("already exists") || msg.includes("another email")) {
+          throw new Error("That email is already in use. Please choose a different address.");
+        }
+        throw err;
+      }
+    }
   },
 
   updateNotificationPreferences: async (input: Partial<UserNotificationPreferences>): Promise<UserNotificationPreferences> => {
