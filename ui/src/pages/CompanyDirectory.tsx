@@ -1027,48 +1027,104 @@ export function CompanyDirectory() {
                 Invite users
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md rounded-2xl border-border/60">
-              <DialogHeader>
-                <DialogTitle>Invite human user</DialogTitle>
-                <DialogDescription>
-                  Send a human invite and get temporary credentials for a new teammate.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="mt-4 space-y-3">
-                <div className="grid gap-2 md:grid-cols-2">
-                  <Input
-                    className="h-10 rounded-xl"
-                    type="text"
-                    placeholder="Name (optional)"
-                    value={humanInviteName}
-                    onChange={(e) => setHumanInviteName(e.target.value)}
-                  />
-                  <Input
-                    className="h-10 rounded-xl"
-                    type="email"
-                    placeholder="Email"
-                    value={humanInviteEmail}
-                    onChange={(e) => setHumanInviteEmail(e.target.value)}
-                  />
-                </div>
-                <div className="rounded-2xl border border-border/50 bg-muted/15 px-4 py-4 ring-1 ring-border/30">
-                  <div className="text-sm font-semibold text-foreground">Initial access</div>
-                  <div className="mt-3">
-                    <HumanPermissionsPanel
-                      idPrefix="invite"
-                      enabledKeys={humanInvitePermissionKeys}
-                      onKeysChange={setHumanInvitePermissionKeys}
-                      intro={
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          Optional grants after they accept. Use a preset or adjust switches—nothing is enabled until you choose.
-                        </p>
-                      }
+            <DialogContent className="flex max-h-[min(90dvh,44rem)] max-w-md flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0 sm:max-w-lg">
+              <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
+                <DialogHeader>
+                  <DialogTitle>Invite human user</DialogTitle>
+                  <DialogDescription>
+                    Send a human invite and get temporary credentials for a new teammate.
+                  </DialogDescription>
+                </DialogHeader>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
+                <div className="space-y-3">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <Input
+                      className="h-10 rounded-xl"
+                      type="text"
+                      placeholder="Name (optional)"
+                      value={humanInviteName}
+                      onChange={(e) => setHumanInviteName(e.target.value)}
+                    />
+                    <Input
+                      className="h-10 rounded-xl"
+                      type="email"
+                      placeholder="Email"
+                      value={humanInviteEmail}
+                      onChange={(e) => setHumanInviteEmail(e.target.value)}
                     />
                   </div>
+                  <div className="rounded-2xl border border-border/50 bg-muted/15 px-4 py-4 ring-1 ring-border/30">
+                    <div className="text-sm font-semibold text-foreground">Initial access</div>
+                    <div className="mt-3">
+                      <HumanPermissionsPanel
+                        idPrefix="invite"
+                        enabledKeys={humanInvitePermissionKeys}
+                        onKeysChange={setHumanInvitePermissionKeys}
+                        intro={
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            Optional grants after they accept. Use a preset or adjust switches—nothing is enabled until you choose.
+                          </p>
+                        }
+                      />
+                    </div>
+                  </div>
+                  {humanInviteCredentials && (
+                    <div className="space-y-1 rounded-2xl border border-border/60 bg-muted/20 px-3 py-3 text-xs ring-1 ring-border/30">
+                      <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
+                      <p>
+                        Name: <span className="font-mono">{humanInviteCredentials.name}</span>
+                      </p>
+                      <p>
+                        Email: <span className="font-mono">{humanInviteCredentials.email}</span>
+                      </p>
+                      <p>
+                        Username:{" "}
+                        <span className="font-mono">
+                          {humanInviteCredentials.temporaryUsername}
+                        </span>
+                      </p>
+                      <p>
+                        Password:{" "}
+                        <span className="font-mono">
+                          {humanInviteCredentials.temporaryPassword}
+                        </span>
+                      </p>
+                      <div className="pt-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={async () => {
+                            const credentialsText = [
+                              `Name: ${humanInviteCredentials.name}`,
+                              `Email: ${humanInviteCredentials.email}`,
+                              `Username: ${humanInviteCredentials.temporaryUsername}`,
+                              `Password: ${humanInviteCredentials.temporaryPassword}`,
+                            ].join("\n");
+                            try {
+                              await navigator.clipboard.writeText(credentialsText);
+                            } catch {
+                              /* clipboard may not be available */
+                            }
+                          }}
+                        >
+                          Copy credentials
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
+              </div>
+              <div className="shrink-0 space-y-2 border-t border-border/50 bg-muted/15 px-6 py-4">
+                {humanInviteError ? (
+                  <p className="text-xs text-destructive">{humanInviteError}</p>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
+                    type="button"
                     size="sm"
+                    className="rounded-xl"
                     onClick={() => humanInviteMutation.mutate()}
                     disabled={
                       humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId
@@ -1076,54 +1132,7 @@ export function CompanyDirectory() {
                   >
                     {humanInviteMutation.isPending ? "Creating..." : "Create invite"}
                   </Button>
-                  {humanInviteError && (
-                    <span className="text-xs text-destructive">{humanInviteError}</span>
-                  )}
                 </div>
-                {humanInviteCredentials && (
-                  <div className="space-y-1 rounded-2xl border border-border/60 bg-muted/20 px-3 py-3 text-xs ring-1 ring-border/30">
-                    <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
-                    <p>
-                      Name: <span className="font-mono">{humanInviteCredentials.name}</span>
-                    </p>
-                    <p>
-                      Email: <span className="font-mono">{humanInviteCredentials.email}</span>
-                    </p>
-                    <p>
-                      Username:{" "}
-                      <span className="font-mono">
-                        {humanInviteCredentials.temporaryUsername}
-                      </span>
-                    </p>
-                    <p>
-                      Password:{" "}
-                      <span className="font-mono">
-                        {humanInviteCredentials.temporaryPassword}
-                      </span>
-                    </p>
-                    <div className="pt-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={async () => {
-                          const credentialsText = [
-                            `Name: ${humanInviteCredentials.name}`,
-                            `Email: ${humanInviteCredentials.email}`,
-                            `Username: ${humanInviteCredentials.temporaryUsername}`,
-                            `Password: ${humanInviteCredentials.temporaryPassword}`,
-                          ].join("\n");
-                          try {
-                            await navigator.clipboard.writeText(credentialsText);
-                          } catch {
-                            /* clipboard may not be available */
-                          }
-                        }}
-                      >
-                        Copy credentials
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </div>
             </DialogContent>
           </Dialog>
@@ -1341,7 +1350,7 @@ export function CompanyDirectory() {
               {selectedHumanMember ? (
                 <>
                   <div className="border-b border-border/50 bg-gradient-to-br from-violet-500/[0.07] via-muted/25 to-transparent px-5 py-5">
-                    <div className="flex flex-wrap items-start gap-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                       <DirectoryMemberAvatar member={selectedHumanMember} size="lg" className="shrink-0 shadow-md" />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1358,7 +1367,67 @@ export function CompanyDirectory() {
                           {memberSecondaryLine(selectedHumanMember)}
                         </div>
                       </div>
-                      <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
+                      <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
+                        <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
+                        {selectedHumanMember.status === "suspended" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl"
+                            disabled={
+                              !selectedHumanMember ||
+                              !selectedCompanyId ||
+                              reactivateHumanMutation.isPending ||
+                              removeHumanMutation.isPending
+                            }
+                            onClick={() => {
+                              if (!selectedHumanMember) return;
+                              reactivateHumanMutation.mutate(selectedHumanMember.id);
+                            }}
+                          >
+                            {reactivateHumanMutation.isPending ? "Reactivating…" : "Reactivate"}
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl"
+                            disabled={
+                              !selectedHumanMember ||
+                              !selectedCompanyId ||
+                              deactivateHumanMutation.isPending ||
+                              removeHumanMutation.isPending
+                            }
+                            onClick={() => {
+                              if (!selectedHumanMember) return;
+                              setDeactivateDialogOpen(true);
+                            }}
+                          >
+                            {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          className="rounded-xl"
+                          disabled={
+                            !selectedHumanMember ||
+                            !selectedCompanyId ||
+                            deactivateHumanMutation.isPending ||
+                            reactivateHumanMutation.isPending ||
+                            removeHumanMutation.isPending
+                          }
+                          onClick={() => {
+                            if (!selectedHumanMember) return;
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          {removeHumanMutation.isPending ? "Deleting…" : "Delete"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
@@ -1458,85 +1527,29 @@ export function CompanyDirectory() {
 
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
                     <div className="text-xs text-muted-foreground">Autosave is on.</div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="rounded-xl"
-                        disabled={
-                          !humanIsDirty ||
-                          humanSaveMutation.isPending ||
-                          !selectedCompanyId ||
-                          selectedHumanManagerIsAgent
-                        }
-                        onClick={() => {
-                          if (!selectedHumanMember) return;
-                          if (selectedHumanManagerIsAgent) return;
-                          humanSaveMutation.mutate({
-                            memberId: selectedHumanMember.id,
-                            membershipRole: (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
-                            reportsToMembershipId: (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null
-                          });
-                        }}
-                      >
-                        Save now
-                      </Button>
-                      {selectedHumanMember?.status === "suspended" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-xl"
-                          disabled={
-                            !selectedHumanMember ||
-                            !selectedCompanyId ||
-                            reactivateHumanMutation.isPending ||
-                            removeHumanMutation.isPending
-                          }
-                          onClick={() => {
-                            if (!selectedHumanMember) return;
-                            reactivateHumanMutation.mutate(selectedHumanMember.id);
-                          }}
-                        >
-                          {reactivateHumanMutation.isPending ? "Reactivating…" : "Reactivate"}
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-xl"
-                          disabled={
-                            !selectedHumanMember ||
-                            !selectedCompanyId ||
-                            deactivateHumanMutation.isPending ||
-                            removeHumanMutation.isPending
-                          }
-                          onClick={() => {
-                            if (!selectedHumanMember) return;
-                            setDeactivateDialogOpen(true);
-                          }}
-                        >
-                          {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="rounded-xl"
-                        disabled={
-                          !selectedHumanMember ||
-                          !selectedCompanyId ||
-                          deactivateHumanMutation.isPending ||
-                          reactivateHumanMutation.isPending ||
-                          removeHumanMutation.isPending
-                        }
-                        onClick={() => {
-                          if (!selectedHumanMember) return;
-                          setDeleteDialogOpen(true);
-                        }}
-                      >
-                        {removeHumanMutation.isPending ? "Deleting…" : "Delete"}
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-xl"
+                      disabled={
+                        !humanIsDirty ||
+                        humanSaveMutation.isPending ||
+                        !selectedCompanyId ||
+                        selectedHumanManagerIsAgent
+                      }
+                      onClick={() => {
+                        if (!selectedHumanMember) return;
+                        if (selectedHumanManagerIsAgent) return;
+                        humanSaveMutation.mutate({
+                          memberId: selectedHumanMember.id,
+                          membershipRole: (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
+                          reportsToMembershipId: (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null
+                        });
+                      }}
+                    >
+                      Save now
+                    </Button>
                   </div>
                 </>
               ) : (
