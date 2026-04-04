@@ -4040,8 +4040,6 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
             {revokedKeys.map((key: AgentKey) => (
               <div key={key.id} className="flex items-center justify-between px-4 py-2.5">
                 <div>
-                  <span className="text-sm line-through">{key.name}</span>
-                  <span className="text-xs text-muted-foreground ml-3">
                     Revoked {key.revokedAt ? formatDate(key.revokedAt) : ""}
                   </span>
                 </div>
