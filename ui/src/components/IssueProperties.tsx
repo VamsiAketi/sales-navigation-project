@@ -26,7 +26,7 @@ import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X, Target, AlertTriangle } from "lucide-react";
+import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X, Target, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
 /** Color swatches for label creation — excludes white and very light colors. */
@@ -331,12 +331,26 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#7c3aed");
   const [confirmDeleteLabelId, setConfirmDeleteLabelId] = useState<string | null>(null);
+  const [createLabelOpen, setCreateLabelOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const persistedLabelSignature = (issue.labelIds ?? []).join(",");
 
   useEffect(() => {
     setLabelDraftIds(issue.labelIds ?? []);
     setLabelsSaving(false);
   }, [issue.id, persistedLabelSignature]);
+
+  // Reset create-label form when popover closes
+  useEffect(() => {
+    if (!labelsOpen) {
+      setCreateLabelOpen(false);
+      setColorPickerOpen(false);
+      setNewLabelName("");
+      setNewLabelColor("#7c3aed");
+      setConfirmDeleteLabelId(null);
+      setLabelSearch("");
+    }
+  }, [labelsOpen]);
 
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
@@ -543,18 +557,49 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
   const labelsContent = (
     <>
+      {/* Selected label pills */}
+      {selectedLabels.length > 0 && (
+        <div className="flex flex-wrap gap-1 px-1 pb-2 border-b border-border">
+          {selectedLabels.map((label) => (
+            <span
+              key={label.id}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border"
+              style={{
+                borderColor: label.color,
+                backgroundColor: `${label.color}22`,
+                color: pickTextColorForPillBg(label.color, 0.13),
+              }}
+            >
+              {label.name}
+              <button
+                type="button"
+                className="rounded-full hover:opacity-70 transition-opacity"
+                onClick={() => void toggleLabel(label.id)}
+                disabled={labelsSaving}
+                title={`Remove ${label.name}`}
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+          {labelsSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground self-center" />}
+        </div>
+      )}
+
+      {/* Search + label list */}
       <input
-        className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
+        className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border placeholder:text-muted-foreground/50"
         placeholder="Search labels..."
         value={labelSearch}
         onChange={(e) => setLabelSearch(e.target.value)}
         autoFocus={!inline}
       />
-      <div className="max-h-44 overflow-y-auto overscroll-contain space-y-0.5">
-        {labelsSaving && (
-          <div className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" /> Saving…
-          </div>
+      <div className="max-h-40 overflow-y-auto overscroll-contain space-y-0.5 py-1">
+        {!labelsSaving && (labels ?? []).filter((label) => {
+          if (!labelSearch.trim()) return true;
+          return label.name.toLowerCase().includes(labelSearch.toLowerCase());
+        }).length === 0 && (
+          <p className="text-[11px] text-muted-foreground px-2 py-1">No labels found</p>
         )}
         {(labels ?? [])
           .filter((label) => {
@@ -576,44 +621,75 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             />
           ))}
       </div>
-      <div className="mt-2 border-t border-border pt-2 space-y-2">
-        <div className="space-y-1.5">
-          <input
-            className="w-full px-2 py-1.5 text-xs bg-transparent outline outline-[#cecee4] rounded border placeholder:text-muted-foreground/50"
-            placeholder="New label name…"
-            value={newLabelName}
-            onChange={(e) => setNewLabelName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newLabelName.trim() && !createLabel.isPending) {
-                createLabel.mutate({ name: newLabelName.trim(), color: newLabelColor });
-              }
-            }}
-          />
-          <ColorSwatchPickerInline value={newLabelColor} onChange={setNewLabelColor} />
-        </div>
+
+      {/* Create label — collapsible */}
+      <div className="border-t border-border mt-1">
         <button
-          className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
-          disabled={!newLabelName.trim() || createLabel.isPending || labelsSaving}
-          onClick={() =>
-            createLabel.mutate({
-              name: newLabelName.trim(),
-              color: newLabelColor,
-            })
-          }
+          type="button"
+          className="flex items-center gap-1.5 w-full px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors"
+          onClick={() => setCreateLabelOpen((v) => !v)}
         >
+          {createLabelOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           <Plus className="h-3 w-3" />
-          {createLabel.isPending ? "Creating…" : "Create label"}
+          Create new label
         </button>
-        {createLabel.isError ? (
-          <div className="text-[11px] text-destructive">
-            {createLabel.error instanceof Error ? createLabel.error.message : "Failed to create label."}
+
+        {createLabelOpen && (
+          <div className="px-2 pb-2 space-y-2">
+            {/* Name + color trigger row */}
+            <div className="flex items-center gap-1.5">
+              {/* Color preview — click to toggle palette */}
+              <button
+                type="button"
+                onClick={() => setColorPickerOpen((v) => !v)}
+                title="Pick color"
+                className="h-6 w-6 rounded-full shrink-0 border-2 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-transform hover:scale-110"
+                style={{ borderColor: newLabelColor, backgroundColor: `${newLabelColor}55` }}
+              />
+              <input
+                className="flex-1 px-2 py-1.5 text-xs bg-transparent outline outline-1 outline-border rounded placeholder:text-muted-foreground/50"
+                placeholder="Label name…"
+                value={newLabelName}
+                onChange={(e) => setNewLabelName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newLabelName.trim() && !createLabel.isPending) {
+                    createLabel.mutate({ name: newLabelName.trim(), color: newLabelColor });
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+
+            {/* Color palette — hidden until swatch clicked */}
+            {colorPickerOpen && (
+              <ColorSwatchPickerInline
+                value={newLabelColor}
+                onChange={(c) => { setNewLabelColor(c); setColorPickerOpen(false); }}
+              />
+            )}
+
+            <button
+              className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
+              disabled={!newLabelName.trim() || createLabel.isPending || labelsSaving}
+              onClick={() => createLabel.mutate({ name: newLabelName.trim(), color: newLabelColor })}
+            >
+              {createLabel.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              {createLabel.isPending ? "Creating…" : "Create label"}
+            </button>
+
+            {createLabel.isError && (
+              <div className="text-[11px] text-destructive">
+                {createLabel.error instanceof Error ? createLabel.error.message : "Failed to create label."}
+              </div>
+            )}
           </div>
-        ) : null}
-        {deleteLabel.isError ? (
-          <div className="text-[11px] text-destructive">
+        )}
+
+        {deleteLabel.isError && (
+          <div className="text-[11px] text-destructive px-2 pb-1">
             {deleteLabel.error instanceof Error ? deleteLabel.error.message : "Failed to delete label."}
           </div>
-        ) : null}
+        )}
       </div>
     </>
   );
