@@ -11,6 +11,7 @@ import {
   readFocusAfterIssueCreate,
   clearFocusAfterIssueCreate,
   issueRowGroupKey,
+  NEW_ISSUE_BADGE_DURATION_MS,
 } from "../lib/focus-created-issue";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { groupBy } from "../lib/groupBy";
@@ -433,6 +434,7 @@ export function IssuesList({
   const [debouncedIssueSearch, setDebouncedIssueSearch] = useState(issueSearch);
   const normalizedIssueSearch = debouncedIssueSearch.trim();
   const [highlightIssueId, setHighlightIssueId] = useState<string | null>(null);
+  const [newBadgeIssueId, setNewBadgeIssueId] = useState<string | null>(null);
   const focusHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -511,7 +513,7 @@ export function IssuesList({
         title: `Created ${ref}`,
         body: "This task is hidden by your current filters or search. Adjust them to see it in the list.",
         tone: "info",
-        ttlMs: 7000,
+        ttlMs: 15_000,
       });
       return;
     }
@@ -534,6 +536,7 @@ export function IssuesList({
     }
 
     setHighlightIssueId(pending.issueId);
+    setNewBadgeIssueId(pending.issueId);
   }, [
     isLoading,
     selectedCompanyId,
@@ -560,6 +563,12 @@ export function IssuesList({
     const t = window.setTimeout(() => setHighlightIssueId(null), 4500);
     return () => window.clearTimeout(t);
   }, [highlightIssueId]);
+
+  useEffect(() => {
+    if (!newBadgeIssueId) return;
+    const t = window.setTimeout(() => setNewBadgeIssueId(null), NEW_ISSUE_BADGE_DURATION_MS);
+    return () => window.clearTimeout(t);
+  }, [newBadgeIssueId]);
 
   const { data: labels } = useQuery({
     queryKey: queryKeys.issues.labels(selectedCompanyId!),
@@ -996,6 +1005,7 @@ export function IssuesList({
           projectStatuses={projectStatuses}
           issueLinkState={issueLinkState}
           highlightIssueId={highlightIssueId}
+          newBadgeIssueId={newBadgeIssueId}
         />
       ) : (
         groupedContent.map((group) => (
@@ -1034,6 +1044,7 @@ export function IssuesList({
                   key={issue.id}
                   issue={issue}
                   issueLinkState={issueLinkState}
+                  showNewBadge={newBadgeIssueId === issue.id}
                   className={
                     highlightIssueId === issue.id
                       ? "relative z-[1] ring-2 ring-inset ring-primary/80 bg-primary/[0.06] motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]"

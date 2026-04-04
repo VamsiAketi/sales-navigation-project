@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Issue } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { cn } from "../lib/utils";
+import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import { StatusIcon } from "./StatusIcon";
 
 type UnreadState = "hidden" | "visible" | "fading";
@@ -18,6 +19,8 @@ interface IssueRowProps {
   unreadState?: UnreadState | null;
   onMarkRead?: () => void;
   className?: string;
+  /** Short-lived marker after creating a task (e.g. 30s). */
+  showNewBadge?: boolean;
 }
 
 export function IssueRow({
@@ -32,6 +35,7 @@ export function IssueRow({
   unreadState = null,
   onMarkRead,
   className,
+  showNewBadge = false,
 }: IssueRowProps) {
   const issuePathId = issue.identifier ?? issue.id;
   const identifier = issue.identifier ?? issue.id.slice(0, 8);
@@ -69,6 +73,11 @@ export function IssueRow({
               </span>
             </>
           )}
+          {showNewBadge ? (
+            <span className={NEW_ISSUE_BADGE_CLASS} aria-label="Newly created task">
+              New
+            </span>
+          ) : null}
           {mobileMeta ? (
             <>
               <span className="text-xs text-muted-foreground sm:hidden" aria-hidden="true">

@@ -489,6 +489,7 @@ export function NewIssueDialog() {
           title: `Created ${issueRef} with upload warnings`,
           body: `${failures.length} staged ${failures.length === 1 ? "file" : "files"} could not be added.`,
           tone: "warn",
+          ttlMs: 15_000,
           action: prefix
             ? { label: `Open ${issueRef}`, href: `/${prefix}/issues/${issueRef}` }
             : undefined,
@@ -498,7 +499,7 @@ export function NewIssueDialog() {
           title: `Created ${issueRef}`,
           body: `Placed in ${statusLabel}. Look for the highlighted task below.`,
           tone: "success",
-          ttlMs: 5500,
+          ttlMs: 15_000,
           action: prefix ? { label: "Open task", href: `/${prefix}/issues/${issueRef}` } : undefined,
         });
       }

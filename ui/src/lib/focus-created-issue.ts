@@ -1,6 +1,13 @@
 const STORAGE_KEY = "paperclip:focusAfterIssueCreate";
 const MAX_AGE_MS = 120_000;
 
+/** How long the "New" pill stays on a task after creation (board + list). */
+export const NEW_ISSUE_BADGE_DURATION_MS = 30_000;
+
+/** Shared Tailwind classes for the post-create "New" pill. */
+export const NEW_ISSUE_BADGE_CLASS =
+  "inline-flex shrink-0 items-center rounded-full border border-primary/45 bg-primary/12 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-primary";
+
 export type FocusAfterIssueCreatePayload = {
   companyId: string;
   issueId: string;

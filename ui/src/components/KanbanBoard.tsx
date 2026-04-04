@@ -20,6 +20,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { cn } from "../lib/utils";
+import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Avatar helpers ─────────────────────────────────────────────────────────── */
@@ -156,6 +157,8 @@ interface KanbanBoardProps {
   projectStatuses?: ProjectIssueStatus[];
   /** Briefly emphasize this card (e.g. after creating a task). */
   highlightIssueId?: string | null;
+  /** Show a "New" pill for this issue (longer than highlight ring). */
+  newBadgeIssueId?: string | null;
 }
 
 function getSortKey(issue: Issue): number {
@@ -195,17 +198,19 @@ const KanbanCardContent = memo(function KanbanCardContent({
   memberName,
   isLive,
   accentDot,
+  showNewBadge,
 }: {
   issue: Issue;
   agentName: string | null;
   memberName: string | null;
   isLive: boolean;
   accentDot: string;
+  showNewBadge?: boolean;
 }) {
   return (
     <>
       {/* Top row: ticket ID badge + AI active pill */}
-      <div className="flex items-center gap-1.5 mb-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
         <span
           className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-mono font-extrabold shrink-0 tracking-tight"
           style={{
@@ -226,6 +231,11 @@ const KanbanCardContent = memo(function KanbanCardContent({
             AI active
           </span>
         )}
+        {showNewBadge ? (
+          <span className={NEW_ISSUE_BADGE_CLASS} aria-label="Newly created task">
+            New
+          </span>
+        ) : null}
       </div>
 
       {/* Title */}
@@ -303,6 +313,7 @@ function KanbanCard({
   issueLinkState,
   statusColorMap,
   highlight,
+  showNewBadge,
 }: {
   issue: Issue;
   agentName: string | null;
@@ -312,6 +323,7 @@ function KanbanCard({
   issueLinkState?: unknown;
   statusColorMap?: Map<string, string>;
   highlight?: boolean;
+  showNewBadge?: boolean;
 }) {
   const data = useMemo(() => ({ issue }), [issue]);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -353,6 +365,7 @@ function KanbanCard({
           memberName={memberName}
           isLive={isLive}
           accentDot={accent.dot}
+          showNewBadge={showNewBadge}
         />
       </Link>
     </div>
@@ -371,6 +384,7 @@ const KanbanColumn = memo(function KanbanColumn({
   issueLinkState,
   statusColorMap,
   highlightIssueId,
+  newBadgeIssueId,
 }: {
   status: string;
   columnLabel?: string;
@@ -382,6 +396,7 @@ const KanbanColumn = memo(function KanbanColumn({
   issueLinkState?: unknown;
   statusColorMap?: Map<string, string>;
   highlightIssueId?: string | null;
+  newBadgeIssueId?: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   // columnColor (from projectStatuses) always wins; then hardcoded map; then neutral fallback
@@ -463,6 +478,7 @@ const KanbanColumn = memo(function KanbanColumn({
             issueLinkState={issueLinkState}
             statusColorMap={statusColorMap}
             highlight={highlightIssueId === issue.id}
+            showNewBadge={newBadgeIssueId === issue.id}
           />
         ))}
       </div>
@@ -480,6 +496,7 @@ export function KanbanBoard({
   onUpdateIssue,
   projectStatuses,
   highlightIssueId = null,
+  newBadgeIssueId = null,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   // optimisticMoves: issueId → targetStatus applied immediately on drop so the
@@ -633,6 +650,7 @@ export function KanbanBoard({
               issueLinkState={issueLinkState}
               statusColorMap={statusColorMap}
               highlightIssueId={highlightIssueId}
+              newBadgeIssueId={newBadgeIssueId}
             />
           );
         })}
@@ -651,6 +669,7 @@ export function KanbanBoard({
             isLive={liveIssueIds?.has(activeIssue.id) ?? false}
             issueLinkState={issueLinkState}
             statusColorMap={statusColorMap}
+            showNewBadge={newBadgeIssueId === activeIssue.id}
             isOverlay
           />
         ) : null}
