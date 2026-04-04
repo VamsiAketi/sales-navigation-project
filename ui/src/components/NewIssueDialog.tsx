@@ -56,6 +56,7 @@ import { cn } from "../lib/utils";
 import { extractProviderIdWithFallback } from "../lib/model-utils";
 import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDefault } from "../lib/status-colors";
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
+import { setFocusAfterIssueCreate } from "../lib/focus-created-issue";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
@@ -472,9 +473,18 @@ export function NewIssueDialog() {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
       if (draftTimer.current) clearTimeout(draftTimer.current);
+      const prefix = (companies.find((c) => c.id === companyId)?.issuePrefix ?? "").trim();
+      const issueRef = issue.identifier ?? issue.id;
+      const statusLabel = issue.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+      setFocusAfterIssueCreate(companyId, {
+        issueId: issue.id,
+        identifier: issue.identifier ?? null,
+        status: issue.status,
+        title: issue.title,
+      });
+
       if (failures.length > 0) {
-        const prefix = (companies.find((company) => company.id === companyId)?.issuePrefix ?? "").trim();
-        const issueRef = issue.identifier ?? issue.id;
         pushToast({
           title: `Created ${issueRef} with upload warnings`,
           body: `${failures.length} staged ${failures.length === 1 ? "file" : "files"} could not be added.`,
@@ -482,6 +492,14 @@ export function NewIssueDialog() {
           action: prefix
             ? { label: `Open ${issueRef}`, href: `/${prefix}/issues/${issueRef}` }
             : undefined,
+        });
+      } else {
+        pushToast({
+          title: `Created ${issueRef}`,
+          body: `Placed in ${statusLabel}. Look for the highlighted task below.`,
+          tone: "success",
+          ttlMs: 5500,
+          action: prefix ? { label: "Open task", href: `/${prefix}/issues/${issueRef}` } : undefined,
         });
       }
       clearDraft();

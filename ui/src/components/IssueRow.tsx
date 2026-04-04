@@ -40,6 +40,7 @@ export function IssueRow({
 
   return (
     <Link
+      id={`issue-surface-${issue.id}`}
       to={`/issues/${issuePathId}`}
       state={issueLinkState}
       className={cn(

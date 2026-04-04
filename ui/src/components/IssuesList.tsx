@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { useDialog } from "../context/DialogContext";
@@ -7,6 +7,11 @@ import { issuesApi } from "../api/issues";
 import { authApi } from "../api/auth";
 import { accessApi } from "../api/access";
 import { queryKeys } from "../lib/queryKeys";
+import {
+  readFocusAfterIssueCreate,
+  clearFocusAfterIssueCreate,
+  issueRowGroupKey,
+} from "../lib/focus-created-issue";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { groupBy } from "../lib/groupBy";
 import { formatDate, cn } from "../lib/utils";
@@ -23,6 +28,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, ChevronDown } from "lucide-react";
+import { useToast } from "../context/ToastContext";
 import { KanbanBoard, AssigneeAvatar, nameToInitials } from "./KanbanBoard";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
@@ -387,6 +393,7 @@ export function IssuesList({
 }: IssuesListProps) {
   const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialog();
+  const { pushToast } = useToast();
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
@@ -425,6 +432,8 @@ export function IssuesList({
   const [issueSearch, setIssueSearch] = useState(initialSearch ?? "");
   const [debouncedIssueSearch, setDebouncedIssueSearch] = useState(issueSearch);
   const normalizedIssueSearch = debouncedIssueSearch.trim();
+  const [highlightIssueId, setHighlightIssueId] = useState<string | null>(null);
+  const focusHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
     setIssueSearch(initialSearch ?? "");
@@ -475,6 +484,82 @@ export function IssuesList({
     const filteredByControls = applyFilters(sourceIssues, viewState, currentUserId);
     return sortIssues(filteredByControls, viewState);
   }, [issues, searchedIssues, viewState, normalizedIssueSearch, currentUserId]);
+
+  useEffect(() => {
+    focusHandledRef.current = null;
+  }, [selectedCompanyId]);
+
+  useLayoutEffect(() => {
+    if (isLoading || !selectedCompanyId) return;
+    const pending = readFocusAfterIssueCreate();
+    if (!pending || pending.companyId !== selectedCompanyId) return;
+    if (focusHandledRef.current === pending.issueId) return;
+
+    const issue = issues.find((i) => i.id === pending.issueId);
+    if (!issue) return;
+
+    const sourceForFilter = normalizedIssueSearch.length > 0 ? searchedIssues : issues;
+    const passesFilters = applyFilters(sourceForFilter, viewState, currentUserId).some(
+      (i) => i.id === pending.issueId,
+    );
+
+    if (!passesFilters) {
+      focusHandledRef.current = pending.issueId;
+      clearFocusAfterIssueCreate();
+      const ref = pending.identifier ?? pending.issueId.slice(0, 8);
+      pushToast({
+        title: `Created ${ref}`,
+        body: "This task is hidden by your current filters or search. Adjust them to see it in the list.",
+        tone: "info",
+        ttlMs: 7000,
+      });
+      return;
+    }
+
+    focusHandledRef.current = pending.issueId;
+    clearFocusAfterIssueCreate();
+
+    if (viewState.groupBy !== "none") {
+      let groupKey: string;
+      if (viewState.groupBy === "status") groupKey = issue.status;
+      else if (viewState.groupBy === "priority") groupKey = issue.priority;
+      else groupKey = issueRowGroupKey(issue);
+      if (viewState.collapsedGroups.includes(groupKey)) {
+        updateView({ collapsedGroups: viewState.collapsedGroups.filter((k) => k !== groupKey) });
+      }
+    }
+
+    if (!forceListView && viewState.viewMode !== "board") {
+      updateView({ viewMode: "board" });
+    }
+
+    setHighlightIssueId(pending.issueId);
+  }, [
+    isLoading,
+    selectedCompanyId,
+    issues,
+    searchedIssues,
+    normalizedIssueSearch,
+    viewState,
+    currentUserId,
+    forceListView,
+    pushToast,
+    updateView,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!highlightIssueId) return;
+    const el = document.getElementById(`issue-surface-${highlightIssueId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    }
+  }, [highlightIssueId, viewState.viewMode, viewState.collapsedGroups, filtered]);
+
+  useEffect(() => {
+    if (!highlightIssueId) return;
+    const t = window.setTimeout(() => setHighlightIssueId(null), 4500);
+    return () => window.clearTimeout(t);
+  }, [highlightIssueId]);
 
   const { data: labels } = useQuery({
     queryKey: queryKeys.issues.labels(selectedCompanyId!),
@@ -910,6 +995,7 @@ export function IssuesList({
           onUpdateIssue={onUpdateIssue}
           projectStatuses={projectStatuses}
           issueLinkState={issueLinkState}
+          highlightIssueId={highlightIssueId}
         />
       ) : (
         groupedContent.map((group) => (
@@ -948,6 +1034,11 @@ export function IssuesList({
                   key={issue.id}
                   issue={issue}
                   issueLinkState={issueLinkState}
+                  className={
+                    highlightIssueId === issue.id
+                      ? "relative z-[1] ring-2 ring-inset ring-primary/80 bg-primary/[0.06] motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]"
+                      : undefined
+                  }
                   desktopLeadingSpacer
                   mobileLeading={(
                     <span

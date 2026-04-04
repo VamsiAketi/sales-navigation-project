@@ -19,6 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { arrayMove } from "@dnd-kit/sortable";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
+import { cn } from "../lib/utils";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Avatar helpers ─────────────────────────────────────────────────────────── */
@@ -153,6 +154,8 @@ interface KanbanBoardProps {
   issueLinkState?: unknown;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
   projectStatuses?: ProjectIssueStatus[];
+  /** Briefly emphasize this card (e.g. after creating a task). */
+  highlightIssueId?: string | null;
 }
 
 function getSortKey(issue: Issue): number {
@@ -299,6 +302,7 @@ function KanbanCard({
   isOverlay,
   issueLinkState,
   statusColorMap,
+  highlight,
 }: {
   issue: Issue;
   agentName: string | null;
@@ -307,6 +311,7 @@ function KanbanCard({
   isOverlay?: boolean;
   issueLinkState?: unknown;
   statusColorMap?: Map<string, string>;
+  highlight?: boolean;
 }) {
   const data = useMemo(() => ({ issue }), [issue]);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -322,6 +327,7 @@ function KanbanCard({
 
   return (
     <div
+      id={isOverlay ? undefined : `issue-surface-${issue.id}`}
       ref={setNodeRef}
       style={{
         ...style,
@@ -330,7 +336,11 @@ function KanbanCard({
       }}
       {...attributes}
       {...listeners}
-      className="kanban-card group rounded-2xl border-2 bg-card p-3 cursor-grab active:cursor-grabbing shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all duration-150 dark:bg-card/80"
+      className={cn(
+        "kanban-card group rounded-2xl border-2 bg-card p-3 cursor-grab active:cursor-grabbing shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all duration-150 dark:bg-card/80",
+        highlight &&
+          "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-md z-[2] motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]",
+      )}
     >
       <Link
         to={`/issues/${issue.identifier ?? issue.id}`}
@@ -360,6 +370,7 @@ const KanbanColumn = memo(function KanbanColumn({
   liveIssueIds,
   issueLinkState,
   statusColorMap,
+  highlightIssueId,
 }: {
   status: string;
   columnLabel?: string;
@@ -370,6 +381,7 @@ const KanbanColumn = memo(function KanbanColumn({
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
   statusColorMap?: Map<string, string>;
+  highlightIssueId?: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   // columnColor (from projectStatuses) always wins; then hardcoded map; then neutral fallback
@@ -450,6 +462,7 @@ const KanbanColumn = memo(function KanbanColumn({
             isLive={liveIssueIds?.has(issue.id) ?? false}
             issueLinkState={issueLinkState}
             statusColorMap={statusColorMap}
+            highlight={highlightIssueId === issue.id}
           />
         ))}
       </div>
@@ -466,6 +479,7 @@ export function KanbanBoard({
   issueLinkState,
   onUpdateIssue,
   projectStatuses,
+  highlightIssueId = null,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   // optimisticMoves: issueId → targetStatus applied immediately on drop so the
@@ -618,6 +632,7 @@ export function KanbanBoard({
               liveIssueIds={liveIssueIds}
               issueLinkState={issueLinkState}
               statusColorMap={statusColorMap}
+              highlightIssueId={highlightIssueId}
             />
           );
         })}
