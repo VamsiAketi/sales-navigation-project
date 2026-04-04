@@ -29,6 +29,43 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X, Target, AlertTriangle } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
+/** Color swatches for label creation — excludes white and very light colors. */
+const LABEL_PALETTE = [
+  ["#ddd6fe", "#fbcfe8", "#fda4af", "#fed7aa", "#fde68a", "#a7f3d0", "#99f6e4", "#bae6fd", "#bfdbfe", "#c7d2fe"],
+  ["#a78bfa", "#f472b6", "#fb7185", "#fb923c", "#fbbf24", "#34d399", "#2dd4bf", "#38bdf8", "#60a5fa", "#818cf8"],
+  ["#7c3aed", "#db2777", "#e11d48", "#ea580c", "#d97706", "#059669", "#0d9488", "#0284c7", "#2563eb", "#4f46e5"],
+];
+
+function ColorSwatchPickerInline({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      {LABEL_PALETTE.map((row, ri) => (
+        <div key={ri} className="flex gap-1">
+          {row.map((color) => (
+            <button
+              key={color}
+              type="button"
+              title={color}
+              onClick={() => onChange(color)}
+              className={cn(
+                "h-5 w-5 rounded-full shrink-0 transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1",
+                value === color && "ring-2 ring-ring ring-offset-1 scale-110",
+              )}
+              style={{ backgroundColor: color }}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const EXECUTION_WORKSPACE_OPTIONS = [
   { value: "shared_workspace", label: "Project default" },
   { value: "isolated_workspace", label: "New isolated workspace" },
@@ -201,7 +238,7 @@ function LabelRowWithConfirmDelete({
   onCancelDelete,
   onConfirmDelete,
 }: {
-  label: { id: string; name: string; color: string };
+  label: { id: string; name: string; color: string; usageCount?: number };
   selected: boolean;
   disabled: boolean;
   confirmingDelete: boolean;
@@ -211,8 +248,9 @@ function LabelRowWithConfirmDelete({
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
 }) {
+  const isUsed = (label.usageCount ?? 0) > 0;
   return (
-    <div>
+    <div className="group">
       <div className="flex items-center gap-1">
         <div
           className={cn(
@@ -237,10 +275,15 @@ function LabelRowWithConfirmDelete({
         </div>
         <button
           type="button"
-          className="p-1 text-muted-foreground hover:text-destructive rounded"
-          onClick={onRequestDelete}
-          title={`Delete ${label.name}`}
-          disabled={disabled}
+          className={cn(
+            "p-1 rounded transition-opacity",
+            isUsed
+              ? "text-muted-foreground/30 cursor-not-allowed opacity-0 group-hover:opacity-100"
+              : "text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100",
+          )}
+          onClick={!isUsed ? onRequestDelete : undefined}
+          title={isUsed ? `Used in ${label.usageCount} task${label.usageCount === 1 ? "" : "s"} — cannot delete` : `Delete ${label.name}`}
+          disabled={disabled || isUsed}
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -248,8 +291,7 @@ function LabelRowWithConfirmDelete({
       {confirmingDelete && (
         <div className="flex items-center gap-1 mt-0.5 px-2 py-1 rounded border border-destructive/30 bg-destructive/5">
           <span className="flex-1 text-[11px] text-destructive">
-            Delete "{label.name}"? 
-            <br></br>
+            Delete "{label.name}"?{" "}
             This label will be removed from ALL tasks.</span>
           <button
             type="button"
@@ -285,19 +327,15 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelSearch, setLabelSearch] = useState("");
   const [labelDraftIds, setLabelDraftIds] = useState<string[]>(issue.labelIds ?? []);
-  const [labelsDirty, setLabelsDirty] = useState(false);
   const [labelsSaving, setLabelsSaving] = useState(false);
-  const [labelSaveError, setLabelSaveError] = useState<string | null>(null);
   const [newLabelName, setNewLabelName] = useState("");
-  const [newLabelColor, setNewLabelColor] = useState("#6366f1");
+  const [newLabelColor, setNewLabelColor] = useState("#7c3aed");
   const [confirmDeleteLabelId, setConfirmDeleteLabelId] = useState<string | null>(null);
   const persistedLabelSignature = (issue.labelIds ?? []).join(",");
 
   useEffect(() => {
     setLabelDraftIds(issue.labelIds ?? []);
-    setLabelsDirty(false);
     setLabelsSaving(false);
-    setLabelSaveError(null);
   }, [issue.id, persistedLabelSignature]);
 
   const { data: session } = useQuery({
@@ -353,14 +391,21 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [goalOpen, setGoalOpen] = useState(false);
   const [goalSearch, setGoalSearch] = useState("");
 
+  const labelDraftIdsRef = useRef<string[]>(labelDraftIds);
+  labelDraftIdsRef.current = labelDraftIds;
+
   const createLabel = useMutation({
     mutationFn: (data: { name: string; color: string }) => issuesApi.createLabel(companyId!, data),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.issues.labels(companyId!) });
-      setLabelDraftIds((current) => (current.includes(created.id) ? current : [...current, created.id]));
-      setLabelsDirty(true);
-      setLabelSaveError(null);
+      const newIds = labelDraftIdsRef.current.includes(created.id)
+        ? labelDraftIdsRef.current
+        : [...labelDraftIdsRef.current, created.id];
+      setLabelDraftIds(newIds);
       setNewLabelName("");
+      try {
+        await onUpdate({ labelIds: newIds });
+      } catch { /* silent — issue refetch will resync state */ }
     },
   });
 
@@ -368,39 +413,22 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     mutationFn: (labelId: string) => issuesApi.deleteLabel(labelId),
     onSuccess: (_, labelId) => {
       setLabelDraftIds((current) => current.filter((id) => id !== labelId));
-      setLabelsDirty(true);
-      setLabelSaveError(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.labels(companyId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issue.id) });
     },
   });
 
-  const toggleLabel = (labelId: string) => {
-    setLabelDraftIds((current) => toggleIssueLabelSelection(current, labelId));
-    setLabelsDirty(true);
-    setLabelSaveError(null);
-  };
-
-  const resetLabels = useCallback(() => {
-    setLabelDraftIds(issue.labelIds ?? []);
-    setLabelsDirty(false);
-    setLabelSaveError(null);
-  }, [issue.labelIds]);
-
-  const saveLabels = useCallback(async () => {
-    if (labelsSaving || !labelsDirty) return;
+  const toggleLabel = async (labelId: string) => {
+    const newIds = toggleIssueLabelSelection(labelDraftIds, labelId);
+    setLabelDraftIds(newIds);
     setLabelsSaving(true);
-    setLabelSaveError(null);
     try {
-      await onUpdate({ labelIds: labelDraftIds });
-      setLabelsDirty(false);
-    } catch (error) {
-      setLabelSaveError(error instanceof Error ? error.message : "Failed to update labels. Try again.");
-    } finally {
+      await onUpdate({ labelIds: newIds });
+    } catch { /* silent — issue refetch will resync state */ } finally {
       setLabelsSaving(false);
     }
-  }, [labelDraftIds, labelsDirty, labelsSaving, onUpdate]);
+  };
 
   const agentName = (id: string | null) => {
     if (!id || !agents) return null;
@@ -523,6 +551,11 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         autoFocus={!inline}
       />
       <div className="max-h-44 overflow-y-auto overscroll-contain space-y-0.5">
+        {labelsSaving && (
+          <div className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+          </div>
+        )}
         {(labels ?? [])
           .filter((label) => {
             if (!labelSearch.trim()) return true;
@@ -535,50 +568,28 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               selected={labelDraftIds.includes(label.id)}
               disabled={deleteLabel.isPending || labelsSaving}
               confirmingDelete={confirmDeleteLabelId === label.id}
-              onSelect={() => toggleLabel(label.id)}
-              onDeselect={() => toggleLabel(label.id)}
+              onSelect={() => void toggleLabel(label.id)}
+              onDeselect={() => void toggleLabel(label.id)}
               onRequestDelete={() => setConfirmDeleteLabelId(label.id)}
               onCancelDelete={() => setConfirmDeleteLabelId(null)}
               onConfirmDelete={() => { deleteLabel.mutate(label.id); setConfirmDeleteLabelId(null); }}
             />
           ))}
       </div>
-      <div className="mt-2 border-t border-border pt-2 space-y-1">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="flex-1 px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
-            onClick={resetLabels}
-            disabled={labelsSaving || !labelsDirty}
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            className="flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
-            onClick={() => { void saveLabels(); }}
-            disabled={labelsSaving || !labelsDirty}
-          >
-            {labelsSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-            {labelsSaving ? "Saving..." : "Save labels"}
-          </button>
-        </div>
-        {labelSaveError ? (
-          <div className="text-[11px] text-destructive">{labelSaveError}</div>
-        ) : null}
-        <div className="flex items-center gap-1">
+      <div className="mt-2 border-t border-border pt-2 space-y-2">
+        <div className="space-y-1.5">
           <input
-            className="h-7 w-7 p-0 rounded bg-transparent"
-            type="color"
-            value={newLabelColor}
-            onChange={(e) => setNewLabelColor(e.target.value)}
-          />
-          <input
-            className="flex-1 px-2 py-1.5 text-xs bg-transparent outline outline-[#cecee4] rounded border placeholder:text-muted-foreground/50"
-            placeholder="New label"
+            className="w-full px-2 py-1.5 text-xs bg-transparent outline outline-[#cecee4] rounded border placeholder:text-muted-foreground/50"
+            placeholder="New label name…"
             value={newLabelName}
             onChange={(e) => setNewLabelName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newLabelName.trim() && !createLabel.isPending) {
+                createLabel.mutate({ name: newLabelName.trim(), color: newLabelColor });
+              }
+            }}
           />
+          <ColorSwatchPickerInline value={newLabelColor} onChange={setNewLabelColor} />
         </div>
         <button
           className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
