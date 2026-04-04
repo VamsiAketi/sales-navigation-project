@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Users } from "lucide-react";
+import { Bot, Loader2, UserRound, Users } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { accessApi, type CompanyMember } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -110,6 +112,12 @@ const PERMISSION_UI: Record<PermissionKey, { title: string; description: string 
   },
 };
 
+const PERMISSION_CATEGORY_ACCENTS: Record<string, string> = {
+  team: "from-violet-500 to-fuchsia-500",
+  agents: "from-emerald-500 to-teal-400",
+  work: "from-sky-500 to-blue-500",
+};
+
 const PERMISSION_CATEGORY_DEFS: {
   id: string;
   title: string;
@@ -185,7 +193,7 @@ function HumanPermissionsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/40 bg-muted/20 p-3 ring-1 ring-border/25 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
           {intro}
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
@@ -210,7 +218,7 @@ function HumanPermissionsPanel({
         </div>
         <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
           <div
-            className="inline-flex min-w-[7.5rem] flex-col gap-0.5 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-right shadow-xs ring-1 ring-primary/10"
+            className="inline-flex min-w-[7.5rem] flex-col gap-0.5 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 to-violet-500/5 px-3 py-2 text-right shadow-xs ring-1 ring-primary/15"
             title={`${enabledCount} of ${total} optional access rights are on`}
           >
             <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -235,9 +243,18 @@ function HumanPermissionsPanel({
       <div className="space-y-5">
         {PERMISSION_CATEGORY_DEFS.map((cat) => (
           <section key={cat.id} className="space-y-2">
-            <header className="space-y-0.5 border-b border-border/60 pb-2">
-              <h3 className="text-sm font-semibold text-foreground">{cat.title}</h3>
-              <p className="text-xs text-muted-foreground">{cat.subtitle}</p>
+            <header className="flex gap-3 border-b border-border/60 pb-2">
+              <span
+                className={cn(
+                  "mt-0.5 h-9 w-1 shrink-0 rounded-full bg-gradient-to-b",
+                  PERMISSION_CATEGORY_ACCENTS[cat.id] ?? "from-muted-foreground/70 to-muted-foreground/30",
+                )}
+                aria-hidden
+              />
+              <div className="min-w-0 space-y-0.5">
+                <h3 className="text-sm font-semibold text-foreground">{cat.title}</h3>
+                <p className="text-xs text-muted-foreground">{cat.subtitle}</p>
+              </div>
             </header>
             <ul className="space-y-2">
               {cat.keys.map((key) => {
@@ -247,7 +264,7 @@ function HumanPermissionsPanel({
                 return (
                   <li
                     key={key}
-                    className="flex items-center gap-3 rounded-lg border border-border/50 bg-background/80 px-3 py-2.5 shadow-xs transition-colors hover:border-border hover:bg-muted/25"
+                    className="flex items-center gap-3 rounded-2xl border border-border/50 bg-background/80 px-3 py-2.5 shadow-xs transition-colors hover:border-primary/20 hover:bg-muted/30"
                   >
                     <div className="min-w-0 flex-1">
                       <Label htmlFor={sid} className="cursor-pointer text-sm font-medium leading-tight text-foreground">
@@ -307,6 +324,84 @@ function memberDisplayName(member: CompanyMember) {
 function memberSecondaryLine(member: CompanyMember) {
   if (member.principalType === "user") return member.user?.email ?? "unknown email";
   return member.agent?.role ?? "agent";
+}
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h === 0 ? 0 : Math.abs(h);
+}
+
+const HUMAN_AVATAR_THEMES = [
+  "bg-gradient-to-br from-violet-400/40 via-fuchsia-400/30 to-violet-600/25 text-violet-950 ring-1 ring-violet-500/30 dark:from-violet-500/40 dark:via-fuchsia-500/25 dark:to-violet-700/30 dark:text-violet-50",
+  "bg-gradient-to-br from-sky-400/40 via-cyan-400/30 to-blue-600/25 text-sky-950 ring-1 ring-sky-500/30 dark:from-sky-500/40 dark:via-cyan-500/25 dark:to-blue-700/30 dark:text-sky-50",
+  "bg-gradient-to-br from-amber-400/40 via-orange-400/30 to-rose-500/25 text-amber-950 ring-1 ring-amber-500/30 dark:from-amber-500/40 dark:via-orange-500/25 dark:to-rose-600/30 dark:text-amber-50",
+  "bg-gradient-to-br from-emerald-400/40 via-teal-400/30 to-cyan-600/25 text-emerald-950 ring-1 ring-emerald-500/30 dark:from-emerald-500/40 dark:via-teal-500/25 dark:to-cyan-700/30 dark:text-emerald-50",
+  "bg-gradient-to-br from-rose-400/40 via-pink-400/30 to-fuchsia-600/25 text-rose-950 ring-1 ring-rose-500/30 dark:from-rose-500/40 dark:via-pink-500/25 dark:to-fuchsia-700/30 dark:text-rose-50",
+] as const;
+
+function humanAvatarThemeClass(member: CompanyMember): string {
+  const id = member.user?.id ?? member.principalId;
+  return HUMAN_AVATAR_THEMES[hashString(id) % HUMAN_AVATAR_THEMES.length]!;
+}
+
+function memberAvatarInitials(member: CompanyMember): string {
+  if (member.principalType === "user" && member.user) {
+    const name = member.user.name?.trim();
+    if (name) {
+      const parts = name.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) {
+        const a = parts[0]![0];
+        const b = parts[1]![0];
+        if (a && b) return (a + b).toUpperCase();
+      }
+      return name.slice(0, 2).toUpperCase();
+    }
+    const email = member.user.email;
+    if (email.length >= 2) return email.slice(0, 2).toUpperCase();
+    return "?";
+  }
+  const raw = member.agent?.name ?? member.principalId;
+  return raw.slice(0, 2).toUpperCase();
+}
+
+type DirectoryAvatarSize = "xs" | "sm" | "default" | "lg";
+
+function DirectoryMemberAvatar({
+  member,
+  size = "default",
+  className,
+}: {
+  member: CompanyMember;
+  size?: DirectoryAvatarSize;
+  className?: string;
+}) {
+  if (member.principalType === "agent") {
+    return (
+      <Avatar size={size} className={cn("ring-2 ring-emerald-400/40 dark:ring-emerald-500/35", className)}>
+        <AvatarFallback className="bg-gradient-to-br from-emerald-500/40 via-teal-400/30 to-cyan-500/25 text-emerald-950 dark:text-emerald-50">
+          {size === "xs" ? (
+            <span className="text-[10px] font-bold">{memberAvatarInitials(member)}</span>
+          ) : (
+            <Bot className="size-[55%] opacity-95" aria-hidden />
+          )}
+        </AvatarFallback>
+      </Avatar>
+    );
+  }
+  return (
+    <Avatar size={size} className={className}>
+      <AvatarFallback
+        className={cn(
+          "font-bold tracking-tight",
+          size === "xs" ? "text-[10px]" : size === "sm" ? "text-xs" : "text-sm",
+          humanAvatarThemeClass(member),
+        )}
+      >
+        {memberAvatarInitials(member)}
+      </AvatarFallback>
+    </Avatar>
+  );
 }
 
 function apiErrorMessage(error: unknown): string {
@@ -838,7 +933,7 @@ export function CompanyDirectory() {
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">{label}</div>
         <select
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
           value={selectValue}
           onChange={(e) => {
             const next = e.target.value;
@@ -857,6 +952,7 @@ export function CompanyDirectory() {
         {selectValue === CUSTOM_ROLE_VALUE && (
           <div className="space-y-2">
             <Input
+              className="h-10 rounded-xl"
               value={roleDraft}
               onChange={(e) => setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
               placeholder="Custom role…"
@@ -890,25 +986,48 @@ export function CompanyDirectory() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-xl font-bold text-foreground">Teams</h1>
+    <div className="space-y-6">
+      <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-violet-500/[0.08] via-background to-sky-500/[0.09] p-6 shadow-sm ring-1 ring-border/40 dark:from-violet-400/[0.12] dark:to-sky-400/[0.1]">
+        <div
+          className="pointer-events-none absolute -right-20 -top-28 size-80 rounded-full bg-gradient-to-br from-fuchsia-400/20 to-violet-500/10 blur-3xl dark:from-fuchsia-500/15 dark:to-violet-600/10"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -bottom-24 -left-16 size-64 rounded-full bg-gradient-to-tr from-cyan-400/20 to-sky-500/10 blur-3xl dark:from-cyan-500/12 dark:to-sky-600/10"
+          aria-hidden
+        />
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/30 ring-2 ring-white/25 dark:ring-white/10">
+              <Users className="size-7 text-white" aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">Teams</h1>
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                Manage people and AI agents in one place. Edits save automatically.
+              </p>
+              {!membersPermissionDenied && !membersLoading ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/25 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-950 dark:border-violet-400/20 dark:bg-violet-500/15 dark:text-violet-100">
+                    <UserRound className="size-3.5 opacity-90" aria-hidden />
+                    {activeHumanMembers.length} people
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-950 dark:border-emerald-400/20 dark:bg-emerald-500/15 dark:text-emerald-100">
+                    <Bot className="size-3.5 opacity-90" aria-hidden />
+                    {activeAgentMembers.length} agents
+                  </span>
+                </div>
+              ) : null}
+            </div>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage human users and agents. Changes auto-save.
-          </p>
-        </div>
-        <div className="flex w-full max-w-xl items-center justify-end gap-2">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:max-w-md xl:max-w-xl">
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
-              <Button type="button" variant="secondary">
+              <Button type="button" className="rounded-xl shadow-sm" variant="default">
                 Invite users
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md rounded-2xl border-border/60">
               <DialogHeader>
                 <DialogTitle>Invite human user</DialogTitle>
                 <DialogDescription>
@@ -918,21 +1037,21 @@ export function CompanyDirectory() {
               <div className="mt-4 space-y-3">
                 <div className="grid gap-2 md:grid-cols-2">
                   <Input
-                    className="h-9"
+                    className="h-10 rounded-xl"
                     type="text"
                     placeholder="Name (optional)"
                     value={humanInviteName}
                     onChange={(e) => setHumanInviteName(e.target.value)}
                   />
                   <Input
-                    className="h-9"
+                    className="h-10 rounded-xl"
                     type="email"
                     placeholder="Email"
                     value={humanInviteEmail}
                     onChange={(e) => setHumanInviteEmail(e.target.value)}
                   />
                 </div>
-                <div className="rounded-xl border border-border/60 bg-muted/10 px-3 py-3">
+                <div className="rounded-2xl border border-border/50 bg-muted/15 px-4 py-4 ring-1 ring-border/30">
                   <div className="text-sm font-semibold text-foreground">Initial access</div>
                   <div className="mt-3">
                     <HumanPermissionsPanel
@@ -962,7 +1081,7 @@ export function CompanyDirectory() {
                   )}
                 </div>
                 {humanInviteCredentials && (
-                  <div className="space-y-1 rounded-md border border-border bg-background px-2.5 py-2 text-xs">
+                  <div className="space-y-1 rounded-2xl border border-border/60 bg-muted/20 px-3 py-3 text-xs ring-1 ring-border/30">
                     <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
                     <p>
                       Name: <span className="font-mono">{humanInviteCredentials.name}</span>
@@ -1010,11 +1129,11 @@ export function CompanyDirectory() {
           </Dialog>
           <Dialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen}>
             <DialogTrigger asChild>
-              <Button type="button" variant="secondary">
+              <Button type="button" variant="secondary" className="rounded-xl border-border/60">
                 Manage roles
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className="sm:max-w-2xl rounded-2xl border-border/60">
               <DialogHeader>
                 <DialogTitle>Manage roles</DialogTitle>
                 <DialogDescription>
@@ -1121,15 +1240,21 @@ export function CompanyDirectory() {
             </DialogContent>
           </Dialog>
 
-          <div className="w-full max-w-sm">
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, role…" />
+          <div className="w-full min-w-0 sm:max-w-xs sm:flex-1 lg:max-w-sm">
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, email, role…"
+              className="h-10 rounded-2xl border-border/60 bg-background/80 shadow-inner"
+            />
+          </div>
           </div>
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "agents")}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "agents")} className="gap-4">
         {membersPermissionDenied ? (
-          <div className="rounded-lg border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
+          <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
             <div className="font-medium text-foreground">You do not have permission to view Teams members.</div>
             <div className="mt-2">
               Ask a company admin for the <code>users:manage_permissions</code> permission.
@@ -1137,33 +1262,40 @@ export function CompanyDirectory() {
           </div>
         ) : null}
         {!membersPermissionDenied && membersError ? (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <div className="rounded-2xl border border-destructive/35 bg-destructive/5 px-4 py-3 text-sm text-destructive ring-1 ring-destructive/15">
             {apiErrorMessage(membersError)}
           </div>
         ) : null}
         {!membersPermissionDenied && !membersError ? (
           <>
-        <TabsList variant="line" className="px-0">
-          <TabsTrigger value="users">
-            Users <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeHumanMembers.length})`}</span>
+        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border border-border/50 bg-muted/45 p-1.5 shadow-inner sm:w-auto">
+          <TabsTrigger value="users" className="gap-2 rounded-xl px-4 py-2 data-[state=active]:shadow-sm">
+            <UserRound className="size-4 text-violet-600 opacity-80 dark:text-violet-300" aria-hidden />
+            Users{" "}
+            <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeHumanMembers.length})`}</span>
           </TabsTrigger>
-          <TabsTrigger value="agents">
-            Agents <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeAgentMembers.length})`}</span>
+          <TabsTrigger value="agents" className="gap-2 rounded-xl px-4 py-2 data-[state=active]:shadow-sm">
+            <Bot className="size-4 text-emerald-600 opacity-80 dark:text-emerald-300" aria-hidden />
+            Agents{" "}
+            <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeAgentMembers.length})`}</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="users">
-          <div className="grid gap-3 lg:grid-cols-[20rem_1fr]">
-            <div className="rounded-lg border border-border bg-card">
-              <div className="border-b border-border/60 px-3 py-2">
-                <div className="text-xs font-semibold text-foreground">Active users</div>
+        <TabsContent value="users" className="mt-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
+            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card/95 shadow-md ring-1 ring-violet-500/15 dark:ring-violet-400/10">
+              <div className="border-b border-border/50 bg-gradient-to-r from-violet-500/12 via-transparent to-fuchsia-500/5 px-4 py-3">
+                <div className="text-sm font-semibold text-foreground">People</div>
                 <div className="text-xs text-muted-foreground">
                   {membersLoading ? "Loading…" : `${filteredHumanMembers.length} shown`}
                 </div>
               </div>
-              <div className="max-h-112 overflow-y-auto p-1">
+              <div className="flex-1 space-y-1 overflow-y-auto p-2">
                 {!membersLoading && filteredHumanMembers.length === 0 && (
-                  <div className="px-3 py-3 text-sm text-muted-foreground">No matching users.</div>
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-300/40 bg-violet-500/[0.04] px-4 py-10 text-center dark:border-violet-500/20">
+                    <UserRound className="size-9 text-violet-400/90 dark:text-violet-400/70" aria-hidden />
+                    <p className="text-sm text-muted-foreground">No matching users.</p>
+                  </div>
                 )}
                 {filteredHumanMembers.map((member) => {
                   const selected = selectedHumanMember?.id === member.id;
@@ -1173,26 +1305,31 @@ export function CompanyDirectory() {
                       key={member.id}
                       type="button"
                       onClick={() => setSelectedHumanMemberId(member.id)}
-                      className={`w-full rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 ${
-                        selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                      } ${isSuspended ? "opacity-60" : ""}`}
+                      className={cn(
+                        "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
+                        selected
+                          ? "bg-gradient-to-r from-violet-500/14 via-primary/10 to-fuchsia-500/10 shadow-sm ring-1 ring-violet-400/35 dark:from-violet-500/20 dark:ring-violet-500/30"
+                          : "hover:bg-muted/55",
+                        isSuspended && "opacity-60",
+                      )}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate text-sm font-medium">{memberDisplayName(member)}</span>
+                      <div className="flex items-start gap-3">
+                        <DirectoryMemberAvatar member={member} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</span>
                             {isSuspended && (
-                              <span className="shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400 border border-orange-200 dark:border-orange-800">
+                              <span className="shrink-0 inline-flex items-center rounded-full border border-orange-200 bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300">
                                 Deactivated
                               </span>
                             )}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
+                          <div className="mt-1 text-[11px] font-medium text-violet-700/90 dark:text-violet-300/90">
+                            {member.membershipRole ?? "member"}
+                          </div>
                         </div>
                         <SaveStatusPill state={getMemberSaveState(member.id)} />
-                      </div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">
-                        {member.membershipRole ?? "member"}
                       </div>
                     </button>
                   );
@@ -1200,25 +1337,32 @@ export function CompanyDirectory() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md ring-1 ring-border/35">
               {selectedHumanMember ? (
                 <>
-                  <div className="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-foreground">{memberDisplayName(selectedHumanMember)}</span>
-                        {selectedHumanMember.status === "suspended" && (
-                          <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400 border border-orange-200 dark:border-orange-800">
-                            Deactivated
+                  <div className="border-b border-border/50 bg-gradient-to-br from-violet-500/[0.07] via-muted/25 to-transparent px-5 py-5">
+                    <div className="flex flex-wrap items-start gap-4">
+                      <DirectoryMemberAvatar member={selectedHumanMember} size="lg" className="shrink-0 shadow-md" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-lg font-semibold text-foreground">
+                            {memberDisplayName(selectedHumanMember)}
                           </span>
-                        )}
+                          {selectedHumanMember.status === "suspended" && (
+                            <span className="shrink-0 inline-flex items-center rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-800 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300">
+                              Deactivated
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 truncate text-sm text-muted-foreground">
+                          {memberSecondaryLine(selectedHumanMember)}
+                        </div>
                       </div>
-                      <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(selectedHumanMember)}</div>
+                      <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
                     </div>
-                    <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
                   </div>
 
-                  <div className="space-y-4 px-4 py-4">
+                  <div className="space-y-4 px-5 py-5">
                     <div className="grid gap-3 md:grid-cols-2">
                       <RolePicker
                         member={selectedHumanMember}
@@ -1232,7 +1376,7 @@ export function CompanyDirectory() {
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Reports to</div>
                         <select
-                          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+                          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                           value={memberManagerDrafts[selectedHumanMember.id] ?? ""}
                           onChange={(e) => {
                             const next = e.target.value;
@@ -1270,14 +1414,14 @@ export function CompanyDirectory() {
                       </div>
                     </div>
 
-                    <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
-                      <div className="text-xs font-medium text-foreground">Notes</div>
+                    <div className="rounded-2xl border border-sky-500/15 bg-gradient-to-br from-sky-500/[0.06] to-transparent px-4 py-3 ring-1 ring-border/40">
+                      <div className="text-xs font-semibold text-foreground">Notes</div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         Assigning which agents a human manages is done by setting each agent’s “Reports to”.
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-border/60 bg-background px-4 py-4">
+                    <div className="rounded-2xl border border-border/50 bg-muted/10 px-4 py-4 ring-1 ring-border/30">
                       <div className="text-sm font-semibold text-foreground">Access & permissions</div>
                       <div className="mt-3">
                         <HumanPermissionsPanel
@@ -1312,12 +1456,13 @@ export function CompanyDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-border/60 px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
                     <div className="text-xs text-muted-foreground">Autosave is on.</div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         size="sm"
                         variant="secondary"
+                        className="rounded-xl"
                         disabled={
                           !humanIsDirty ||
                           humanSaveMutation.isPending ||
@@ -1340,6 +1485,7 @@ export function CompanyDirectory() {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="rounded-xl"
                           disabled={
                             !selectedHumanMember ||
                             !selectedCompanyId ||
@@ -1357,6 +1503,7 @@ export function CompanyDirectory() {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="rounded-xl"
                           disabled={
                             !selectedHumanMember ||
                             !selectedCompanyId ||
@@ -1374,6 +1521,7 @@ export function CompanyDirectory() {
                       <Button
                         size="sm"
                         variant="destructive"
+                        className="rounded-xl"
                         disabled={
                           !selectedHumanMember ||
                           !selectedCompanyId ||
@@ -1392,26 +1540,33 @@ export function CompanyDirectory() {
                   </div>
                 </>
               ) : (
-                <div className="px-4 py-6 text-sm text-muted-foreground">
-                  No active users.
+                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                  <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 ring-1 ring-violet-400/20">
+                    <UserRound className="size-8 text-violet-500/70 dark:text-violet-400/70" aria-hidden />
+                  </div>
+                  <p className="text-sm font-medium text-foreground">No user selected</p>
+                  <p className="max-w-xs text-xs text-muted-foreground">Choose someone from the list to edit their role, reporting line, and access.</p>
                 </div>
               )}
             </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="agents">
-          <div className="grid gap-3 lg:grid-cols-[20rem_1fr]">
-            <div className="rounded-lg border border-border bg-card">
-              <div className="border-b border-border/60 px-3 py-2">
-                <div className="text-xs font-semibold text-foreground">Active agents</div>
+        <TabsContent value="agents" className="mt-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
+            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card/95 shadow-md ring-1 ring-emerald-500/15 dark:ring-emerald-400/10">
+              <div className="border-b border-border/50 bg-gradient-to-r from-emerald-500/12 via-transparent to-teal-500/5 px-4 py-3">
+                <div className="text-sm font-semibold text-foreground">Agents</div>
                 <div className="text-xs text-muted-foreground">
                   {membersLoading ? "Loading…" : `${filteredAgentMembers.length} shown`}
                 </div>
               </div>
-              <div className="max-h-112 overflow-y-auto p-1">
+              <div className="flex-1 space-y-1 overflow-y-auto p-2">
                 {!membersLoading && filteredAgentMembers.length === 0 && (
-                  <div className="px-3 py-3 text-sm text-muted-foreground">No matching agents.</div>
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-emerald-300/40 bg-emerald-500/[0.04] px-4 py-10 text-center dark:border-emerald-500/20">
+                    <Bot className="size-9 text-emerald-500/90 dark:text-emerald-400/70" aria-hidden />
+                    <p className="text-sm text-muted-foreground">No matching agents.</p>
+                  </div>
                 )}
                 {filteredAgentMembers.map((member) => {
                   const selected = selectedAgentMember?.id === member.id;
@@ -1420,19 +1575,23 @@ export function CompanyDirectory() {
                       key={member.id}
                       type="button"
                       onClick={() => setSelectedAgentMemberId(member.id)}
-                      className={`w-full rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 ${
-                        selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                      }`}
+                      className={cn(
+                        "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
+                        selected
+                          ? "bg-gradient-to-r from-emerald-500/14 via-teal-500/10 to-cyan-500/10 shadow-sm ring-1 ring-emerald-400/35 dark:ring-emerald-500/30"
+                          : "hover:bg-muted/55",
+                      )}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{memberDisplayName(member)}</div>
+                      <div className="flex items-start gap-3">
+                        <DirectoryMemberAvatar member={member} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</div>
                           <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
+                          <div className="mt-1 text-[11px] font-medium text-emerald-800/90 dark:text-emerald-300/90">
+                            {member.membershipRole ?? "agent"}
+                          </div>
                         </div>
                         <SaveStatusPill state={getMemberSaveState(member.id)} />
-                      </div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">
-                        {member.membershipRole ?? "agent"}
                       </div>
                     </button>
                   );
@@ -1440,18 +1599,21 @@ export function CompanyDirectory() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md ring-1 ring-border/35">
               {selectedAgentMember ? (
                 <>
-                  <div className="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-foreground">{memberDisplayName(selectedAgentMember)}</div>
-                      <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(selectedAgentMember)}</div>
+                  <div className="border-b border-border/50 bg-gradient-to-br from-emerald-500/[0.07] via-muted/25 to-transparent px-5 py-5">
+                    <div className="flex flex-wrap items-start gap-4">
+                      <DirectoryMemberAvatar member={selectedAgentMember} size="lg" className="shrink-0 shadow-md" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-lg font-semibold text-foreground">{memberDisplayName(selectedAgentMember)}</div>
+                        <div className="mt-0.5 truncate text-sm text-muted-foreground">{memberSecondaryLine(selectedAgentMember)}</div>
+                      </div>
+                      <SaveStatusPill state={getMemberSaveState(selectedAgentMember.id)} />
                     </div>
-                    <SaveStatusPill state={getMemberSaveState(selectedAgentMember.id)} />
                   </div>
 
-                  <div className="space-y-4 px-4 py-4">
+                  <div className="space-y-4 px-5 py-5">
                     <div className="grid gap-3 md:grid-cols-2">
                       <RolePicker
                         member={selectedAgentMember}
@@ -1465,7 +1627,7 @@ export function CompanyDirectory() {
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Reports to</div>
                         <select
-                          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+                          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                           value={agentReportsDrafts[selectedAgentMember.id] ?? ""}
                           onChange={(e) => {
                             const next = e.target.value;
@@ -1504,11 +1666,12 @@ export function CompanyDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-border/60 px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
                     <div className="text-xs text-muted-foreground">Autosave is on.</div>
                     <Button
                       size="sm"
                       variant="secondary"
+                      className="rounded-xl"
                       disabled={!agentIsDirty || agentSaveMutation.isPending || !selectedCompanyId}
                       onClick={() => {
                         if (!selectedAgentMember) return;
@@ -1525,8 +1688,12 @@ export function CompanyDirectory() {
                   </div>
                 </>
               ) : (
-                <div className="px-4 py-6 text-sm text-muted-foreground">
-                  No active agents.
+                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                  <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/15 to-teal-500/10 ring-1 ring-emerald-400/20">
+                    <Bot className="size-8 text-emerald-500/70 dark:text-emerald-400/70" aria-hidden />
+                  </div>
+                  <p className="text-sm font-medium text-foreground">No agent selected</p>
+                  <p className="max-w-xs text-xs text-muted-foreground">Pick an agent from the list to edit their role label and reporting line.</p>
                 </div>
               )}
             </div>
@@ -1538,7 +1705,7 @@ export function CompanyDirectory() {
 
       {/* Deactivate confirmation dialog */}
       <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl border-border/60">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
@@ -1578,7 +1745,7 @@ export function CompanyDirectory() {
 
       {/* Delete confirmation dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl border-border/60">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
