@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ChangeEvent } from "re
 import { Link, useLocation } from "react-router-dom";
 import type { IssueComment, Agent } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
-import { Check, Copy, Paperclip, ChevronUp, ChevronDown } from "lucide-react";
+import { Check, Copy, Paperclip, ChevronDown } from "lucide-react";
 import { Identity, deriveInitials } from "./Identity";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 import { MarkdownBody } from "./MarkdownBody";
@@ -330,25 +330,20 @@ export function CommentThread({
   // Scroll navigation state — show ↑/↓ buttons when thread is long
   const timelineTopRef = useRef<HTMLDivElement>(null);
   const timelineBottomRef = useRef<HTMLDivElement>(null);
-  const [topVisible, setTopVisible] = useState(true);
   const [bottomVisible, setBottomVisible] = useState(true);
   const MIN_ITEMS_FOR_SCROLL_BUTTONS = 4;
 
   useEffect(() => {
     if (timeline.length < MIN_ITEMS_FOR_SCROLL_BUTTONS) {
-      setTopVisible(true);
       setBottomVisible(true);
       return;
     }
-    const topEl = timelineTopRef.current;
     const bottomEl = timelineBottomRef.current;
-    if (!topEl || !bottomEl) return;
+    if (!bottomEl) return;
 
-    const topObs = new IntersectionObserver(([e]) => setTopVisible(e.isIntersecting), { threshold: 0 });
     const bottomObs = new IntersectionObserver(([e]) => setBottomVisible(e.isIntersecting), { threshold: 0 });
-    topObs.observe(topEl);
     bottomObs.observe(bottomEl);
-    return () => { topObs.disconnect(); bottomObs.disconnect(); };
+    return () => { bottomObs.disconnect(); };
   }, [timeline.length]);
 
   // Build mention options from agent map (exclude terminated agents)
@@ -446,12 +441,23 @@ export function CommentThread({
 
   const canSubmit = !submitting && !!body.trim();
 
-  const showScrollUp = timeline.length >= MIN_ITEMS_FOR_SCROLL_BUTTONS && !topVisible;
   const showScrollDown = timeline.length >= MIN_ITEMS_FOR_SCROLL_BUTTONS && !bottomVisible;
 
   return (
-    <div className="space-y-4 relative">
-      <h3 className="text-sm font-semibold">Comments &amp; Runs ({timeline.length})</h3>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Comments &amp; Runs ({timeline.length})</h3>
+        {showScrollDown && (
+          <button
+            type="button"
+            onClick={() => timelineBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+            className="h-6 w-6 rounded-full bg-background border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title="Scroll to latest comment"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
 
       {/* Top sentinel — becomes invisible when user scrolls past first comment */}
       <div ref={timelineTopRef} aria-hidden="true" />
@@ -468,34 +474,6 @@ export function CommentThread({
 
       {/* Bottom sentinel — becomes invisible when last comment is off-screen */}
       <div ref={timelineBottomRef} aria-hidden="true" />
-
-      {/* Sticky ↑ / ↓ scroll buttons — shown only when thread is long enough */}
-      {(showScrollUp || showScrollDown) && (
-        <div className="sticky bottom-6 z-10 flex justify-end pointer-events-none">
-          <div className="flex flex-col gap-2 pointer-events-auto mr-1">
-            {showScrollUp && (
-              <button
-                type="button"
-                onClick={() => timelineTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
-                className="h-8 w-8 rounded-full bg-background border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                title="Scroll to first comment"
-              >
-                <ChevronUp className="h-4 w-4" />
-              </button>
-            )}
-            {showScrollDown && (
-              <button
-                type="button"
-                onClick={() => timelineBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
-                className="h-8 w-8 rounded-full bg-background border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                title="Scroll to latest comment"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       {liveRunSlot}
 
