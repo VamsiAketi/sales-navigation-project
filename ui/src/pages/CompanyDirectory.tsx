@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Users } from "lucide-react";
@@ -9,7 +9,7 @@ import { agentsApi } from "../api/agents";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -82,23 +82,196 @@ const AGENT_ROLE_OPTIONS = [
 const CUSTOM_ROLE_VALUE = "__custom__";
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
-const PERMISSION_LABELS: Record<PermissionKey, string> = {
-  "agents:create": "Create agents",
-  "users:invite": "Invite users",
-  "users:manage_permissions": "Manage permissions",
-  "tasks:assign": "Assign tasks",
-  "tasks:assign_scope": "Manage assignment scope",
-  "joins:approve": "Approve join requests",
+
+const PERMISSION_UI: Record<PermissionKey, { title: string; description: string }> = {
+  "agents:create": {
+    title: "Create agents",
+    description: "Bring new AI agents onboard and configure them for this company.",
+  },
+  "users:invite": {
+    title: "Invite teammates",
+    description: "Send email invites so new people can join the company.",
+  },
+  "users:manage_permissions": {
+    title: "Manage roles & access",
+    description: "Change what other members are allowed to do, including their permissions.",
+  },
+  "tasks:assign": {
+    title: "Assign work",
+    description: "Assign or hand off tasks between people and agents.",
+  },
+  "tasks:assign_scope": {
+    title: "Control assignment scope",
+    description: "Decide which tasks an agent is allowed to be assigned to.",
+  },
+  "joins:approve": {
+    title: "Approve join requests",
+    description: "Review and approve requests from people who want to join.",
+  },
 };
 
-const PERMISSION_DESCRIPTIONS: Record<PermissionKey, string> = {
-  "agents:create": "Hire and configure new AI agents",
-  "users:invite": "Send invitations to new team members",
-  "users:manage_permissions": "Edit roles and permissions for other members",
-  "tasks:assign": "Assign and reassign tasks to agents or users",
-  "tasks:assign_scope": "Control which tasks agents can be assigned to",
-  "joins:approve": "Review and approve requests to join this company",
+const PERMISSION_CATEGORY_DEFS: {
+  id: string;
+  title: string;
+  subtitle: string;
+  keys: readonly PermissionKey[];
+}[] = [
+  {
+    id: "team",
+    title: "Team & access",
+    subtitle: "Invitations, join requests, and who can change roles.",
+    keys: ["users:invite", "joins:approve", "users:manage_permissions"],
+  },
+  {
+    id: "agents",
+    title: "Agents",
+    subtitle: "Creating AI teammates.",
+    keys: ["agents:create"],
+  },
+  {
+    id: "work",
+    title: "Tasks & workflow",
+    subtitle: "How work is routed on the board.",
+    keys: ["tasks:assign", "tasks:assign_scope"],
+  },
+];
+
+const PERMISSION_PRESETS = {
+  Member: [] as const,
+  Manager: [
+    "agents:create",
+    "users:invite",
+    "tasks:assign",
+    "tasks:assign_scope",
+    "joins:approve",
+  ] as const,
+  Admin: [...PERMISSION_KEYS],
+} satisfies Record<string, readonly PermissionKey[]>;
+
+type PermissionPresetName = keyof typeof PERMISSION_PRESETS;
+
+const PERMISSION_PRESET_HINTS: Record<PermissionPresetName, string> = {
+  Member: "No optional access — baseline teammate.",
+  Manager: "Run day-to-day work and invites; cannot change others permissions.",
+  Admin: "Everything on, including who can manage roles and access.",
 };
+
+type HumanPermissionsPanelProps = {
+  idPrefix: string;
+  enabledKeys: PermissionKey[];
+  onKeysChange: (keys: PermissionKey[]) => void;
+  disabled?: boolean;
+  intro?: ReactNode;
+};
+
+function HumanPermissionsPanel({
+  idPrefix,
+  enabledKeys,
+  onKeysChange,
+  disabled,
+  intro,
+}: HumanPermissionsPanelProps) {
+  const enabledSet = useMemo(() => new Set(enabledKeys), [enabledKeys]);
+  const enabledCount = enabledKeys.length;
+  const total = ALL_PERMISSION_KEYS.length;
+  const pct = total === 0 ? 0 : Math.round((enabledCount / total) * 100);
+
+  const toggle = (key: PermissionKey, on: boolean) => {
+    const next = new Set(enabledKeys);
+    if (on) next.add(key);
+    else next.delete(key);
+    onKeysChange(ALL_PERMISSION_KEYS.filter((k) => next.has(k)));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          {intro}
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Quick presets
+            </span>
+            {(Object.keys(PERMISSION_PRESETS) as PermissionPresetName[]).map((name) => (
+              <Button
+                key={name}
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                title={PERMISSION_PRESET_HINTS[name]}
+                className="h-7 rounded-full px-3 text-xs font-medium"
+                onClick={() => onKeysChange([...PERMISSION_PRESETS[name]])}
+              >
+                {name}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+          <div
+            className="inline-flex min-w-[7.5rem] flex-col gap-0.5 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-right shadow-xs ring-1 ring-primary/10"
+            title={`${enabledCount} of ${total} optional access rights are on`}
+          >
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Access enabled
+            </span>
+            <div className="flex items-baseline justify-end gap-1">
+              <span className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                {enabledCount}
+              </span>
+              <span className="text-sm font-medium text-muted-foreground">/ {total}</span>
+            </div>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted sm:w-36">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-5">
+        {PERMISSION_CATEGORY_DEFS.map((cat) => (
+          <section key={cat.id} className="space-y-2">
+            <header className="space-y-0.5 border-b border-border/60 pb-2">
+              <h3 className="text-sm font-semibold text-foreground">{cat.title}</h3>
+              <p className="text-xs text-muted-foreground">{cat.subtitle}</p>
+            </header>
+            <ul className="space-y-2">
+              {cat.keys.map((key) => {
+                const checked = enabledSet.has(key);
+                const ui = PERMISSION_UI[key];
+                const sid = `${idPrefix}-${key}`;
+                return (
+                  <li
+                    key={key}
+                    className="flex items-center gap-3 rounded-lg border border-border/50 bg-background/80 px-3 py-2.5 shadow-xs transition-colors hover:border-border hover:bg-muted/25"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <Label htmlFor={sid} className="cursor-pointer text-sm font-medium leading-tight text-foreground">
+                        {ui.title}
+                      </Label>
+                      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{ui.description}</p>
+                    </div>
+                    <Switch
+                      id={sid}
+                      checked={checked}
+                      disabled={disabled}
+                      onCheckedChange={(on) => toggle(key, on)}
+                      aria-label={ui.title}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function normalizeRoleLabel(input: string) {
   return input.trim().replace(/\s+/g, " ");
@@ -759,40 +932,19 @@ export function CompanyDirectory() {
                     onChange={(e) => setHumanInviteEmail(e.target.value)}
                   />
                 </div>
-                <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
-                  <div className="text-xs font-medium text-foreground">Initial permissions</div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    New invites start restricted unless you select grants below.
-                  </div>
-                  <div className="mt-2 grid gap-0.5">
-                    {ALL_PERMISSION_KEYS.map((permissionKey) => {
-                      const checked = humanInvitePermissionKeys.includes(permissionKey);
-                      const id = `invite-perm-${permissionKey}`;
-                      return (
-                        <div
-                          key={permissionKey}
-                          className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/40 transition-colors"
-                        >
-                          <Checkbox
-                            id={id}
-                            checked={checked}
-                            onCheckedChange={(next) => {
-                              setHumanInvitePermissionKeys((prev) => {
-                                const set = new Set(prev);
-                                if (next === true) set.add(permissionKey);
-                                else set.delete(permissionKey);
-                                return Array.from(set);
-                              });
-                            }}
-                            className="mt-0.5"
-                          />
-                          <Label htmlFor={id} className="flex cursor-pointer flex-col gap-0.5 font-normal">
-                            <span className="text-xs font-medium text-foreground">{PERMISSION_LABELS[permissionKey]}</span>
-                            <span className="text-[11px] text-muted-foreground">{PERMISSION_DESCRIPTIONS[permissionKey]}</span>
-                          </Label>
-                        </div>
-                      );
-                    })}
+                <div className="rounded-xl border border-border/60 bg-muted/10 px-3 py-3">
+                  <div className="text-sm font-semibold text-foreground">Initial access</div>
+                  <div className="mt-3">
+                    <HumanPermissionsPanel
+                      idPrefix="invite"
+                      enabledKeys={humanInvitePermissionKeys}
+                      onKeysChange={setHumanInvitePermissionKeys}
+                      intro={
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Optional grants after they accept. Use a preset or adjust switches—nothing is enabled until you choose.
+                        </p>
+                      }
+                    />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1125,48 +1277,35 @@ export function CompanyDirectory() {
                       </div>
                     </div>
 
-                    <div className="rounded-md border border-border/60 bg-background px-3 py-3">
-                      <div className="text-xs font-medium text-foreground">Permissions</div>
-                      <div className="mt-3 grid gap-0.5">
-                        {ALL_PERMISSION_KEYS.map((permissionKey) => {
-                          const checked = selectedHumanMember.grants.some(
-                            (grant) => grant.permissionKey === permissionKey,
-                          );
-                          const id = `perm-${selectedHumanMember.id}-${permissionKey}`;
-                          return (
-                            <div
-                              key={permissionKey}
-                              className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/40 transition-colors"
-                            >
-                              <Checkbox
-                                id={id}
-                                checked={checked}
-                                disabled={humanPermissionMutation.isPending || !selectedCompanyId}
-                                onCheckedChange={(next) => {
-                                  if (!selectedHumanMember || !selectedCompanyId) return;
-                                  const nextGrants = selectedHumanMember.grants.filter(
-                                    (grant) => grant.permissionKey !== permissionKey,
-                                  );
-                                  if (next === true) {
-                                    nextGrants.push({ permissionKey, scope: null });
-                                  }
-                                  humanPermissionMutation.mutate({
-                                    memberId: selectedHumanMember.id,
-                                    grants: nextGrants,
-                                  });
-                                }}
-                                className="mt-0.5"
-                              />
-                              <Label htmlFor={id} className="flex cursor-pointer flex-col gap-0.5 font-normal">
-                                <span className="text-xs font-medium text-foreground">{PERMISSION_LABELS[permissionKey]}</span>
-                                <span className="text-[11px] text-muted-foreground">{PERMISSION_DESCRIPTIONS[permissionKey]}</span>
-                              </Label>
-                            </div>
-                          );
-                        })}
+                    <div className="rounded-xl border border-border/60 bg-background px-4 py-4">
+                      <div className="text-sm font-semibold text-foreground">Access & permissions</div>
+                      <div className="mt-3">
+                        <HumanPermissionsPanel
+                          idPrefix={`member-${selectedHumanMember.id}`}
+                          enabledKeys={ALL_PERMISSION_KEYS.filter((k) =>
+                            selectedHumanMember.grants.some((g) => g.permissionKey === k),
+                          )}
+                          disabled={humanPermissionMutation.isPending || !selectedCompanyId}
+                          onKeysChange={(keys) => {
+                            if (!selectedHumanMember || !selectedCompanyId) return;
+                            const nextGrants = keys.map((permissionKey) => ({
+                              permissionKey,
+                              scope: null,
+                            }));
+                            humanPermissionMutation.mutate({
+                              memberId: selectedHumanMember.id,
+                              grants: nextGrants,
+                            });
+                          }}
+                          intro={
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              Changes save as soon as you flip a switch. Presets replace the current selection.
+                            </p>
+                          }
+                        />
                       </div>
                       {humanPermissionMutation.isError ? (
-                        <div className="mt-2 px-2 text-[11px] text-destructive">
+                        <div className="mt-3 text-xs text-destructive">
                           {apiErrorMessage(humanPermissionMutation.error)}
                         </div>
                       ) : null}
