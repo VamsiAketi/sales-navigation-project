@@ -2682,7 +2682,7 @@ function AgentSkillsTab({
                   <section className="border-y border-border">
                     <div className="border-b border-border bg-muted/40 px-3 py-2">
                       <span className="text-xs font-medium text-muted-foreground">
-                        User-installed skills, not managed by Paperclip
+                        User-installed skills, not managed by AI-Harness
                       </span>
                     </div>
                     {unmanagedSkillRows.map(renderSkillRow)}
