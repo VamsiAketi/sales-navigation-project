@@ -227,23 +227,20 @@ function CopyableValue({ value, label, mono, className }: { value: string; label
   );
 }
 
-function LabelRowWithConfirmDelete({
+/** Unselected label row — click to add to task, hover-trash to delete the label definition. */
+function LabelUnselectedRow({
   label,
-  selected,
   disabled,
   confirmingDelete,
   onSelect,
-  onDeselect,
   onRequestDelete,
   onCancelDelete,
   onConfirmDelete,
 }: {
   label: { id: string; name: string; color: string; usageCount?: number };
-  selected: boolean;
   disabled: boolean;
   confirmingDelete: boolean;
   onSelect: () => void;
-  onDeselect: () => void;
   onRequestDelete: () => void;
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
@@ -252,37 +249,23 @@ function LabelRowWithConfirmDelete({
   return (
     <div className="group">
       <div className="flex items-center gap-1">
-        <div
-          className={cn(
-            "flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded text-left",
-            selected ? "bg-accent border border-white" : "hover:bg-accent/50 cursor-pointer"
-          )}
-          onClick={!selected && !disabled ? onSelect : undefined}
+        <button
+          type="button"
+          className="flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded text-left hover:bg-accent/50 disabled:opacity-50"
+          onClick={onSelect}
+          disabled={disabled}
         >
           <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
           <span className="truncate">{label.name}</span>
-          {selected && (
-            <button
-              type="button"
-              className="ml-auto p-0.5 rounded hover:bg-accent/70 text-muted-foreground hover:text-red-500"
-              onClick={onDeselect}
-              disabled={disabled}
-              title="Remove Label"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
+        </button>
         <button
           type="button"
           className={cn(
-            "p-1 rounded transition-opacity",
-            isUsed
-              ? "text-muted-foreground/30 cursor-not-allowed opacity-0 group-hover:opacity-100"
-              : "text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100",
+            "p-1 rounded transition-opacity opacity-0 group-hover:opacity-100",
+            isUsed ? "text-muted-foreground/30 cursor-not-allowed" : "text-muted-foreground hover:text-destructive",
           )}
           onClick={!isUsed ? onRequestDelete : undefined}
-          title={isUsed ? `Used in ${label.usageCount} task${label.usageCount === 1 ? "" : "s"} — cannot delete` : `Delete ${label.name}`}
+          title={isUsed ? `Used in ${label.usageCount} task${label.usageCount === 1 ? "" : "s"} — cannot delete` : `Delete "${label.name}"`}
           disabled={disabled || isUsed}
         >
           <Trash2 className="h-3 w-3" />
@@ -290,24 +273,9 @@ function LabelRowWithConfirmDelete({
       </div>
       {confirmingDelete && (
         <div className="flex items-center gap-1 mt-0.5 px-2 py-1 rounded border border-destructive/30 bg-destructive/5">
-          <span className="flex-1 text-[11px] text-destructive">
-            Delete "{label.name}"?{" "}
-            This label will be removed from ALL tasks.</span>
-          <button
-            type="button"
-            className="px-1.5 py-0.5 text-[11px] rounded hover:bg-accent/50"
-            onClick={onCancelDelete}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="px-1.5 py-0.5 text-[11px] rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
-            onClick={onConfirmDelete}
-            disabled={disabled}
-          >
-            Delete
-          </button>
+          <span className="flex-1 text-[11px] text-destructive">Delete "{label.name}"? Removes from all tasks.</span>
+          <button type="button" className="px-1.5 py-0.5 text-[11px] rounded hover:bg-accent/50" onClick={onCancelDelete}>Cancel</button>
+          <button type="button" className="px-1.5 py-0.5 text-[11px] rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50" onClick={onConfirmDelete} disabled={disabled}>Delete</button>
         </div>
       )}
     </div>
@@ -555,100 +523,129 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     </>
   );
 
+  const unselectedLabels = (labels ?? []).filter((l) => !labelDraftIds.includes(l.id));
+  const filteredUnselected = unselectedLabels.filter((l) =>
+    !labelSearch.trim() || l.name.toLowerCase().includes(labelSearch.toLowerCase()),
+  );
+  const filteredSelected = selectedLabels.filter((l) =>
+    !labelSearch.trim() || l.name.toLowerCase().includes(labelSearch.toLowerCase()),
+  );
+
   const labelsContent = (
     <>
-      {/* Selected label pills */}
+      {/* ── Selected tags as pills ── */}
       {selectedLabels.length > 0 && (
-        <div className="flex flex-wrap gap-1 px-1 pb-2 border-b border-border">
-          {selectedLabels.map((label) => (
-            <span
-              key={label.id}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border"
-              style={{
-                borderColor: label.color,
-                backgroundColor: `${label.color}22`,
-                color: pickTextColorForPillBg(label.color, 0.13),
-              }}
-            >
-              {label.name}
-              <button
-                type="button"
-                className="rounded-full hover:opacity-70 transition-opacity"
-                onClick={() => void toggleLabel(label.id)}
-                disabled={labelsSaving}
-                title={`Remove ${label.name}`}
+        <div className="flex flex-wrap gap-1 px-1.5 pt-1.5 pb-2 border-b border-border">
+          {filteredSelected.map((label) => {
+            const isUsed = (label.usageCount ?? 0) > 0;
+            return (
+              <span
+                key={label.id}
+                className="group/pill inline-flex items-center gap-0.5 rounded-full pl-2 pr-1 py-0.5 text-xs font-medium border"
+                style={{
+                  borderColor: label.color,
+                  backgroundColor: `${label.color}22`,
+                  color: pickTextColorForPillBg(label.color, 0.13),
+                }}
               >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-          ))}
+                {label.name}
+                {/* × removes from task */}
+                <button
+                  type="button"
+                  className="ml-0.5 p-0.5 rounded-full hover:bg-black/10 transition-colors"
+                  onClick={() => void toggleLabel(label.id)}
+                  disabled={labelsSaving}
+                  title={`Remove from task`}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+                {/* 🗑 deletes the label definition — hover only */}
+                <button
+                  type="button"
+                  className={cn(
+                    "p-0.5 rounded-full transition-all opacity-0 group-hover/pill:opacity-100",
+                    isUsed ? "cursor-not-allowed opacity-30" : "hover:bg-black/10",
+                  )}
+                  onClick={!isUsed ? () => setConfirmDeleteLabelId(label.id) : undefined}
+                  disabled={deleteLabel.isPending || isUsed}
+                  title={isUsed ? `Used in ${label.usageCount} task${label.usageCount === 1 ? "" : "s"} — cannot delete` : `Delete tag "${label.name}"`}
+                >
+                  <Trash2 className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            );
+          })}
           {labelsSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground self-center" />}
         </div>
       )}
 
-      {/* Search + label list */}
+      {/* Inline delete confirmation for a selected pill */}
+      {confirmDeleteLabelId && labelDraftIds.includes(confirmDeleteLabelId) && (
+        <div className="flex items-center gap-1 mx-1.5 mb-1 px-2 py-1 rounded border border-destructive/30 bg-destructive/5">
+          <span className="flex-1 text-[11px] text-destructive truncate">
+            Delete "{(labels ?? []).find((l) => l.id === confirmDeleteLabelId)?.name}"? Removes from all tasks.
+          </span>
+          <button type="button" className="shrink-0 px-1.5 py-0.5 text-[11px] rounded hover:bg-accent/50" onClick={() => setConfirmDeleteLabelId(null)}>Cancel</button>
+          <button type="button" className="shrink-0 px-1.5 py-0.5 text-[11px] rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50" onClick={() => { deleteLabel.mutate(confirmDeleteLabelId); setConfirmDeleteLabelId(null); }} disabled={deleteLabel.isPending}>Delete</button>
+        </div>
+      )}
+
+      {/* ── Search ── */}
       <input
         className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border placeholder:text-muted-foreground/50"
-        placeholder="Search labels..."
+        placeholder="Search tags…"
         value={labelSearch}
         onChange={(e) => setLabelSearch(e.target.value)}
         autoFocus={!inline}
       />
+
+      {/* ── Unselected tags list ── */}
       <div className="max-h-40 overflow-y-auto overscroll-contain space-y-0.5 py-1">
-        {!labelsSaving && (labels ?? []).filter((label) => {
-          if (!labelSearch.trim()) return true;
-          return label.name.toLowerCase().includes(labelSearch.toLowerCase());
-        }).length === 0 && (
-          <p className="text-[11px] text-muted-foreground px-2 py-1">No labels found</p>
+        {filteredUnselected.length === 0 && (
+          <p className="text-[11px] text-muted-foreground px-2 py-1">
+            {labelSearch.trim() ? "No matching tags" : selectedLabels.length > 0 ? "All tags selected" : "No tags yet"}
+          </p>
         )}
-        {(labels ?? [])
-          .filter((label) => {
-            if (!labelSearch.trim()) return true;
-            return label.name.toLowerCase().includes(labelSearch.toLowerCase());
-          })
-          .map((label) => (
-            <LabelRowWithConfirmDelete
-              key={label.id}
-              label={label}
-              selected={labelDraftIds.includes(label.id)}
-              disabled={deleteLabel.isPending || labelsSaving}
-              confirmingDelete={confirmDeleteLabelId === label.id}
-              onSelect={() => void toggleLabel(label.id)}
-              onDeselect={() => void toggleLabel(label.id)}
-              onRequestDelete={() => setConfirmDeleteLabelId(label.id)}
-              onCancelDelete={() => setConfirmDeleteLabelId(null)}
-              onConfirmDelete={() => { deleteLabel.mutate(label.id); setConfirmDeleteLabelId(null); }}
-            />
-          ))}
+        {filteredUnselected.map((label) => (
+          <LabelUnselectedRow
+            key={label.id}
+            label={label}
+            disabled={deleteLabel.isPending || labelsSaving}
+            confirmingDelete={confirmDeleteLabelId === label.id}
+            onSelect={() => void toggleLabel(label.id)}
+            onRequestDelete={() => setConfirmDeleteLabelId(label.id)}
+            onCancelDelete={() => setConfirmDeleteLabelId(null)}
+            onConfirmDelete={() => { deleteLabel.mutate(label.id); setConfirmDeleteLabelId(null); }}
+          />
+        ))}
       </div>
 
-      {/* Create label — collapsible */}
-      <div className="border-t border-border mt-1">
+      {/* ── Create tag — collapsible ── */}
+      <div className="border-t border-border">
         <button
           type="button"
-          className="flex items-center gap-1.5 w-full px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors"
+          className="flex items-center gap-1.5 w-full px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
           onClick={() => setCreateLabelOpen((v) => !v)}
         >
           {createLabelOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           <Plus className="h-3 w-3" />
-          Create new label
+          <span className="font-medium">Create tag</span>
         </button>
 
         {createLabelOpen && (
           <div className="px-2 pb-2 space-y-2">
-            {/* Name + color trigger row */}
             <div className="flex items-center gap-1.5">
-              {/* Color preview — click to toggle palette */}
+              {/* Color dot — click to open palette */}
               <button
                 type="button"
                 onClick={() => setColorPickerOpen((v) => !v)}
                 title="Pick color"
-                className="h-6 w-6 rounded-full shrink-0 border-2 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-transform hover:scale-110"
+                className="h-6 w-6 rounded-full shrink-0 border-2 hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
                 style={{ borderColor: newLabelColor, backgroundColor: `${newLabelColor}55` }}
               />
               <input
                 className="flex-1 px-2 py-1.5 text-xs bg-transparent outline outline-1 outline-border rounded placeholder:text-muted-foreground/50"
-                placeholder="Label name…"
+                placeholder="Tag name…"
                 value={newLabelName}
                 onChange={(e) => setNewLabelName(e.target.value)}
                 onKeyDown={(e) => {
@@ -660,7 +657,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               />
             </div>
 
-            {/* Color palette — hidden until swatch clicked */}
+            {/* Palette — only when color dot clicked */}
             {colorPickerOpen && (
               <ColorSwatchPickerInline
                 value={newLabelColor}
@@ -674,12 +671,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               onClick={() => createLabel.mutate({ name: newLabelName.trim(), color: newLabelColor })}
             >
               {createLabel.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-              {createLabel.isPending ? "Creating…" : "Create label"}
+              {createLabel.isPending ? "Creating…" : "Create tag"}
             </button>
 
             {createLabel.isError && (
               <div className="text-[11px] text-destructive">
-                {createLabel.error instanceof Error ? createLabel.error.message : "Failed to create label."}
+                {createLabel.error instanceof Error ? createLabel.error.message : "Failed to create tag."}
               </div>
             )}
           </div>
@@ -687,7 +684,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
         {deleteLabel.isError && (
           <div className="text-[11px] text-destructive px-2 pb-1">
-            {deleteLabel.error instanceof Error ? deleteLabel.error.message : "Failed to delete label."}
+            {deleteLabel.error instanceof Error ? deleteLabel.error.message : "Failed to delete tag."}
           </div>
         )}
       </div>
