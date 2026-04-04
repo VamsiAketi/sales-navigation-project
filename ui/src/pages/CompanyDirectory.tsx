@@ -1027,7 +1027,7 @@ export function CompanyDirectory() {
                 Invite users
               </Button>
             </DialogTrigger>
-            <DialogContent className="flex w-[calc(100vw-2rem)] max-w-[56rem] flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0 shadow-xl sm:max-h-[min(92dvh,50rem)]">
+            <DialogContent className="flex w-[calc(100vw-2rem)] max-w-[42rem] flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0 shadow-xl sm:max-h-[min(92dvh,56rem)]">
               {/* ── Header ── */}
               <div className="shrink-0 border-b border-border/50 px-6 py-4 pr-14">
                 <DialogTitle className="text-base font-semibold">Invite human user</DialogTitle>
@@ -1038,12 +1038,12 @@ export function CompanyDirectory() {
 
               {/* ── Body (scrolls independently) ── */}
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x sm:divide-border/50">
+                <div className="space-y-6 p-6">
 
-                  {/* Left — user details */}
-                  <div className="space-y-5 p-6">
+                  {/* User details */}
+                  <div className="space-y-4">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">User details</h3>
-                    <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label htmlFor="invite-name" className="text-xs text-muted-foreground">
                           Name <span className="font-normal">(optional)</span>
@@ -1072,8 +1072,30 @@ export function CompanyDirectory() {
                         />
                       </div>
                     </div>
+                  </div>
 
-                    {humanInviteCredentials && (
+                  {/* Divider */}
+                  <div className="border-t border-border/50" />
+
+                  {/* Initial access */}
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Initial access</h3>
+                    <HumanPermissionsPanel
+                      idPrefix="invite"
+                      enabledKeys={humanInvitePermissionKeys}
+                      onKeysChange={setHumanInvitePermissionKeys}
+                      intro={
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Optional grants after they accept. Use a preset or adjust switches — nothing is enabled by default.
+                        </p>
+                      }
+                    />
+                  </div>
+
+                  {/* Credentials (shown after invite created) */}
+                  {humanInviteCredentials && (
+                    <>
+                      <div className="border-t border-border/50" />
                       <div className="space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-xs ring-1 ring-emerald-500/20">
                         <p className="font-semibold text-foreground">Temporary credentials</p>
                         <p className="text-muted-foreground">Share these securely with the new teammate.</p>
@@ -1105,32 +1127,15 @@ export function CompanyDirectory() {
                               ].join("\n");
                               try {
                                 await navigator.clipboard.writeText(credentialsText);
-                              } catch {
-                                /* clipboard may not be available */
-                              }
+                              } catch { /* clipboard may not be available */ }
                             }}
                           >
                             Copy credentials
                           </Button>
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Right — permissions */}
-                  <div className="space-y-4 p-6 sm:overflow-y-auto">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Initial access</h3>
-                    <HumanPermissionsPanel
-                      idPrefix="invite"
-                      enabledKeys={humanInvitePermissionKeys}
-                      onKeysChange={setHumanInvitePermissionKeys}
-                      intro={
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          Optional grants after they accept. Use a preset or adjust switches — nothing is enabled by default.
-                        </p>
-                      }
-                    />
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
 
