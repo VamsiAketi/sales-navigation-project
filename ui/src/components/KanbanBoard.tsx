@@ -405,59 +405,57 @@ const KanbanColumn = memo(function KanbanColumn({
 
   return (
     <div
-      className="flex flex-col min-w-[272px] w-[272px] shrink-0 rounded-2xl"
+      className="flex min-h-0 min-w-[272px] w-[272px] shrink-0 flex-col rounded-2xl"
       style={{
         border: `2px solid ${dotColor}45`,
         boxShadow: `0 0 0 1px ${dotColor}18, 0 4px 16px ${dotColor}12`,
       }}
     >
-      {/* Solid accent top bar */}
-      <div
-        className="h-1 w-full shrink-0 rounded-t-2xl"
-        style={{ backgroundColor: dotColor }}
-      />
-
-      {/* Column header — sticky within the app main scroll (avoid overflow-hidden on column; use overflow-y-clip on board row) */}
-      <div
-        className="sticky top-12 md:top-0 z-10 flex items-center gap-2 px-3 py-2.5 backdrop-blur-sm"
-        style={{
-          background: `linear-gradient(135deg, ${dotColor}18 0%, ${dotColor}08 100%)`,
-          borderBottom: `1px solid ${dotColor}30`,
-        }}
-      >
-        {/* Highlighted status label pill */}
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+      {/* Fixed column chrome (accent + status header) — cards scroll in the pane below */}
+      <div className="relative z-20 shrink-0 rounded-t-2xl shadow-[0_10px_28px_-12px_rgba(0,0,0,0.55)] dark:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.85)]">
+        <div
+          className="h-1 w-full shrink-0 rounded-t-2xl"
+          style={{ backgroundColor: dotColor }}
+        />
+        <div
+          className="flex items-center gap-2 border-b bg-card/95 px-3 py-2.5 backdrop-blur-md"
           style={{
-            backgroundColor: dotColor,
-            color: "#ffffff",
-            textShadow: "0 1px 2px rgba(0,0,0,0.25)",
-            boxShadow: `0 2px 6px ${dotColor}50`,
+            borderBottomColor: `${dotColor}40`,
+            backgroundImage: `linear-gradient(135deg, ${dotColor}20 0%, ${dotColor}0a 100%)`,
           }}
         >
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/70 shrink-0" />
-          {columnLabel ?? statusLabel(status)}
-        </span>
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+            style={{
+              backgroundColor: dotColor,
+              color: "#ffffff",
+              textShadow: "0 1px 2px rgba(0,0,0,0.25)",
+              boxShadow: `0 2px 6px ${dotColor}50`,
+            }}
+          >
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
+            {columnLabel ?? statusLabel(status)}
+          </span>
 
-        <span className="flex-1" />
+          <span className="flex-1" />
 
-        {/* Count badge */}
-        <span
-          className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
-          style={{
-            backgroundColor: `${dotColor}22`,
-            color: dotColor,
-            border: `1.5px solid ${dotColor}55`,
-          }}
-        >
-          {issues.length}
-        </span>
+          <span
+            className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
+            style={{
+              backgroundColor: `${dotColor}22`,
+              color: dotColor,
+              border: `1.5px solid ${dotColor}55`,
+            }}
+          >
+            {issues.length}
+          </span>
+        </div>
       </div>
 
-      {/* Drop zone / card list */}
+      {/* Drop zone / card list — scrolls under the header stack */}
       <div
         ref={setNodeRef}
-        className={`kanban-col-${status} flex-1 min-h-[120px] rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
+        className={`kanban-col-${status} min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
           isOver ? "bg-accent/30" : ""
         }`}
         style={{
@@ -634,7 +632,7 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="-mx-2 flex gap-4 overflow-x-auto overflow-y-clip px-2 pb-4">
+      <div className="-mx-2 flex max-h-[min(100dvh-10.5rem,56rem)] min-h-0 items-stretch gap-4 overflow-x-auto px-2 pb-4">
         {activeColumns.map((status) => {
           const ps = projectStatuses?.find((s) => s.value === status);
           return (
