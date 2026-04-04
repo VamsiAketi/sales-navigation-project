@@ -1027,19 +1027,22 @@ export function CompanyDirectory() {
                 Invite users
               </Button>
             </DialogTrigger>
-            <DialogContent className="flex max-h-[min(92dvh,48rem)] w-full max-w-5xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
-              <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
-                <DialogHeader>
-                  <DialogTitle>Invite human user</DialogTitle>
-                  <DialogDescription>
-                    Send a human invite and get temporary credentials for a new teammate.
-                  </DialogDescription>
-                </DialogHeader>
+            <DialogContent className="flex w-[calc(100vw-2rem)] max-w-[56rem] flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0 shadow-xl sm:max-h-[min(92dvh,50rem)]">
+              {/* ── Header ── */}
+              <div className="shrink-0 border-b border-border/50 px-6 py-4 pr-14">
+                <DialogTitle className="text-base font-semibold">Invite human user</DialogTitle>
+                <DialogDescription className="mt-0.5 text-xs text-muted-foreground">
+                  Send a human invite and get temporary credentials for a new teammate.
+                </DialogDescription>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
-                <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
-                  <section className="min-w-0 space-y-4">
-                    <h3 className="text-sm font-semibold tracking-tight text-foreground">User details</h3>
+
+              {/* ── Body (scrolls independently) ── */}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x sm:divide-border/50">
+
+                  {/* Left — user details */}
+                  <div className="space-y-5 p-6">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">User details</h3>
                     <div className="space-y-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="invite-name" className="text-xs text-muted-foreground">
@@ -1047,7 +1050,7 @@ export function CompanyDirectory() {
                         </Label>
                         <Input
                           id="invite-name"
-                          className="h-11 rounded-2xl border-border/60"
+                          className="h-10 rounded-xl border-border/60"
                           type="text"
                           placeholder="Full name"
                           value={humanInviteName}
@@ -1056,11 +1059,11 @@ export function CompanyDirectory() {
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="invite-email" className="text-xs text-muted-foreground">
-                          Email
+                          Email <span className="text-destructive">*</span>
                         </Label>
                         <Input
                           id="invite-email"
-                          className="h-11 rounded-2xl border-border/60"
+                          className="h-10 rounded-xl border-border/60"
                           type="email"
                           placeholder="name@company.com"
                           value={humanInviteEmail}
@@ -1069,33 +1072,30 @@ export function CompanyDirectory() {
                         />
                       </div>
                     </div>
+
                     {humanInviteCredentials && (
-                      <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
-                        <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
-                        <p>
-                          Name: <span className="font-mono">{humanInviteCredentials.name}</span>
-                        </p>
-                        <p>
-                          Email: <span className="font-mono">{humanInviteCredentials.email}</span>
-                        </p>
-                        <p>
-                          Username:{" "}
-                          <span className="font-mono">
-                            {humanInviteCredentials.temporaryUsername}
-                          </span>
-                        </p>
-                        <p>
-                          Password:{" "}
-                          <span className="font-mono">
-                            {humanInviteCredentials.temporaryPassword}
-                          </span>
-                        </p>
+                      <div className="space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-xs ring-1 ring-emerald-500/20">
+                        <p className="font-semibold text-foreground">Temporary credentials</p>
+                        <p className="text-muted-foreground">Share these securely with the new teammate.</p>
+                        <div className="space-y-1 pt-1">
+                          {[
+                            ["Name", humanInviteCredentials.name],
+                            ["Email", humanInviteCredentials.email],
+                            ["Username", humanInviteCredentials.temporaryUsername],
+                            ["Password", humanInviteCredentials.temporaryPassword],
+                          ].map(([label, val]) => (
+                            <div key={label} className="flex items-baseline gap-2">
+                              <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
+                              <span className="min-w-0 truncate font-mono text-foreground">{val}</span>
+                            </div>
+                          ))}
+                        </div>
                         <div className="pt-1">
                           <Button
                             type="button"
                             size="sm"
-                            variant="secondary"
-                            className="rounded-full px-5 shadow-sm"
+                            variant="outline"
+                            className="h-8 rounded-full px-4 text-xs shadow-sm"
                             onClick={async () => {
                               const credentialsText = [
                                 `Name: ${humanInviteCredentials.name}`,
@@ -1115,39 +1115,46 @@ export function CompanyDirectory() {
                         </div>
                       </div>
                     )}
-                  </section>
-                  <section className="min-w-0 space-y-3">
-                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Initial access</h3>
-                    <div className="rounded-2xl border border-border/50 bg-muted/15 p-4 ring-1 ring-border/30">
-                      <HumanPermissionsPanel
-                        idPrefix="invite"
-                        enabledKeys={humanInvitePermissionKeys}
-                        onKeysChange={setHumanInvitePermissionKeys}
-                        intro={
-                          <p className="text-xs leading-relaxed text-muted-foreground">
-                            Optional grants after they accept. Use a preset or adjust switches—nothing is enabled until you choose.
-                          </p>
-                        }
-                      />
-                    </div>
-                  </section>
+                  </div>
+
+                  {/* Right — permissions */}
+                  <div className="space-y-4 p-6 sm:overflow-y-auto">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Initial access</h3>
+                    <HumanPermissionsPanel
+                      idPrefix="invite"
+                      enabledKeys={humanInvitePermissionKeys}
+                      onKeysChange={setHumanInvitePermissionKeys}
+                      intro={
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Optional grants after they accept. Use a preset or adjust switches — nothing is enabled by default.
+                        </p>
+                      }
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="shrink-0 space-y-2 rounded-b-3xl border-t border-border/50 bg-muted/15 px-6 py-4">
-                {humanInviteError ? (
-                  <p className="text-xs text-destructive">{humanInviteError}</p>
-                ) : null}
-                <div className="flex flex-wrap items-center justify-end gap-3">
+
+              {/* ── Footer ── */}
+              <div className="shrink-0 rounded-b-2xl border-t border-border/50 bg-muted/10 px-6 py-3">
+                {humanInviteError && (
+                  <p className="mb-2 text-xs text-destructive">{humanInviteError}</p>
+                )}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    {humanInviteEmail.trim() ? (
+                      <>Invite will be sent to <span className="font-medium text-foreground">{humanInviteEmail.trim()}</span></>
+                    ) : (
+                      "Enter an email address to continue"
+                    )}
+                  </p>
                   <Button
                     type="button"
                     size="default"
-                    className="rounded-full px-8 shadow-sm"
+                    className="rounded-full px-7 shadow-sm"
                     onClick={() => humanInviteMutation.mutate()}
-                    disabled={
-                      humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId
-                    }
+                    disabled={humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId}
                   >
-                    {humanInviteMutation.isPending ? "Creating..." : "Create invite"}
+                    {humanInviteMutation.isPending ? "Creating…" : "Create invite"}
                   </Button>
                 </div>
               </div>
@@ -1509,309 +1516,4 @@ export function CompanyDirectory() {
 
                     <div className="rounded-2xl border border-border/50 bg-muted/10 px-4 py-4 ring-1 ring-border/30">
                       <div className="text-sm font-semibold text-foreground">Access & permissions</div>
-                      <div className="mt-3">
-                        <HumanPermissionsPanel
-                          idPrefix={`member-${selectedHumanMember.id}`}
-                          enabledKeys={ALL_PERMISSION_KEYS.filter((k) =>
-                            selectedHumanMember.grants.some((g) => g.permissionKey === k),
-                          )}
-                          disabled={humanPermissionMutation.isPending || !selectedCompanyId}
-                          onKeysChange={(keys) => {
-                            if (!selectedHumanMember || !selectedCompanyId) return;
-                            const nextGrants = keys.map((permissionKey) => ({
-                              permissionKey,
-                              scope: null,
-                            }));
-                            humanPermissionMutation.mutate({
-                              memberId: selectedHumanMember.id,
-                              grants: nextGrants,
-                            });
-                          }}
-                          intro={
-                            <p className="text-xs leading-relaxed text-muted-foreground">
-                              Changes save as soon as you flip a switch. Presets replace the current selection.
-                            </p>
-                          }
-                        />
-                      </div>
-                      {humanPermissionMutation.isError ? (
-                        <div className="mt-3 text-xs text-destructive">
-                          {apiErrorMessage(humanPermissionMutation.error)}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
-                    <div className="text-xs text-muted-foreground">Autosave is on.</div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="rounded-xl"
-                      disabled={
-                        !humanIsDirty ||
-                        humanSaveMutation.isPending ||
-                        !selectedCompanyId ||
-                        selectedHumanManagerIsAgent
-                      }
-                      onClick={() => {
-                        if (!selectedHumanMember) return;
-                        if (selectedHumanManagerIsAgent) return;
-                        humanSaveMutation.mutate({
-                          memberId: selectedHumanMember.id,
-                          membershipRole: (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
-                          reportsToMembershipId: (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null
-                        });
-                      }}
-                    >
-                      Save now
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 ring-1 ring-violet-400/20">
-                    <UserRound className="size-8 text-violet-500/70 dark:text-violet-400/70" aria-hidden />
-                  </div>
-                  <p className="text-sm font-medium text-foreground">No user selected</p>
-                  <p className="max-w-xs text-xs text-muted-foreground">Choose someone from the list to edit their role, reporting line, and access.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="agents" className="mt-4">
-          <div className="grid gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card/95 shadow-md ring-1 ring-emerald-500/15 dark:ring-emerald-400/10">
-              <div className="border-b border-border/50 bg-gradient-to-r from-emerald-500/12 via-transparent to-teal-500/5 px-4 py-3">
-                <div className="text-sm font-semibold text-foreground">Agents</div>
-                <div className="text-xs text-muted-foreground">
-                  {membersLoading ? "Loading…" : `${filteredAgentMembers.length} shown`}
-                </div>
-              </div>
-              <div className="flex-1 space-y-1 overflow-y-auto p-2">
-                {!membersLoading && filteredAgentMembers.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-emerald-300/40 bg-emerald-500/[0.04] px-4 py-10 text-center dark:border-emerald-500/20">
-                    <Bot className="size-9 text-emerald-500/90 dark:text-emerald-400/70" aria-hidden />
-                    <p className="text-sm text-muted-foreground">No matching agents.</p>
-                  </div>
-                )}
-                {filteredAgentMembers.map((member) => {
-                  const selected = selectedAgentMember?.id === member.id;
-                  return (
-                    <button
-                      key={member.id}
-                      type="button"
-                      onClick={() => setSelectedAgentMemberId(member.id)}
-                      className={cn(
-                        "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
-                        selected
-                          ? "bg-gradient-to-r from-emerald-500/14 via-teal-500/10 to-cyan-500/10 shadow-sm ring-1 ring-emerald-400/35 dark:ring-emerald-500/30"
-                          : "hover:bg-muted/55",
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        <DirectoryMemberAvatar member={member} size="sm" className="mt-0.5 shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</div>
-                          <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
-                          <div className="mt-1 text-[11px] font-medium text-emerald-800/90 dark:text-emerald-300/90">
-                            {member.membershipRole ?? "agent"}
-                          </div>
-                        </div>
-                        <SaveStatusPill state={getMemberSaveState(member.id)} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md ring-1 ring-border/35">
-              {selectedAgentMember ? (
-                <>
-                  <div className="border-b border-border/50 bg-gradient-to-br from-emerald-500/[0.07] via-muted/25 to-transparent px-5 py-5">
-                    <div className="flex flex-wrap items-start gap-4">
-                      <DirectoryMemberAvatar member={selectedAgentMember} size="lg" className="shrink-0 shadow-md" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-lg font-semibold text-foreground">{memberDisplayName(selectedAgentMember)}</div>
-                        <div className="mt-0.5 truncate text-sm text-muted-foreground">{memberSecondaryLine(selectedAgentMember)}</div>
-                      </div>
-                      <SaveStatusPill state={getMemberSaveState(selectedAgentMember.id)} />
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 px-5 py-5">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <RolePicker
-                        member={selectedAgentMember}
-                        label="Role label"
-                        options={AGENT_ROLE_OPTIONS}
-                        customOptions={customAgentRoles}
-                        onAddCustomOption={(role) =>
-                          setCustomAgentRoles((prev) => (prev.includes(role) ? prev : [...prev, role]))
-                        }
-                      />
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Reports to</div>
-                        <select
-                          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
-                          value={agentReportsDrafts[selectedAgentMember.id] ?? ""}
-                          onChange={(e) => {
-                            const next = e.target.value;
-                            setMemberSaveErrors((prev) => {
-                              if (!prev[selectedAgentMember.id]) return prev;
-                              const { [selectedAgentMember.id]: _drop, ...rest } = prev;
-                              return rest;
-                            });
-                            setAgentReportsDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: next }));
-                          }}
-                        >
-                          <option value="">None</option>
-                          <optgroup label="Agents">
-                            {activeAgentMembers
-                              .filter((candidate) => candidate.id !== selectedAgentMember.id)
-                              .map((candidate) => (
-                                <option
-                                  key={candidate.id}
-                                  value={candidate.principalId}
-                                  disabled={invalidManagersForSelectedAgent.has(candidate.principalId)}
-                                >
-                                  {memberDisplayName(candidate)}
-                                </option>
-                              ))}
-                          </optgroup>
-                        </select>
-                        {memberSaveErrors[selectedAgentMember.id] && (
-                          <div className="text-[11px] text-destructive">
-                            {memberSaveErrors[selectedAgentMember.id]}
-                          </div>
-                        )}
-                        <div className="text-[11px] text-muted-foreground">
-                          Options that would create a cycle are disabled.
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
-                    <div className="text-xs text-muted-foreground">Autosave is on.</div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="rounded-xl"
-                      disabled={!agentIsDirty || agentSaveMutation.isPending || !selectedCompanyId}
-                      onClick={() => {
-                        if (!selectedAgentMember) return;
-                        agentSaveMutation.mutate({
-                          memberId: selectedAgentMember.id,
-                          principalId: selectedAgentMember.principalId,
-                          membershipRole: (memberRoleDrafts[selectedAgentMember.id] ?? "").trim() || null,
-                          reportsTo: (agentReportsDrafts[selectedAgentMember.id] ?? "").trim() || null
-                        });
-                      }}
-                    >
-                      Save now
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/15 to-teal-500/10 ring-1 ring-emerald-400/20">
-                    <Bot className="size-8 text-emerald-500/70 dark:text-emerald-400/70" aria-hidden />
-                  </div>
-                  <p className="text-sm font-medium text-foreground">No agent selected</p>
-                  <p className="max-w-xs text-xs text-muted-foreground">Pick an agent from the list to edit their role label and reporting line.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-          </>
-        ) : null}
-      </Tabs>
-
-      {/* Deactivate confirmation dialog */}
-      <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
-        <DialogContent className="max-w-md rounded-2xl border-border/60">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-              </span>
-              Deactivate user
-            </DialogTitle>
-            <DialogDescription className="pt-1 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This user"}
-              </span>{" "}
-              will lose active access to this company. You can reactivate them at any time.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4 flex gap-2 justify-end">
-            <DialogClose asChild>
-              <Button variant="outline" size="sm">Cancel</Button>
-            </DialogClose>
-            <Button
-              size="sm"
-              className="bg-amber-500 hover:bg-amber-600 text-white border-0"
-              disabled={deactivateHumanMutation.isPending}
-              onClick={() => {
-                if (!selectedHumanMember) return;
-                deactivateHumanMutation.mutate(selectedHumanMember.id, {
-                  onSuccess: () => setDeactivateDialogOpen(false),
-                });
-              }}
-            >
-              {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete confirmation dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="max-w-md rounded-2xl border-border/60">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                  <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
-                </svg>
-              </span>
-              Remove user
-            </DialogTitle>
-            <DialogDescription className="pt-1 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This user"}
-              </span>{" "}
-              will be removed from this company. This action cannot be undone from the UI.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4 flex gap-2 justify-end">
-            <DialogClose asChild>
-              <Button variant="outline" size="sm">Cancel</Button>
-            </DialogClose>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={removeHumanMutation.isPending}
-              onClick={() => {
-                if (!selectedHumanMember) return;
-                removeHumanMutation.mutate(selectedHumanMember.id, {
-                  onSuccess: () => setDeleteDialogOpen(false),
-                });
-              }}
-            >
-              {removeHumanMutation.isPending ? "Removing…" : "Remove"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
+                      <div className="mt
