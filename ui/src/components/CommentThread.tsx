@@ -307,6 +307,26 @@ export function CommentThread({
   const location = useLocation();
   const hasScrolledRef = useRef(false);
 
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const commentItems: TimelineItem[] = comments.map((comment) => ({
+      kind: "comment",
+      id: comment.id,
+      createdAtMs: new Date(comment.createdAt).getTime(),
+      comment,
+    }));
+    const runItems: TimelineItem[] = linkedRuns.map((run) => ({
+      kind: "run",
+      id: run.runId,
+      createdAtMs: new Date(run.startedAt ?? run.createdAt).getTime(),
+      run,
+    }));
+    return [...commentItems, ...runItems].sort((a, b) => {
+      if (a.createdAtMs !== b.createdAtMs) return a.createdAtMs - b.createdAtMs;
+      if (a.kind === b.kind) return a.id.localeCompare(b.id);
+      return a.kind === "comment" ? -1 : 1;
+    });
+  }, [comments, linkedRuns]);
+
   // Scroll navigation state — show ↑/↓ buttons when thread is long
   const timelineTopRef = useRef<HTMLDivElement>(null);
   const timelineBottomRef = useRef<HTMLDivElement>(null);
@@ -330,26 +350,6 @@ export function CommentThread({
     bottomObs.observe(bottomEl);
     return () => { topObs.disconnect(); bottomObs.disconnect(); };
   }, [timeline.length]);
-
-  const timeline = useMemo<TimelineItem[]>(() => {
-    const commentItems: TimelineItem[] = comments.map((comment) => ({
-      kind: "comment",
-      id: comment.id,
-      createdAtMs: new Date(comment.createdAt).getTime(),
-      comment,
-    }));
-    const runItems: TimelineItem[] = linkedRuns.map((run) => ({
-      kind: "run",
-      id: run.runId,
-      createdAtMs: new Date(run.startedAt ?? run.createdAt).getTime(),
-      run,
-    }));
-    return [...commentItems, ...runItems].sort((a, b) => {
-      if (a.createdAtMs !== b.createdAtMs) return a.createdAtMs - b.createdAtMs;
-      if (a.kind === b.kind) return a.id.localeCompare(b.id);
-      return a.kind === "comment" ? -1 : 1;
-    });
-  }, [comments, linkedRuns]);
 
   // Build mention options from agent map (exclude terminated agents)
   const mentions = useMemo<MentionOption[]>(() => {
