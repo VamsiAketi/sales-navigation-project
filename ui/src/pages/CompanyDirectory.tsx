@@ -208,7 +208,7 @@ function HumanPermissionsPanel({
                 variant="outline"
                 disabled={disabled}
                 title={PERMISSION_PRESET_HINTS[name]}
-                className="h-7 rounded-full px-3 text-xs font-medium"
+                className="h-8 rounded-full px-4 text-xs font-medium shadow-xs"
                 onClick={() => onKeysChange([...PERMISSION_PRESETS[name]])}
               >
                 {name}
@@ -1027,7 +1027,7 @@ export function CompanyDirectory() {
                 Invite users
               </Button>
             </DialogTrigger>
-            <DialogContent className="flex max-h-[min(90dvh,44rem)] max-w-md flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0 sm:max-w-lg">
+            <DialogContent className="flex max-h-[min(92dvh,48rem)] w-full max-w-5xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
               <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
                 <DialogHeader>
                   <DialogTitle>Invite human user</DialogTitle>
@@ -1037,26 +1037,88 @@ export function CompanyDirectory() {
                 </DialogHeader>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
-                <div className="space-y-3">
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <Input
-                      className="h-10 rounded-xl"
-                      type="text"
-                      placeholder="Name (optional)"
-                      value={humanInviteName}
-                      onChange={(e) => setHumanInviteName(e.target.value)}
-                    />
-                    <Input
-                      className="h-10 rounded-xl"
-                      type="email"
-                      placeholder="Email"
-                      value={humanInviteEmail}
-                      onChange={(e) => setHumanInviteEmail(e.target.value)}
-                    />
-                  </div>
-                  <div className="rounded-2xl border border-border/50 bg-muted/15 px-4 py-4 ring-1 ring-border/30">
-                    <div className="text-sm font-semibold text-foreground">Initial access</div>
-                    <div className="mt-3">
+                <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
+                  <section className="min-w-0 space-y-4">
+                    <h3 className="text-sm font-semibold tracking-tight text-foreground">User details</h3>
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="invite-name" className="text-xs text-muted-foreground">
+                          Name <span className="font-normal">(optional)</span>
+                        </Label>
+                        <Input
+                          id="invite-name"
+                          className="h-11 rounded-2xl border-border/60"
+                          type="text"
+                          placeholder="Full name"
+                          value={humanInviteName}
+                          onChange={(e) => setHumanInviteName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="invite-email" className="text-xs text-muted-foreground">
+                          Email
+                        </Label>
+                        <Input
+                          id="invite-email"
+                          className="h-11 rounded-2xl border-border/60"
+                          type="email"
+                          placeholder="name@company.com"
+                          value={humanInviteEmail}
+                          onChange={(e) => setHumanInviteEmail(e.target.value)}
+                          autoComplete="email"
+                        />
+                      </div>
+                    </div>
+                    {humanInviteCredentials && (
+                      <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
+                        <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
+                        <p>
+                          Name: <span className="font-mono">{humanInviteCredentials.name}</span>
+                        </p>
+                        <p>
+                          Email: <span className="font-mono">{humanInviteCredentials.email}</span>
+                        </p>
+                        <p>
+                          Username:{" "}
+                          <span className="font-mono">
+                            {humanInviteCredentials.temporaryUsername}
+                          </span>
+                        </p>
+                        <p>
+                          Password:{" "}
+                          <span className="font-mono">
+                            {humanInviteCredentials.temporaryPassword}
+                          </span>
+                        </p>
+                        <div className="pt-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="rounded-full px-5 shadow-sm"
+                            onClick={async () => {
+                              const credentialsText = [
+                                `Name: ${humanInviteCredentials.name}`,
+                                `Email: ${humanInviteCredentials.email}`,
+                                `Username: ${humanInviteCredentials.temporaryUsername}`,
+                                `Password: ${humanInviteCredentials.temporaryPassword}`,
+                              ].join("\n");
+                              try {
+                                await navigator.clipboard.writeText(credentialsText);
+                              } catch {
+                                /* clipboard may not be available */
+                              }
+                            }}
+                          >
+                            Copy credentials
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                  <section className="min-w-0 space-y-3">
+                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Initial access</h3>
+                    <div className="rounded-2xl border border-border/50 bg-muted/15 p-4 ring-1 ring-border/30">
                       <HumanPermissionsPanel
                         idPrefix="invite"
                         enabledKeys={humanInvitePermissionKeys}
@@ -1068,63 +1130,18 @@ export function CompanyDirectory() {
                         }
                       />
                     </div>
-                  </div>
-                  {humanInviteCredentials && (
-                    <div className="space-y-1 rounded-2xl border border-border/60 bg-muted/20 px-3 py-3 text-xs ring-1 ring-border/30">
-                      <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
-                      <p>
-                        Name: <span className="font-mono">{humanInviteCredentials.name}</span>
-                      </p>
-                      <p>
-                        Email: <span className="font-mono">{humanInviteCredentials.email}</span>
-                      </p>
-                      <p>
-                        Username:{" "}
-                        <span className="font-mono">
-                          {humanInviteCredentials.temporaryUsername}
-                        </span>
-                      </p>
-                      <p>
-                        Password:{" "}
-                        <span className="font-mono">
-                          {humanInviteCredentials.temporaryPassword}
-                        </span>
-                      </p>
-                      <div className="pt-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={async () => {
-                            const credentialsText = [
-                              `Name: ${humanInviteCredentials.name}`,
-                              `Email: ${humanInviteCredentials.email}`,
-                              `Username: ${humanInviteCredentials.temporaryUsername}`,
-                              `Password: ${humanInviteCredentials.temporaryPassword}`,
-                            ].join("\n");
-                            try {
-                              await navigator.clipboard.writeText(credentialsText);
-                            } catch {
-                              /* clipboard may not be available */
-                            }
-                          }}
-                        >
-                          Copy credentials
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  </section>
                 </div>
               </div>
-              <div className="shrink-0 space-y-2 border-t border-border/50 bg-muted/15 px-6 py-4">
+              <div className="shrink-0 space-y-2 rounded-b-3xl border-t border-border/50 bg-muted/15 px-6 py-4">
                 {humanInviteError ? (
                   <p className="text-xs text-destructive">{humanInviteError}</p>
                 ) : null}
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-3">
                   <Button
                     type="button"
-                    size="sm"
-                    className="rounded-xl"
+                    size="default"
+                    className="rounded-full px-8 shadow-sm"
                     onClick={() => humanInviteMutation.mutate()}
                     disabled={
                       humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId
