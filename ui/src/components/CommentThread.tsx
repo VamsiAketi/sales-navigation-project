@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ChangeEvent } from "re
 import { Link, useLocation } from "react-router-dom";
 import type { IssueComment, Agent } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
-import { Check, Copy, Paperclip, ChevronDown } from "lucide-react";
+import { Check, Copy, Paperclip } from "lucide-react";
 import { Identity, deriveInitials } from "./Identity";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
 import { MarkdownBody } from "./MarkdownBody";
@@ -327,25 +327,6 @@ export function CommentThread({
     });
   }, [comments, linkedRuns]);
 
-  // Scroll navigation state — show ↑/↓ buttons when thread is long
-  const timelineTopRef = useRef<HTMLDivElement>(null);
-  const timelineBottomRef = useRef<HTMLDivElement>(null);
-  const [bottomVisible, setBottomVisible] = useState(true);
-  const MIN_ITEMS_FOR_SCROLL_BUTTONS = 4;
-
-  useEffect(() => {
-    if (timeline.length < MIN_ITEMS_FOR_SCROLL_BUTTONS) {
-      setBottomVisible(true);
-      return;
-    }
-    const bottomEl = timelineBottomRef.current;
-    if (!bottomEl) return;
-
-    const bottomObs = new IntersectionObserver(([e]) => setBottomVisible(e.isIntersecting), { threshold: 0 });
-    bottomObs.observe(bottomEl);
-    return () => { bottomObs.disconnect(); };
-  }, [timeline.length]);
-
   // Build mention options from agent map (exclude terminated agents)
   const mentions = useMemo<MentionOption[]>(() => {
     if (providedMentions) return providedMentions;
@@ -441,26 +422,9 @@ export function CommentThread({
 
   const canSubmit = !submitting && !!body.trim();
 
-  const showScrollDown = timeline.length >= MIN_ITEMS_FOR_SCROLL_BUTTONS && !bottomVisible;
-
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Comments &amp; Runs ({timeline.length})</h3>
-        {showScrollDown && (
-          <button
-            type="button"
-            onClick={() => timelineBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
-            className="h-6 w-6 rounded-full bg-background border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            title="Scroll to latest comment"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-
-      {/* Top sentinel — becomes invisible when user scrolls past first comment */}
-      <div ref={timelineTopRef} aria-hidden="true" />
+      <h3 className="text-sm font-semibold">Comments &amp; Runs ({timeline.length})</h3>
 
       <TimelineList
         timeline={timeline}
@@ -471,9 +435,6 @@ export function CommentThread({
         projectId={projectId}
         highlightCommentId={highlightCommentId}
       />
-
-      {/* Bottom sentinel — becomes invisible when last comment is off-screen */}
-      <div ref={timelineBottomRef} aria-hidden="true" />
 
       {liveRunSlot}
 

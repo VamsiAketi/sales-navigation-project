@@ -1239,7 +1239,7 @@ export function IssueDetail() {
         />
       )}
 
-      <ScrollToBottom />
+      <ScrollToBottom rightOffset={panelVisible ? 320 : 0} />
     </div>
   );
 }
