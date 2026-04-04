@@ -1506,13 +1506,9 @@ export function NewIssueDialog() {
               <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
                 {activeProjectStatuses.length > 0 ? (
                   <span
-                    className="relative inline-flex h-3 w-3 rounded-full border-2 shrink-0"
-                    style={{ borderColor: (currentStatus as typeof activeProjectStatuses[number]).color, color: (currentStatus as typeof activeProjectStatuses[number]).color }}
-                  >
-                    {(currentStatus as typeof activeProjectStatuses[number]).value === "done" && (
-                      <span className="absolute inset-0 m-auto h-1.5 w-1.5 rounded-full bg-current" />
-                    )}
-                  </span>
+                    className="inline-flex h-3 w-3 rounded-full border-2 shrink-0"
+                    style={{ borderColor: (currentStatus as typeof activeProjectStatuses[number]).color }}
+                  />
                 ) : (
                   <CircleDot className={cn("h-3 w-3", (currentStatus as typeof statuses[number]).color)} />
                 )}
@@ -1531,11 +1527,9 @@ export function NewIssueDialog() {
                       onClick={() => { setStatus(s.value); setStatusOpen(false); }}
                     >
                       <span
-                        className="relative inline-flex h-3 w-3 rounded-full border-2 shrink-0"
-                        style={{ borderColor: s.color, color: s.color }}
-                      >
-                        {s.value === "done" && <span className="absolute inset-0 m-auto h-1.5 w-1.5 rounded-full bg-current" />}
-                      </span>
+                        className="inline-flex h-3 w-3 rounded-full border-2 shrink-0"
+                        style={{ borderColor: s.color }}
+                      />
                       {s.name}
                     </button>
                   ))
