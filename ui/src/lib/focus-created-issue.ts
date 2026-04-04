@@ -4,9 +4,9 @@ const MAX_AGE_MS = 120_000;
 /** How long the "New" pill stays on a task after creation (board + list). */
 export const NEW_ISSUE_BADGE_DURATION_MS = 30_000;
 
-/** Shared Tailwind classes for the post-create "New" pill. */
+/** Shared Tailwind classes for the post-create "New" pill (green = just created). */
 export const NEW_ISSUE_BADGE_CLASS =
-  "inline-flex shrink-0 items-center rounded-full border border-primary/45 bg-primary/12 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-primary";
+  "inline-flex shrink-0 items-center rounded-full border border-emerald-500/55 bg-emerald-500/15 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 shadow-sm shadow-emerald-500/10 dark:border-emerald-400/45 dark:bg-emerald-500/20 dark:text-emerald-200";
 
 export type FocusAfterIssueCreatePayload = {
   companyId: string;

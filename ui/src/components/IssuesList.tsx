@@ -552,10 +552,29 @@ export function IssuesList({
 
   useLayoutEffect(() => {
     if (!highlightIssueId) return;
-    const el = document.getElementById(`issue-surface-${highlightIssueId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
-    }
+
+    let alive = true;
+    const scrollToTask = () => {
+      if (!alive) return;
+      const el = document.getElementById(`issue-surface-${highlightIssueId}`);
+      if (!el) return;
+      el.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "center",
+      });
+    };
+
+    scrollToTask();
+    const outerRaf = requestAnimationFrame(() => {
+      requestAnimationFrame(scrollToTask);
+    });
+    const retryTimer = window.setTimeout(scrollToTask, 280);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(outerRaf);
+      window.clearTimeout(retryTimer);
+    };
   }, [highlightIssueId, viewState.viewMode, viewState.collapsedGroups, filtered]);
 
   useEffect(() => {
