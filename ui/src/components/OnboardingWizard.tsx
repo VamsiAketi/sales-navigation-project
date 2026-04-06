@@ -122,7 +122,7 @@ export function OnboardingWizard() {
   const [companyGoal, setCompanyGoal] = useState("");
 
   // Step 2
-  const [agentName, setAgentName] = useState("CEO");
+  const [agentName, setAgentName] = useState("AI Admin");
   const [adapterType, setAdapterType] = useState<AdapterType>(getEnvAdapterType(undefined));
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
