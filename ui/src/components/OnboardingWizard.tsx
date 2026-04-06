@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useParams } from "@/lib/router";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { companiesApi } from "../api/companies";
+import { healthApi } from "../api/health";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
@@ -38,19 +39,19 @@ import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
-import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
+// import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon"; // commented out: adapter type UI removed
 import {
   Building2,
   Bot,
-  Code,
-  Gem,
+  // Code, // commented out: adapter type UI removed
+  // Gem, // commented out: adapter type UI removed
   ListTodo,
   Rocket,
   ArrowLeft,
   ArrowRight,
-  Terminal,
-  Sparkles,
-  MousePointer2,
+  // Terminal, // commented out: adapter type UI removed
+  // Sparkles, // commented out: adapter type UI removed
+  // MousePointer2, // commented out: adapter type UI removed
   Check,
   Loader2,
   ChevronDown,
@@ -68,11 +69,21 @@ type AdapterType =
   | "http"
   | "openclaw_gateway";
 
-const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
+const VALID_ADAPTER_TYPES: AdapterType[] = [
+  "claude_local", "codex_local", "gemini_local", "opencode_local",
+  "pi_local", "cursor", "http", "openclaw_gateway"
+];
 
-- hire a founding engineer
-- write a hiring plan
-- break the roadmap into concrete tasks and start delegating work`;
+function getEnvAdapterType(raw: string | undefined): AdapterType {
+  if (raw && (VALID_ADAPTER_TYPES as string[]).includes(raw)) {
+    return raw as AdapterType;
+  }
+  return "claude_local";
+}
+
+const DEFAULT_TASK_DESCRIPTION = `You are the Al-Admin for this organization. 
+You set the direction for all the Al Agents of the company.
+You are responsible for the behaviour and setup of all the agents across the company.`;
 
 export function OnboardingWizard() {
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
@@ -112,23 +123,23 @@ export function OnboardingWizard() {
 
   // Step 2
   const [agentName, setAgentName] = useState("CEO");
-  const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
+  const [adapterType, setAdapterType] = useState<AdapterType>(getEnvAdapterType(undefined));
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
   const [url, setUrl] = useState("");
   const [adapterEnvResult, setAdapterEnvResult] =
     useState<AdapterEnvironmentTestResult | null>(null);
-  const [adapterEnvError, setAdapterEnvError] = useState<string | null>(null);
+  // const [adapterEnvError, setAdapterEnvError] = useState<string | null>(null); // commented out: adapter environment check UI removed
   const [adapterEnvLoading, setAdapterEnvLoading] = useState(false);
   const [forceUnsetAnthropicApiKey, setForceUnsetAnthropicApiKey] =
     useState(false);
-  const [unsetAnthropicLoading, setUnsetAnthropicLoading] = useState(false);
-  const [showMoreAdapters, setShowMoreAdapters] = useState(false);
+  // const [unsetAnthropicLoading, setUnsetAnthropicLoading] = useState(false); // commented out: adapter environment check UI removed
+  // const [showMoreAdapters, setShowMoreAdapters] = useState(false); // commented out: adapter type UI removed
 
   // Step 3
   const [taskTitle, setTaskTitle] = useState(
-    "Hire your first engineer and create a hiring plan"
+    "Setup yourself as the Al-Admin for this company"
   );
   const [taskDescription, setTaskDescription] = useState(
     DEFAULT_TASK_DESCRIPTION
@@ -192,6 +203,15 @@ export function OnboardingWizard() {
     if (step === 3) autoResizeTextarea();
   }, [step, taskDescription, autoResizeTextarea]);
 
+  const { data: healthData } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: () => healthApi.get(),
+    staleTime: Infinity,
+  });
+  useEffect(() => {
+    setAdapterType(getEnvAdapterType(healthData?.defaultAdapterType));
+  }, [healthData?.defaultAdapterType]);
+
   const {
     data: adapterModels,
     error: adapterModelsError,
@@ -211,36 +231,36 @@ export function OnboardingWizard() {
     adapterType === "opencode_local" ||
     adapterType === "pi_local" ||
     adapterType === "cursor";
-  const effectiveAdapterCommand =
-    command.trim() ||
-    (adapterType === "codex_local"
-      ? "codex"
-      : adapterType === "gemini_local"
-        ? "gemini"
-      : adapterType === "pi_local"
-      ? "pi"
-      : adapterType === "cursor"
-      ? "agent"
-      : adapterType === "opencode_local"
-      ? "opencode"
-      : "claude");
+  // const effectiveAdapterCommand = // commented out: adapter environment check UI removed
+  //   command.trim() ||
+  //   (adapterType === "codex_local"
+  //     ? "codex"
+  //     : adapterType === "gemini_local"
+  //       ? "gemini"
+  //     : adapterType === "pi_local"
+  //     ? "pi"
+  //     : adapterType === "cursor"
+  //     ? "agent"
+  //     : adapterType === "opencode_local"
+  //     ? "opencode"
+  //     : "claude");
 
   useEffect(() => {
     if (step !== 2) return;
     setAdapterEnvResult(null);
-    setAdapterEnvError(null);
+    // setAdapterEnvError(null); // commented out: adapter environment check UI removed
   }, [step, adapterType, model, command, args, url]);
 
   const selectedModel = (adapterModels ?? []).find((m) => m.id === model);
-  const hasAnthropicApiKeyOverrideCheck =
-    adapterEnvResult?.checks.some(
-      (check) =>
-        check.code === "claude_anthropic_api_key_overrides_subscription"
-    ) ?? false;
-  const shouldSuggestUnsetAnthropicApiKey =
-    adapterType === "claude_local" &&
-    adapterEnvResult?.status === "fail" &&
-    hasAnthropicApiKeyOverrideCheck;
+  // const hasAnthropicApiKeyOverrideCheck = // commented out: adapter environment check UI removed
+  //   adapterEnvResult?.checks.some(
+  //     (check) =>
+  //       check.code === "claude_anthropic_api_key_overrides_subscription"
+  //   ) ?? false;
+  // const shouldSuggestUnsetAnthropicApiKey = // commented out: adapter environment check UI removed
+  //   adapterType === "claude_local" &&
+  //   adapterEnvResult?.status === "fail" &&
+  //   hasAnthropicApiKeyOverrideCheck;
   const filteredModels = useMemo(() => {
     const query = modelSearch.trim().toLowerCase();
     return (adapterModels ?? []).filter((entry) => {
@@ -284,17 +304,17 @@ export function OnboardingWizard() {
     setCompanyName("");
     setCompanyGoal("");
     setAgentName("CEO");
-    setAdapterType("claude_local");
+    setAdapterType(getEnvAdapterType(healthData?.defaultAdapterType));
     setModel("");
     setCommand("");
     setArgs("");
     setUrl("");
     setAdapterEnvResult(null);
-    setAdapterEnvError(null);
+    // setAdapterEnvError(null); // commented out: adapter environment check UI removed
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
-    setUnsetAnthropicLoading(false);
-    setTaskTitle("Hire your first engineer and create a hiring plan");
+    // setUnsetAnthropicLoading(false); // commented out: adapter environment check UI removed
+    setTaskTitle("Setup yourself as the Al-Admin for this company");
     setTaskDescription(DEFAULT_TASK_DESCRIPTION);
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
@@ -348,13 +368,11 @@ export function OnboardingWizard() {
     adapterConfigOverride?: Record<string, unknown>
   ): Promise<AdapterEnvironmentTestResult | null> {
     if (!createdCompanyId) {
-      setAdapterEnvError(
-        "Create or select a company before testing adapter environment."
-      );
+      // setAdapterEnvError("Create or select a company before testing adapter environment."); // commented out: adapter environment check UI removed
       return null;
     }
     setAdapterEnvLoading(true);
-    setAdapterEnvError(null);
+    // setAdapterEnvError(null); // commented out: adapter environment check UI removed
     try {
       const result = await agentsApi.testEnvironment(
         createdCompanyId,
@@ -366,184 +384,212 @@ export function OnboardingWizard() {
       setAdapterEnvResult(result);
       return result;
     } catch (err) {
-      setAdapterEnvError(
-        err instanceof Error ? err.message : "Adapter environment test failed"
-      );
+      // setAdapterEnvError(err instanceof Error ? err.message : "Adapter environment test failed"); // commented out: adapter environment check UI removed
       return null;
     } finally {
       setAdapterEnvLoading(false);
     }
   }
 
-  async function handleStep1Next() {
-    setLoading(true);
-    setError(null);
-    try {
-      const company = await companiesApi.create({ name: companyName.trim() });
-      setCreatedCompanyId(company.id);
-      setCreatedCompanyPrefix(company.issuePrefix);
-      setSelectedCompanyId(company.id);
-      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-
-      if (companyGoal.trim()) {
-        const parsedGoal = parseOnboardingGoalInput(companyGoal);
-        const goal = await goalsApi.create(company.id, {
-          title: parsedGoal.title,
-          ...(parsedGoal.description
-            ? { description: parsedGoal.description }
-            : {}),
-          level: "company",
-          status: "active"
-        });
-        setCreatedCompanyGoalId(goal.id);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.goals.list(company.id)
-        });
-      } else {
-        setCreatedCompanyGoalId(null);
-      }
-
-      setStep(2);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create company");
-    } finally {
-      setLoading(false);
-    }
+  // async function handleStep1Next() { // commented out: company creation deferred to handleLaunch
+  //   setLoading(true);
+  //   setError(null);
+  //   try {
+  //     const company = await companiesApi.create({ name: companyName.trim() });
+  //     setCreatedCompanyId(company.id);
+  //     setCreatedCompanyPrefix(company.issuePrefix);
+  //     setSelectedCompanyId(company.id);
+  //     queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+  //
+  //     if (companyGoal.trim()) {
+  //       const parsedGoal = parseOnboardingGoalInput(companyGoal);
+  //       const goal = await goalsApi.create(company.id, {
+  //         title: parsedGoal.title,
+  //         ...(parsedGoal.description
+  //           ? { description: parsedGoal.description }
+  //           : {}),
+  //         level: "company",
+  //         status: "active"
+  //       });
+  //       setCreatedCompanyGoalId(goal.id);
+  //       queryClient.invalidateQueries({
+  //         queryKey: queryKeys.goals.list(company.id)
+  //       });
+  //     } else {
+  //       setCreatedCompanyGoalId(null);
+  //     }
+  //
+  //     setStep(2);
+  //   } catch (err) {
+  //     setError(err instanceof Error ? err.message : "Failed to create company");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // }
+  function handleStep1Next() {
+    setStep(2);
   }
 
-  async function handleStep2Next() {
-    if (!createdCompanyId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      if (adapterType === "opencode_local") {
-        const selectedModelId = model.trim();
-        if (!selectedModelId) {
-          setError(
-            "OpenCode requires an explicit model in provider/model format."
-          );
-          return;
-        }
-        if (adapterModelsError) {
-          setError(
-            adapterModelsError instanceof Error
-              ? adapterModelsError.message
-              : "Failed to load OpenCode models."
-          );
-          return;
-        }
-        if (adapterModelsLoading || adapterModelsFetching) {
-          setError(
-            "OpenCode models are still loading. Please wait and try again."
-          );
-          return;
-        }
-        const discoveredModels = adapterModels ?? [];
-        if (!discoveredModels.some((entry) => entry.id === selectedModelId)) {
-          setError(
-            discoveredModels.length === 0
-              ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
-              : `Configured OpenCode model is unavailable: ${selectedModelId}`
-          );
-          return;
-        }
-      }
-
-      if (isLocalAdapter) {
-        const result = adapterEnvResult ?? (await runAdapterEnvironmentTest());
-        if (!result) return;
-      }
-
-      const agent = await agentsApi.create(createdCompanyId, {
-        name: agentName.trim(),
-        role: "ceo",
-        adapterType,
-        adapterConfig: buildAdapterConfig(),
-        runtimeConfig: {
-          heartbeat: {
-            enabled: true,
-            intervalSec: 3600,
-            wakeOnDemand: true,
-            cooldownSec: 10,
-            maxConcurrentRuns: 1
-          }
-        }
-      });
-      setCreatedAgentId(agent.id);
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.agents.list(createdCompanyId)
-      });
-      setStep(3);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create agent");
-    } finally {
-      setLoading(false);
-    }
+  // async function handleStep2Next() { // commented out: agent creation deferred to handleLaunch
+  //   if (!createdCompanyId) return;
+  //   setLoading(true);
+  //   setError(null);
+  //   try {
+  //     if (adapterType === "opencode_local") {
+  //       const selectedModelId = model.trim();
+  //       if (!selectedModelId) {
+  //         setError("OpenCode requires an explicit model in provider/model format.");
+  //         return;
+  //       }
+  //       if (adapterModelsError) {
+  //         setError(adapterModelsError instanceof Error ? adapterModelsError.message : "Failed to load OpenCode models.");
+  //         return;
+  //       }
+  //       if (adapterModelsLoading || adapterModelsFetching) {
+  //         setError("OpenCode models are still loading. Please wait and try again.");
+  //         return;
+  //       }
+  //       const discoveredModels = adapterModels ?? [];
+  //       if (!discoveredModels.some((entry) => entry.id === selectedModelId)) {
+  //         setError(discoveredModels.length === 0
+  //           ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
+  //           : `Configured OpenCode model is unavailable: ${selectedModelId}`);
+  //         return;
+  //       }
+  //     }
+  //     // if (isLocalAdapter) { // commented out: adapter environment check UI removed
+  //     //   const result = adapterEnvResult ?? (await runAdapterEnvironmentTest());
+  //     //   if (!result) return;
+  //     // }
+  //     const agent = await agentsApi.create(createdCompanyId, {
+  //       name: agentName.trim(),
+  //       role: "ceo",
+  //       adapterType,
+  //       adapterConfig: buildAdapterConfig(),
+  //       runtimeConfig: { heartbeat: { enabled: true, intervalSec: 3600, wakeOnDemand: true, cooldownSec: 10, maxConcurrentRuns: 1 } }
+  //     });
+  //     setCreatedAgentId(agent.id);
+  //     queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(createdCompanyId) });
+  //     setStep(3);
+  //   } catch (err) {
+  //     setError(err instanceof Error ? err.message : "Failed to create agent");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // }
+  function handleStep2Next() {
+    setStep(3);
   }
 
-  async function handleUnsetAnthropicApiKey() {
-    if (!createdCompanyId || unsetAnthropicLoading) return;
-    setUnsetAnthropicLoading(true);
-    setError(null);
-    setAdapterEnvError(null);
-    setForceUnsetAnthropicApiKey(true);
+  // async function handleUnsetAnthropicApiKey() { // commented out: adapter environment check UI removed
+  //   if (!createdCompanyId || unsetAnthropicLoading) return;
+  //   setUnsetAnthropicLoading(true);
+  //   setError(null);
+  //   setForceUnsetAnthropicApiKey(true);
+  //
+  //   const configWithUnset = (() => {
+  //     const config = buildAdapterConfig();
+  //     const env =
+  //       typeof config.env === "object" &&
+  //       config.env !== null &&
+  //       !Array.isArray(config.env)
+  //         ? { ...(config.env as Record<string, unknown>) }
+  //         : {};
+  //     env.ANTHROPIC_API_KEY = { type: "plain", value: "" };
+  //     config.env = env;
+  //     return config;
+  //   })();
+  //
+  //   try {
+  //     if (createdAgentId) {
+  //       await agentsApi.update(
+  //         createdAgentId,
+  //         { adapterConfig: configWithUnset },
+  //         createdCompanyId
+  //       );
+  //       queryClient.invalidateQueries({
+  //         queryKey: queryKeys.agents.list(createdCompanyId)
+  //       });
+  //     }
+  //
+  //     const result = await runAdapterEnvironmentTest(configWithUnset);
+  //     if (result?.status === "fail") {
+  //       setError(
+  //         "Retried with ANTHROPIC_API_KEY unset in adapter config, but the environment test is still failing."
+  //       );
+  //     }
+  //   } catch (err) {
+  //     setError(
+  //       err instanceof Error
+  //         ? err.message
+  //         : "Failed to unset ANTHROPIC_API_KEY and retry."
+  //     );
+  //   } finally {
+  //     setUnsetAnthropicLoading(false);
+  //   }
+  // }
 
-    const configWithUnset = (() => {
-      const config = buildAdapterConfig();
-      const env =
-        typeof config.env === "object" &&
-        config.env !== null &&
-        !Array.isArray(config.env)
-          ? { ...(config.env as Record<string, unknown>) }
-          : {};
-      env.ANTHROPIC_API_KEY = { type: "plain", value: "" };
-      config.env = env;
-      return config;
-    })();
-
-    try {
-      if (createdAgentId) {
-        await agentsApi.update(
-          createdAgentId,
-          { adapterConfig: configWithUnset },
-          createdCompanyId
-        );
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.agents.list(createdCompanyId)
-        });
-      }
-
-      const result = await runAdapterEnvironmentTest(configWithUnset);
-      if (result?.status === "fail") {
-        setError(
-          "Retried with ANTHROPIC_API_KEY unset in adapter config, but the environment test is still failing."
-        );
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to unset ANTHROPIC_API_KEY and retry."
-      );
-    } finally {
-      setUnsetAnthropicLoading(false);
-    }
-  }
-
-  async function handleStep3Next() {
-    if (!createdCompanyId || !createdAgentId) return;
-    setError(null);
+  function handleStep3Next() {
     setStep(4);
   }
 
   async function handleLaunch() {
-    if (!createdCompanyId || !createdAgentId) return;
     setLoading(true);
     setError(null);
     try {
+      // Create company if not pre-existing
+      let companyId = createdCompanyId;
+      let companyPrefix = createdCompanyPrefix;
+      if (!companyId) {
+        const company = await companiesApi.create({ name: companyName.trim() });
+        companyId = company.id;
+        companyPrefix = company.issuePrefix;
+        setCreatedCompanyId(companyId);
+        setCreatedCompanyPrefix(companyPrefix);
+        queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      }
+
+      // Create goal if provided and not already created
       let goalId = createdCompanyGoalId;
+      if (!goalId && companyGoal.trim()) {
+        const parsedGoal = parseOnboardingGoalInput(companyGoal);
+        const goal = await goalsApi.create(companyId, {
+          title: parsedGoal.title,
+          ...(parsedGoal.description ? { description: parsedGoal.description } : {}),
+          level: "company",
+          status: "active"
+        });
+        goalId = goal.id;
+        setCreatedCompanyGoalId(goalId);
+        queryClient.invalidateQueries({ queryKey: queryKeys.goals.list(companyId) });
+      }
+
+      // Create agent if not already created
+      let agentId = createdAgentId;
+      if (!agentId) {
+        const agent = await agentsApi.create(companyId, {
+          name: agentName.trim(),
+          role: "ceo",
+          adapterType,
+          adapterConfig: buildAdapterConfig(),
+          runtimeConfig: {
+            heartbeat: {
+              enabled: true,
+              intervalSec: 3600,
+              wakeOnDemand: true,
+              cooldownSec: 10,
+              maxConcurrentRuns: 1
+            }
+          }
+        });
+        agentId = agent.id;
+        setCreatedAgentId(agentId);
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
+      }
+
+      // Fetch a fallback goal for existing companies with no goal created above
       if (!goalId) {
-        const goals = await goalsApi.list(createdCompanyId);
+        const goals = await goalsApi.list(companyId);
         goalId = selectDefaultCompanyGoalId(goals);
         setCreatedCompanyGoalId(goalId);
       }
@@ -551,45 +597,41 @@ export function OnboardingWizard() {
       let projectId = createdProjectId;
       if (!projectId) {
         const project = await projectsApi.create(
-          createdCompanyId,
+          companyId,
           buildOnboardingProjectPayload(goalId)
         );
         projectId = project.id;
         setCreatedProjectId(projectId);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.projects.list(createdCompanyId)
-        });
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(companyId) });
       }
 
       let issueRef = createdIssueRef;
       if (!issueRef) {
         const issue = await issuesApi.create(
-          createdCompanyId,
+          companyId,
           buildOnboardingIssuePayload({
             title: taskTitle,
             description: taskDescription,
-            assigneeAgentId: createdAgentId,
+            assigneeAgentId: agentId,
             projectId,
             goalId
           })
         );
         issueRef = issue.identifier ?? issue.id;
         setCreatedIssueRef(issueRef);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.issues.list(createdCompanyId)
-        });
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
       }
 
-      setSelectedCompanyId(createdCompanyId);
+      setSelectedCompanyId(companyId);
       reset();
       closeOnboarding();
       navigate(
-        createdCompanyPrefix
-          ? `/${createdCompanyPrefix}/issues/${issueRef}`
+        companyPrefix
+          ? `/${companyPrefix}/issues/${issueRef}`
           : `/issues/${issueRef}`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create task");
+      setError(err instanceof Error ? err.message : "Failed to create");
     } finally {
       setLoading(false);
     }
@@ -740,15 +782,15 @@ export function OnboardingWizard() {
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="CEO"
+                      placeholder="AI Admin"
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       autoFocus
                     />
                   </div>
 
-                  {/* Adapter type radio cards */}
-                  <div>
+                  {/* Adapter type radio cards — commented out: adapter type to be sourced from environment variables */}
+                  {/* <div>
                     <label className="text-xs text-muted-foreground mb-2 block">
                       Adapter type
                     </label>
@@ -895,10 +937,10 @@ export function OnboardingWizard() {
                         ))}
                       </div>
                     )}
-                  </div>
+                  </div> */}
 
                   {/* Conditional adapter fields */}
-                  {(adapterType === "claude_local" ||
+                  {/* {(adapterType === "claude_local" ||
                     adapterType === "codex_local" ||
                     adapterType === "gemini_local" ||
                     adapterType === "opencode_local" ||
@@ -1003,9 +1045,10 @@ export function OnboardingWizard() {
                         </Popover>
                       </div>
                     </div>
-                  )}
+                  )} */}
 
-                  {isLocalAdapter && (
+                  {/* Adapter environment check UI — commented out: adapter type UI removed */}
+                  {/* {isLocalAdapter && (
                     <div className="space-y-2 rounded-md border border-border p-3">
                       <div className="flex items-center justify-between gap-2">
                         <div>
@@ -1121,7 +1164,7 @@ export function OnboardingWizard() {
                         </div>
                       )}
                     </div>
-                  )}
+                  )} */}
 
                   {(adapterType === "http" ||
                     adapterType === "openclaw_gateway") && (

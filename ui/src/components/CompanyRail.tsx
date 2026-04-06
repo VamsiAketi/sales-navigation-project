@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Paperclip, Plus } from "lucide-react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   DndContext,
   closestCenter,
@@ -22,6 +22,9 @@ import { cn } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { heartbeatsApi } from "../api/heartbeats";
+import { authApi } from "../api/auth";
+import { healthApi } from "../api/health";
+import { accessApi } from "../api/access";
 import { useLocation, useNavigate } from "@/lib/router";
 import {
   Tooltip,
@@ -167,6 +170,34 @@ export function CompanyRail() {
   );
   const companyIds = useMemo(() => sidebarCompanies.map((company) => company.id), [sidebarCompanies]);
 
+  const { data: health } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: () => healthApi.get(),
+  });
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+  });
+  const isLocalTrusted = health?.deploymentMode === "local_trusted";
+  const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+
+  const memberQueries = useQueries({
+    queries: companyIds.map((companyId) => ({
+      queryKey: queryKeys.access.members(companyId),
+      queryFn: () => accessApi.listMembers(companyId),
+      enabled: !isLocalTrusted && !!currentUserId,
+    })),
+  });
+
+  const canCreateCompany = isLocalTrusted || memberQueries.some((q) =>
+    q.data?.some(
+      (member) =>
+        member.principalType === "user" &&
+        member.principalId === currentUserId &&
+        member.grants.some((g) => g.permissionKey === "companies:create"),
+    )
+  );
+
   const liveRunsQueries = useQueries({
     queries: companyIds.map((companyId) => ({
       queryKey: queryKeys.liveRuns(companyId),
@@ -304,26 +335,30 @@ export function CompanyRail() {
         </DndContext>
       </div>
 
-      {/* Separator before add button */}
-      <div className="w-8 h-px bg-border mx-auto shrink-0" />
+      {canCreateCompany && (
+        <>
+          {/* Separator before add button */}
+          <div className="w-8 h-px bg-border mx-auto shrink-0" />
 
-      {/* Add company button */}
-      <div className="flex items-center justify-center py-2 shrink-0">
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => openOnboarding()}
-              className="flex items-center justify-center w-11 h-11 rounded-[22px] hover:rounded-[14px] border-2 border-dashed border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground transition-[border-color,color,border-radius] duration-150"
-              aria-label="Add company"
-            >
-              <Plus className="h-5 w-5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={8}>
-            <p>Add company</p>
-          </TooltipContent>
-        </Tooltip>
-      </div>
+          {/* Add company button */}
+          <div className="flex items-center justify-center py-2 shrink-0">
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => openOnboarding()}
+                  className="flex items-center justify-center w-11 h-11 rounded-[22px] hover:rounded-[14px] border-2 border-dashed border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground transition-[border-color,color,border-radius] duration-150"
+                  aria-label="Add company"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                <p>Add company</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </>
+      )}
     </div>
   );
 }

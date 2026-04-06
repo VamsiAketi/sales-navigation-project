@@ -74,6 +74,8 @@ export function healthRoutes(
       });
     }
 
+    const defaultAdapterType = process.env.PAPERCLIP_DEFAULT_ADAPTER_TYPE?.trim() || undefined;
+
     res.json({
       status: "ok",
       version: serverVersion,
@@ -85,6 +87,7 @@ export function healthRoutes(
       features: {
         companyDeletionEnabled: opts.companyDeletionEnabled,
       },
+      ...(defaultAdapterType ? { defaultAdapterType } : {}),
       ...(devServer ? { devServer } : {}),
     });
   });
