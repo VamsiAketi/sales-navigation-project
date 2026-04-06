@@ -1,6 +1,6 @@
 import {
   BarChart, Bar, XAxis, Tooltip, ResponsiveContainer,
-  AreaChart, Area, CartesianGrid, defs, linearGradient, stop,
+  AreaChart, Area, CartesianGrid,
 } from "recharts";
 import type { HeartbeatRun } from "@paperclipai/shared";
 
