@@ -38,6 +38,11 @@ env:
 jobs:
   deploy-tenant:
     runs-on: ubuntu-latest
+    # Resolves secrets from a GitHub Environment whose name matches the tenant input
+    # (e.g. tenant "acme" → Environment "acme"). Add per-tenant OPENAI_API_KEY,
+    # ANTHROPIC_API_KEY, and any overrides there; repo-level secrets (Azure, ACR, etc.)
+    # remain available to the job.
+    environment: ${{ github.event.inputs.tenant }}
 
     steps:
       - name: Checkout

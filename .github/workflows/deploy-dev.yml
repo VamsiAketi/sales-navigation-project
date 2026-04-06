@@ -18,6 +18,10 @@ env:
 jobs:
   build-and-deploy-dev:
     runs-on: ubuntu-latest
+    # Create GitHub Environment "dev" (Settings → Environments) and add secrets there
+    # (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY) to scope LLM keys to dev; repo secrets
+    # remain available for Azure, ACR, Postgres, etc.
+    environment: dev
 
     steps:
       - name: Checkout
