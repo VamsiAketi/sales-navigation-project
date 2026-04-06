@@ -130,11 +130,15 @@ export const authApi = {
   },
 
   forgotPassword: async (input: { email: string; redirectTo?: string }) => {
-    await authPost("/forget-password", {
+    const payload = {
       email: input.email,
       redirectTo: input.redirectTo,
       callbackURL: input.redirectTo,
-    });
+    };
+    const primary = await authPostAllowNotFound("/forget-password", payload);
+    if (primary.notFound) {
+      await authPost("/forgot-password", payload);
+    }
   },
 
   resetPassword: async (input: { token: string; newPassword: string }) => {

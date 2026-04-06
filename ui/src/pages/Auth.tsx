@@ -202,15 +202,17 @@ export function AuthPage() {
             )}
             <div>
               <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
-              <input
-                id="password"
-                name="password"
-                className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
-              />
+              {!(!isResetMode && mode === "sign_in" && forgotRequested) && (
+                <input
+                  id="password"
+                  name="password"
+                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
+                />
+              )}
             </div>
             {isResetMode && (
               <div>
@@ -234,6 +236,7 @@ export function AuthPage() {
                     setForgotRequested((prev) => !prev);
                     setError(null);
                     setForgotSuccess(null);
+                    setPassword("");
                   }}
                 >
                   {forgotRequested ? "Back to sign in" : "Forgot password?"}
@@ -263,30 +266,32 @@ export function AuthPage() {
             {error && <p className="text-xs text-destructive">{error}</p>}
             {forgotSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{forgotSuccess}</p>}
             {resetSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{resetSuccess}</p>}
-            <Button
-              type="submit"
-              disabled={isResetMode ? resetPasswordMutation.isPending : mutation.isPending}
-              aria-disabled={
-                isResetMode
-                  ? !canSubmitReset || resetPasswordMutation.isPending
-                  : !canSubmit || mutation.isPending
-              }
-              className={`w-full ${
-                isResetMode
-                  ? !canSubmitReset && !resetPasswordMutation.isPending ? "opacity-50" : ""
-                  : !canSubmit && !mutation.isPending ? "opacity-50" : ""
-              }`}
-            >
-              {isResetMode
-                ? resetPasswordMutation.isPending
-                  ? "Resetting…"
-                  : "Reset Password"
-                : mutation.isPending
-                  ? "Working…"
-                  : mode === "sign_in"
-                    ? "Sign In"
-                    : "Create Account"}
-            </Button>
+            {!(!isResetMode && mode === "sign_in" && forgotRequested) && (
+              <Button
+                type="submit"
+                disabled={isResetMode ? resetPasswordMutation.isPending : mutation.isPending}
+                aria-disabled={
+                  isResetMode
+                    ? !canSubmitReset || resetPasswordMutation.isPending
+                    : !canSubmit || mutation.isPending
+                }
+                className={`w-full ${
+                  isResetMode
+                    ? !canSubmitReset && !resetPasswordMutation.isPending ? "opacity-50" : ""
+                    : !canSubmit && !mutation.isPending ? "opacity-50" : ""
+                }`}
+              >
+                {isResetMode
+                  ? resetPasswordMutation.isPending
+                    ? "Resetting…"
+                    : "Reset Password"
+                  : mutation.isPending
+                    ? "Working…"
+                    : mode === "sign_in"
+                      ? "Sign In"
+                      : "Create Account"}
+              </Button>
+            )}
           </form>
 
           {/* Sign-up disabled: account creation link hidden
