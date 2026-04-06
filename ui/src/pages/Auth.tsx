@@ -24,6 +24,7 @@ export function AuthPage() {
   const [error, setError] = useState<string | null>(null);
 
   const nextPath = useMemo(() => searchParams.get("next") || "/", [searchParams]);
+  const loggedOut = useMemo(() => searchParams.get("logged_out") === "1", [searchParams]);
   const resetToken = useMemo(
     () => searchParams.get("token") || searchParams.get("resetToken") || "",
     [searchParams],
@@ -36,10 +37,10 @@ export function AuthPage() {
   });
 
   useEffect(() => {
-    if (session) {
+    if (session && !loggedOut) {
       navigate(nextPath, { replace: true });
     }
-  }, [session, navigate, nextPath]);
+  }, [session, loggedOut, navigate, nextPath]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -135,6 +136,11 @@ export function AuthPage() {
                 ? "Use your email and password to access this instance."
                 : "Create an account for this instance. Email confirmation is not required in v1."}
           </p>
+          {loggedOut && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              You were signed out. Sign in again to continue.
+            </p>
+          )}
 
           <form
             className="mt-6 space-y-4"

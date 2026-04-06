@@ -174,7 +174,8 @@ function UserMenu() {
       // proceed with local cleanup even if the server call fails
     }
     queryClient.clear();
-    navigate("/auth");
+    // Force a clean auth page load and suppress immediate cached-session bounce.
+    window.location.assign("/auth?logged_out=1");
   };
 
   return (
