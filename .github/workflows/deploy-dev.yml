@@ -10,6 +10,10 @@ env:
   IMAGE_NAME: ai-harness
   DEV_RELEASE_NAME: ai-harness-dev
   DEV_NAMESPACE: dev
+  # Must match server.paperclip.publicUrl / ingress host for dev (CEO bootstrap + auth callbacks).
+  DEV_PUBLIC_URL: https://dev-test.app.ai-harness.com
+  DEFAULT_CEO_NAME: Navneet Agarwal
+  DEFAULT_CEO_EMAIL: navneet@ai-harness.com
 
 jobs:
   build-and-deploy-dev:
@@ -110,6 +114,7 @@ jobs:
           --set server.image.pullPolicy=IfNotPresent \
           --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
           --set server.paperclip.instanceId="dev" \
+          --set-string server.paperclip.publicUrl="${{ env.DEV_PUBLIC_URL }}" \
           --set-string server.extraEnv.SMTP_HOST="smtp.agentmail.to" \
           --set-string server.extraEnv.SMTP_PORT="465" \
           --set-string server.extraEnv.SMTP_SECURE="true" \
@@ -163,4 +168,175 @@ jobs:
             echo ""
             echo "_Note: This URL is typically single-use and time-limited. Share it only with the intended recipient._"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Auto-bootstrap CEO user and accept invite
+        id: bootstrap_ceo
+        if: steps.capture_invite.outputs.invite_url != ''
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${{ env.DEV_PUBLIC_URL }}"
+          USER_NAME="${{ env.DEFAULT_CEO_NAME }}"
+          USER_EMAIL="${{ env.DEFAULT_CEO_EMAIL }}"
+          # Generate a random 24-char base64 password
+          USER_PASSWORD="$(openssl rand -base64 18)"
+
+          INVITE_URL="${{ steps.capture_invite.outputs.invite_url }}"
+          INVITE_TOKEN="${INVITE_URL##*/}"
+
+          echo "Using invite URL: ${INVITE_URL}"
+          echo "Bootstrapping CEO user ${USER_EMAIL} at ${BASE_URL}"
+
+          TMP_DIR="$(mktemp -d)"
+          COOKIE_JAR="$TMP_DIR/cookies.txt"
+
+          # Ingress/LB can briefly return 502/503/504 right after rollout.
+          # Wait for the public endpoint to be consistently reachable first.
+          echo "Waiting for public health endpoint at ${BASE_URL}/api/health ..."
+          HEALTH_OK=0
+          for i in $(seq 1 24); do
+            HEALTH_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "$BASE_URL/api/health" || true)"
+            if [ "$HEALTH_STATUS" = "200" ]; then
+              HEALTH_OK=1
+              echo "Health endpoint is ready."
+              break
+            fi
+            echo "Health check attempt ${i}/24 returned ${HEALTH_STATUS:-curl_error}; retrying in 5s..."
+            sleep 5
+          done
+
+          if [ "$HEALTH_OK" -ne 1 ]; then
+            echo "Public health endpoint did not become ready in time." >&2
+            exit 1
+          fi
+
+          post_json_with_cookies() {
+            local url="$1"
+            local body="$2"
+            local output_file="$3"
+            curl -sS \
+              -o "$output_file" \
+              -w "%{http_code}" \
+              -c "$COOKIE_JAR" \
+              -b "$COOKIE_JAR" \
+              -H "Content-Type: application/json" \
+              -H "Origin: $BASE_URL" \
+              -X POST \
+              "$url" \
+              --data "$body"
+          }
+
+          post_json_with_cookies_retry() {
+            local url="$1"
+            local body="$2"
+            local output_file="$3"
+            local label="$4"
+            local attempts="${5:-5}"
+            local sleep_seconds="${6:-8}"
+            local status=""
+
+            for i in $(seq 1 "$attempts"); do
+              status="$(post_json_with_cookies "$url" "$body" "$output_file")"
+              if [[ "$status" =~ ^2 ]]; then
+                echo "$status"
+                return 0
+              fi
+
+              if [[ "$status" = "502" || "$status" = "503" || "$status" = "504" ]]; then
+                echo "${label}: transient HTTP ${status} on attempt ${i}/${attempts}; retrying in ${sleep_seconds}s..."
+                sleep "$sleep_seconds"
+                continue
+              fi
+
+              echo "$status"
+              return 0
+            done
+
+            # Return final status after retries (likely still 5xx).
+            echo "$status"
+            return 0
+          }
+
+          # 1) Sign up or sign in the CEO user
+          SIGNUP_RESP="$TMP_DIR/signup.json"
+          SIGNUP_STATUS="$(post_json_with_cookies_retry \
+            "$BASE_URL/api/auth/sign-up/email" \
+            "{\"name\":\"$USER_NAME\",\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}" \
+            "$SIGNUP_RESP" \
+            "sign-up")"
+
+          if [[ "$SIGNUP_STATUS" =~ ^2 ]]; then
+            echo "Created CEO user ${USER_EMAIL}"
+          else
+            SIGNIN_RESP="$TMP_DIR/signin.json"
+            SIGNIN_STATUS="$(post_json_with_cookies_retry \
+              "$BASE_URL/api/auth/sign-in/email" \
+              "{\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}" \
+              "$SIGNIN_RESP" \
+              "sign-in")"
+
+            if [[ "$SIGNIN_STATUS" =~ ^2 ]]; then
+              echo "Signed in existing CEO user ${USER_EMAIL}"
+            else
+              echo "Failed to sign up or sign in CEO user" >&2
+              echo "Sign-up response:" >&2
+              cat "$SIGNUP_RESP" || true
+              echo >&2
+              echo "Sign-in response:" >&2
+              cat "$SIGNIN_RESP" || true
+              exit 1
+            fi
+          fi
+
+          echo "Authenticated as ${USER_EMAIL}, accepting invite..."
+
+          # 2) Accept the invite as this user
+          ACCEPT_RESP="$TMP_DIR/accept.json"
+          ACCEPT_STATUS="$(post_json_with_cookies_retry \
+            "$BASE_URL/api/invites/$INVITE_TOKEN/accept" \
+            '{"requestType":"human"}' \
+            "$ACCEPT_RESP" \
+            "accept-invite")"
+
+          if ! [[ "$ACCEPT_STATUS" =~ ^2 ]]; then
+            echo "Failed to accept invite (HTTP $ACCEPT_STATUS)" >&2
+            cat "$ACCEPT_RESP" || true
+            exit 1
+          fi
+
+          echo "CEO invite accepted automatically for ${USER_EMAIL}"
+          echo "CEO login details:"
+          echo "  Email: ${USER_EMAIL}"
+          echo "  Password: ${USER_PASSWORD}"
+
+          echo "user_password=${USER_PASSWORD}" >> "$GITHUB_OUTPUT"
+
+      - name: Send CEO credentials email
+        if: steps.capture_invite.outputs.invite_url != '' && steps.bootstrap_ceo.outcome == 'success'
+        uses: dawidd6/action-send-mail@v4
+        with:
+          server_address: smtp.agentmail.to
+          server_port: 465
+          secure: true
+          username: "support@ai-harness.com"
+          password: ${{ secrets.SMTP_PASSWORD }}
+          from: "AI-Harness Support <support@ai-harness.com>"
+          to: navneet@ai-harness.com
+          subject: "Your AI-Harness dev access is ready"
+          body: |
+            Hi Navneet Agarwal,
+
+            Your AI-Harness dev environment is ready.
+
+            You can sign in at:
+            https://dev-test.app.ai-harness.com
+
+            Your initial login credentials are:
+            - Email: navneet@ai-harness.com
+            - Password: ${{ steps.bootstrap_ceo.outputs.user_password }}
+
+            For security, please sign in and change your password as soon as possible.
+
+            Thanks,
+            AI-Harness Support
 
