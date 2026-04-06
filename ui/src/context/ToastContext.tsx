@@ -50,7 +50,8 @@ const DEFAULT_TTL_BY_TONE: Record<ToastTone, number> = {
   error: 10000,
 };
 const MIN_TTL_MS = 1500;
-const MAX_TTL_MS = 15000;
+/** Upper bound for custom durations (e.g. task-created toast at 15s). */
+const MAX_TTL_MS = 60_000;
 const MAX_TOASTS = 5;
 const DEDUPE_WINDOW_MS = 3500;
 const DEDUPE_MAX_AGE_MS = 20000;

@@ -56,6 +56,7 @@ import { cn } from "../lib/utils";
 import { extractProviderIdWithFallback } from "../lib/model-utils";
 import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDefault } from "../lib/status-colors";
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
+import { setFocusAfterIssueCreate } from "../lib/focus-created-issue";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
@@ -472,16 +473,34 @@ export function NewIssueDialog() {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
       if (draftTimer.current) clearTimeout(draftTimer.current);
+      const prefix = (companies.find((c) => c.id === companyId)?.issuePrefix ?? "").trim();
+      const issueRef = issue.identifier ?? issue.id;
+      const statusLabel = issue.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+      setFocusAfterIssueCreate(companyId, {
+        issueId: issue.id,
+        identifier: issue.identifier ?? null,
+        status: issue.status,
+        title: issue.title,
+      });
+
       if (failures.length > 0) {
-        const prefix = (companies.find((company) => company.id === companyId)?.issuePrefix ?? "").trim();
-        const issueRef = issue.identifier ?? issue.id;
         pushToast({
           title: `Created ${issueRef} with upload warnings`,
           body: `${failures.length} staged ${failures.length === 1 ? "file" : "files"} could not be added.`,
           tone: "warn",
+          ttlMs: 15_000,
           action: prefix
             ? { label: `Open ${issueRef}`, href: `/${prefix}/issues/${issueRef}` }
             : undefined,
+        });
+      } else {
+        pushToast({
+          title: `Created ${issueRef}`,
+          body: `Placed in ${statusLabel}. Look for the highlighted task below.`,
+          tone: "success",
+          ttlMs: 15_000,
+          action: prefix ? { label: "Open task", href: `/${prefix}/issues/${issueRef}` } : undefined,
         });
       }
       clearDraft();
@@ -1506,13 +1525,9 @@ export function NewIssueDialog() {
               <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
                 {activeProjectStatuses.length > 0 ? (
                   <span
-                    className="relative inline-flex h-3 w-3 rounded-full border-2 shrink-0"
-                    style={{ borderColor: (currentStatus as typeof activeProjectStatuses[number]).color, color: (currentStatus as typeof activeProjectStatuses[number]).color }}
-                  >
-                    {(currentStatus as typeof activeProjectStatuses[number]).value === "done" && (
-                      <span className="absolute inset-0 m-auto h-1.5 w-1.5 rounded-full bg-current" />
-                    )}
-                  </span>
+                    className="inline-flex h-3 w-3 rounded-full border-2 shrink-0"
+                    style={{ borderColor: (currentStatus as typeof activeProjectStatuses[number]).color }}
+                  />
                 ) : (
                   <CircleDot className={cn("h-3 w-3", (currentStatus as typeof statuses[number]).color)} />
                 )}
@@ -1531,11 +1546,9 @@ export function NewIssueDialog() {
                       onClick={() => { setStatus(s.value); setStatusOpen(false); }}
                     >
                       <span
-                        className="relative inline-flex h-3 w-3 rounded-full border-2 shrink-0"
-                        style={{ borderColor: s.color, color: s.color }}
-                      >
-                        {s.value === "done" && <span className="absolute inset-0 m-auto h-1.5 w-1.5 rounded-full bg-current" />}
-                      </span>
+                        className="inline-flex h-3 w-3 rounded-full border-2 shrink-0"
+                        style={{ borderColor: s.color }}
+                      />
                       {s.name}
                     </button>
                   ))

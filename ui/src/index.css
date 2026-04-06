@@ -250,6 +250,19 @@
   }
 }
 
+/* Newly created task — brief pulse on the board card */
+@keyframes kanban-new-card {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 40%, transparent);
+  }
+  35% {
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--primary) 22%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
 /* MDXEditor theme integration */
 .paperclip-mdxeditor-scope,
 .paperclip-mdxeditor {

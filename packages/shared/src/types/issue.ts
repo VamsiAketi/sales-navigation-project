@@ -44,6 +44,8 @@ export interface IssueLabel {
   color: string;
   createdAt: Date;
   updatedAt: Date;
+  /** Number of tasks currently using this label, resolved server-side. */
+  usageCount?: number;
 }
 
 export interface IssueAssigneeAdapterOverrides {

@@ -11,6 +11,7 @@ import {
   authVerifications,
 } from "@paperclipai/db";
 import type { Config } from "../config.js";
+import { logger } from "../middleware/logger.js";
 
 export type BetterAuthSessionUser = {
   id: string;
@@ -90,6 +91,22 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
       enabled: true,
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
+    },
+    user: {
+      changeEmail: {
+        enabled: true,
+        // Instant update while email is unverified (default for new users); verified users use sendVerificationEmail below.
+        updateEmailWithoutVerification: true,
+      },
+    },
+    emailVerification: {
+      sendVerificationEmail: async (params: { user: { email?: string | null }; url: string }) => {
+        void params.user;
+        logger.info(
+          { url: params.url },
+          "Better Auth: email verification link (configure outbound email to deliver this to users)",
+        );
+      },
     },
     ...(isHttpOnly ? { advanced: { useSecureCookies: false } } : {}),
   };

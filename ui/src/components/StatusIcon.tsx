@@ -26,21 +26,16 @@ export function StatusIcon({ status, onChange, className, showLabel, projectStat
   // Resolve color: custom hex from project statuses, else Tailwind class from map
   const customStatus = projectStatuses?.find((s) => s.value === status);
   const tailwindClass = issueStatusIcon[status] ?? issueStatusIconDefault;
-  const isDone = status === "done" || customStatus?.value === "done";
 
   const circle = customStatus ? (
     <span
-      className={cn("relative inline-flex h-4 w-4 rounded-full border-2 shrink-0", onChange && !showLabel && "cursor-pointer", className)}
-      style={{ borderColor: customStatus.color, color: customStatus.color }}
-    >
-      {isDone && <span className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-current" />}
-    </span>
+      className={cn("inline-flex h-4 w-4 rounded-full border-2 shrink-0", onChange && !showLabel && "cursor-pointer", className)}
+      style={{ borderColor: customStatus.color }}
+    />
   ) : (
     <span
-      className={cn("relative inline-flex h-4 w-4 rounded-full border-2 shrink-0", tailwindClass, onChange && !showLabel && "cursor-pointer", className)}
-    >
-      {isDone && <span className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-current" />}
-    </span>
+      className={cn("inline-flex h-4 w-4 rounded-full border-2 shrink-0", tailwindClass, onChange && !showLabel && "cursor-pointer", className)}
+    />
   );
 
   const label = customStatus?.name ?? statusLabel(status);
@@ -74,16 +69,12 @@ export function StatusIcon({ status, onChange, className, showLabel, projectStat
             onClick={() => { onChange(s.value); setOpen(false); }}
           >
             {s.isTailwind ? (
-              <span className={cn("relative inline-flex h-4 w-4 rounded-full border-2 shrink-0", issueStatusIcon[s.value] ?? issueStatusIconDefault)}>
-                {s.value === "done" && <span className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-current" />}
-              </span>
+              <span className={cn("inline-flex h-4 w-4 rounded-full border-2 shrink-0", issueStatusIcon[s.value] ?? issueStatusIconDefault)} />
             ) : (
               <span
-                className="relative inline-flex h-4 w-4 rounded-full border-2 shrink-0"
-                style={{ borderColor: s.color, color: s.color }}
-              >
-                {s.value === "done" && <span className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-current" />}
-              </span>
+                className="inline-flex h-4 w-4 rounded-full border-2 shrink-0"
+                style={{ borderColor: s.color }}
+              />
             )}
             {s.name}
           </Button>

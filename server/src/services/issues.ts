@@ -1265,7 +1265,19 @@ export function issueService(db: Db) {
     },
 
     listLabels: (companyId: string) =>
-      db.select().from(labels).where(eq(labels.companyId, companyId)).orderBy(asc(labels.name), asc(labels.id)),
+      db
+        .select({
+          id: labels.id,
+          companyId: labels.companyId,
+          name: labels.name,
+          color: labels.color,
+          createdAt: labels.createdAt,
+          updatedAt: labels.updatedAt,
+          usageCount: sql<number>`(SELECT COUNT(*) FROM ${issueLabels} WHERE ${issueLabels.labelId} = ${labels.id})::int`,
+        })
+        .from(labels)
+        .where(eq(labels.companyId, companyId))
+        .orderBy(asc(labels.name), asc(labels.id)),
 
     getLabelById: (id: string) =>
       db

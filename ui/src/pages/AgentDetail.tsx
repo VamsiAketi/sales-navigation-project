@@ -2661,12 +2661,14 @@ function AgentSkillsTab({
 
             return (
               <>
-                {optionalSkillRows.length > 0 && (
+                {(optionalSkillRows.length > 0 || requiredSkillRows.length > 0) && (
                   <section className="border-y border-border">
                     {optionalSkillRows.map(renderSkillRow)}
+                    {requiredSkillRows.map(renderSkillRow)}
                   </section>
                 )}
 
+                {/* Hidden: separate "Required by Paperclip" subsection (merge required rows into the list above).
                 {requiredSkillRows.length > 0 && (
                   <section className="border-y border-border">
                     <div className="border-b border-border bg-muted/40 px-3 py-2">
@@ -2677,12 +2679,13 @@ function AgentSkillsTab({
                     {requiredSkillRows.map(renderSkillRow)}
                   </section>
                 )}
+                */}
 
                 {unmanagedSkillRows.length > 0 && (
                   <section className="border-y border-border">
                     <div className="border-b border-border bg-muted/40 px-3 py-2">
                       <span className="text-xs font-medium text-muted-foreground">
-                        User-installed skills, not managed by Paperclip
+                        User-installed skills, not managed by AI-Harness
                       </span>
                     </div>
                     {unmanagedSkillRows.map(renderSkillRow)}

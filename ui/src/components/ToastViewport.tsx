@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "@/lib/router";
-import { X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, OctagonX, X } from "lucide-react";
 import { useToast, type ToastItem, type ToastTone } from "../context/ToastContext";
 import { cn } from "../lib/utils";
 
@@ -11,12 +11,26 @@ const toneClasses: Record<ToastTone, string> = {
   error: "border-red-300 bg-red-50 text-red-900 dark:border-red-500/30 dark:bg-red-950/60 dark:text-red-100",
 };
 
-const toneDotClasses: Record<ToastTone, string> = {
-  info: "bg-sky-500 dark:bg-sky-400",
-  success: "bg-emerald-500 dark:bg-emerald-400",
-  warn: "bg-amber-500 dark:bg-amber-400",
-  error: "bg-red-500 dark:bg-red-400",
+const toneIconClasses: Record<ToastTone, string> = {
+  info: "text-sky-600 dark:text-sky-300",
+  success: "text-emerald-600 dark:text-emerald-300",
+  warn: "text-amber-600 dark:text-amber-300",
+  error: "text-red-600 dark:text-red-300",
 };
+
+function ToastToneIcon({ tone, className }: { tone: ToastTone; className?: string }) {
+  const iconClass = cn("h-5 w-5 shrink-0", toneIconClasses[tone], className);
+  switch (tone) {
+    case "success":
+      return <CheckCircle2 className={iconClass} aria-hidden />;
+    case "warn":
+      return <AlertTriangle className={iconClass} aria-hidden />;
+    case "error":
+      return <OctagonX className={iconClass} aria-hidden />;
+    default:
+      return <Info className={iconClass} aria-hidden />;
+  }
+}
 
 function AnimatedToast({
   toast,
@@ -35,15 +49,13 @@ function AnimatedToast({
   return (
     <li
       className={cn(
-        "pointer-events-auto rounded-sm border shadow-lg backdrop-blur-xl transition-[transform,opacity] duration-200 ease-out",
-        visible
-          ? "translate-y-0 opacity-100"
-          : "translate-y-3 opacity-0",
+        "pointer-events-auto rounded-md border shadow-lg backdrop-blur-xl transition-[transform,opacity] duration-200 ease-out",
+        visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
         toneClasses[toast.tone],
       )}
     >
       <div className="flex items-start gap-3 px-3 py-2.5">
-        <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", toneDotClasses[toast.tone])} />
+        <ToastToneIcon tone={toast.tone} className="mt-0.5" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold leading-5">{toast.title}</p>
           {toast.body && (
@@ -83,7 +95,7 @@ export function ToastViewport() {
     <aside
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed bottom-3 left-3 z-[120] w-full max-w-sm px-1"
+      className="pointer-events-none fixed bottom-4 left-4 top-auto right-auto z-[120] w-[min(100vw-2rem,24rem)] max-w-sm"
     >
       <ol className="flex w-full flex-col-reverse gap-2">
         {toasts.map((toast) => (

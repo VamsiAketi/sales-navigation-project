@@ -19,6 +19,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { arrayMove } from "@dnd-kit/sortable";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
+import { cn } from "../lib/utils";
+import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Avatar helpers ─────────────────────────────────────────────────────────── */
@@ -153,6 +155,10 @@ interface KanbanBoardProps {
   issueLinkState?: unknown;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
   projectStatuses?: ProjectIssueStatus[];
+  /** Briefly emphasize this card (e.g. after creating a task). */
+  highlightIssueId?: string | null;
+  /** Show a "New" pill for this issue (longer than highlight ring). */
+  newBadgeIssueId?: string | null;
 }
 
 function getSortKey(issue: Issue): number {
@@ -192,17 +198,19 @@ const KanbanCardContent = memo(function KanbanCardContent({
   memberName,
   isLive,
   accentDot,
+  showNewBadge,
 }: {
   issue: Issue;
   agentName: string | null;
   memberName: string | null;
   isLive: boolean;
   accentDot: string;
+  showNewBadge?: boolean;
 }) {
   return (
     <>
       {/* Top row: ticket ID badge + AI active pill */}
-      <div className="flex items-center gap-1.5 mb-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
         <span
           className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-mono font-extrabold shrink-0 tracking-tight"
           style={{
@@ -223,6 +231,11 @@ const KanbanCardContent = memo(function KanbanCardContent({
             AI active
           </span>
         )}
+        {showNewBadge ? (
+          <span className={NEW_ISSUE_BADGE_CLASS} aria-label="Newly created task">
+            New
+          </span>
+        ) : null}
       </div>
 
       {/* Title */}
@@ -299,6 +312,8 @@ function KanbanCard({
   isOverlay,
   issueLinkState,
   statusColorMap,
+  highlight,
+  showNewBadge,
 }: {
   issue: Issue;
   agentName: string | null;
@@ -307,6 +322,8 @@ function KanbanCard({
   isOverlay?: boolean;
   issueLinkState?: unknown;
   statusColorMap?: Map<string, string>;
+  highlight?: boolean;
+  showNewBadge?: boolean;
 }) {
   const data = useMemo(() => ({ issue }), [issue]);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -322,6 +339,7 @@ function KanbanCard({
 
   return (
     <div
+      id={isOverlay ? undefined : `issue-surface-${issue.id}`}
       ref={setNodeRef}
       style={{
         ...style,
@@ -330,7 +348,11 @@ function KanbanCard({
       }}
       {...attributes}
       {...listeners}
-      className="kanban-card group rounded-2xl border-2 bg-card p-3 cursor-grab active:cursor-grabbing shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all duration-150 dark:bg-card/80"
+      className={cn(
+        "kanban-card group rounded-2xl border-2 bg-card p-3 cursor-grab active:cursor-grabbing shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all duration-150 dark:bg-card/80",
+        highlight &&
+          "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-md z-[2] motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]",
+      )}
     >
       <Link
         to={`/issues/${issue.identifier ?? issue.id}`}
@@ -343,6 +365,7 @@ function KanbanCard({
           memberName={memberName}
           isLive={isLive}
           accentDot={accent.dot}
+          showNewBadge={showNewBadge}
         />
       </Link>
     </div>
@@ -360,6 +383,8 @@ const KanbanColumn = memo(function KanbanColumn({
   liveIssueIds,
   issueLinkState,
   statusColorMap,
+  highlightIssueId,
+  newBadgeIssueId,
 }: {
   status: string;
   columnLabel?: string;
@@ -370,6 +395,8 @@ const KanbanColumn = memo(function KanbanColumn({
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
   statusColorMap?: Map<string, string>;
+  highlightIssueId?: string | null;
+  newBadgeIssueId?: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   // columnColor (from projectStatuses) always wins; then hardcoded map; then neutral fallback
@@ -378,59 +405,57 @@ const KanbanColumn = memo(function KanbanColumn({
 
   return (
     <div
-      className="flex flex-col min-w-[272px] w-[272px] shrink-0 rounded-2xl overflow-hidden"
+      className="flex min-h-0 min-w-[272px] w-[272px] shrink-0 flex-col rounded-2xl"
       style={{
         border: `2px solid ${dotColor}45`,
         boxShadow: `0 0 0 1px ${dotColor}18, 0 4px 16px ${dotColor}12`,
       }}
     >
-      {/* Solid accent top bar */}
-      <div
-        className="h-1 w-full shrink-0"
-        style={{ backgroundColor: dotColor }}
-      />
-
-      {/* Column header */}
-      <div
-        className="sticky top-12 md:top-0 z-10 flex items-center gap-2 px-3 py-2.5"
-        style={{
-          background: `linear-gradient(135deg, ${dotColor}18 0%, ${dotColor}08 100%)`,
-          borderBottom: `1px solid ${dotColor}30`,
-        }}
-      >
-        {/* Highlighted status label pill */}
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+      {/* Fixed column chrome (accent + status header) — cards scroll in the pane below */}
+      <div className="relative z-20 shrink-0 rounded-t-2xl shadow-[0_10px_28px_-12px_rgba(0,0,0,0.55)] dark:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.85)]">
+        <div
+          className="h-1 w-full shrink-0 rounded-t-2xl"
+          style={{ backgroundColor: dotColor }}
+        />
+        <div
+          className="flex items-center gap-2 border-b bg-card/95 px-3 py-2.5 backdrop-blur-md"
           style={{
-            backgroundColor: dotColor,
-            color: "#ffffff",
-            textShadow: "0 1px 2px rgba(0,0,0,0.25)",
-            boxShadow: `0 2px 6px ${dotColor}50`,
+            borderBottomColor: `${dotColor}40`,
+            backgroundImage: `linear-gradient(135deg, ${dotColor}20 0%, ${dotColor}0a 100%)`,
           }}
         >
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/70 shrink-0" />
-          {columnLabel ?? statusLabel(status)}
-        </span>
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+            style={{
+              backgroundColor: dotColor,
+              color: "#ffffff",
+              textShadow: "0 1px 2px rgba(0,0,0,0.25)",
+              boxShadow: `0 2px 6px ${dotColor}50`,
+            }}
+          >
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
+            {columnLabel ?? statusLabel(status)}
+          </span>
 
-        <span className="flex-1" />
+          <span className="flex-1" />
 
-        {/* Count badge */}
-        <span
-          className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
-          style={{
-            backgroundColor: `${dotColor}22`,
-            color: dotColor,
-            border: `1.5px solid ${dotColor}55`,
-          }}
-        >
-          {issues.length}
-        </span>
+          <span
+            className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
+            style={{
+              backgroundColor: `${dotColor}22`,
+              color: dotColor,
+              border: `1.5px solid ${dotColor}55`,
+            }}
+          >
+            {issues.length}
+          </span>
+        </div>
       </div>
 
-      {/* Drop zone / card list */}
+      {/* Drop zone / card list — scrolls under the header stack */}
       <div
         ref={setNodeRef}
-        className={`kanban-col-${status} flex-1 min-h-[120px] px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
+        className={`kanban-col-${status} min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
           isOver ? "bg-accent/30" : ""
         }`}
         style={{
@@ -450,6 +475,8 @@ const KanbanColumn = memo(function KanbanColumn({
             isLive={liveIssueIds?.has(issue.id) ?? false}
             issueLinkState={issueLinkState}
             statusColorMap={statusColorMap}
+            highlight={highlightIssueId === issue.id}
+            showNewBadge={newBadgeIssueId === issue.id}
           />
         ))}
       </div>
@@ -466,6 +493,8 @@ export function KanbanBoard({
   issueLinkState,
   onUpdateIssue,
   projectStatuses,
+  highlightIssueId = null,
+  newBadgeIssueId = null,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   // optimisticMoves: issueId → targetStatus applied immediately on drop so the
@@ -603,7 +632,7 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2">
+      <div className="-mx-2 flex max-h-[min(100dvh-10.5rem,56rem)] min-h-0 items-stretch gap-4 overflow-x-auto px-2 pb-4">
         {activeColumns.map((status) => {
           const ps = projectStatuses?.find((s) => s.value === status);
           return (
@@ -618,6 +647,8 @@ export function KanbanBoard({
               liveIssueIds={liveIssueIds}
               issueLinkState={issueLinkState}
               statusColorMap={statusColorMap}
+              highlightIssueId={highlightIssueId}
+              newBadgeIssueId={newBadgeIssueId}
             />
           );
         })}
@@ -636,6 +667,7 @@ export function KanbanBoard({
             isLive={liveIssueIds?.has(activeIssue.id) ?? false}
             issueLinkState={issueLinkState}
             statusColorMap={statusColorMap}
+            showNewBadge={newBadgeIssueId === activeIssue.id}
             isOverlay
           />
         ) : null}

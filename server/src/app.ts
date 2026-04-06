@@ -113,9 +113,9 @@ export async function createApp(
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    let name: string | null = req.actor.source === "local_implicit" ? "Local Board" : null;
+    let name: string | null = null;
     let email: string | null = null;
-    if (db && req.actor.source === "session") {
+    if (db) {
       const userRow = await db
         .select({ name: authUsers.name, email: authUsers.email })
         .from(authUsers)
@@ -126,6 +126,9 @@ export async function createApp(
         email = userRow.email;
       }
     }
+    if (name === null && req.actor.source === "local_implicit") {
+      name = "Local Board";
+    }
     res.json({
       session: {
         id: `paperclip:${req.actor.source}:${req.actor.userId}`,
@@ -134,8 +137,90 @@ export async function createApp(
       user: { id: req.actor.userId, email, name },
     });
   });
+
+  // local_trusted has no Better Auth HTTP routes; still expose profile updates for the implicit board principal.
+  if (opts.deploymentMode === "local_trusted") {
+    const simpleEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    app.post("/api/auth/update-user", async (req, res) => {
+      if (req.actor.type !== "board" || !req.actor.userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+      const body = req.body;
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        res.status(400).json({ message: "Invalid body" });
+        return;
+      }
+      if ("email" in body && body.email !== undefined) {
+        res.status(400).json({ message: "Email cannot be updated via this endpoint" });
+        return;
+      }
+      const name = typeof body.name === "string" ? body.name.trim() : undefined;
+      if (name === undefined) {
+        res.status(400).json({ message: "No fields to update" });
+        return;
+      }
+      if (!name) {
+        res.status(400).json({ message: "Name cannot be empty" });
+        return;
+      }
+      const now = new Date();
+      const updated = await db
+        .update(authUsers)
+        .set({ name, updatedAt: now })
+        .where(eq(authUsers.id, req.actor.userId))
+        .returning({ id: authUsers.id })
+        .then((rows) => rows[0] ?? null);
+      if (!updated) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+      res.json({ status: true });
+    });
+    app.post("/api/auth/change-email", async (req, res) => {
+      if (req.actor.type !== "board" || !req.actor.userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+      const raw = req.body?.newEmail;
+      const newEmail = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+      if (!newEmail || !simpleEmail.test(newEmail)) {
+        res.status(400).json({ message: "Invalid email address" });
+        return;
+      }
+      const current = await db
+        .select({ email: authUsers.email })
+        .from(authUsers)
+        .where(eq(authUsers.id, req.actor.userId))
+        .then((rows) => rows[0] ?? null);
+      if (!current) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+      if (current.email.toLowerCase() === newEmail) {
+        res.status(400).json({ message: "Email is the same" });
+        return;
+      }
+      const taken = await db
+        .select({ id: authUsers.id })
+        .from(authUsers)
+        .where(eq(authUsers.email, newEmail))
+        .then((rows) => rows[0] ?? null);
+      if (taken) {
+        res.status(422).json({ message: "User already exists. Use another email." });
+        return;
+      }
+      const now = new Date();
+      await db
+        .update(authUsers)
+        .set({ email: newEmail, updatedAt: now })
+        .where(eq(authUsers.id, req.actor.userId));
+      res.json({ status: true });
+    });
+  }
+
   if (opts.betterAuthHandler) {
-    app.all("/api/auth/*authPath", opts.betterAuthHandler);
+    app.all("/api/auth/{*authPath}", opts.betterAuthHandler);
   }
   app.use(llmRoutes(db));
 
