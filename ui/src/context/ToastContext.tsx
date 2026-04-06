@@ -13,7 +13,8 @@ export type ToastTone = "info" | "success" | "warn" | "error";
 
 export interface ToastAction {
   label: string;
-  href: string;
+  href?: string;
+  onClick?: () => void;
 }
 
 export interface ToastInput {
@@ -24,6 +25,7 @@ export interface ToastInput {
   tone?: ToastTone;
   ttlMs?: number;
   action?: ToastAction;
+  secondaryAction?: ToastAction;
 }
 
 export interface ToastItem {
@@ -33,6 +35,7 @@ export interface ToastItem {
   tone: ToastTone;
   ttlMs: number;
   action?: ToastAction;
+  secondaryAction?: ToastAction;
   createdAt: number;
 }
 
@@ -128,6 +131,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           tone,
           ttlMs,
           action: input.action,
+          secondaryAction: input.secondaryAction,
           createdAt: now,
         };
 
