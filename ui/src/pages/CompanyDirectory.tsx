@@ -1027,30 +1027,27 @@ export function CompanyDirectory() {
                 Invite users
               </Button>
             </DialogTrigger>
-            <DialogContent className="flex w-[calc(100vw-2rem)] max-w-[42rem] flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0 shadow-xl sm:max-h-[min(92dvh,56rem)]">
-              {/* ── Header ── */}
-              <div className="shrink-0 border-b border-border/50 px-6 py-4 pr-14">
-                <DialogTitle className="text-base font-semibold">Invite human user</DialogTitle>
-                <DialogDescription className="mt-0.5 text-xs text-muted-foreground">
-                  Send a human invite and get temporary credentials for a new teammate.
-                </DialogDescription>
+            <DialogContent className="flex max-h-[min(92dvh,48rem)] w-full max-w-5xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
+              <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
+                <DialogHeader>
+                  <DialogTitle>Invite human user</DialogTitle>
+                  <DialogDescription>
+                    Send a human invite and get temporary credentials for a new teammate.
+                  </DialogDescription>
+                </DialogHeader>
               </div>
-
-              {/* ── Body (scrolls independently) ── */}
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                <div className="space-y-6 p-6">
-
-                  {/* User details */}
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">User details</h3>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
+                <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
+                  <section className="min-w-0 space-y-4">
+                    <h3 className="text-sm font-semibold tracking-tight text-foreground">User details</h3>
+                    <div className="space-y-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="invite-name" className="text-xs text-muted-foreground">
                           Name <span className="font-normal">(optional)</span>
                         </Label>
                         <Input
                           id="invite-name"
-                          className="h-10 rounded-xl border-border/60"
+                          className="h-11 rounded-2xl border-border/60"
                           type="text"
                           placeholder="Full name"
                           value={humanInviteName}
@@ -1059,11 +1056,11 @@ export function CompanyDirectory() {
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="invite-email" className="text-xs text-muted-foreground">
-                          Email <span className="text-destructive">*</span>
+                          Email
                         </Label>
                         <Input
                           id="invite-email"
-                          className="h-10 rounded-xl border-border/60"
+                          className="h-11 rounded-2xl border-border/60"
                           type="email"
                           placeholder="name@company.com"
                           value={humanInviteEmail}
@@ -1072,52 +1069,33 @@ export function CompanyDirectory() {
                         />
                       </div>
                     </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="border-t border-border/50" />
-
-                  {/* Initial access */}
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Initial access</h3>
-                    <HumanPermissionsPanel
-                      idPrefix="invite"
-                      enabledKeys={humanInvitePermissionKeys}
-                      onKeysChange={setHumanInvitePermissionKeys}
-                      intro={
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          Optional grants after they accept. Use a preset or adjust switches — nothing is enabled by default.
+                    {humanInviteCredentials && (
+                      <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
+                        <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
+                        <p>
+                          Name: <span className="font-mono">{humanInviteCredentials.name}</span>
                         </p>
-                      }
-                    />
-                  </div>
-
-                  {/* Credentials (shown after invite created) */}
-                  {humanInviteCredentials && (
-                    <>
-                      <div className="border-t border-border/50" />
-                      <div className="space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-xs ring-1 ring-emerald-500/20">
-                        <p className="font-semibold text-foreground">Temporary credentials</p>
-                        <p className="text-muted-foreground">Share these securely with the new teammate.</p>
-                        <div className="space-y-1 pt-1">
-                          {[
-                            ["Name", humanInviteCredentials.name],
-                            ["Email", humanInviteCredentials.email],
-                            ["Username", humanInviteCredentials.temporaryUsername],
-                            ["Password", humanInviteCredentials.temporaryPassword],
-                          ].map(([label, val]) => (
-                            <div key={label} className="flex items-baseline gap-2">
-                              <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
-                              <span className="min-w-0 truncate font-mono text-foreground">{val}</span>
-                            </div>
-                          ))}
-                        </div>
+                        <p>
+                          Email: <span className="font-mono">{humanInviteCredentials.email}</span>
+                        </p>
+                        <p>
+                          Username:{" "}
+                          <span className="font-mono">
+                            {humanInviteCredentials.temporaryUsername}
+                          </span>
+                        </p>
+                        <p>
+                          Password:{" "}
+                          <span className="font-mono">
+                            {humanInviteCredentials.temporaryPassword}
+                          </span>
+                        </p>
                         <div className="pt-1">
                           <Button
                             type="button"
                             size="sm"
-                            variant="outline"
-                            className="h-8 rounded-full px-4 text-xs shadow-sm"
+                            variant="secondary"
+                            className="rounded-full px-5 shadow-sm"
                             onClick={async () => {
                               const credentialsText = [
                                 `Name: ${humanInviteCredentials.name}`,
@@ -1127,39 +1105,49 @@ export function CompanyDirectory() {
                               ].join("\n");
                               try {
                                 await navigator.clipboard.writeText(credentialsText);
-                              } catch { /* clipboard may not be available */ }
+                              } catch {
+                                /* clipboard may not be available */
+                              }
                             }}
                           >
                             Copy credentials
                           </Button>
                         </div>
                       </div>
-                    </>
-                  )}
+                    )}
+                  </section>
+                  <section className="min-w-0 space-y-3">
+                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Initial access</h3>
+                    <div className="rounded-2xl border border-border/50 bg-muted/15 p-4 ring-1 ring-border/30">
+                      <HumanPermissionsPanel
+                        idPrefix="invite"
+                        enabledKeys={humanInvitePermissionKeys}
+                        onKeysChange={setHumanInvitePermissionKeys}
+                        intro={
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            Optional grants after they accept. Use a preset or adjust switches—nothing is enabled until you choose.
+                          </p>
+                        }
+                      />
+                    </div>
+                  </section>
                 </div>
               </div>
-
-              {/* ── Footer ── */}
-              <div className="shrink-0 rounded-b-2xl border-t border-border/50 bg-muted/10 px-6 py-3">
-                {humanInviteError && (
-                  <p className="mb-2 text-xs text-destructive">{humanInviteError}</p>
-                )}
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    {humanInviteEmail.trim() ? (
-                      <>Invite will be sent to <span className="font-medium text-foreground">{humanInviteEmail.trim()}</span></>
-                    ) : (
-                      "Enter an email address to continue"
-                    )}
-                  </p>
+              <div className="shrink-0 space-y-2 rounded-b-3xl border-t border-border/50 bg-muted/15 px-6 py-4">
+                {humanInviteError ? (
+                  <p className="text-xs text-destructive">{humanInviteError}</p>
+                ) : null}
+                <div className="flex flex-wrap items-center justify-end gap-3">
                   <Button
                     type="button"
                     size="default"
-                    className="rounded-full px-7 shadow-sm"
+                    className="rounded-full px-8 shadow-sm"
                     onClick={() => humanInviteMutation.mutate()}
-                    disabled={humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId}
+                    disabled={
+                      humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId
+                    }
                   >
-                    {humanInviteMutation.isPending ? "Creating…" : "Create invite"}
+                    {humanInviteMutation.isPending ? "Creating..." : "Create invite"}
                   </Button>
                 </div>
               </div>
@@ -1520,6 +1508,7 @@ export function CompanyDirectory() {
                     </div>
 
                     <div className="rounded-2xl border border-border/50 bg-muted/10 px-4 py-4 ring-1 ring-border/30">
+                      <div className="text-sm font-semibold text-foreground">Access & permissions</div>
                       <div className="mt-3">
                         <HumanPermissionsPanel
                           idPrefix={`member-${selectedHumanMember.id}`}

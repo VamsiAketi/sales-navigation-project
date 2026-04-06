@@ -101,6 +101,21 @@ export const authApi = {
     }
   },
 
+  forgotPassword: async (input: { email: string; redirectTo?: string }) => {
+    await authPost("/forget-password", {
+      email: input.email,
+      redirectTo: input.redirectTo,
+      callbackURL: input.redirectTo,
+    });
+  },
+
+  resetPassword: async (input: { token: string; newPassword: string }) => {
+    await authPost("/reset-password", {
+      token: input.token,
+      newPassword: input.newPassword,
+    });
+  },
+
   getNotificationPreferences: async (): Promise<UserNotificationPreferences> => {
     const res = await fetch("/api/users/me/notification-preferences", {
       credentials: "include",
