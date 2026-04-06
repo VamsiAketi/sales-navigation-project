@@ -82,7 +82,7 @@ export const authApi = {
   },
 
   signOut: async () => {
-    await authPost("/sign-out", {});
+    await authPost("/logout", {});
   },
 
   changePassword: async (input: { currentPassword: string; newPassword: string }) => {

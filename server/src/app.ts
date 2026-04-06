@@ -2,7 +2,7 @@ import express, { Router, type Request as ExpressRequest } from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { authUsers, type Db } from "@paperclipai/db";
+import { authSessions, authUsers, type Db } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import type { StorageService } from "./storage/types.js";
@@ -136,6 +136,21 @@ export async function createApp(
       },
       user: { id: req.actor.userId, email, name },
     });
+  });
+
+  app.post("/api/auth/logout", async (req, res) => {
+    if (req.actor.type !== "board" || !req.actor.userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    // Force-revoke active sessions for this user so logout works even if
+    // Better Auth sign-out route is unavailable or fails in the current setup.
+    if (opts.deploymentMode === "authenticated") {
+      await db.delete(authSessions).where(eq(authSessions.userId, req.actor.userId));
+    }
+
+    res.json({ status: true });
   });
 
   // local_trusted has no Better Auth HTTP routes; still expose profile updates for the implicit board principal.
