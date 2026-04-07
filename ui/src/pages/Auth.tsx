@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from "@/lib/router";
 import { authApi } from "../api/auth";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { AsciiArtAnimation } from "@/components/AsciiArtAnimation";
 import { Sparkles, Eye, EyeOff } from "lucide-react";
 
 type AuthMode = "sign_in" | "sign_up";
@@ -116,10 +115,8 @@ export function AuthPage() {
   }
 
   return (
-    <div className="fixed inset-0 flex bg-background">
-      {/* Left half — form */}
-      <div className="w-full md:w-1/2 flex flex-col overflow-y-auto">
-        <div className="w-full max-w-md mx-auto my-auto px-8 py-12">
+    <div className="fixed inset-0 flex items-center justify-center bg-background">
+      <div className="w-full max-w-md px-8 py-12">
           <div className="flex items-center gap-2 mb-8">
             <Sparkles className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">AI-Harness</span>
@@ -334,12 +331,6 @@ export function AuthPage() {
             </button>
           </div>
           */}
-        </div>
-      </div>
-
-      {/* Right half — ASCII art animation (hidden on mobile) */}
-      <div className="hidden md:block w-1/2 overflow-hidden">
-        <AsciiArtAnimation />
       </div>
     </div>
   );

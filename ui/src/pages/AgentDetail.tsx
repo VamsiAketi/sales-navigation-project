@@ -2438,6 +2438,7 @@ function AgentSkillsTab({
   const optionalSkillRows = useMemo<SkillRow[]>(
     () =>
       (companySkills ?? [])
+        .filter((skill) => !skill.key.startsWith("paperclipai/paperclip/"))
         .filter((skill) => !adapterEntryByKey.get(skill.key)?.required)
         .map((skill) => ({
           id: skill.id,
@@ -2456,6 +2457,7 @@ function AgentSkillsTab({
   const requiredSkillRows = useMemo<SkillRow[]>(
     () =>
       (skillSnapshot?.entries ?? [])
+        .filter((entry) => !entry.key.startsWith("paperclipai/paperclip/"))
         .filter((entry) => entry.required)
         .map((entry) => {
           const companySkill = companySkillByKey.get(entry.key);
