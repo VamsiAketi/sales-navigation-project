@@ -136,7 +136,13 @@ async function createAuthUserViaSignupApi(input: {
   if (!baseUrl) {
     throw new Error("Unable to resolve API base URL for auth sign-up");
   }
-  const origin = new URL(baseUrl).origin;
+  // Be resilient to uncommon Host header formats in tests/proxies.
+  let origin = baseUrl;
+  try {
+    origin = new URL(baseUrl).origin;
+  } catch {
+    // Keep baseUrl as-is when URL parsing fails.
+  }
   const endpoint = `${baseUrl}/api/auth/sign-up/email`;
   const response = await fetch(endpoint, {
     method: "POST",
