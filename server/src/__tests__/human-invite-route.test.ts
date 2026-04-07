@@ -51,6 +51,11 @@ function createDbStub(selectQueue: unknown[]) {
         where: vi.fn(async () => (selectQueue.shift() ?? []) as unknown[]),
       })),
     })),
+    insert: vi.fn(() => ({
+      values: vi.fn(() => ({
+        onConflictDoNothing: vi.fn(async () => []),
+      })),
+    })),
   };
 }
 
