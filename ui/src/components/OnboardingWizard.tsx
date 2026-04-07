@@ -303,7 +303,7 @@ export function OnboardingWizard() {
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
-    setAgentName("CEO");
+    setAgentName("AI Admin");
     setAdapterType(getEnvAdapterType(healthData?.defaultAdapterType));
     setModel("");
     setCommand("");
