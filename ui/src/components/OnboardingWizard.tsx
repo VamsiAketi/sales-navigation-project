@@ -78,7 +78,7 @@ function getEnvAdapterType(raw: string | undefined): AdapterType {
   if (raw && (VALID_ADAPTER_TYPES as string[]).includes(raw)) {
     return raw as AdapterType;
   }
-  return "claude_local";
+  return "codex_local";
 }
 
 const DEFAULT_TASK_DESCRIPTION = `You are the Al-Admin for this organization. 
