@@ -768,10 +768,19 @@ export function CompanySkills() {
     enabled: Boolean(selectedCompanyId),
   });
 
+  // Hide built-in Paperclip runtime skills from the UI list.
+  const visibleSkills = useMemo(
+    () =>
+      (skillsQuery.data ?? []).filter(
+        (skill) => !skill.key.startsWith("paperclipai/paperclip/"),
+      ),
+    [skillsQuery.data],
+  );
+
   const selectedSkillId = useMemo(() => {
-    if (!routeSkillId) return skillsQuery.data?.[0]?.id ?? null;
+    if (!routeSkillId) return visibleSkills[0]?.id ?? null;
     return routeSkillId;
-  }, [routeSkillId, skillsQuery.data]);
+  }, [routeSkillId, visibleSkills]);
 
   useEffect(() => {
     if (routeSkillId || !selectedSkillId) return;
@@ -1051,7 +1060,7 @@ export function CompanySkills() {
               <div>
                 <h1 className="text-base font-semibold">Skills</h1>
                 <p className="text-xs text-muted-foreground">
-                  {skillsQuery.data?.length ?? 0} available
+                  {visibleSkills.length} available
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -1117,7 +1126,7 @@ export function CompanySkills() {
             <div className="px-4 py-6 text-sm text-destructive">{skillsQuery.error.message}</div>
           ) : (
             <SkillList
-              skills={skillsQuery.data ?? []}
+              skills={visibleSkills}
               selectedSkillId={selectedSkillId}
               skillFilter={skillFilter}
               expandedSkillId={expandedSkillId}
