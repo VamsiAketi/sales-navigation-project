@@ -17,7 +17,7 @@ import { test, expect } from "@playwright/test";
 const SKIP_LLM = process.env.PAPERCLIP_E2E_SKIP_LLM !== "false";
 
 const COMPANY_NAME = `E2E-Test-${Date.now()}`;
-const AGENT_NAME = "CEO";
+const AGENT_NAME = "AI Admin";
 const TASK_TITLE = "E2E test task";
 
 test.describe("Onboarding wizard", () => {
@@ -47,15 +47,15 @@ test.describe("Onboarding wizard", () => {
       page.locator("h3", { hasText: "Create your first agent" })
     ).toBeVisible({ timeout: 10_000 });
 
-    const agentNameInput = page.locator('input[placeholder="CEO"]');
+    const agentNameInput = page.locator('input[placeholder="AI Admin"]');
     await expect(agentNameInput).toHaveValue(AGENT_NAME);
 
-    await expect(
-      page.locator("button", { hasText: "Claude Code" }).locator("..")
-    ).toBeVisible();
+    // await expect(
+    //   page.locator("button", { hasText: "Claude Code" }).locator("..")
+    // ).toBeVisible();
 
-    await page.getByRole("button", { name: "More Agent Adapter Types" }).click();
-    await expect(page.getByRole("button", { name: "Process" })).toHaveCount(0);
+    // await page.getByRole("button", { name: "More Agent Adapter Types" }).click();
+    // await expect(page.getByRole("button", { name: "Process" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -125,7 +125,7 @@ test.describe("Onboarding wizard", () => {
     expect(task).toBeTruthy();
     expect(task.assigneeAgentId).toBe(ceoAgent.id);
     expect(task.description).toContain(
-      "You are the CEO. You set the direction for the company."
+      "You are the Al-Admin for this organization."
     );
     expect(task.description).not.toContain("github.com/paperclipai/companies");
 

@@ -110,6 +110,10 @@ const PERMISSION_UI: Record<PermissionKey, { title: string; description: string 
     title: "Approve join requests",
     description: "Review and approve requests from people who want to join.",
   },
+  "companies:create": {
+    title: "Create companies",
+    description: "Create new companies on this instance.",
+  },
 };
 
 const PERMISSION_CATEGORY_ACCENTS: Record<string, string> = {
@@ -141,6 +145,12 @@ const PERMISSION_CATEGORY_DEFS: {
     title: "Tasks & workflow",
     subtitle: "How work is routed on the board.",
     keys: ["tasks:assign", "tasks:assign_scope"],
+  },
+    {
+    id: "company",
+    title: "Company Management",
+    subtitle: "Company Access Control",
+    keys: ["companies:create"],
   },
 ];
 

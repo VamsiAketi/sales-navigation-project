@@ -23,6 +23,7 @@ export type HealthStatus = {
   features?: {
     companyDeletionEnabled?: boolean;
   };
+  defaultAdapterType?: string;
   devServer?: DevServerHealthStatus;
 };
 

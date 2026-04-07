@@ -358,6 +358,7 @@ export const PERMISSION_KEYS = [
   "tasks:assign",
   "tasks:assign_scope",
   "joins:approve",
+  "companies:create",
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
