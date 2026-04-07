@@ -92,6 +92,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
       enabled: true,
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
+      resetPasswordTokenExpiresIn: 3600, // 1 hour in seconds — token is deleted from DB after successful use
       sendResetPassword: async (params: { user: { email?: string | null }; url: string }) => {
         const email = params.user.email?.trim();
         if (!email) {

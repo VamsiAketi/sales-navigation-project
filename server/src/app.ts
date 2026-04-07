@@ -2,8 +2,8 @@ import express, { Router, type Request as ExpressRequest } from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { authSessions, authUsers, type Db } from "@paperclipai/db";
-import { eq } from "drizzle-orm";
+import { authSessions, authUsers, instanceUserRoles, type Db } from "@paperclipai/db";
+import { and, eq } from "drizzle-orm";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import type { StorageService } from "./storage/types.js";
 import { httpLogger, errorHandler } from "./middleware/index.js";
@@ -78,6 +78,7 @@ export async function createApp(
     betterAuthHandler?: express.RequestHandler;
     resolveSession?: (req: ExpressRequest) => Promise<BetterAuthSessionResult | null>;
     requestPasswordReset?: (input: { email: string; redirectTo?: string; callbackURL?: string }) => Promise<void>;
+    changePassword?: (input: { userId: string; newPassword: string }) => Promise<void>;
   },
 ) {
   const app = express();
@@ -116,16 +117,25 @@ export async function createApp(
     }
     let name: string | null = null;
     let email: string | null = null;
+    let mustChangePassword = false;
     if (db) {
-      const userRow = await db
-        .select({ name: authUsers.name, email: authUsers.email })
-        .from(authUsers)
-        .where(eq(authUsers.id, req.actor.userId))
-        .then((rows) => rows[0] ?? null);
+      const [userRow, mustChangeRow] = await Promise.all([
+        db
+          .select({ name: authUsers.name, email: authUsers.email })
+          .from(authUsers)
+          .where(eq(authUsers.id, req.actor.userId))
+          .then((rows) => rows[0] ?? null),
+        db
+          .select({ id: instanceUserRoles.id })
+          .from(instanceUserRoles)
+          .where(and(eq(instanceUserRoles.userId, req.actor.userId), eq(instanceUserRoles.role, "must_change_password")))
+          .then((rows) => rows[0] ?? null),
+      ]);
       if (userRow) {
         name = userRow.name;
         email = userRow.email;
       }
+      mustChangePassword = Boolean(mustChangeRow);
     }
     if (name === null && req.actor.source === "local_implicit") {
       name = "Local Board";
@@ -135,7 +145,7 @@ export async function createApp(
         id: `paperclip:${req.actor.source}:${req.actor.userId}`,
         userId: req.actor.userId,
       },
-      user: { id: req.actor.userId, email, name },
+      user: { id: req.actor.userId, email, name, mustChangePassword },
     });
   });
 
@@ -232,6 +242,34 @@ export async function createApp(
         .set({ email: newEmail, updatedAt: now })
         .where(eq(authUsers.id, req.actor.userId));
       res.json({ status: true });
+    });
+  }
+
+  // Force password change on first login: change password and clear the must_change_password flag
+  if (opts.changePassword) {
+    app.post("/api/auth/complete-password-setup", async (req: express.Request, res: express.Response) => {
+      if (req.actor.type !== "board" || !req.actor.userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
+      const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : "";
+      if (newPassword.length < 8) {
+        res.status(400).json({ message: "Password must be at least 8 characters." });
+        return;
+      }
+      try {
+        await opts.changePassword!({ userId: req.actor.userId, newPassword });
+        // Clear the must_change_password flag
+        if (db) {
+          await db
+            .delete(instanceUserRoles)
+            .where(and(eq(instanceUserRoles.userId, req.actor.userId), eq(instanceUserRoles.role, "must_change_password")));
+        }
+        res.json({ status: true });
+      } catch (error) {
+        logger.error({ error }, "complete-password-setup failed");
+        res.status(500).json({ message: "Failed to update password." });
+      }
     });
   }
 

@@ -1,6 +1,6 @@
 export type AuthSession = {
   session: { id: string; userId: string };
-  user: { id: string; email: string | null; name: string | null };
+  user: { id: string; email: string | null; name: string | null; mustChangePassword?: boolean };
 };
 
 export type NotificationChannelType = "email" | "sms" | "whatsapp";
@@ -24,12 +24,14 @@ function toSession(value: unknown): AuthSession | null {
   const user = userValue as Record<string, unknown>;
   if (typeof session.id !== "string" || typeof session.userId !== "string") return null;
   if (typeof user.id !== "string") return null;
+  const mustChangePassword = user.mustChangePassword === true;
   return {
     session: { id: session.id, userId: session.userId },
     user: {
       id: user.id,
       email: typeof user.email === "string" ? user.email : null,
       name: typeof user.name === "string" ? user.name : null,
+      mustChangePassword,
     },
   };
 }

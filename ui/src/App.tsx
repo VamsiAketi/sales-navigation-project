@@ -40,6 +40,8 @@ import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
 import { AuthPage } from "./pages/Auth";
+import { ResetPasswordPage } from "./pages/ResetPassword";
+import { ForceChangePasswordPage } from "./pages/ForceChangePassword";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
 import { InviteLandingPage } from "./pages/InviteLanding";
@@ -113,6 +115,11 @@ function CloudAccessGate() {
   if (isAuthenticatedMode && !sessionQuery.data) {
     const next = encodeURIComponent(`${location.pathname}${location.search}`);
     return <Navigate to={`/auth?next=${next}`} replace />;
+  }
+
+  // Force password change for newly invited users before accessing the app
+  if (isAuthenticatedMode && sessionQuery.data?.user?.mustChangePassword) {
+    return <ForceChangePasswordPage />;
   }
 
   return <Outlet />;
@@ -306,6 +313,7 @@ export function App() {
     <>
       <Routes>
         <Route path="auth" element={<AuthPage />} />
+        <Route path="reset-password/:token" element={<ResetPasswordPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
         <Route path="invite/:token" element={<InviteLandingPage />} />

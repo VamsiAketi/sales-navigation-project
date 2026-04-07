@@ -16,6 +16,7 @@ import {
   agentApiKeys,
   authUsers,
   companyMemberships,
+  instanceUserRoles,
   invites,
   joinRequests,
   principalPermissionGrants
@@ -2127,6 +2128,13 @@ export function accessRoutes(
         "member",
         "active"
       );
+
+      // Mark this user as requiring a password change on first login
+      await db.insert(instanceUserRoles).values({
+        userId: createdAuthUser.userId,
+        role: "must_change_password",
+      }).onConflictDoNothing();
+
       const inviteGrants =
         Array.isArray(req.body.grants) && req.body.grants.length > 0
           ? req.body.grants.map((grant: {

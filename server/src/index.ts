@@ -17,6 +17,7 @@ import {
   formatDatabaseBackupResult,
   runDatabaseBackup,
   authUsers,
+  authSessions as dbAuthSessions,
   companies,
   companyMemberships,
   instanceUserRoles,
@@ -434,6 +435,9 @@ export async function startServer(): Promise<StartedServer> {
   let requestPasswordReset:
     | ((input: { email: string; redirectTo?: string; callbackURL?: string }) => Promise<void>)
     | undefined;
+  let changePassword:
+    | ((input: { userId: string; newPassword: string }) => Promise<void>)
+    | undefined;
   if (config.deploymentMode === "local_trusted") {
     await ensureLocalTrustedBoardPrincipal(db as any);
   }
@@ -502,6 +506,20 @@ export async function startServer(): Promise<StartedServer> {
       }
       throw new Error("No compatible password reset API available");
     };
+    changePassword = async (input: { userId: string; newPassword: string }) => {
+      const api = (auth as unknown as {
+        api?: {
+          changePassword?: (args: { body: Record<string, unknown>; headers: Headers }) => Promise<unknown>;
+        };
+      }).api;
+      if (!api?.changePassword) throw new Error("changePassword API unavailable");
+      // Build a dummy session header so better-auth accepts the call server-side
+      const sessions = await db.select().from(dbAuthSessions).where(eq(dbAuthSessions.userId, input.userId)).limit(1);
+      const sessionToken = sessions[0]?.token;
+      if (!sessionToken) throw new Error("No active session found for user");
+      const headers = new Headers({ cookie: `better-auth.session_token=${sessionToken}` });
+      await api.changePassword({ body: { newPassword: input.newPassword, revokeOtherSessions: false }, headers });
+    };
     await initializeBoardClaimChallenge(db as any, { deploymentMode: config.deploymentMode });
     authReady = true;
   }
@@ -522,6 +540,7 @@ export async function startServer(): Promise<StartedServer> {
     betterAuthHandler,
     resolveSession,
     requestPasswordReset,
+    changePassword,
   });
   const server = createServer(app as unknown as Parameters<typeof createServer>[0]);
   
