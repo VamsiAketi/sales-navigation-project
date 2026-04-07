@@ -77,6 +77,7 @@ export async function createApp(
     localPluginDir?: string;
     betterAuthHandler?: express.RequestHandler;
     resolveSession?: (req: ExpressRequest) => Promise<BetterAuthSessionResult | null>;
+    requestPasswordReset?: (input: { email: string; redirectTo?: string; callbackURL?: string }) => Promise<void>;
   },
 ) {
   const app = express();
@@ -232,6 +233,34 @@ export async function createApp(
         .where(eq(authUsers.id, req.actor.userId));
       res.json({ status: true });
     });
+  }
+
+  if (opts.requestPasswordReset) {
+    const requestPasswordResetHandler = async (req: express.Request, res: express.Response) => {
+      const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      if (!email) {
+        res.status(400).json({ message: "email is required" });
+        return;
+      }
+      const redirectTo =
+        typeof req.body?.redirectTo === "string" ? req.body.redirectTo : undefined;
+      const callbackURL =
+        typeof req.body?.callbackURL === "string" ? req.body.callbackURL : undefined;
+      try {
+        await opts.requestPasswordReset!({ email, redirectTo, callbackURL });
+        // Mirror Better Auth behavior: always return success to avoid account enumeration.
+        res.json({ status: true });
+      } catch (error) {
+        logger.error(
+          { error, endpoint: req.path },
+          "password reset request failed in compatibility endpoint",
+        );
+        res.status(500).json({ message: "Failed to request password reset" });
+      }
+    };
+    app.post("/api/auth/request-password-reset", requestPasswordResetHandler);
+    app.post("/api/auth/forget-password", requestPasswordResetHandler);
+    app.post("/api/auth/forgot-password", requestPasswordResetHandler);
   }
 
   if (opts.betterAuthHandler) {
