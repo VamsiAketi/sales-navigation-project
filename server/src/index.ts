@@ -17,6 +17,7 @@ import {
   formatDatabaseBackupResult,
   runDatabaseBackup,
   authUsers,
+  authSessions as dbAuthSessions,
   companies,
   companyMemberships,
   instanceUserRoles,
@@ -431,6 +432,12 @@ export async function startServer(): Promise<StartedServer> {
   let resolveSessionFromHeaders:
     | ((headers: Headers) => Promise<BetterAuthSessionResult | null>)
     | undefined;
+  let requestPasswordReset:
+    | ((input: { email: string; redirectTo?: string; callbackURL?: string }) => Promise<void>)
+    | undefined;
+  let changePassword:
+    | ((input: { userId: string; newPassword: string }) => Promise<void>)
+    | undefined;
   if (config.deploymentMode === "local_trusted") {
     await ensureLocalTrustedBoardPrincipal(db as any);
   }
@@ -471,6 +478,48 @@ export async function startServer(): Promise<StartedServer> {
     betterAuthHandler = createBetterAuthHandler(auth);
     resolveSession = (req) => resolveBetterAuthSession(auth, req);
     resolveSessionFromHeaders = (headers) => resolveBetterAuthSessionFromHeaders(auth, headers);
+    requestPasswordReset = async (input) => {
+      const api = (auth as unknown as {
+        api?: {
+          requestPasswordReset?: (args: { body: Record<string, unknown> }) => Promise<unknown>;
+          forgetPassword?: (args: { body: Record<string, unknown> }) => Promise<unknown>;
+          forgotPassword?: (args: { body: Record<string, unknown> }) => Promise<unknown>;
+        };
+      }).api;
+      if (!api) throw new Error("Better Auth API is unavailable");
+      const body = {
+        email: input.email,
+        redirectTo: input.redirectTo,
+        callbackURL: input.callbackURL,
+      } satisfies Record<string, unknown>;
+      if (api.requestPasswordReset) {
+        await api.requestPasswordReset({ body });
+        return;
+      }
+      if (api.forgetPassword) {
+        await api.forgetPassword({ body });
+        return;
+      }
+      if (api.forgotPassword) {
+        await api.forgotPassword({ body });
+        return;
+      }
+      throw new Error("No compatible password reset API available");
+    };
+    changePassword = async (input: { userId: string; newPassword: string }) => {
+      const api = (auth as unknown as {
+        api?: {
+          changePassword?: (args: { body: Record<string, unknown>; headers: Headers }) => Promise<unknown>;
+        };
+      }).api;
+      if (!api?.changePassword) throw new Error("changePassword API unavailable");
+      // Build a dummy session header so better-auth accepts the call server-side
+      const sessions = await db.select().from(dbAuthSessions).where(eq(dbAuthSessions.userId, input.userId)).limit(1);
+      const sessionToken = sessions[0]?.token;
+      if (!sessionToken) throw new Error("No active session found for user");
+      const headers = new Headers({ cookie: `better-auth.session_token=${sessionToken}` });
+      await api.changePassword({ body: { newPassword: input.newPassword, revokeOtherSessions: false }, headers });
+    };
     await initializeBoardClaimChallenge(db as any, { deploymentMode: config.deploymentMode });
     authReady = true;
   }
@@ -490,6 +539,8 @@ export async function startServer(): Promise<StartedServer> {
     companyDeletionEnabled: config.companyDeletionEnabled,
     betterAuthHandler,
     resolveSession,
+    requestPasswordReset,
+    changePassword,
   });
   const server = createServer(app as unknown as Parameters<typeof createServer>[0]);
   

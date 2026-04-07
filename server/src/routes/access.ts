@@ -16,6 +16,7 @@ import {
   agentApiKeys,
   authUsers,
   companyMemberships,
+  instanceUserRoles,
   invites,
   joinRequests,
   principalPermissionGrants
@@ -135,7 +136,13 @@ async function createAuthUserViaSignupApi(input: {
   if (!baseUrl) {
     throw new Error("Unable to resolve API base URL for auth sign-up");
   }
-  const origin = new URL(baseUrl).origin;
+  // Be resilient to uncommon Host header formats in tests/proxies.
+  let origin = baseUrl;
+  try {
+    origin = new URL(baseUrl).origin;
+  } catch {
+    // Keep baseUrl as-is when URL parsing fails.
+  }
   const endpoint = `${baseUrl}/api/auth/sign-up/email`;
   const response = await fetch(endpoint, {
     method: "POST",
@@ -2127,6 +2134,13 @@ export function accessRoutes(
         "member",
         "active"
       );
+
+      // Mark this user as requiring a password change on first login
+      await db.insert(instanceUserRoles).values({
+        userId: createdAuthUser.userId,
+        role: "must_change_password",
+      }).onConflictDoNothing();
+
       const inviteGrants =
         Array.isArray(req.body.grants) && req.body.grants.length > 0
           ? req.body.grants.map((grant: {
