@@ -23,7 +23,7 @@ export function SidebarAgents() {
   const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialog();
-  const { isMobile, setSidebarOpen } = useSidebar();
+  const { isMobile, setSidebarOpen, sidebarCompact } = useSidebar();
   const location = useLocation();
 
   const { data: agents } = useQuery({
@@ -68,6 +68,7 @@ export function SidebarAgents() {
   const activeAgentId = agentMatch?.[1] ?? null;
   const activeTab = agentMatch?.[2] ?? null;
 
+  if (sidebarCompact) return null;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>

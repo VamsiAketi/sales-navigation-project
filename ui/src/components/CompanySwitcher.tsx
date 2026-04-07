@@ -10,6 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { cn } from "../lib/utils";
+import { CompanyPatternIcon } from "./CompanyPatternIcon";
 
 function statusDotColor(status?: string): string {
   switch (status) {
@@ -40,7 +42,12 @@ export function CompanySwitcher() {
         >
           <div className="flex items-center gap-2 min-w-0">
             {selectedCompany && (
-              <span className={`h-2 w-2 rounded-full shrink-0 ${statusDotColor(selectedCompany.status)}`} />
+                <CompanyPatternIcon
+                  companyName={selectedCompany.name}
+                  logoUrl={selectedCompany.logoUrl}
+                  brandColor={selectedCompany.brandColor}
+                  className="h-8 w-8 rounded-lg text-sm"
+                />
             )}
             {selectedLogoSrc && (
               <img
@@ -68,7 +75,12 @@ export function CompanySwitcher() {
             onClick={() => setSelectedCompanyId(company.id)}
             className={company.id === selectedCompany?.id ? "bg-accent" : ""}
           >
-            <span className={`h-2 w-2 rounded-full shrink-0 mr-2 ${statusDotColor(company.status)}`} />
+              <CompanyPatternIcon
+                  companyName={company.name}
+                  logoUrl={company.logoUrl}
+                  brandColor={company.brandColor}
+                  className="h-8 w-8 rounded-lg text-sm"
+                />
             {company.logoAssetId ? (
               <img
                 src={`/api/assets/${company.logoAssetId}/content`}
@@ -88,12 +100,12 @@ export function CompanySwitcher() {
           <DropdownMenuItem disabled>No companies</DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
+        {/* <DropdownMenuItem asChild>
           <Link to="/company/settings" className="no-underline text-inherit">
             <Settings className="h-4 w-4 mr-2" />
             Company Settings
           </Link>
-        </DropdownMenuItem>
+        </DropdownMenuItem> */}
         <DropdownMenuItem asChild>
           <Link to="/companies" className="no-underline text-inherit">
             <Plus className="h-4 w-4 mr-2" />

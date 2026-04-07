@@ -119,7 +119,7 @@ export function SidebarProjects() {
   const [open, setOpen] = useState(true);
   const { selectedCompany, selectedCompanyId } = useCompany();
   const { openNewProject } = useDialog();
-  const { isMobile, setSidebarOpen } = useSidebar();
+  const { isMobile, setSidebarOpen, sidebarCompact } = useSidebar();
   const location = useLocation();
 
   const { data: projects } = useQuery({
@@ -172,6 +172,8 @@ export function SidebarProjects() {
     },
     [orderedProjects, persistOrder],
   );
+
+  if (sidebarCompact) return null;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
