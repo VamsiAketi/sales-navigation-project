@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent} from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Moon, Settings, Sun } from "lucide-react";
+import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings } from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
 import { CompanyRail } from "./CompanyRail";
 import { Sidebar } from "./Sidebar";
@@ -25,6 +25,10 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useCompanyPageMemory } from "../hooks/useCompanyPageMemory";
 import { healthApi } from "../api/health";
 import { shouldSyncCompanySelectionFromRoute } from "../lib/company-selection";
+import { sidebarNavItemTextClass } from "./SidebarSection";
+import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PRODUCT_LINK_LABEL, PRODUCT_SITE_URL } from "../lib/product-brand";
 import {
   DEFAULT_INSTANCE_SETTINGS_PATH,
   normalizeRememberedInstanceSettingsPath,
@@ -35,6 +39,10 @@ import { NotFoundPage } from "../pages/NotFound";
 import { Button } from "@/components/ui/button";
 
 const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
+const SIDEBAR_WIDTH_STORAGE_KEY = "aiharness.sidebar.widthPx";
+const SIDEBAR_EXPANDED_WIDTH_DEFAULT = 240;
+const SIDEBAR_WIDTH_MIN = 200;
+const SIDEBAR_WIDTH_MAX = 520;
 
 export function buildVisibleVersionLabel(version?: string | null): string | null {
   const normalized = version?.trim();
@@ -51,8 +59,197 @@ function readRememberedInstanceSettingsPath(): string {
   }
 }
 
+function clampSidebarWidth(px: number): number {
+  return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, Math.round(px)));
+}
+
+function readSidebarWidthFromStorage(): number {
+  if (typeof window === "undefined") return SIDEBAR_EXPANDED_WIDTH_DEFAULT;
+  try {
+    const raw = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    if (raw == null) return SIDEBAR_EXPANDED_WIDTH_DEFAULT;
+    const n = Number.parseInt(raw, 10);
+    if (Number.isNaN(n)) return SIDEBAR_EXPANDED_WIDTH_DEFAULT;
+    return clampSidebarWidth(n);
+  } catch {
+    return SIDEBAR_EXPANDED_WIDTH_DEFAULT;
+  }
+}
+
+function persistSidebarWidth(px: number) {
+  try {
+    localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(px));
+  } catch {
+    /* ignore */
+  }
+}
+
+function SidebarFooterBar({
+  isMobile,
+  sidebarOpen,
+  sidebarCompact,
+  sidebarRailExpanded,
+  toggleSidebarRailExpanded,
+  setSidebarOpen,
+  theme,
+  nextTheme,
+  toggleTheme,
+  showRailToggle,
+  versionLabel,
+  instanceSettingsTarget,
+}: {
+  isMobile: boolean;
+  sidebarOpen: boolean;
+  sidebarCompact: boolean;
+  sidebarRailExpanded: boolean;
+  toggleSidebarRailExpanded: () => void;
+  setSidebarOpen: (open: boolean) => void;
+  theme: string;
+  nextTheme: string;
+  toggleTheme: () => void;
+  /** Desktop only: chevron to collapse/expand sidebar labels. */
+  showRailToggle: boolean;
+  versionLabel?: string | null;
+  instanceSettingsTarget: string;
+}) {
+  const productLinkClass = cn(
+    sidebarNavItemTextClass,
+    "flex min-w-0 items-center gap-2.5 font-medium",
+    isMobile
+      ? "rounded-md py-2 text-sidebar-foreground/75 hover:bg-sidebar-accent/80 hover:text-sidebar-accent-foreground"
+      : "rounded-sm py-2 text-sidebar-foreground/80 hover:bg-black/[0.05] hover:text-sidebar-foreground dark:hover:bg-white/[0.06]",
+    sidebarCompact ? "justify-center px-0" : "flex-1 pl-2 pr-0.5",
+  );
+
+  const tail = (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className={cn(azureSidebarIcon.chrome, "shrink-0")}
+        onClick={toggleTheme}
+        aria-label={`Switch to ${nextTheme} mode`}
+        title={`Switch to ${nextTheme} mode`}
+      >
+        {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </Button>
+    </>
+  );
+
+  const railToggleInGripColumn = showRailToggle && !sidebarCompact;
+  const railToggleStandalone = showRailToggle && sidebarCompact;
+
+  if (!sidebarOpen) {
+    return (
+      <div className="flex w-full shrink-0 flex-col border-t border-r border-sidebar-border bg-sidebar">
+        <div className="flex items-center justify-center gap-0.5 px-1 py-2">
+          <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "shrink-0")} asChild>
+            <a
+              href={PRODUCT_SITE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={PRODUCT_LINK_LABEL}
+            >
+              <BookOpen className="h-4 w-4" />
+            </a>
+          </Button>
+          {tail}
+          <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "shrink-0")} asChild>
+            <Link
+              to={instanceSettingsTarget}
+              aria-label="Instance settings"
+              title="Instance settings"
+              onClick={() => { if (isMobile) setSidebarOpen(false); }}
+            >
+              <Settings className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full flex-col border-t border-r border-sidebar-border bg-sidebar">
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 items-center gap-1 py-2 pr-2",
+          sidebarCompact && "justify-center pl-1",
+        )}
+      >
+        {railToggleInGripColumn ? (
+          <div className="flex w-5 shrink-0 items-center justify-center">
+            <Button
+              type="button"
+              variant="ghost"
+              className={cn(azureSidebarIcon.chrome, "h-7 w-5 shrink-0 px-0")}
+              onClick={toggleSidebarRailExpanded}
+              aria-label={
+                sidebarRailExpanded ? "Collapse sidebar to icons only" : "Expand sidebar labels"
+              }
+              title={sidebarRailExpanded ? "Icon-only sidebar" : "Show sidebar labels"}
+            >
+              {sidebarRailExpanded ? (
+                <ChevronsLeft className="h-4 w-4" />
+              ) : (
+                <ChevronsRight className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        ) : railToggleStandalone ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className={cn(azureSidebarIcon.chrome, "shrink-0")}
+            onClick={toggleSidebarRailExpanded}
+            aria-label={
+              sidebarRailExpanded ? "Collapse sidebar to icons only" : "Expand sidebar labels"
+            }
+            title={sidebarRailExpanded ? "Icon-only sidebar" : "Show sidebar labels"}
+          >
+            {sidebarRailExpanded ? (
+              <ChevronsLeft className="h-4 w-4" />
+            ) : (
+              <ChevronsRight className="h-4 w-4" />
+            )}
+          </Button>
+        ) : (
+          <div className="w-5 shrink-0" aria-hidden />
+        )}
+        {!sidebarCompact && versionLabel && (
+          <span className="min-w-0 truncate px-1 text-xs text-sidebar-foreground/50" title={versionLabel}>
+            {versionLabel}
+          </span>
+        )}
+        <a
+          href={PRODUCT_SITE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(productLinkClass, sidebarCompact && "max-w-[2.75rem]")}
+        >
+          <BookOpen className={cn("h-4 w-4 shrink-0", azureSidebarIcon.book)} />
+          {!sidebarCompact ? <span className="truncate">{PRODUCT_LINK_LABEL}</span> : null}
+        </a>
+        {tail}
+        <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "shrink-0")} asChild>
+          <Link
+            to={instanceSettingsTarget}
+            aria-label="Instance settings"
+            title="Instance settings"
+            onClick={() => { if (isMobile) setSidebarOpen(false); }}
+          >
+            <Settings className="h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function Layout() {
-  const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile } = useSidebar();
+  const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile, sidebarRailExpanded, toggleSidebarRailExpanded} = useSidebar();
   const { openNewIssue, openOnboarding } = useDialog();
   const { togglePanelVisible } = usePanel();
   const {
@@ -63,6 +260,12 @@ export function Layout() {
     selectionSource,
     setSelectedCompanyId,
   } = useCompany();
+  const [sidebarWidthPx, setSidebarWidthPx] = useState(readSidebarWidthFromStorage);
+  const [sidebarResizeActive, setSidebarResizeActive] = useState(false);
+  const sidebarResizeStartX = useRef(0);
+  const sidebarWidthAtResizeStart = useRef(SIDEBAR_EXPANDED_WIDTH_DEFAULT);
+  const sidebarResizeLiveWidth = useRef(sidebarWidthPx);
+  const sidebarResizeCommitPending = useRef(false);
   const { theme, toggleTheme } = useTheme();
   const { companyPrefix } = useParams<{ companyPrefix: string }>();
   const navigate = useNavigate();
@@ -264,6 +467,71 @@ export function Layout() {
     }
   }, [location.hash, location.pathname, location.search]);
 
+  const showDesktopSidebarResize =
+    !isMobile && sidebarOpen && sidebarRailExpanded;
+
+  const endSidebarResize = useCallback(() => {
+    setSidebarResizeActive(false);
+    document.body.style.removeProperty("cursor");
+    document.body.style.removeProperty("user-select");
+  }, []);
+
+  const finishSidebarResize = useCallback(() => {
+    if (!sidebarResizeCommitPending.current) return;
+    sidebarResizeCommitPending.current = false;
+    persistSidebarWidth(sidebarResizeLiveWidth.current);
+    endSidebarResize();
+  }, [endSidebarResize]);
+
+  const onSidebarResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!showDesktopSidebarResize || e.button !== 0) return;
+      e.preventDefault();
+      sidebarResizeCommitPending.current = true;
+      sidebarResizeStartX.current = e.clientX;
+      sidebarWidthAtResizeStart.current = sidebarWidthPx;
+      sidebarResizeLiveWidth.current = sidebarWidthPx;
+      setSidebarResizeActive(true);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [showDesktopSidebarResize, sidebarWidthPx],
+  );
+
+  const onSidebarResizePointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!sidebarResizeActive) return;
+      const delta = e.clientX - sidebarResizeStartX.current;
+      const w = clampSidebarWidth(sidebarWidthAtResizeStart.current + delta);
+      sidebarResizeLiveWidth.current = w;
+      setSidebarWidthPx(w);
+    },
+    [sidebarResizeActive],
+  );
+
+  const onSidebarResizePointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* capture may already be released */
+      }
+      finishSidebarResize();
+    },
+    [finishSidebarResize],
+  );
+
+  const onSidebarResizeLostCapture = useCallback(() => {
+    finishSidebarResize();
+  }, [finishSidebarResize]);
+
+  const onSidebarResizeDoubleClick = useCallback(() => {
+    setSidebarWidthPx(SIDEBAR_EXPANDED_WIDTH_DEFAULT);
+    sidebarResizeLiveWidth.current = SIDEBAR_EXPANDED_WIDTH_DEFAULT;
+    persistSidebarWidth(SIDEBAR_EXPANDED_WIDTH_DEFAULT);
+  }, []);
+
   return (
     <div
       className={cn(
@@ -341,17 +609,32 @@ export function Layout() {
             <div className="flex flex-1 min-h-0">
               <CompanyRail />
               <div
-                className={cn(
-                  "overflow-hidden transition-[width] duration-100 ease-out",
-                  sidebarOpen ? "w-60" : "w-0"
-                )}
+                className="overflow-hidden transition-[width] duration-100 ease-out"
+                style={{
+                  width: !sidebarOpen ? 0 : sidebarRailExpanded ? sidebarWidthPx : 78,
+                }}
               >
                 {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar />}
               </div>
             </div>
-            <div className="border-t border-r border-border px-3 py-2">
+            <SidebarFooterBar
+                isMobile={false}
+                sidebarOpen={sidebarOpen}
+                sidebarCompact={!sidebarRailExpanded}
+                sidebarRailExpanded={sidebarRailExpanded}
+                toggleSidebarRailExpanded={toggleSidebarRailExpanded}
+                setSidebarOpen={setSidebarOpen}
+                theme={theme}
+                nextTheme={nextTheme}
+                toggleTheme={toggleTheme}
+                showRailToggle={true}
+                versionLabel={versionLabel}
+                instanceSettingsTarget={instanceSettingsTarget}
+                />
+ 
+            {/*<div className="border-t border-r border-border px-3 py-2">
               <div className="flex items-center gap-1 min-w-0">
-                {/* 
+
                 Documentation button. Commented out instead of deleting in case I need it again.
                 <a
                   href="https://docs.paperclip.ing/"
@@ -361,7 +644,7 @@ export function Layout() {
                 >
                   <BookOpen className="h-4 w-4 shrink-0" />
                   <span className="truncate">Documentation</span>
-                </a> */}
+                </a>
                 {versionLabel && (
                   <span
                     className="px-2 text-xs text-muted-foreground min-w-0 flex-1 truncate"
@@ -394,7 +677,7 @@ export function Layout() {
                   {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </Button>
               </div>
-            </div>
+            </div> */}
           </div>
         )}
 
@@ -438,3 +721,4 @@ export function Layout() {
     </div>
   );
 }
+

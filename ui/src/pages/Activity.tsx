@@ -28,7 +28,7 @@ export function Activity() {
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Activity" }]);
+    setBreadcrumbs([{ label: "Audit Log" }]);
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({
