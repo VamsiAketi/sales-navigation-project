@@ -29,8 +29,6 @@ import { CompanyPatternIcon } from "./CompanyPatternIcon";
 import { useSidebar } from "../context/SidebarContext";
 import { cn } from "../lib/utils";
 import { Link } from "@/lib/router";
-import { CompanySwitcher } from "./CompanySwitcher";
-import { sidebarNavHeaderTextClass } from "./SidebarSection";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 import { SidebarPrimaryNav, SidebarCompanyNavSection } from "./SidebarSortableNav";
 
@@ -209,10 +207,20 @@ export function Sidebar() {
           ) : (
             <div className="shrink-0 h-8 w-8 rounded-lg bg-muted ring-1 ring-border/60" aria-hidden />
           )
-        ) : (
-          <div className={cn("flex-1 min-w-0 -ml-0.5", sidebarNavHeaderTextClass)}>
-            <CompanySwitcher />
+        ) : selectedCompany ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <CompanyPatternIcon
+              companyName={selectedCompany.name}
+              logoUrl={selectedCompany.logoUrl}
+              brandColor={selectedCompany.brandColor}
+              className="h-8 w-8 shrink-0 rounded-lg text-sm ring-1 ring-border/60"
+            />
+            <span className="min-w-0 truncate text-sm font-medium text-sidebar-foreground">
+              {selectedCompany.name}
+            </span>
           </div>
+        ) : (
+          <div className="flex-1 text-sm text-sidebar-foreground/70">No company</div>
         )}
         <Button
           variant="ghost"

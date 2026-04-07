@@ -40,6 +40,7 @@ export function CompanySwitcher() {
           variant="ghost"
           className="w-full justify-between px-2 py-1.5 h-auto text-left"
         >
+          {/* Selected company summary shown directly in the sidebar header. */}
           <div className="flex items-center gap-2 min-w-0">
             {selectedCompany && (
                 <CompanyPatternIcon
@@ -54,9 +55,6 @@ export function CompanySwitcher() {
                 src={selectedLogoSrc}
                 alt={selectedCompany?.name ? `${selectedCompany.name} logo` : "Company logo"}
                 className="h-5 w-5 rounded object-contain bg-background border border-border/60"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
               />
             )}
             <span className="text-sm font-medium truncate">
@@ -69,6 +67,7 @@ export function CompanySwitcher() {
       <DropdownMenuContent align="start" className="w-[220px]">
         <DropdownMenuLabel>Companies</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {/* Company list for quick switching in-place, without leaving the current page. */}
         {sidebarCompanies.map((company) => (
           <DropdownMenuItem
             key={company.id}
@@ -86,9 +85,6 @@ export function CompanySwitcher() {
                 src={`/api/assets/${company.logoAssetId}/content`}
                 alt={`${company.name} logo`}
                 className="h-5 w-5 rounded object-contain bg-background border border-border/60 mr-2"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
               />
             ) : (
               <span className="h-5 w-5 mr-2" />

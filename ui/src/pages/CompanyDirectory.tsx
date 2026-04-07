@@ -1014,13 +1014,13 @@ export function CompanyDirectory() {
             <div className="min-w-0">
               <h1 className="text-2xl font-bold tracking-tight text-foreground">Teams</h1>
               <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Manage people and AI agents in one place. Edits save automatically.
+                Manage humans and AI agents in one place. Edits save automatically.
               </p>
               {!membersPermissionDenied && !membersLoading ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/25 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-950 dark:border-violet-400/20 dark:bg-violet-500/15 dark:text-violet-100">
                     <UserRound className="size-3.5 opacity-90" aria-hidden />
-                    {activeHumanMembers.length} people
+                    {activeHumanMembers.length} humans
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-950 dark:border-emerald-400/20 dark:bg-emerald-500/15 dark:text-emerald-100">
                     <Bot className="size-3.5 opacity-90" aria-hidden />
@@ -1034,13 +1034,13 @@ export function CompanyDirectory() {
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
               <Button type="button" className="rounded-xl shadow-sm" variant="default">
-                Invite users
+                Invite Human
               </Button>
             </DialogTrigger>
             <DialogContent className="flex max-h-[min(92dvh,48rem)] w-full max-w-5xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
               <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
                 <DialogHeader>
-                  <DialogTitle>Invite human user</DialogTitle>
+                  <DialogTitle>Invite Human</DialogTitle>
                   <DialogDescription>
                     Send a human invite and get temporary credentials for a new teammate.
                   </DialogDescription>
@@ -1049,7 +1049,7 @@ export function CompanyDirectory() {
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
                 <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
                   <section className="min-w-0 space-y-4">
-                    <h3 className="text-sm font-semibold tracking-tight text-foreground">User details</h3>
+                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Human details</h3>
                     <div className="space-y-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="invite-name" className="text-xs text-muted-foreground">
@@ -1173,7 +1173,7 @@ export function CompanyDirectory() {
               <DialogHeader>
                 <DialogTitle>Manage roles</DialogTitle>
                 <DialogDescription>
-                  Add reusable roles for your org. These appear in the dropdowns across People.
+                  Add reusable roles for your org. These appear in human and agent role dropdowns.
                 </DialogDescription>
               </DialogHeader>
 
@@ -1304,13 +1304,13 @@ export function CompanyDirectory() {
         ) : null}
         {!membersPermissionDenied && !membersError ? (
           <>
-        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border border-border/50 bg-muted/45 p-1.5 shadow-inner sm:w-auto">
-          <TabsTrigger value="users" className="gap-2 rounded-xl px-4 py-2 data-[state=active]:shadow-sm">
+        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border-2 border-primary/30 bg-muted/45 p-1.5 shadow-inner ring-1 ring-primary/15 sm:w-auto">
+          <TabsTrigger value="users" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-violet-500/12 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-violet-500/35">
             <UserRound className="size-4 text-violet-600 opacity-80 dark:text-violet-300" aria-hidden />
-            Users{" "}
+            Humans{" "}
             <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeHumanMembers.length})`}</span>
           </TabsTrigger>
-          <TabsTrigger value="agents" className="gap-2 rounded-xl px-4 py-2 data-[state=active]:shadow-sm">
+          <TabsTrigger value="agents" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-emerald-500/12 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-emerald-500/35">
             <Bot className="size-4 text-emerald-600 opacity-80 dark:text-emerald-300" aria-hidden />
             Agents{" "}
             <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeAgentMembers.length})`}</span>
@@ -1321,7 +1321,7 @@ export function CompanyDirectory() {
           <div className="grid gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
             <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card/95 shadow-md ring-1 ring-violet-500/15 dark:ring-violet-400/10">
               <div className="border-b border-border/50 bg-gradient-to-r from-violet-500/12 via-transparent to-fuchsia-500/5 px-4 py-3">
-                <div className="text-sm font-semibold text-foreground">People</div>
+                <div className="text-sm font-semibold text-foreground">Humans</div>
                 <div className="text-xs text-muted-foreground">
                   {membersLoading ? "Loading…" : `${filteredHumanMembers.length} shown`}
                 </div>
@@ -1330,7 +1330,7 @@ export function CompanyDirectory() {
                 {!membersLoading && filteredHumanMembers.length === 0 && (
                   <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-300/40 bg-violet-500/[0.04] px-4 py-10 text-center dark:border-violet-500/20">
                     <UserRound className="size-9 text-violet-400/90 dark:text-violet-400/70" aria-hidden />
-                    <p className="text-sm text-muted-foreground">No matching users.</p>
+                    <p className="text-sm text-muted-foreground">No matching humans.</p>
                   </div>
                 )}
                 {filteredHumanMembers.map((member) => {
@@ -1584,7 +1584,7 @@ export function CompanyDirectory() {
                   <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 ring-1 ring-violet-400/20">
                     <UserRound className="size-8 text-violet-500/70 dark:text-violet-400/70" aria-hidden />
                   </div>
-                  <p className="text-sm font-medium text-foreground">No user selected</p>
+                  <p className="text-sm font-medium text-foreground">No human selected</p>
                   <p className="max-w-xs text-xs text-muted-foreground">Choose someone from the list to edit their role, reporting line, and access.</p>
                 </div>
               )}
@@ -1753,11 +1753,11 @@ export function CompanyDirectory() {
                   <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                 </svg>
               </span>
-              Deactivate user
+              Deactivate human
             </DialogTitle>
             <DialogDescription className="pt-1 text-sm text-muted-foreground">
               <span className="font-medium text-foreground">
-                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This user"}
+                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This human"}
               </span>{" "}
               will lose active access to this company. You can reactivate them at any time.
             </DialogDescription>
@@ -1793,11 +1793,11 @@ export function CompanyDirectory() {
                   <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
                 </svg>
               </span>
-              Remove user
+              Remove human
             </DialogTitle>
             <DialogDescription className="pt-1 text-sm text-muted-foreground">
               <span className="font-medium text-foreground">
-                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This user"}
+                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "This human"}
               </span>{" "}
               will be removed from this company. This action cannot be undone from the UI.
             </DialogDescription>

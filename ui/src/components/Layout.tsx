@@ -565,7 +565,7 @@ export function Layout() {
             )}
           >
             <div className="flex flex-1 min-h-0 overflow-hidden">
-              <CompanyRail />
+              {/* <CompanyRail /> */}
               {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar />}
             </div>
             <div className="border-t border-r border-border px-3 py-2 bg-background">
@@ -605,15 +605,15 @@ export function Layout() {
             </div>
           </div>
         ) : (
-          <div className="flex h-full flex-col shrink-0">
-            <div className="flex flex-1 min-h-0">
-              <CompanyRail />
-              <div
-                className="overflow-hidden transition-[width] duration-100 ease-out"
-                style={{
-                  width: !sidebarOpen ? 0 : sidebarRailExpanded ? sidebarWidthPx : 78,
-                }}
-              >
+          <div
+            className="flex h-full shrink-0 flex-col overflow-hidden transition-[width] duration-100 ease-out"
+            style={{
+              width: !sidebarOpen ? 0 : sidebarRailExpanded ? sidebarWidthPx : 78,
+            }}
+          >
+            <div className="flex min-h-0 flex-1 w-full">
+              {/* <CompanyRail /> */}
+              <div className="w-full overflow-hidden">
                 {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar />}
               </div>
             </div>
