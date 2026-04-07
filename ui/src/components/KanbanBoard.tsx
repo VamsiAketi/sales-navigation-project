@@ -632,7 +632,7 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="-mx-2 flex max-h-[min(100dvh-10.5rem,56rem)] min-h-0 items-stretch gap-4 overflow-x-auto px-2 pb-4">
+      <div className="-mx-2 flex h-[min(100dvh-10.5rem,56rem)] min-h-0 items-stretch gap-4 overflow-x-auto px-2 pb-4">
         {activeColumns.map((status) => {
           const ps = projectStatuses?.find((s) => s.value === status);
           return (
