@@ -135,9 +135,13 @@ export const authApi = {
       redirectTo: input.redirectTo,
       callbackURL: input.redirectTo,
     };
-    const primary = await authPostAllowNotFound("/forget-password", payload);
-    if (primary.notFound) {
-      await authPost("/forgot-password", payload);
+    // Better Auth v1.4+ uses POST /request-password-reset (see better-auth.com docs).
+    const modern = await authPostAllowNotFound("/request-password-reset", payload);
+    if (modern.notFound) {
+      const legacyA = await authPostAllowNotFound("/forget-password", payload);
+      if (legacyA.notFound) {
+        await authPost("/forgot-password", payload);
+      }
     }
   },
 
