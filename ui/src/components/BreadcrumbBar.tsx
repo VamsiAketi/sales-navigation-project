@@ -26,13 +26,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "../api/auth";
 import { queryKeys } from "../lib/queryKeys";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
 import { notificationsApi } from "../api/notifications";
+import { useToast } from "../context/ToastContext";
 
 function NotificationsBell() {
   const navigate = useNavigate();
@@ -156,6 +157,7 @@ function NotificationsBell() {
 function UserMenu() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { pushToast } = useToast();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
@@ -163,9 +165,50 @@ function UserMenu() {
     staleTime: 60_000,
   });
 
-  if (!session?.user) return null;
+  const userId = session?.user?.id ?? null;
+  const initial = (session?.user?.name ?? session?.user?.email ?? "?")[0]?.toUpperCase() ?? "?";
+  const passwordPromptSeenKey = userId ? `paperclip:password-change-prompt-seen:${userId}` : null;
 
-  const initial = (session.user.name ?? session.user.email ?? "?")[0]?.toUpperCase() ?? "?";
+  useEffect(() => {
+    if (!passwordPromptSeenKey || !userId) return;
+    try {
+      const seen = window.localStorage.getItem(passwordPromptSeenKey);
+      if (seen === "1") return;
+    } catch {
+      // ignore localStorage read errors
+    }
+
+    const markSeen = () => {
+      try {
+        window.localStorage.setItem(passwordPromptSeenKey, "1");
+      } catch {
+        // ignore localStorage write errors
+      }
+    };
+
+    const toastId = pushToast({
+      dedupeKey: `first-login-password-prompt:${userId}`,
+      title: "Change your password",
+      body: "For security, please update your password after your first login.",
+      tone: "warn",
+      ttlMs: 20_000,
+      action: {
+        label: "Continue",
+        href: "/account/settings",
+        onClick: markSeen,
+      },
+      secondaryAction: {
+        label: "Skip",
+        onClick: markSeen,
+      },
+    });
+
+    if (toastId) {
+      markSeen();
+    }
+  }, [passwordPromptSeenKey, pushToast, userId]);
+
+  if (!session?.user) return null;
 
   const handleLogoutConfirm = async () => {
     try {
@@ -174,7 +217,8 @@ function UserMenu() {
       // proceed with local cleanup even if the server call fails
     }
     queryClient.clear();
-    navigate("/auth");
+    // Force a clean auth page load and suppress immediate cached-session bounce.
+    window.location.assign("/auth?logged_out=1");
   };
 
   return (

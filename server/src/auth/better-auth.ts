@@ -12,6 +12,7 @@ import {
 } from "@paperclipai/db";
 import type { Config } from "../config.js";
 import { logger } from "../middleware/logger.js";
+import { sendSystemEmail } from "../services/human-invite-email.js";
 
 export type BetterAuthSessionUser = {
   id: string;
@@ -91,6 +92,36 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
       enabled: true,
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
+      sendResetPassword: async (params: { user: { email?: string | null }; url: string }) => {
+        const email = params.user.email?.trim();
+        if (!email) {
+          logger.warn({ url: params.url }, "Better Auth: password reset requested for user without an email");
+          return;
+        }
+        const delivery = await sendSystemEmail({
+          toEmail: email,
+          subject: "Reset your AI-Harness password",
+          textBody: [
+            "We received a request to reset your AI-Harness password.",
+            "",
+            `Reset password: ${params.url}`,
+            "",
+            "If you did not request this, you can ignore this email.",
+          ].join("\n"),
+        });
+        if (delivery.status === "failed") {
+          logger.error({ email, reason: delivery.message }, "Better Auth: failed to send reset password email");
+          return;
+        }
+        if (delivery.status === "skipped") {
+          logger.warn(
+            { email, reason: delivery.message, url: params.url },
+            "Better Auth: SMTP not configured; reset password email not delivered",
+          );
+          return;
+        }
+        logger.info({ email }, "Better Auth: password reset email sent");
+      },
     },
     user: {
       changeEmail: {

@@ -63,14 +63,59 @@ function AnimatedToast({
               {toast.body}
             </p>
           )}
-          {toast.action && (
-            <Link
-              to={toast.action.href}
-              onClick={() => onDismiss(toast.id)}
-              className="mt-2 inline-flex text-xs font-medium underline underline-offset-4 hover:opacity-90"
-            >
-              {toast.action.label}
-            </Link>
+          {(toast.action || toast.secondaryAction) && (
+            <div className="mt-2 flex items-center gap-3">
+              {toast.action && (
+                toast.action.href ? (
+                  <Link
+                    to={toast.action.href}
+                    onClick={() => {
+                      toast.action?.onClick?.();
+                      onDismiss(toast.id);
+                    }}
+                    className="inline-flex text-xs font-medium underline underline-offset-4 hover:opacity-90"
+                  >
+                    {toast.action.label}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.action?.onClick?.();
+                      onDismiss(toast.id);
+                    }}
+                    className="inline-flex text-xs font-medium underline underline-offset-4 hover:opacity-90"
+                  >
+                    {toast.action.label}
+                  </button>
+                )
+              )}
+              {toast.secondaryAction && (
+                toast.secondaryAction.href ? (
+                  <Link
+                    to={toast.secondaryAction.href}
+                    onClick={() => {
+                      toast.secondaryAction?.onClick?.();
+                      onDismiss(toast.id);
+                    }}
+                    className="inline-flex text-xs opacity-80 hover:opacity-100"
+                  >
+                    {toast.secondaryAction.label}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.secondaryAction?.onClick?.();
+                      onDismiss(toast.id);
+                    }}
+                    className="inline-flex text-xs opacity-80 hover:opacity-100"
+                  >
+                    {toast.secondaryAction.label}
+                  </button>
+                )
+              )}
+            </div>
           )}
         </div>
         <button

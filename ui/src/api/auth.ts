@@ -56,6 +56,31 @@ async function authPost(path: string, body: Record<string, unknown>) {
   return payload;
 }
 
+async function authPostAllowNotFound(path: string, body: Record<string, unknown>) {
+  const res = await fetch(`/api/auth${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 404) {
+    return { notFound: true as const };
+  }
+  const payload = await res.json().catch(() => null);
+  if (!res.ok) {
+    const p = payload as Record<string, unknown> | null;
+    const message =
+      (typeof (p?.error as Record<string, unknown> | undefined)?.message === "string"
+        ? (p!.error as Record<string, unknown>).message as string
+        : null) ??
+      (typeof p?.error === "string" ? p.error : null) ??
+      (typeof p?.message === "string" ? p.message : null) ??
+      `Request failed: ${res.status}`;
+    throw new Error(message);
+  }
+  return { notFound: false as const };
+}
+
 export const authApi = {
   getSession: async (): Promise<AuthSession | null> => {
     const res = await fetch("/api/auth/get-session", {
@@ -82,7 +107,10 @@ export const authApi = {
   },
 
   signOut: async () => {
-    await authPost("/sign-out", {});
+    const primary = await authPostAllowNotFound("/logout", {});
+    if (primary.notFound) {
+      await authPost("/sign-out", {});
+    }
   },
 
   changePassword: async (input: { currentPassword: string; newPassword: string }) => {
@@ -99,6 +127,25 @@ export const authApi = {
       }
       throw err;
     }
+  },
+
+  forgotPassword: async (input: { email: string; redirectTo?: string }) => {
+    const payload = {
+      email: input.email,
+      redirectTo: input.redirectTo,
+      callbackURL: input.redirectTo,
+    };
+    const primary = await authPostAllowNotFound("/forget-password", payload);
+    if (primary.notFound) {
+      await authPost("/forgot-password", payload);
+    }
+  },
+
+  resetPassword: async (input: { token: string; newPassword: string }) => {
+    await authPost("/reset-password", {
+      token: input.token,
+      newPassword: input.newPassword,
+    });
   },
 
   getNotificationPreferences: async (): Promise<UserNotificationPreferences> => {
