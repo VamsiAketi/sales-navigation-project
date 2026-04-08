@@ -391,31 +391,20 @@ function IssueDetailModal() {
       <DialogContent
         className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]"
       >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="absolute right-12 top-4 z-50 h-8 w-8 rounded-xs opacity-70 transition-opacity hover:opacity-100"
-          title="Open full task page"
-          aria-label="Open full task page"
-          onClick={() => {
-            if (!issueId) return;
-            navigate(`/issues/${issueId}`);
-          }}
-        >
-          <ExternalLink className="h-4 w-4" />
-        </Button>
         <div className="flex h-full min-h-0">
           <div className="min-w-0 flex-1 overflow-y-auto p-6">
             <IssueDetail />
           </div>
-          <IssueDetailModalTaskInfoPanel />
+          <IssueDetailModalTaskInfoPanel
+            onGoToPage={() => { if (issueId) navigate(`/issues/${issueId}`); }}
+          />
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function IssueDetailModalTaskInfoPanel() {
+function IssueDetailModalTaskInfoPanel({ onGoToPage }: { onGoToPage?: () => void }) {
   const { panelContent } = usePanel();
   const { selectedCompany } = useCompany();
   const logoAssetId = selectedCompany?.logoAssetId ?? null;
@@ -425,7 +414,7 @@ function IssueDetailModalTaskInfoPanel() {
 
   return (
     <aside className="hidden md:flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2 pr-[3.25rem]">
         {logoSrc ? (
           <img
             src={logoSrc}
@@ -433,9 +422,21 @@ function IssueDetailModalTaskInfoPanel() {
             className="h-6 w-6 rounded object-contain bg-background"
           />
         ) : null}
-        <span className="truncate text-sm font-medium">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {selectedCompany?.name ? `${selectedCompany.name} • Task Info` : "Task Info"}
         </span>
+        {onGoToPage && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 shrink-0 opacity-70 transition-opacity hover:opacity-100"
+            title="Open full task page"
+            aria-label="Open full task page"
+            onClick={onGoToPage}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="p-4">{panelContent}</div>
