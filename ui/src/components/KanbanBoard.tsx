@@ -424,7 +424,7 @@ const KanbanColumn = memo(function KanbanColumn({
       {/* Drop zone / card list */}
       <div
         ref={setNodeRef}
-        className={`kanban-col-${status} min-h-[4rem] overflow-x-hidden rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
+        className={`kanban-col-${status} min-h-[4rem] overflow-x-hidden rounded-b-2xl pt-2 pb-3 space-y-2 transition-colors duration-150 ${
           isOver ? "bg-accent/30" : ""
         }`}
         style={{
