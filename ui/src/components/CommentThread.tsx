@@ -106,7 +106,8 @@ function CopyMarkdownButton({ text }: { text: string }) {
       className="text-muted-foreground hover:text-foreground transition-colors"
       title="Copy as markdown"
       onClick={() => {
-        navigator.clipboard.writeText(text).then(() => {
+        const cleanedText = text.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, "$2");
+        navigator.clipboard.writeText(cleanedText).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
         });

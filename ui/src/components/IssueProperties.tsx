@@ -15,6 +15,7 @@ import { useCompany } from "../context/CompanyContext";
 import { ApiError } from "../api/client";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
+import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { assigneeUpdateErrorMessage } from "../lib/permission-feedback";
@@ -426,6 +427,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const currentProject = issue.projectId
     ? orderedProjects.find((project) => project.id === issue.projectId) ?? null
     : null;
+  const projectStatuses = useProjectIssueStatuses(issue.projectId ?? null);
+  const activeProjectStatuses = projectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
   const currentProjectExecutionWorkspacePolicy =
     experimentalSettings?.enableIsolatedWorkspaces === true
       ? currentProject?.executionWorkspacePolicy ?? null
@@ -948,6 +951,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <StatusIcon
             status={issue.status}
             onChange={(status) => onUpdate({ status })}
+            projectStatuses={activeProjectStatuses.length > 0 ? activeProjectStatuses : undefined}
             showLabel
           />
         </PropertyRow>
@@ -1200,7 +1204,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
       <div className="space-y-1">
         {(issue.createdByAgentId || issue.createdByUserId) && (
-          <PropertyRow label="Created by">
+          <PropertyRow label="Reporter">
             {issue.createdByAgentId ? (
               <Link
                 to={`/agents/${issue.createdByAgentId}`}

@@ -15,6 +15,7 @@ export const DEFAULT_PRIMARY_NAV_IDS = [
   "costs",
   "goals",
   "inbox",
+  "tasks",
   "team",
 ] as const;
 

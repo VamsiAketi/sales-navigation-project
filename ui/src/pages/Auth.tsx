@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { authApi } from "../api/auth";
+import { healthApi } from "../api/health";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Eye, EyeOff } from "lucide-react";
+import { buildVisibleVersionLabel } from "@/components/Layout";
 
 type AuthMode = "sign_in" | "sign_up";
 
@@ -34,6 +36,12 @@ export function AuthPage() {
   const { data: session, isLoading: isSessionLoading } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
+    retry: false,
+  });
+
+  const { data: health } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: () => healthApi.get(),
     retry: false,
   });
 
@@ -106,6 +114,8 @@ export function AuthPage() {
   const canRequestReset = email.trim().length > 0;
   const canSubmitReset = password.trim().length >= 8 && confirmPassword === password;
 
+  const versionLabel = buildVisibleVersionLabel(health?.version);
+
   if (isSessionLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
@@ -115,7 +125,7 @@ export function AuthPage() {
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background">
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-background">
       <div className="w-full max-w-md px-8 py-12">
           <div className="flex items-center gap-2 mb-8">
             <Sparkles className="h-4 w-4 text-muted-foreground" />
@@ -332,6 +342,11 @@ export function AuthPage() {
           </div>
           */}
       </div>
+      {versionLabel && (
+        <span className="text-xs text-muted-foreground" title={versionLabel}>
+          Version: {versionLabel}
+        </span>
+      )}
     </div>
   );
 }
