@@ -19,6 +19,112 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import type { Agent } from "@paperclipai/shared";
+
+interface AgentTreeNodeProps {
+  agent: Agent;
+  depth: number;
+  childrenMap: Map<string, Agent[]>;
+  liveCountByAgent: Map<string, number>;
+  activeAgentId: string | null;
+  activeTab: string | null;
+  isMobile: boolean;
+  setSidebarOpen: (open: boolean) => void;
+}
+
+function AgentTreeNode({
+  agent,
+  depth,
+  childrenMap,
+  liveCountByAgent,
+  activeAgentId,
+  activeTab,
+  isMobile,
+  setSidebarOpen,
+}: AgentTreeNodeProps) {
+  const [open, setOpen] = useState(true);
+  const children = childrenMap.get(agent.id) ?? [];
+  const hasChildren = children.length > 0;
+  const runCount = liveCountByAgent.get(agent.id) ?? 0;
+  const isActive = activeAgentId === agentRouteRef(agent);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <div
+        className={cn(
+          "flex items-center gap-1 pr-3 py-1.5 rounded transition-colors",
+          isActive ? "bg-accent text-foreground" : "hover:bg-accent/50"
+        )}
+        style={{ paddingLeft: `${12 + depth * 12}px` }}
+      >
+        {hasChildren ? (
+          <CollapsibleTrigger className="flex items-center justify-center shrink-0 h-4 w-4 text-muted-foreground/60 hover:text-foreground transition-colors">
+            <ChevronRight
+              className={cn(
+                "h-3 w-3 transition-transform",
+                open && "rotate-90"
+              )}
+            />
+          </CollapsibleTrigger>
+        ) : (
+          <span className="shrink-0 h-4 w-4" />
+        )}
+        <NavLink
+          to={activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent)}
+          onClick={() => {
+            if (isMobile) setSidebarOpen(false);
+          }}
+          className={cn(
+            "flex items-center gap-2 flex-1 min-w-0 text-[13px] font-medium",
+            isActive ? "text-foreground" : "text-foreground/80 hover:text-foreground"
+          )}
+        >
+          <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
+          <span className="flex-1 truncate">{agent.name}</span>
+          {(agent.pauseReason === "budget" || runCount > 0) && (
+            <span className="ml-auto flex items-center gap-1.5 shrink-0">
+              {agent.pauseReason === "budget" && (
+                <BudgetSidebarMarker title="Agent paused by budget" />
+              )}
+              {runCount > 0 && (
+                <>
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                  </span>
+                  <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                    {runCount} live
+                  </span>
+                </>
+              )}
+            </span>
+          )}
+        </NavLink>
+      </div>
+      {hasChildren && (
+        <CollapsibleContent>
+          <div
+            className="flex flex-col gap-0.5 border-l-2 border-border ml-[19px]"
+          >
+            {children.map((child) => (
+              <AgentTreeNode
+                key={child.id}
+                agent={child}
+                depth={depth + 1}
+                childrenMap={childrenMap}
+                liveCountByAgent={liveCountByAgent}
+                activeAgentId={activeAgentId}
+                activeTab={activeTab}
+                isMobile={isMobile}
+                setSidebarOpen={setSidebarOpen}
+              />
+            ))}
+          </div>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
+  );
+}
+
 export function SidebarAgents() {
   const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
@@ -52,17 +158,34 @@ export function SidebarAgents() {
   }, [liveRuns]);
 
   const visibleAgents = useMemo(() => {
-    const filtered = (agents ?? []).filter(
-      (a: Agent) => a.status !== "terminated"
-    );
-    return filtered;
+    return (agents ?? []).filter((a: Agent) => a.status !== "terminated");
   }, [agents]);
+
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
   const { orderedAgents } = useAgentOrder({
     agents: visibleAgents,
     companyId: selectedCompanyId,
     userId: currentUserId,
   });
+
+  const { rootAgents, childrenMap } = useMemo(() => {
+    const agentIds = new Set(orderedAgents.map((a) => a.id));
+    const childrenMap = new Map<string, Agent[]>();
+    const rootAgents: Agent[] = [];
+
+    for (const agent of orderedAgents) {
+      const parentId = agent.reportsTo;
+      if (!parentId || !agentIds.has(parentId)) {
+        rootAgents.push(agent);
+      } else {
+        const siblings = childrenMap.get(parentId) ?? [];
+        siblings.push(agent);
+        childrenMap.set(parentId, siblings);
+      }
+    }
+
+    return { rootAgents, childrenMap };
+  }, [orderedAgents]);
 
   const agentMatch = location.pathname.match(/^\/(?:[^/]+\/)?agents\/([^/]+)(?:\/([^/]+))?/);
   const activeAgentId = agentMatch?.[1] ?? null;
@@ -100,45 +223,19 @@ export function SidebarAgents() {
 
       <CollapsibleContent>
         <div className="flex flex-col gap-0.5 mt-0.5">
-          {orderedAgents.map((agent: Agent) => {
-            const runCount = liveCountByAgent.get(agent.id) ?? 0;
-            return (
-              <NavLink
-                key={agent.id}
-                to={activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent)}
-                onClick={() => {
-                  if (isMobile) setSidebarOpen(false);
-                }}
-                className={cn(
-                  "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium transition-colors",
-                  activeAgentId === agentRouteRef(agent)
-                    ? "bg-accent text-foreground"
-                    : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
-                )}
-              >
-                <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
-                <span className="flex-1 truncate">{agent.name}</span>
-                {(agent.pauseReason === "budget" || runCount > 0) && (
-                  <span className="ml-auto flex items-center gap-1.5 shrink-0">
-                    {agent.pauseReason === "budget" ? (
-                      <BudgetSidebarMarker title="Agent paused by budget" />
-                    ) : null}
-                    {runCount > 0 ? (
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-                      </span>
-                    ) : null}
-                    {runCount > 0 ? (
-                      <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                        {runCount} live
-                      </span>
-                    ) : null}
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
+          {rootAgents.map((agent) => (
+            <AgentTreeNode
+              key={agent.id}
+              agent={agent}
+              depth={0}
+              childrenMap={childrenMap}
+              liveCountByAgent={liveCountByAgent}
+              activeAgentId={activeAgentId}
+              activeTab={activeTab}
+              isMobile={isMobile}
+              setSidebarOpen={setSidebarOpen}
+            />
+          ))}
         </div>
       </CollapsibleContent>
     </Collapsible>
