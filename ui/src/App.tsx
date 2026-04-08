@@ -384,7 +384,6 @@ function IssueDetailModal() {
     <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
       <DialogContent
         showCloseButton={false}
-        overlayClassName="bg-background/96 backdrop-blur-sm"
         className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]"
       >
         <DialogClose asChild>
