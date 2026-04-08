@@ -292,6 +292,8 @@ export function issueRoutes(db: Db, storage: StorageService) {
       originId: req.query.originId as string | undefined,
       includeRoutineExecutions:
         req.query.includeRoutineExecutions === "true" || req.query.includeRoutineExecutions === "1",
+      includeHidden:
+        req.query.includeHidden === "true" || req.query.includeHidden === "1",
       q: req.query.q as string | undefined,
     });
     res.json(result);

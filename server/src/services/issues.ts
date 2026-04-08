@@ -77,6 +77,7 @@ export interface IssueFilters {
   originKind?: string;
   originId?: string;
   includeRoutineExecutions?: boolean;
+  includeHidden?: boolean;
   q?: string;
 }
 
@@ -625,7 +626,9 @@ export function issueService(db: Db) {
       if (!filters?.includeRoutineExecutions && !filters?.originKind && !filters?.originId) {
         conditions.push(ne(issues.originKind, "routine_execution"));
       }
-      conditions.push(isNull(issues.hiddenAt));
+      if (!filters?.includeHidden) {
+        conditions.push(isNull(issues.hiddenAt));
+      }
 
       const priorityOrder = sql`CASE ${issues.priority} WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END`;
       const searchOrder = sql<number>`
