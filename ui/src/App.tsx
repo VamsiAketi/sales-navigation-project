@@ -413,7 +413,7 @@ function IssueDetailModalTaskInfoPanel({ onGoToPage }: { onGoToPage?: () => void
   if (!panelContent) return null;
 
   return (
-    <aside className="hidden md:flex w-[360px] shrink-0 flex-col border-l border-border bg-card">
+    <aside className="hidden md:flex w-fit min-w-[220px] max-w-[320px] shrink-0 flex-col border-l border-border bg-card">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2 pr-[3.25rem]">
         {logoSrc ? (
           <img
