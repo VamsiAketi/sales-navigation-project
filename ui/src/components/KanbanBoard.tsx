@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "@/lib/router";
+import { Link, useLocation } from "@/lib/router";
 import {
   DndContext,
   DragOverlay,
@@ -161,6 +161,11 @@ interface KanbanBoardProps {
   newBadgeIssueId?: string | null;
 }
 
+type IssueModalLinkState = {
+  issueModal?: boolean;
+  backgroundLocation?: unknown;
+};
+
 function getSortKey(issue: Issue): number {
   if (issue.kanbanPosition !== null && issue.kanbanPosition !== undefined) {
     return issue.kanbanPosition;
@@ -311,6 +316,7 @@ function KanbanCard({
   isLive,
   isOverlay,
   issueLinkState,
+  modalLinkState,
   statusColorMap,
   highlight,
   showNewBadge,
@@ -321,6 +327,7 @@ function KanbanCard({
   isLive: boolean;
   isOverlay?: boolean;
   issueLinkState?: unknown;
+  modalLinkState?: IssueModalLinkState;
   statusColorMap?: Map<string, string>;
   highlight?: boolean;
   showNewBadge?: boolean;
@@ -356,7 +363,7 @@ function KanbanCard({
     >
       <Link
         to={`/issues/${issue.identifier ?? issue.id}`}
-        state={issueLinkState}
+        state={modalLinkState ? { ...(issueLinkState as Record<string, unknown> | undefined), ...modalLinkState } : issueLinkState}
         className="block no-underline text-inherit"
       >
         <KanbanCardContent
@@ -382,6 +389,7 @@ const KanbanColumn = memo(function KanbanColumn({
   memberMap,
   liveIssueIds,
   issueLinkState,
+  modalLinkState,
   statusColorMap,
   highlightIssueId,
   newBadgeIssueId,
@@ -394,6 +402,7 @@ const KanbanColumn = memo(function KanbanColumn({
   memberMap: Map<string, string>;
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
+  modalLinkState?: IssueModalLinkState;
   statusColorMap?: Map<string, string>;
   highlightIssueId?: string | null;
   newBadgeIssueId?: string | null;
@@ -474,6 +483,7 @@ const KanbanColumn = memo(function KanbanColumn({
             }
             isLive={liveIssueIds?.has(issue.id) ?? false}
             issueLinkState={issueLinkState}
+            modalLinkState={modalLinkState}
             statusColorMap={statusColorMap}
             highlight={highlightIssueId === issue.id}
             showNewBadge={newBadgeIssueId === issue.id}
@@ -496,7 +506,13 @@ export function KanbanBoard({
   highlightIssueId = null,
   newBadgeIssueId = null,
 }: KanbanBoardProps) {
+  const location = useLocation();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const modalLinkState = useMemo<IssueModalLinkState>(() => ({
+    issueModal: true,
+    backgroundLocation: location,
+  }), [location]);
+
   // optimisticMoves: issueId → targetStatus applied immediately on drop so the
   // card never flashes back into the source column while the network request
   // is in-flight. Cleared once the real `issues` prop reflects the change.
@@ -646,6 +662,7 @@ export function KanbanBoard({
               memberMap={memberMap}
               liveIssueIds={liveIssueIds}
               issueLinkState={issueLinkState}
+              modalLinkState={modalLinkState}
               statusColorMap={statusColorMap}
               highlightIssueId={highlightIssueId}
               newBadgeIssueId={newBadgeIssueId}
@@ -666,6 +683,7 @@ export function KanbanBoard({
             }
             isLive={liveIssueIds?.has(activeIssue.id) ?? false}
             issueLinkState={issueLinkState}
+            modalLinkState={modalLinkState}
             statusColorMap={statusColorMap}
             showNewBadge={newBadgeIssueId === activeIssue.id}
             isOverlay

@@ -1,4 +1,6 @@
-import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "@/lib/router";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import type { Location as RouterLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "./components/Layout";
@@ -309,9 +311,13 @@ function NoCompaniesStartPage() {
 }
 
 export function App() {
+  const location = useLocation();
+  const state = location.state as { issueModal?: boolean; backgroundLocation?: RouterLocation } | null;
+  const backgroundLocation = state?.issueModal ? state.backgroundLocation : null;
+
   return (
     <>
-      <Routes>
+      <Routes location={backgroundLocation ?? location}>
         <Route path="auth" element={<AuthPage />} />
         <Route path="reset-password/:token" element={<ResetPasswordPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
@@ -360,7 +366,25 @@ export function App() {
           <Route path="*" element={<NotFoundPage scope="global" />} />
         </Route>
       </Routes>
+      {backgroundLocation ? (
+        <Routes>
+          <Route path=":companyPrefix/issues/:issueId" element={<IssueDetailModal />} />
+        </Routes>
+      ) : null}
       <OnboardingWizard />
     </>
+  );
+}
+
+function IssueDetailModal() {
+  const navigate = useNavigate();
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
+      <DialogContent className="h-[min(92dvh,56rem)] w-[min(96vw,72rem)] max-w-none overflow-hidden p-0">
+        <div className="h-full overflow-y-auto p-6">
+          <IssueDetail />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
