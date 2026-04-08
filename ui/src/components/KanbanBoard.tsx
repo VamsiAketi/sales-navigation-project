@@ -414,16 +414,17 @@ const KanbanColumn = memo(function KanbanColumn({
 
   return (
     <div
-      className="min-w-[272px] w-[272px] shrink-0 rounded-2xl"
+      className="min-w-[272px] w-[272px] shrink-0 rounded-b-2xl"
       style={{
-        border: `2px solid ${dotColor}35`,
-        boxShadow: `0 0 0 1px ${dotColor}14, 0 4px 16px ${dotColor}10`,
+        border: `2px solid ${dotColor}45`,
+        borderTop: "none",
+        boxShadow: `0 0 0 1px ${dotColor}18, 0 4px 16px ${dotColor}12`,
       }}
     >
       {/* Drop zone / card list */}
       <div
         ref={setNodeRef}
-        className={`kanban-col-${status} min-h-[4rem] overflow-x-hidden rounded-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
+        className={`kanban-col-${status} min-h-[4rem] overflow-x-hidden rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
           isOver ? "bg-accent/30" : ""
         }`}
         style={{
@@ -616,14 +617,14 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      {/* ── Sticky header bar ─────────────────────────────────────────────────────
-          A single unified bar (like Jira) that sits outside the overflow-x-auto
-          card container so sticky top-0 works against the page viewport scroll.
-          JS scroll-sync keeps it aligned with the card area horizontally.      */}
-      <div className="sticky top-0 z-30 -mx-2 border-b border-border bg-card/95 backdrop-blur-md shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
+      {/* ── Sticky header row ─────────────────────────────────────────────────────
+          Lives outside the overflow-x-auto card container so sticky top-0 works
+          against the page scroll. bg-background ensures no bleed between the two
+          sibling divs. JS scroll-sync keeps columns aligned horizontally.       */}
+      <div className="sticky top-0 z-30 -mx-2 bg-background">
         <div
           ref={headerScrollRef}
-          className="flex gap-4 overflow-x-hidden px-2 py-2"
+          className="flex gap-4 overflow-x-hidden px-2"
         >
           {activeColumns.map((status) => {
             const ps = projectStatuses?.find((s) => s.value === status);
@@ -632,35 +633,47 @@ export function KanbanBoard({
             return (
               <div
                 key={status}
-                className="min-w-[272px] w-[272px] shrink-0 flex items-center gap-2 rounded-xl px-3 py-2"
+                className="min-w-[272px] w-[272px] shrink-0 rounded-t-2xl"
                 style={{
-                  backgroundColor: `${dotColor}18`,
-                  border: `1.5px solid ${dotColor}35`,
+                  border: `2px solid ${dotColor}45`,
+                  borderBottom: "none",
                 }}
               >
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+                <div
+                  className="h-1 w-full rounded-t-2xl"
+                  style={{ backgroundColor: dotColor }}
+                />
+                <div
+                  className="flex items-center gap-2 border-b bg-card/95 px-3 py-2.5 backdrop-blur-md"
                   style={{
-                    backgroundColor: dotColor,
-                    color: "#fff",
-                    textShadow: "0 1px 2px rgba(0,0,0,0.22)",
-                    boxShadow: `0 2px 6px ${dotColor}45`,
+                    borderBottomColor: `${dotColor}40`,
+                    backgroundImage: `linear-gradient(135deg, ${dotColor}20 0%, ${dotColor}0a 100%)`,
                   }}
                 >
-                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
-                  {ps?.name ?? statusLabel(status)}
-                </span>
-                <span className="flex-1" />
-                <span
-                  className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
-                  style={{
-                    backgroundColor: `${dotColor}22`,
-                    color: dotColor,
-                    border: `1.5px solid ${dotColor}55`,
-                  }}
-                >
-                  {(columnIssues[status] ?? []).length}
-                </span>
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+                    style={{
+                      backgroundColor: dotColor,
+                      color: "#ffffff",
+                      textShadow: "0 1px 2px rgba(0,0,0,0.25)",
+                      boxShadow: `0 2px 6px ${dotColor}50`,
+                    }}
+                  >
+                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
+                    {ps?.name ?? statusLabel(status)}
+                  </span>
+                  <span className="flex-1" />
+                  <span
+                    className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
+                    style={{
+                      backgroundColor: `${dotColor}22`,
+                      color: dotColor,
+                      border: `1.5px solid ${dotColor}55`,
+                    }}
+                  >
+                    {(columnIssues[status] ?? []).length}
+                  </span>
+                </div>
               </div>
             );
           })}
@@ -670,7 +683,7 @@ export function KanbanBoard({
       {/* ── Card rows — horizontally scrollable, page scrolls vertically ───────── */}
       <div
         ref={cardsScrollRef}
-        className="-mx-2 flex items-start gap-4 overflow-x-auto px-2 pt-3 pb-4"
+        className="-mx-2 flex items-start gap-4 overflow-x-auto px-2 pb-4"
         onScroll={onCardsScroll}
       >
         {activeColumns.map((status) => {
