@@ -18,6 +18,7 @@ import {
   runDatabaseBackup,
   authUsers,
   authSessions as dbAuthSessions,
+  authAccounts as dbAuthAccounts,
   companies,
   companyMemberships,
   instanceUserRoles,
@@ -507,18 +508,24 @@ export async function startServer(): Promise<StartedServer> {
       throw new Error("No compatible password reset API available");
     };
     changePassword = async (input: { userId: string; newPassword: string }) => {
-      const api = (auth as unknown as {
-        api?: {
-          changePassword?: (args: { body: Record<string, unknown>; headers: Headers }) => Promise<unknown>;
-        };
-      }).api;
-      if (!api?.changePassword) throw new Error("changePassword API unavailable");
-      // Build a dummy session header so better-auth accepts the call server-side
-      const sessions = await db.select().from(dbAuthSessions).where(eq(dbAuthSessions.userId, input.userId)).limit(1);
-      const sessionToken = sessions[0]?.token;
-      if (!sessionToken) throw new Error("No active session found for user");
-      const headers = new Headers({ cookie: `better-auth.session_token=${sessionToken}` });
-      await api.changePassword({ body: { newPassword: input.newPassword, revokeOtherSessions: false }, headers });
+      // Use better-auth's own hashPassword so the stored hash is compatible
+      // with its verifyPassword. Bypasses api.changePassword which requires
+      // currentPassword — not available in the forced first-login flow.
+      const { hashPassword } = await import("better-auth/crypto");
+      const hashed = await hashPassword(input.newPassword);
+      const updated = await db
+        .update(dbAuthAccounts)
+        .set({ password: hashed, updatedAt: new Date() })
+        .where(
+          and(
+            eq(dbAuthAccounts.userId, input.userId),
+            eq(dbAuthAccounts.providerId, "credential"),
+          ),
+        )
+        .returning({ id: dbAuthAccounts.id });
+      if (updated.length === 0) {
+        throw new Error("No credential account found for user — cannot update password");
+      }
     };
     await initializeBoardClaimChallenge(db as any, { deploymentMode: config.deploymentMode });
     authReady = true;
