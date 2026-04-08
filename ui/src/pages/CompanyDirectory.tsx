@@ -1037,7 +1037,7 @@ export function CompanyDirectory() {
                 Invite Human
               </Button>
             </DialogTrigger>
-            <DialogContent className="flex max-h-[min(92dvh,48rem)] w-full max-w-5xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
+            <DialogContent className="flex max-h-[min(92dvh,44rem)] w-full max-w-2xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
               <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
                 <DialogHeader>
                   <DialogTitle>Invite Human</DialogTitle>
@@ -1047,7 +1047,7 @@ export function CompanyDirectory() {
                 </DialogHeader>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
-                <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
+                <div className="mx-auto flex max-w-2xl flex-col gap-6">
                   <section className="min-w-0 space-y-4">
                     <h3 className="text-sm font-semibold tracking-tight text-foreground">Human details</h3>
                     <div className="space-y-4">
