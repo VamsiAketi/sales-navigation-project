@@ -712,10 +712,7 @@ export function IssuesList({
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div
-        className="sticky top-0 z-[60] bg-background -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center justify-between gap-2 sm:gap-3"
-        style={{ willChange: 'transform' }}
-      >
+      <div className="sticky top-0 z-[60] bg-background -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center justify-between gap-2 sm:gap-3">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Button size="sm" variant="outline" onClick={() => openNewIssue(newIssueDefaults())}>
             <Plus className="h-4 w-4 sm:mr-1" />
