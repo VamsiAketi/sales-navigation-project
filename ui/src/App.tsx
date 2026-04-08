@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "@/lib/router";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import type { Location as RouterLocation } from "react-router-dom";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "./components/Layout";
@@ -51,6 +52,7 @@ import { AccountSettings } from "./pages/AccountSettings";
 import { NotFoundPage } from "./pages/NotFound";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
+import { usePanel } from "./context/PanelContext";
 import { useDialog } from "./context/DialogContext";
 import { loadLastInboxTab } from "./lib/inbox";
 import { shouldRedirectCompanylessRouteToOnboarding } from "./lib/onboarding-route";
@@ -380,11 +382,43 @@ function IssueDetailModal() {
   const navigate = useNavigate();
   return (
     <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
-      <DialogContent className="h-[min(92dvh,56rem)] w-[min(96vw,72rem)] max-w-none overflow-hidden p-0">
-        <div className="h-full overflow-y-auto p-6">
-          <IssueDetail />
+      <DialogContent className="h-[min(94dvh,60rem)] w-[min(98vw,92rem)] max-w-none overflow-hidden p-0">
+        <div className="flex h-full min-h-0">
+          <IssueDetailModalTaskInfoPanel />
+          <div className="min-w-0 flex-1 overflow-y-auto p-6">
+            <IssueDetail />
+          </div>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function IssueDetailModalTaskInfoPanel() {
+  const { panelContent } = usePanel();
+  const { selectedCompany } = useCompany();
+  const logoAssetId = selectedCompany?.logoAssetId ?? null;
+  const logoSrc = logoAssetId ? `/api/assets/${logoAssetId}/content` : null;
+
+  if (!panelContent) return null;
+
+  return (
+    <aside className="hidden md:flex w-[360px] shrink-0 flex-col border-r border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2">
+        {logoSrc ? (
+          <img
+            src={logoSrc}
+            alt={selectedCompany?.name ? `${selectedCompany.name} logo` : "Company logo"}
+            className="h-6 w-6 rounded object-contain bg-background"
+          />
+        ) : null}
+        <span className="truncate text-sm font-medium">
+          {selectedCompany?.name ? `${selectedCompany.name} • Task Info` : "Task Info"}
+        </span>
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="p-4">{panelContent}</div>
+      </ScrollArea>
+    </aside>
   );
 }
