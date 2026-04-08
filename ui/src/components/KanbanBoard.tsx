@@ -621,7 +621,7 @@ export function KanbanBoard({
           Lives outside the overflow-x-auto card container so sticky top-0 works
           against the page scroll. bg-background ensures no bleed between the two
           sibling divs. JS scroll-sync keeps columns aligned horizontally.       */}
-      <div className="sticky top-0 z-30 -mx-2 mb-0 bg-background">
+      <div className="sticky top-0 z-50 -mx-2 mb-0 bg-background">
         <div
           ref={headerScrollRef}
           className="flex gap-4 overflow-x-hidden px-2"
@@ -681,9 +681,11 @@ export function KanbanBoard({
       </div>
 
       {/* ── Card rows — horizontally scrollable, page scrolls vertically ───────── */}
+      {/* relative + z-0 creates a stacking context below the sticky header (z-50)
+          so no card can ever paint on top of the sticky status row              */}
       <div
         ref={cardsScrollRef}
-        className="-mx-2 flex items-start gap-4 overflow-x-auto px-2 pb-4"
+        className="-mx-2 relative z-0 flex items-start gap-4 overflow-x-auto px-2 pb-4"
         onScroll={onCardsScroll}
       >
         {activeColumns.map((status) => {
