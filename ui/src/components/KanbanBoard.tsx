@@ -164,6 +164,7 @@ interface KanbanBoardProps {
 type IssueModalLinkState = {
   issueModal?: boolean;
   backgroundLocation?: unknown;
+  boardContext?: boolean;
 };
 
 function getSortKey(issue: Issue): number {
@@ -511,6 +512,7 @@ export function KanbanBoard({
   const modalLinkState = useMemo<IssueModalLinkState>(() => ({
     issueModal: true,
     backgroundLocation: location,
+    boardContext: true,
   }), [location]);
 
   // optimisticMoves: issueId → targetStatus applied immediately on drop so the

@@ -315,12 +315,19 @@ function NoCompaniesStartPage() {
 
 export function App() {
   const location = useLocation();
-  const state = location.state as { issueModal?: boolean; backgroundLocation?: RouterLocation } | null;
+  const state = location.state as {
+    issueModal?: boolean;
+    backgroundLocation?: RouterLocation;
+    boardContext?: boolean;
+  } | null;
   const hasBoardBackground = Boolean(
     state?.backgroundLocation &&
     !/^\/[^/]+\/issues\/[^/]+$/.test(state.backgroundLocation.pathname),
   );
-  const backgroundLocation = state?.issueModal && hasBoardBackground ? state.backgroundLocation : null;
+  const backgroundLocation =
+    state?.issueModal && state?.boardContext && hasBoardBackground
+      ? state.backgroundLocation
+      : null;
 
   return (
     <>
