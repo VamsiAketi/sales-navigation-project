@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent} from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings } from "lucide-react";
+import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings, Info} from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
 import { CompanyRail } from "./CompanyRail";
 import { Sidebar } from "./Sidebar";
@@ -40,7 +40,7 @@ import { Button } from "@/components/ui/button";
 
 const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
 const SIDEBAR_WIDTH_STORAGE_KEY = "aiharness.sidebar.widthPx";
-const SIDEBAR_EXPANDED_WIDTH_DEFAULT = 240;
+const SIDEBAR_EXPANDED_WIDTH_DEFAULT = 284;
 const SIDEBAR_WIDTH_MIN = 200;
 const SIDEBAR_WIDTH_MAX = 520;
 
@@ -88,7 +88,7 @@ function SidebarFooterBar({
   isMobile,
   sidebarOpen,
   sidebarCompact,
-  sidebarRailExpanded,
+  sidebarRailExpanded: _sidebarRailExpanded,
   toggleSidebarRailExpanded,
   setSidebarOpen,
   theme,
@@ -114,7 +114,7 @@ function SidebarFooterBar({
 }) {
   const productLinkClass = cn(
     sidebarNavItemTextClass,
-    "flex min-w-0 items-center gap-2.5 font-medium",
+    "flex min-w-0 items-center gap-1 font-medium",
     isMobile
       ? "rounded-md py-2 text-sidebar-foreground/75 hover:bg-sidebar-accent/80 hover:text-sidebar-accent-foreground"
       : "rounded-sm py-2 text-sidebar-foreground/80 hover:bg-black/[0.05] hover:text-sidebar-foreground dark:hover:bg-white/[0.06]",
@@ -127,7 +127,7 @@ function SidebarFooterBar({
         type="button"
         variant="ghost"
         size="icon-sm"
-        className={cn(azureSidebarIcon.chrome, "shrink-0")}
+        className={cn(azureSidebarIcon.chrome, "size-[30px] shrink-0")}
         onClick={toggleTheme}
         aria-label={`Switch to ${nextTheme} mode`}
         title={`Switch to ${nextTheme} mode`}
@@ -137,14 +137,14 @@ function SidebarFooterBar({
     </>
   );
 
-  const railToggleInGripColumn = showRailToggle && !sidebarCompact;
-  const railToggleStandalone = showRailToggle && sidebarCompact;
+  // const railToggleInGripColumn = showRailToggle && !sidebarCompact;
+  // const railToggleStandalone = showRailToggle && sidebarCompact;
 
   if (!sidebarOpen) {
     return (
       <div className="flex w-full shrink-0 flex-col border-t border-r border-sidebar-border bg-sidebar">
         <div className="flex items-center justify-center gap-0.5 px-1 py-2">
-          <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "shrink-0")} asChild>
+          <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "size-[34px] shrink-0")} asChild>
             <a
               href={PRODUCT_SITE_URL}
               target="_blank"
@@ -155,7 +155,7 @@ function SidebarFooterBar({
             </a>
           </Button>
           {tail}
-          <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "shrink-0")} asChild>
+          <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "size-[34px] shrink-0")} asChild>
             <Link
               to={instanceSettingsTarget}
               aria-label="Instance settings"
@@ -170,70 +170,76 @@ function SidebarFooterBar({
     );
   }
 
+  if (sidebarCompact) {
+    return (
+      <div className="flex w-full shrink-0 flex-col border-t border-r border-sidebar-border bg-sidebar">
+        <div className="flex flex-col items-stretch gap-0.5 px-0.5 py-1">
+          <Button
+            type="button"
+            variant="ghost"
+            className={cn(azureSidebarIcon.chrome, "min-h-10 w-full justify-center rounded-sm px-0")}
+            onClick={toggleSidebarRailExpanded}
+            aria-label="Expand sidebar labels"
+            title="Show sidebar labels"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Expanded sidebar footer (sidebarOpen && !sidebarCompact)
   return (
     <div className="flex w-full flex-col border-t border-r border-sidebar-border bg-sidebar">
-      <div
-        className={cn(
-          "flex min-h-0 min-w-0 flex-1 items-center gap-1 py-2 pr-2",
-          sidebarCompact && "justify-center pl-1",
-        )}
-      >
-        {railToggleInGripColumn ? (
+      <div className="flex min-h-0 min-w-0 flex-1 items-center gap-1 py-2 pr-2">
+        {showRailToggle ? (
           <div className="flex w-5 shrink-0 items-center justify-center">
             <Button
               type="button"
               variant="ghost"
               className={cn(azureSidebarIcon.chrome, "h-7 w-5 shrink-0 px-0")}
               onClick={toggleSidebarRailExpanded}
-              aria-label={
-                sidebarRailExpanded ? "Collapse sidebar to icons only" : "Expand sidebar labels"
-              }
-              title={sidebarRailExpanded ? "Icon-only sidebar" : "Show sidebar labels"}
+              aria-label="Collapse sidebar to icons only"
+              title="Icon-only sidebar"
             >
-              {sidebarRailExpanded ? (
-                <ChevronsLeft className="h-4 w-4" />
-              ) : (
-                <ChevronsRight className="h-4 w-4" />
-              )}
+              <ChevronsLeft className="h-4 w-4" />
             </Button>
           </div>
-        ) : railToggleStandalone ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className={cn(azureSidebarIcon.chrome, "shrink-0")}
-            onClick={toggleSidebarRailExpanded}
-            aria-label={
-              sidebarRailExpanded ? "Collapse sidebar to icons only" : "Expand sidebar labels"
-            }
-            title={sidebarRailExpanded ? "Icon-only sidebar" : "Show sidebar labels"}
-          >
-            {sidebarRailExpanded ? (
-              <ChevronsLeft className="h-4 w-4" />
-            ) : (
-              <ChevronsRight className="h-4 w-4" />
-            )}
-          </Button>
         ) : (
           <div className="w-5 shrink-0" aria-hidden />
-        )}
-        {!sidebarCompact && versionLabel && (
-          <span className="min-w-0 truncate px-1 text-xs text-sidebar-foreground/50" title={versionLabel}>
-            {versionLabel}
-          </span>
         )}
         <a
           href={PRODUCT_SITE_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className={cn(productLinkClass, sidebarCompact && "max-w-[2.75rem]")}
+          className={productLinkClass}
         >
           <BookOpen className={cn("h-4 w-4 shrink-0", azureSidebarIcon.book)} />
-          {!sidebarCompact ? <span className="truncate">{PRODUCT_LINK_LABEL}</span> : null}
+          <span className="truncate">{PRODUCT_LINK_LABEL}</span>
         </a>
         {tail}
-        <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "shrink-0")} asChild>
+        {versionLabel && (
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  azureSidebarIcon.chrome,
+                  "flex size-[34px] shrink-0 items-center justify-center rounded-sm px-0 text-[20px] font-semibold",
+                  "hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+                )}
+                aria-label={`Version ${versionLabel}`}
+              >
+                ⓘ
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="font-mono text-xs">
+              {`Version: ${versionLabel}`}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "size-[34px] shrink-0")} asChild>
           <Link
             to={instanceSettingsTarget}
             aria-label="Instance settings"
