@@ -1050,6 +1050,28 @@ export function issueRoutes(db: Db, storage: StorageService) {
         },
       });
 
+      void (async () => {
+        try {
+          const mentionedUserIds = await svc.findMentionedUsers(issue.companyId, comment.body);
+          if (mentionedUserIds.length === 0) return;
+          await issueNotifications.notifyCommentMentions({
+            issueId: issue.id,
+            commentId: comment.id,
+            mentionUserIds: mentionedUserIds,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
+            payload: {
+              issueIdentifier: issue.identifier,
+              issueTitle: issue.title,
+              actorLabel: actorDisplayName,
+              commentSnippet: comment.body.slice(0, 120),
+            },
+          });
+        } catch (err) {
+          logger.warn({ err, issueId: id }, "failed to notify user @-mentions");
+        }
+      })();
+
     }
 
     if (assigneeWillChange && issue.assigneeUserId && issue.assigneeUserId !== existing.assigneeUserId) {
@@ -1475,6 +1497,31 @@ export function issueRoutes(db: Db, storage: StorageService) {
         commentSnippet: comment.body.slice(0, 120),
       },
     });
+
+    void (async () => {
+      try {
+        const mentionedUserIds = await svc.findMentionedUsers(currentIssue.companyId, comment.body);
+        if (mentionedUserIds.length === 0) return;
+        await issueNotifications.notifyCommentMentions({
+          issueId: currentIssue.id,
+          commentId: comment.id,
+          mentionUserIds: mentionedUserIds,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          payload: {
+            issueIdentifier: currentIssue.identifier,
+            issueTitle: currentIssue.title,
+            actorLabel:
+              actor.actorType === "user"
+                ? await resolveUserNameById(actor.actorId)
+                : actorLabel(actor.actorType, actor.actorId),
+            commentSnippet: comment.body.slice(0, 120),
+          },
+        });
+      } catch (err) {
+        logger.warn({ err, issueId: id }, "failed to notify user @-mentions");
+      }
+    })();
 
     // Merge all wakeups from this comment into one enqueue per agent to avoid duplicate runs.
     void (async () => {

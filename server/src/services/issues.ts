@@ -21,7 +21,7 @@ import {
   projectWorkspaces,
   projects,
 } from "@paperclipai/db";
-import { extractAgentMentionIds, extractProjectMentionIds } from "@paperclipai/shared";
+import { extractAgentMentionIds, extractProjectMentionIds, extractUserMentionIds } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
 import {
   defaultIssueExecutionWorkspaceSettingsForProject,
@@ -1626,6 +1626,45 @@ export function issueService(db: Db) {
       for (const agent of rows) {
         if (tokens.has(agent.name.toLowerCase())) {
           resolved.add(agent.id);
+        }
+      }
+      return [...resolved];
+    },
+
+    findMentionedUsers: async (companyId: string, body: string) => {
+      const re = /\B@([^\s@,!?.]+)/g;
+      const tokens = new Set<string>();
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(body)) !== null) {
+        const normalized = normalizeAgentMentionToken(m[1]);
+        if (normalized) tokens.add(normalized.toLowerCase());
+      }
+      const explicitUserMentionIds = extractUserMentionIds(body);
+      if (explicitUserMentionIds.length === 0 && tokens.size === 0) return [];
+      const rows = await db
+        .select({ id: authUsers.id, name: authUsers.name })
+        .from(authUsers)
+        .innerJoin(
+          companyMemberships,
+          and(
+            eq(companyMemberships.principalType, "user"),
+            eq(companyMemberships.principalId, authUsers.id),
+            eq(companyMemberships.companyId, companyId),
+            eq(companyMemberships.status, "active"),
+          ),
+        );
+      const resolved = new Set(explicitUserMentionIds);
+      for (const row of rows) {
+        if (tokens.has(row.name.toLowerCase())) {
+          resolved.add(row.id);
+        }
+      }
+      if (explicitUserMentionIds.length > 0) {
+        const validIds = new Set(rows.map((row) => row.id));
+        for (const mentionId of explicitUserMentionIds) {
+          if (!validIds.has(mentionId)) {
+            resolved.delete(mentionId);
+          }
         }
       }
       return [...resolved];

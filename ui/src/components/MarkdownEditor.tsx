@@ -26,7 +26,7 @@ import {
   thematicBreakPlugin,
   type RealmPlugin,
 } from "@mdxeditor/editor";
-import { buildAgentMentionHref, buildProjectMentionHref } from "@paperclipai/shared";
+import { buildAgentMentionHref, buildProjectMentionHref, buildUserMentionHref } from "@paperclipai/shared";
 import { AgentIcon } from "./AgentIconPicker";
 import { applyMentionChipDecoration, clearMentionChipDecoration, parseMentionChipHref } from "../lib/mention-chips";
 import { MentionAwareLinkNode, mentionAwareLinkNodeReplacement } from "../lib/mention-aware-link-node";
@@ -38,11 +38,12 @@ import { cn } from "../lib/utils";
 export interface MentionOption {
   id: string;
   name: string;
-  kind?: "agent" | "project";
+  kind?: "agent" | "project" | "human";
   agentId?: string;
   agentIcon?: string | null;
   projectId?: string;
   projectColor?: string | null;
+  userId?: string;
 }
 
 /* ---- Editor props ---- */
@@ -166,6 +167,9 @@ function detectMention(container: HTMLElement): MentionState | null {
 function mentionMarkdown(option: MentionOption): string {
   if (option.kind === "project" && option.projectId) {
     return `[@${option.name}](${buildProjectMentionHref(option.projectId, option.projectColor ?? null)}) `;
+  }
+  if (option.kind === "human" && option.userId) {
+    return `[@${option.name}](${buildUserMentionHref(option.userId)}) `;
   }
   const agentId = option.agentId ?? option.id.replace(/^agent:/, "");
   return `[@${option.name}](${buildAgentMentionHref(agentId, option.agentIcon ?? null)}) `;
@@ -580,6 +584,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
                   className="inline-flex h-2 w-2 rounded-full border border-border/50"
                   style={{ backgroundColor: option.projectColor ?? "#64748b" }}
                 />
+              ) : option.kind === "human" ? (
+                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-slate-500/70" />
               ) : (
                 <AgentIcon
                   icon={option.agentIcon}
@@ -590,6 +596,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
               {option.kind === "project" && option.projectId && (
                 <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
                   Project
+                </span>
+              )}
+              {option.kind === "human" && (
+                <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Human
                 </span>
               )}
             </button>

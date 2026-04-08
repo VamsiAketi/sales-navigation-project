@@ -380,8 +380,18 @@ export function IssueDetail() {
         projectColor: project.color,
       });
     }
+    for (const member of members ?? []) {
+      if (member.principalType === "user" && member.user) {
+        options.push({
+          id: `user:${member.user.id}`,
+          name: member.user.id === currentUserId ? "Me" : member.user.name,
+          kind: "human",
+          userId: member.user.id,
+        });
+      }
+    }
     return options;
-  }, [agents, orderedProjects]);
+  }, [agents, orderedProjects, members, currentUserId]);
 
   const childIssues = useMemo(() => {
     if (!allIssues || !issue) return [];
