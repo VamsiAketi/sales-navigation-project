@@ -201,7 +201,7 @@ function ActorIdentity({ evt, agentMap, userNameMap }: { evt: ActivityEvent; age
   return <Identity name={id || "Unknown"} size="sm" />;
 }
 
-export function IssueDetail() {
+export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   const { issueId } = useParams<{ issueId: string }>();
   const { selectedCompanyId } = useCompany();
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
@@ -726,7 +726,7 @@ export function IssueDetail() {
   );
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className={fullWidth ? "space-y-6" : "max-w-2xl space-y-6"}>
       {/* Parent chain breadcrumb */}
       {ancestors.length > 0 && (
         <nav className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">

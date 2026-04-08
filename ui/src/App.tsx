@@ -393,7 +393,7 @@ function IssueDetailModal() {
       >
         <div className="flex h-full min-h-0">
           <div className="min-w-0 flex-1 overflow-y-auto p-6">
-            <IssueDetail />
+            <IssueDetail fullWidth />
           </div>
           <IssueDetailModalTaskInfoPanel
             onGoToPage={() => { if (issueId) navigate(`/issues/${issueId}`); }}
