@@ -624,7 +624,7 @@ export function KanbanBoard({
           Lives outside the overflow-x-auto card container so sticky top-0 works
           against the page scroll. bg-background ensures no bleed between the two
           sibling divs. JS scroll-sync keeps columns aligned horizontally.       */}
-      <div className="sticky top-0 z-50 -mx-2 mb-0 bg-background">
+      <div className="sticky top-0 z-50 -mx-2 mb-0 bg-background pb-px border-b border-background">
         <div
           ref={headerScrollRef}
           className="flex gap-4 overflow-x-hidden px-2"
