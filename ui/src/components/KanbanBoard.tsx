@@ -159,13 +159,11 @@ interface KanbanBoardProps {
   highlightIssueId?: string | null;
   /** Show a "New" pill for this issue (longer than highlight ring). */
   newBadgeIssueId?: string | null;
-  onOpenIssue?: (issue: Issue) => void;
 }
 
 type IssueModalLinkState = {
   issueModal?: boolean;
   backgroundLocation?: unknown;
-  boardContext?: boolean;
 };
 
 function getSortKey(issue: Issue): number {
@@ -322,7 +320,6 @@ function KanbanCard({
   statusColorMap,
   highlight,
   showNewBadge,
-  onOpenIssue,
 }: {
   issue: Issue;
   agentName: string | null;
@@ -334,7 +331,6 @@ function KanbanCard({
   statusColorMap?: Map<string, string>;
   highlight?: boolean;
   showNewBadge?: boolean;
-  onOpenIssue?: (issue: Issue) => void;
 }) {
   const data = useMemo(() => ({ issue }), [issue]);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -369,12 +365,6 @@ function KanbanCard({
         to={`/issues/${issue.identifier ?? issue.id}`}
         state={modalLinkState ? { ...(issueLinkState as Record<string, unknown> | undefined), ...modalLinkState } : issueLinkState}
         className="block no-underline text-inherit"
-        onClick={(event) => {
-          if (!onOpenIssue) return;
-          event.preventDefault();
-          event.stopPropagation();
-          onOpenIssue(issue);
-        }}
       >
         <KanbanCardContent
           issue={issue}
@@ -403,7 +393,6 @@ const KanbanColumn = memo(function KanbanColumn({
   statusColorMap,
   highlightIssueId,
   newBadgeIssueId,
-  onOpenIssue,
 }: {
   status: string;
   columnLabel?: string;
@@ -417,7 +406,6 @@ const KanbanColumn = memo(function KanbanColumn({
   statusColorMap?: Map<string, string>;
   highlightIssueId?: string | null;
   newBadgeIssueId?: string | null;
-  onOpenIssue?: (issue: Issue) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   // columnColor (from projectStatuses) always wins; then hardcoded map; then neutral fallback
@@ -499,7 +487,6 @@ const KanbanColumn = memo(function KanbanColumn({
             statusColorMap={statusColorMap}
             highlight={highlightIssueId === issue.id}
             showNewBadge={newBadgeIssueId === issue.id}
-            onOpenIssue={onOpenIssue}
           />
         ))}
       </div>
@@ -518,14 +505,12 @@ export function KanbanBoard({
   projectStatuses,
   highlightIssueId = null,
   newBadgeIssueId = null,
-  onOpenIssue,
 }: KanbanBoardProps) {
   const location = useLocation();
   const [activeId, setActiveId] = useState<string | null>(null);
   const modalLinkState = useMemo<IssueModalLinkState>(() => ({
     issueModal: true,
     backgroundLocation: location,
-    boardContext: true,
   }), [location]);
 
   // optimisticMoves: issueId → targetStatus applied immediately on drop so the
@@ -681,7 +666,6 @@ export function KanbanBoard({
               statusColorMap={statusColorMap}
               highlightIssueId={highlightIssueId}
               newBadgeIssueId={newBadgeIssueId}
-              onOpenIssue={onOpenIssue}
             />
           );
         })}
@@ -703,7 +687,6 @@ export function KanbanBoard({
             statusColorMap={statusColorMap}
             showNewBadge={newBadgeIssueId === activeIssue.id}
             isOverlay
-            onOpenIssue={onOpenIssue}
           />
         ) : null}
       </DragOverlay>

@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
-import { useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { useDialog } from "../context/DialogContext";
@@ -29,11 +28,9 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, ChevronDown, ExternalLink } from "lucide-react";
+import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, ChevronDown } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { KanbanBoard, AssigneeAvatar, nameToInitials } from "./KanbanBoard";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { IssueDetail } from "@/pages/IssueDetail";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Helpers ── */
@@ -395,7 +392,6 @@ export function IssuesList({
   projectStatuses,
   forceListView = false,
 }: IssuesListProps) {
-  const navigate = useNavigate();
   const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialog();
   const { pushToast } = useToast();
@@ -439,7 +435,6 @@ export function IssuesList({
   const normalizedIssueSearch = debouncedIssueSearch.trim();
   const [highlightIssueId, setHighlightIssueId] = useState<string | null>(null);
   const [newBadgeIssueId, setNewBadgeIssueId] = useState<string | null>(null);
-  const [openIssueId, setOpenIssueId] = useState<string | null>(null);
   const focusHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -1030,7 +1025,6 @@ export function IssuesList({
           issueLinkState={issueLinkState}
           highlightIssueId={highlightIssueId}
           newBadgeIssueId={newBadgeIssueId}
-          onOpenIssue={(issue) => setOpenIssueId(issue.identifier ?? issue.id)}
         />
       ) : (
         groupedContent.map((group) => (
@@ -1258,28 +1252,6 @@ export function IssuesList({
           </Collapsible>
         ))
       )}
-
-      <Dialog open={Boolean(openIssueId)} onOpenChange={(open) => { if (!open) setOpenIssueId(null); }}>
-        <DialogContent className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="absolute right-12 top-4 z-50 h-8 w-8 rounded-xs opacity-70 transition-opacity hover:opacity-100"
-            title="Open full task page"
-            aria-label="Open full task page"
-            onClick={() => {
-              if (!openIssueId) return;
-              navigate(`/issues/${openIssueId}`);
-              setOpenIssueId(null);
-            }}
-          >
-            <ExternalLink className="h-4 w-4" />
-          </Button>
-          <div className="h-full overflow-y-auto p-6">
-            {openIssueId ? <IssueDetail issueId={openIssueId} /> : null}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
