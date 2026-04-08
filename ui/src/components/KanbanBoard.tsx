@@ -414,14 +414,14 @@ const KanbanColumn = memo(function KanbanColumn({
 
   return (
     <div
-      className="flex min-h-0 min-w-[272px] w-[272px] shrink-0 flex-col rounded-2xl"
+      className="flex min-w-[272px] w-[272px] shrink-0 flex-col rounded-2xl"
       style={{
         border: `2px solid ${dotColor}45`,
         boxShadow: `0 0 0 1px ${dotColor}18, 0 4px 16px ${dotColor}12`,
       }}
     >
-      {/* Fixed column chrome (accent + status header) — cards scroll in the pane below */}
-      <div className="relative z-20 shrink-0 rounded-t-2xl shadow-[0_10px_28px_-12px_rgba(0,0,0,0.55)] dark:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.85)]">
+      {/* Sticky status header */}
+      <div className="sticky top-0 z-20 shrink-0 rounded-t-2xl shadow-[0_10px_28px_-12px_rgba(0,0,0,0.55)] dark:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.85)]">
         <div
           className="h-1 w-full shrink-0 rounded-t-2xl"
           style={{ backgroundColor: dotColor }}
@@ -461,10 +461,10 @@ const KanbanColumn = memo(function KanbanColumn({
         </div>
       </div>
 
-      {/* Drop zone / card list — scrolls under the header stack */}
+      {/* Drop zone / card list */}
       <div
         ref={setNodeRef}
-        className={`kanban-col-${status} min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
+        className={`kanban-col-${status} min-h-[4rem] overflow-x-hidden rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
           isOver ? "bg-accent/30" : ""
         }`}
         style={{
@@ -648,7 +648,7 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="-mx-2 flex h-[min(100dvh-10.5rem,56rem)] min-h-0 items-stretch gap-4 overflow-x-auto px-2 pb-4">
+      <div className="-mx-2 flex items-start gap-4 overflow-x-auto px-2 pb-4">
         {activeColumns.map((status) => {
           const ps = projectStatuses?.find((s) => s.value === status);
           return (
