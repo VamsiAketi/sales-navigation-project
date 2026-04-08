@@ -382,7 +382,7 @@ function IssueDetailModal() {
   const navigate = useNavigate();
   return (
     <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
-      <DialogContent className="h-[min(94dvh,60rem)] w-[min(98vw,92rem)] max-w-none overflow-hidden p-0">
+      <DialogContent className="h-[92dvh] w-[96vw] max-w-none overflow-hidden p-0 md:h-[88dvh] md:w-[70vw]">
         <div className="flex h-full min-h-0">
           <IssueDetailModalTaskInfoPanel />
           <div className="min-w-0 flex-1 overflow-y-auto p-6">
@@ -403,7 +403,7 @@ function IssueDetailModalTaskInfoPanel() {
   if (!panelContent) return null;
 
   return (
-    <aside className="hidden md:flex w-[360px] shrink-0 flex-col border-r border-border bg-card">
+    <aside className="hidden md:flex w-[380px] shrink-0 flex-col border-r border-border bg-card">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2">
         {logoSrc ? (
           <img
