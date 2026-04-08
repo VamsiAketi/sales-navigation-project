@@ -617,6 +617,9 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
+    {/* Single wrapper so ancestor space-y-* gaps don't bleed between
+        the sticky header div and the cards div (DndContext adds no DOM node) */}
+    <div>
       {/* ── Sticky header row ─────────────────────────────────────────────────────
           Lives outside the overflow-x-auto card container so sticky top-0 works
           against the page scroll. bg-background ensures no bleed between the two
@@ -729,6 +732,7 @@ export function KanbanBoard({
           />
         ) : null}
       </DragOverlay>
+    </div>
     </DndContext>
   );
 }
