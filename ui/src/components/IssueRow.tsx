@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Issue } from "@paperclipai/shared";
+import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { cn } from "../lib/utils";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
@@ -21,6 +21,8 @@ interface IssueRowProps {
   className?: string;
   /** Short-lived marker after creating a task (e.g. 30s). */
   showNewBadge?: boolean;
+  /** Custom project statuses to display for status icon */
+  projectStatuses?: ProjectIssueStatus[];
 }
 
 export function IssueRow({
@@ -36,6 +38,7 @@ export function IssueRow({
   onMarkRead,
   className,
   showNewBadge = false,
+  projectStatuses,
 }: IssueRowProps) {
   const issuePathId = issue.identifier ?? issue.id;
   const identifier = issue.identifier ?? issue.id.slice(0, 8);
@@ -53,7 +56,7 @@ export function IssueRow({
       )}
     >
       <span className="shrink-0 pt-px sm:hidden">
-        {mobileLeading ?? <StatusIcon status={issue.status} />}
+        {mobileLeading ?? <StatusIcon status={issue.status} projectStatuses={projectStatuses} />}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1 sm:contents">
         <span className="line-clamp-2 text-sm sm:order-2 sm:min-w-0 sm:flex-1 sm:truncate sm:line-clamp-none">
@@ -66,7 +69,7 @@ export function IssueRow({
           {desktopMetaLeading ?? (
             <>
               <span className="hidden shrink-0 sm:inline-flex">
-                <StatusIcon status={issue.status} />
+                <StatusIcon status={issue.status} projectStatuses={projectStatuses} />
               </span>
               <span className="shrink-0 font-mono text-xs text-muted-foreground">
                 {identifier}
