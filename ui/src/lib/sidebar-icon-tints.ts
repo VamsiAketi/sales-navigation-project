@@ -9,6 +9,7 @@ export const azureSidebarIcon = {
   costs: "text-[#107c10] dark:text-[#54b054]",
   goals: "text-[#d13438] dark:text-[#ff7a83]",
   inbox: "text-[#0078d4] dark:text-[#4cc2ff]",
+  tasks: "text-[#6f42c1] dark:text-[#d8b4fe]",
   routines: "text-[#8661c5] dark:text-[#c4b5fd]",
   audit: "text-[#d83b01] dark:text-[#ff9c5b]",
   team: "text-[#038387] dark:text-[#4dbbbc]",

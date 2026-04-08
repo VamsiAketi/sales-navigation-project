@@ -48,6 +48,7 @@ export type IssueViewState = {
   statuses: string[];
   priorities: string[];
   assignees: string[];
+  reporters: string[];
   labels: string[];
   projects: string[];
   sortField: "status" | "priority" | "title" | "created" | "updated";
@@ -62,6 +63,7 @@ const defaultViewState: IssueViewState = {
   statuses: [],
   priorities: [],
   assignees: [],
+  reporters: [],
   labels: [],
   projects: [],
   sortField: "updated",
@@ -117,6 +119,16 @@ function applyFilters(issues: Issue[], state: IssueViewState, currentUserId?: st
       return false;
     });
   }
+  if (state.reporters.length > 0) {
+    result = result.filter((issue) => {
+      for (const reporter of state.reporters) {
+        if (reporter === "__me" && currentUserId && issue.createdByUserId === currentUserId) return true;
+        if (issue.createdByAgentId === reporter) return true;
+        if (issue.createdByUserId === reporter) return true;
+      }
+      return false;
+    });
+  }
   if (state.labels.length > 0) result = result.filter((i) => (i.labelIds ?? []).some((id) => state.labels.includes(id)));
   if (state.projects.length > 0) result = result.filter((i) => i.projectId != null && state.projects.includes(i.projectId));
   return result;
@@ -149,6 +161,7 @@ function countActiveFilters(state: IssueViewState): number {
   if (state.statuses.length > 0) count++;
   if (state.priorities.length > 0) count++;
   if (state.assignees.length > 0) count++;
+  if (state.reporters.length > 0) count++;
   if (state.labels.length > 0) count++;
   if (state.projects.length > 0) count++;
   return count;
@@ -764,20 +777,20 @@ export function IssuesList({
                     className="h-3 w-3 ml-1 hidden sm:block"
                     onClick={(e) => {
                       e.stopPropagation();
-                      updateView({ statuses: [], priorities: [], assignees: [], labels: [], projects: [] });
+                      updateView({ statuses: [], priorities: [], assignees: [], reporters: [], labels: [], projects: [] });
                     }}
                   />
                 )}
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-[min(480px,calc(100vw-2rem))] p-0">
-              <div className="p-3 space-y-3">
+              <div className="p-3 space-y-3 max-h-[min(70vh,600px)] overflow-y-auto">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Filters</span>
                   {activeFilterCount > 0 && (
                     <button
                       className="text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => updateView({ statuses: [], priorities: [], assignees: [], labels: [], projects: [] })}
+                      onClick={() => updateView({ statuses: [], priorities: [], assignees: [], reporters: [], labels: [], projects: [] })}
                     >
                       Clear
                     </button>
@@ -887,6 +900,43 @@ export function IssuesList({
                             <Checkbox
                               checked={viewState.assignees.includes(agent.id)}
                               onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, agent.id) })}
+                            />
+                            <span className="text-sm">{agent.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Reporter */}
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Reporter</span>
+                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                        {currentUserId && (
+                          <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.reporters.includes("__me")}
+                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, "__me") })}
+                            />
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-sm">Me</span>
+                          </label>
+                        )}
+                        {humanMembers
+                          .filter((m) => m.id !== currentUserId)
+                          .map((member) => (
+                          <label key={member.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.reporters.includes(member.id)}
+                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, member.id) })}
+                            />
+                            <span className="text-sm">{member.name}</span>
+                          </label>
+                        ))}
+                        {(agents ?? []).map((agent) => (
+                          <label key={agent.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.reporters.includes(agent.id)}
+                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, agent.id) })}
                             />
                             <span className="text-sm">{agent.name}</span>
                           </label>
@@ -1112,6 +1162,7 @@ export function IssuesList({
                       <StatusIcon
                         status={issue.status}
                         onChange={(s) => onUpdateIssue(issue.id, { status: s })}
+                        projectStatuses={projectStatuses}
                       />
                     </span>
                   )}
@@ -1127,6 +1178,7 @@ export function IssuesList({
                         <StatusIcon
                           status={issue.status}
                           onChange={(s) => onUpdateIssue(issue.id, { status: s })}
+                          projectStatuses={projectStatuses}
                         />
                       </span>
                       <span className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -1294,6 +1346,7 @@ export function IssuesList({
                       </button>
                     </span>
                   ) : formatDate(issue.createdAt)}
+                  projectStatuses={projectStatuses}
                 />
               ))}
             </CollapsibleContent>

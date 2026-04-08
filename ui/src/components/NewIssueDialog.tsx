@@ -293,7 +293,7 @@ export function NewIssueDialog() {
   const { pushToast } = useToast();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [status, setStatus] = useState("todo");
+  const [status, setStatus] = useState("backlog");
   const [priority, setPriority] = useState("");
   const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
   const [assigneeValue, setAssigneeValue] = useState("");
@@ -576,7 +576,7 @@ export function NewIssueDialog() {
     if (newIssueDefaults.title) {
       setTitle(newIssueDefaults.title);
       setDescription(newIssueDefaults.description ?? "");
-      setStatus(newIssueDefaults.status ?? "todo");
+      setStatus(newIssueDefaults.status ?? "backlog");
       setPriority(newIssueDefaults.priority ?? "");
       setSelectedLabelIds([]);
       const defaultProjectId = newIssueDefaults.projectId ?? "";
@@ -596,7 +596,7 @@ export function NewIssueDialog() {
       const restoredProject = orderedProjects.find((project) => project.id === restoredProjectId);
       setTitle(draft.title);
       setDescription(draft.description);
-      setStatus(draft.status || "todo");
+      setStatus(draft.status || "backlog");
       setPriority(draft.priority);
       setSelectedLabelIds(Array.isArray(draft.labelIds) ? draft.labelIds : []);
       setAssigneeValue(
@@ -619,7 +619,7 @@ export function NewIssueDialog() {
     } else {
       const defaultProjectId = newIssueDefaults.projectId ?? "";
       const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
-      setStatus(newIssueDefaults.status ?? "todo");
+      setStatus(newIssueDefaults.status ?? "backlog");
       setPriority(newIssueDefaults.priority ?? "");
       setSelectedLabelIds([]);
       setProjectId(defaultProjectId);
@@ -665,7 +665,7 @@ export function NewIssueDialog() {
   function reset() {
     setTitle("");
     setDescription("");
-    setStatus("todo");
+    setStatus("backlog");
     setPriority("");
     setSelectedLabelIds([]);
     setAssigneeValue("");

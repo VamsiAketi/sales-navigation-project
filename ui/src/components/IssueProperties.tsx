@@ -15,6 +15,7 @@ import { useCompany } from "../context/CompanyContext";
 import { ApiError } from "../api/client";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
+import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { assigneeUpdateErrorMessage } from "../lib/permission-feedback";
@@ -275,7 +276,7 @@ function LabelUnselectedRow({
         <div className="flex items-center gap-1 mt-0.5 px-2 py-1 rounded border border-destructive/30 bg-destructive/5">
           <span className="flex-1 text-[11px] text-destructive">Delete "{label.name}"? Removes from all tasks.</span>
           <button type="button" className="px-1.5 py-0.5 text-[11px] rounded hover:bg-accent/50" onClick={onCancelDelete}>Cancel</button>
-          <button type="button" className="px-1.5 py-0.5 text-[11px] rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50" onClick={onConfirmDelete} disabled={disabled}>Delete</button>
+          <button type="button" className="px-1.5 py-0.5 text-[11px] rounded bg-destructive text-black dark:text-white hover:bg-destructive/90 disabled:opacity-50" onClick={onConfirmDelete} disabled={disabled}>Delete</button>
         </div>
       )}
     </div>
@@ -426,6 +427,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const currentProject = issue.projectId
     ? orderedProjects.find((project) => project.id === issue.projectId) ?? null
     : null;
+  const projectStatuses = useProjectIssueStatuses(issue.projectId ?? null);
+  const activeProjectStatuses = projectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
   const currentProjectExecutionWorkspacePolicy =
     experimentalSettings?.enableIsolatedWorkspaces === true
       ? currentProject?.executionWorkspacePolicy ?? null
@@ -560,7 +563,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                   <X className="h-2.5 w-2.5" />
                 </button>
                 {/* 🗑 deletes the label definition — hover only */}
-                <button
+                {/* <button
                   type="button"
                   className={cn(
                     "p-0.5 rounded-full transition-all opacity-0 group-hover/pill:opacity-100",
@@ -571,7 +574,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                   title={isUsed ? `Used in ${label.usageCount} task${label.usageCount === 1 ? "" : "s"} — cannot delete` : `Delete tag "${label.name}"`}
                 >
                   <Trash2 className="h-2.5 w-2.5" />
-                </button>
+                </button> */}
               </span>
             );
           })}
@@ -586,7 +589,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             Delete "{(labels ?? []).find((l) => l.id === confirmDeleteLabelId)?.name}"? Removes from all tasks.
           </span>
           <button type="button" className="shrink-0 px-1.5 py-0.5 text-[11px] rounded hover:bg-accent/50" onClick={() => setConfirmDeleteLabelId(null)}>Cancel</button>
-          <button type="button" className="shrink-0 px-1.5 py-0.5 text-[11px] rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50" onClick={() => { deleteLabel.mutate(confirmDeleteLabelId); setConfirmDeleteLabelId(null); }} disabled={deleteLabel.isPending}>Delete</button>
+          <button type="button" className="shrink-0 px-1.5 py-0.5 text-[11px] rounded bg-destructive text-black dark:text-white hover:bg-destructive/90 disabled:opacity-50" onClick={() => { deleteLabel.mutate(confirmDeleteLabelId); setConfirmDeleteLabelId(null); }} disabled={deleteLabel.isPending}>Delete</button>
         </div>
       )}
 
@@ -948,6 +951,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <StatusIcon
             status={issue.status}
             onChange={(status) => onUpdate({ status })}
+            projectStatuses={activeProjectStatuses.length > 0 ? activeProjectStatuses : undefined}
             showLabel
           />
         </PropertyRow>
@@ -1200,7 +1204,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
       <div className="space-y-1">
         {(issue.createdByAgentId || issue.createdByUserId) && (
-          <PropertyRow label="Created by">
+          <PropertyRow label="Reporter">
             {issue.createdByAgentId ? (
               <Link
                 to={`/agents/${issue.createdByAgentId}`}

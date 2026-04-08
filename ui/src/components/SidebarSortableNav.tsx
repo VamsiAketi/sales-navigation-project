@@ -12,6 +12,7 @@ import {
   Settings,
   Users,
   GripVertical,
+  CheckSquare,
 } from "lucide-react";
 import {
   DndContext,
@@ -200,6 +201,16 @@ export function SidebarPrimaryNav({ liveRunCount, inboxBadge, pluginContext }: S
             className={dragDisabled ? undefined : "!pl-2"}
           />
         );
+      case "tasks":
+        return (
+          <SidebarNavItem
+            to="/issues"
+            label="Tasks"
+            icon={CheckSquare}
+            iconClassName={azureSidebarIcon.tasks}
+            className={dragDisabled ? undefined : "!pl-2"}
+          />
+        );
       case "team":
         return (
           <SidebarNavItem
@@ -222,8 +233,6 @@ export function SidebarPrimaryNav({ liveRunCount, inboxBadge, pluginContext }: S
             className={dragDisabled ? undefined : "!pl-2"}
           />
         ) : null;
-      default:
-        return null;
     }
   };
 
