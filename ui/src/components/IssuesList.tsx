@@ -712,7 +712,7 @@ export function IssuesList({
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="relative z-[-100] flex items-center justify-between gap-2 sm:gap-3">
+      <div className="flex items-center justify-between gap-2 sm:gap-3">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Button size="sm" variant="outline" onClick={() => openNewIssue(newIssueDefaults())}>
             <Plus className="h-4 w-4 sm:mr-1" />
