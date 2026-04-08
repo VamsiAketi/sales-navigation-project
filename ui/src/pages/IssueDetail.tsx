@@ -200,8 +200,9 @@ function ActorIdentity({ evt, agentMap, userNameMap }: { evt: ActivityEvent; age
   return <Identity name={id || "Unknown"} size="sm" />;
 }
 
-export function IssueDetail() {
-  const { issueId } = useParams<{ issueId: string }>();
+export function IssueDetail({ issueId: issueIdOverride }: { issueId?: string }) {
+  const { issueId: routeIssueId } = useParams<{ issueId: string }>();
+  const issueId = issueIdOverride ?? routeIssueId;
   const { selectedCompanyId } = useCompany();
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
