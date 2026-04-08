@@ -1,5 +1,5 @@
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "@/lib/router";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
 import type { Location as RouterLocation } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
@@ -382,7 +382,20 @@ function IssueDetailModal() {
   const navigate = useNavigate();
   return (
     <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
-      <DialogContent className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]">
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="bg-background/96 backdrop-blur-sm"
+        className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]"
+      >
+        <DialogClose asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute right-4 top-4 z-50 border-destructive/60 text-destructive hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            Cancel
+          </Button>
+        </DialogClose>
         <div className="flex h-full min-h-0">
           <div className="min-w-0 flex-1 overflow-y-auto p-6">
             <IssueDetail />
