@@ -382,7 +382,7 @@ function IssueDetailModal() {
   const navigate = useNavigate();
   return (
     <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
-      <DialogContent className="h-[94dvh] w-[96vw] max-w-none overflow-hidden p-0 md:h-[90dvh] md:w-[62vw] md:min-w-[980px]">
+      <DialogContent className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]">
         <div className="flex h-full min-h-0">
           <div className="min-w-0 flex-1 overflow-y-auto p-6">
             <IssueDetail />
