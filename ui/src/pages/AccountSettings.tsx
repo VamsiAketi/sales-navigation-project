@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Eye, EyeOff, KeyRound, User, X, Pencil, Check } from "lucide-react";
+import { Bell, Eye, EyeOff, KeyRound, Mail, User, X, Pencil, Check } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { PageTabBar } from "@/components/PageTabBar";
@@ -386,7 +386,78 @@ function ChangePasswordForm() {
   );
 }
 
-function AccountDetailsTab() {
+// ---------------------------------------------------------------------------
+// Send reset link section
+// ---------------------------------------------------------------------------
+
+function SendResetLinkSection({ email }: { email: string | null }) {
+  const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!email) throw new Error("No email address on your account.");
+      return authApi.forgotPassword({
+        email,
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      });
+    },
+    onSuccess: () => {
+      setStatus("sent");
+      setErrorMessage(null);
+    },
+    onError: (err) => {
+      setStatus("error");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to send reset link.");
+    },
+  });
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold">Reset Password via Email</h3>
+        <p className="text-sm text-muted-foreground">
+          Don&rsquo;t remember your current password? We&rsquo;ll send a reset link to your email address so you can set a new one.
+        </p>
+      </div>
+
+      <div className="border-t border-border pt-4 space-y-3">
+        {email ? (
+          <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground/70 max-w-lg">
+            <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{email}</span>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">No email address associated with your account.</p>
+        )}
+
+        {status === "sent" ? (
+          <p className="rounded-md border border-green-500/40 bg-green-500/5 px-3 py-2 text-sm text-green-600 dark:text-green-400">
+            Reset link sent! Check your inbox at <strong>{email}</strong>.
+          </p>
+        ) : (
+          <>
+            {status === "error" && errorMessage && (
+              <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {errorMessage}
+              </p>
+            )}
+            <Button
+              variant="outline"
+              disabled={mutation.isPending || !email}
+              onClick={() => { setStatus("idle"); mutation.mutate(); }}
+            >
+              <Mail className="h-4 w-4 mr-2" />
+              {mutation.isPending ? "Sending…" : "Send Reset Link"}
+            </Button>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AccountDetailsTab({ email }: { email: string | null }) {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -408,6 +479,8 @@ function AccountDetailsTab() {
           <ChangePasswordForm />
         </div>
       </section>
+
+      <SendResetLinkSection email={email} />
     </div>
   );
 }
@@ -608,7 +681,7 @@ export function AccountSettings() {
         </TabsContent>
 
         <TabsContent value="account" className="mt-6">
-          <AccountDetailsTab />
+          <AccountDetailsTab email={session?.user.email ?? null} />
         </TabsContent>
         <TabsContent value="notifications" className="mt-6">
           <NotificationPreferencesTab />
