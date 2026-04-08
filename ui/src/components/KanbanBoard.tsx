@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "@/lib/router";
 import {
   DndContext,
@@ -414,53 +414,13 @@ const KanbanColumn = memo(function KanbanColumn({
 
   return (
     <div
-      className="flex min-w-[272px] w-[272px] shrink-0 flex-col rounded-2xl"
+      className="min-w-[272px] w-[272px] shrink-0 rounded-b-2xl"
       style={{
         border: `2px solid ${dotColor}45`,
+        borderTop: "none",
         boxShadow: `0 0 0 1px ${dotColor}18, 0 4px 16px ${dotColor}12`,
       }}
     >
-      {/* Sticky status header */}
-      <div className="sticky top-0 z-20 shrink-0 rounded-t-2xl shadow-[0_10px_28px_-12px_rgba(0,0,0,0.55)] dark:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.85)]">
-        <div
-          className="h-1 w-full shrink-0 rounded-t-2xl"
-          style={{ backgroundColor: dotColor }}
-        />
-        <div
-          className="flex items-center gap-2 border-b bg-card/95 px-3 py-2.5 backdrop-blur-md"
-          style={{
-            borderBottomColor: `${dotColor}40`,
-            backgroundImage: `linear-gradient(135deg, ${dotColor}20 0%, ${dotColor}0a 100%)`,
-          }}
-        >
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
-            style={{
-              backgroundColor: dotColor,
-              color: "#ffffff",
-              textShadow: "0 1px 2px rgba(0,0,0,0.25)",
-              boxShadow: `0 2px 6px ${dotColor}50`,
-            }}
-          >
-            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
-            {columnLabel ?? statusLabel(status)}
-          </span>
-
-          <span className="flex-1" />
-
-          <span
-            className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
-            style={{
-              backgroundColor: `${dotColor}22`,
-              color: dotColor,
-              border: `1.5px solid ${dotColor}55`,
-            }}
-          >
-            {issues.length}
-          </span>
-        </div>
-      </div>
-
       {/* Drop zone / card list */}
       <div
         ref={setNodeRef}
@@ -639,6 +599,15 @@ export function KanbanBoard({
 
   const handleDragCancel = useCallback(() => setActiveId(null), []);
 
+  const headerScrollRef = useRef<HTMLDivElement>(null);
+  const cardsScrollRef = useRef<HTMLDivElement>(null);
+
+  const onCardsScroll = useCallback(() => {
+    if (headerScrollRef.current && cardsScrollRef.current) {
+      headerScrollRef.current.scrollLeft = cardsScrollRef.current.scrollLeft;
+    }
+  }, []);
+
   return (
     <DndContext
       sensors={sensors}
@@ -648,7 +617,71 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="-mx-2 flex items-start gap-4 overflow-x-auto px-2 pb-4">
+      {/* ── Sticky header row ─────────────────────────────────────────────────────
+          Lives OUTSIDE the overflow-x-auto card container so that
+          `sticky top-0` works against the page scroll, not a nested container. */}
+      <div className="sticky top-0 z-30 -mx-2">
+        <div
+          ref={headerScrollRef}
+          className="flex gap-4 overflow-x-hidden px-2"
+        >
+          {activeColumns.map((status) => {
+            const ps = projectStatuses?.find((s) => s.value === status);
+            const accent = getAccent(status, ps?.color);
+            const dotColor = accent.dot;
+            return (
+              <div
+                key={status}
+                className="min-w-[272px] w-[272px] shrink-0 rounded-t-2xl shadow-[0_10px_28px_-12px_rgba(0,0,0,0.45)] dark:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.75)]"
+                style={{ border: `2px solid ${dotColor}45`, borderBottom: "none" }}
+              >
+                <div
+                  className="h-1 w-full rounded-t-2xl"
+                  style={{ backgroundColor: dotColor }}
+                />
+                <div
+                  className="flex items-center gap-2 border-b bg-card/95 px-3 py-2.5 backdrop-blur-md"
+                  style={{
+                    borderBottomColor: `${dotColor}40`,
+                    backgroundImage: `linear-gradient(135deg, ${dotColor}20 0%, ${dotColor}0a 100%)`,
+                  }}
+                >
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+                    style={{
+                      backgroundColor: dotColor,
+                      color: "#ffffff",
+                      textShadow: "0 1px 2px rgba(0,0,0,0.25)",
+                      boxShadow: `0 2px 6px ${dotColor}50`,
+                    }}
+                  >
+                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
+                    {ps?.name ?? statusLabel(status)}
+                  </span>
+                  <span className="flex-1" />
+                  <span
+                    className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
+                    style={{
+                      backgroundColor: `${dotColor}22`,
+                      color: dotColor,
+                      border: `1.5px solid ${dotColor}55`,
+                    }}
+                  >
+                    {(columnIssues[status] ?? []).length}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Card rows — horizontally scrollable, page scrolls vertically ───────── */}
+      <div
+        ref={cardsScrollRef}
+        className="-mx-2 flex items-start gap-4 overflow-x-auto px-2 pb-4"
+        onScroll={onCardsScroll}
+      >
         {activeColumns.map((status) => {
           const ps = projectStatuses?.find((s) => s.value === status);
           return (
