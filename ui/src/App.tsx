@@ -4,7 +4,7 @@ import type { Location as RouterLocation } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ArrowUpRight } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Layout } from "./components/Layout";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { authApi } from "./api/auth";
@@ -389,12 +389,13 @@ function IssueDetailModal() {
   return (
     <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
       <DialogContent
+        overlayClassName="bg-background"
         className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]"
       >
         <Button
           variant="ghost"
           size="icon-sm"
-          className="absolute right-12 top-4 z-50"
+          className="absolute right-12 top-4 z-50 h-8 w-8 rounded-xs opacity-70 transition-opacity hover:opacity-100"
           title="Open full task page"
           aria-label="Open full task page"
           onClick={() => {
@@ -402,7 +403,7 @@ function IssueDetailModal() {
             navigate(`/issues/${issueId}`);
           }}
         >
-          <ArrowUpRight className="h-4 w-4" />
+          <ExternalLink className="h-4 w-4" />
         </Button>
         <div className="flex h-full min-h-0">
           <div className="min-w-0 flex-1 overflow-y-auto p-6">
