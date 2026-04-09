@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, ChevronDown, EyeOff, Eye } from "lucide-react";
+import { CircleDot, Plus, ArrowUpDown, Layers, Check, ChevronRight, List, Columns3, User, Search, ChevronDown, EyeOff, Eye } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { KanbanBoard, AssigneeAvatar, nameToInitials } from "./KanbanBoard";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
@@ -311,18 +311,23 @@ function AssigneeFilterStrip({
   const visible  = boardAssignees.slice(0, MAX_VISIBLE);
   const hidden   = boardAssignees.slice(MAX_VISIBLE);
   const overflow = hidden.length;
-  const hasActive = activeIds.length > 0;
+  const selectedVisibleCount = visible.filter((member) => activeIds.includes(member.id)).length;
+  const selectedHiddenCount = hidden.filter((member) => activeIds.includes(member.id)).length;
+  const hasHiddenActive = selectedHiddenCount > 0;
+  const selectedAssigneeCount =
+    selectedVisibleCount + selectedHiddenCount + (activeIds.includes("__unassigned") ? 1 : 0);
+  const hasAnySelection = selectedAssigneeCount > 0;
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex h-9 items-center gap-1 rounded-md border border-border bg-muted/30 px-1.5">
       {/* Unassigned toggle */}
       <button
         title="Unassigned"
         onClick={() => onToggle("__unassigned")}
-        className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all
+        className={`flex h-6 w-6 items-center justify-center rounded-full border transition-all
           ${activeIds.includes("__unassigned")
-            ? "border-primary bg-accent text-foreground ring-2 ring-primary ring-offset-1 ring-offset-background"
-            : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
+            ? "border-primary bg-accent text-foreground ring-1 ring-primary/60"
+            : "border-border text-muted-foreground opacity-70 hover:opacity-100 hover:text-foreground hover:border-foreground/40"
           }`}
       >
         <User className="h-3.5 w-3.5" />
@@ -336,7 +341,14 @@ function AssigneeFilterStrip({
             key={member.id}
             title={member.label}
             onClick={() => onToggle(member.id)}
-            className={`transition-all rounded-full ${isActive ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "opacity-70 hover:opacity-100"}`}
+            className={cn(
+              "rounded-full transition-all",
+              isActive
+                ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                : hasAnySelection
+                  ? "opacity-60 grayscale-15 hover:opacity-90"
+                  : "hover:opacity-90",
+            )}
           >
             <AssigneeAvatar
               name={member.label}
@@ -354,9 +366,9 @@ function AssigneeFilterStrip({
           <PopoverTrigger asChild>
             <button
               title={`${overflow} more assignees`}
-              className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-medium transition-all
-                ${hidden.some((m) => activeIds.includes(m.id))
-                  ? "border-primary bg-primary/10 text-primary ring-2 ring-primary ring-offset-1 ring-offset-background"
+              className={`flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-medium transition-all
+                ${hasHiddenActive
+                  ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/60"
                   : "border-border bg-muted text-muted-foreground hover:text-foreground hover:border-foreground/40"
                 }`}
             >
@@ -373,18 +385,9 @@ function AssigneeFilterStrip({
           </PopoverContent>
         </Popover>
       )}
-
-
-      {/* Active filter summary label */}
-      {hasActive && (
-        <span className="hidden sm:block max-w-[120px] truncate text-xs text-muted-foreground">
-          {activeIds
-            .filter((id) => id !== "__unassigned")
-            .map((id) => boardAssignees.find((m) => m.id === id)?.label ?? id.slice(0, 6))
-            .concat(activeIds.includes("__unassigned") ? ["Unassigned"] : [])
-            .join(", ")}
-        </span>
-      )}
+      <span className="ml-0.5 text-[11px] font-medium text-muted-foreground">
+        {selectedAssigneeCount} selected
+      </span>
     </div>
   );
 }
@@ -674,6 +677,11 @@ export function IssuesList({
   }, [humanMembers, agents]);
 
   const activeFilterCount = countActiveFilters(viewState);
+  const statusFilterCount = viewState.statuses.length + (viewState.showHidden ? 1 : 0);
+  const priorityFilterCount = viewState.priorities.length;
+  const reporterFilterCount = viewState.reporters.length;
+  const labelFilterCount = viewState.labels.length;
+  const projectFilterCount = viewState.projects.length;
 
   const groupedContent = useMemo(() => {
     if (viewState.groupBy === "none") {
@@ -732,15 +740,31 @@ export function IssuesList({
     <div className="space-y-4">
       {/* Toolbar */}
       <div
-        className="sticky top-0 z-[60] bg-background -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center justify-between gap-2 sm:gap-3"
+        className="sticky top-0 z-60 -mx-4 border-b border-border/80 bg-background/95 px-4 py-2 backdrop-blur supports-backdrop-filter:bg-background/80 md:-mx-6 md:px-6"
         style={{ willChange: 'transform' }}
       >
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <Button size="sm" variant="outline" onClick={() => openNewIssue(newIssueDefaults())}>
-            <Plus className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">New Task</span>
-          </Button>
-          <div className="relative w-48 sm:w-64 md:w-80">
+        <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
+          {/* View mode toggle */}
+          {!forceListView && (
+            <div className="flex h-9 items-center overflow-hidden rounded-md border border-border">
+              <button
+                className={`flex h-9 w-9 items-center justify-center transition-colors ${viewState.viewMode === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => updateView({ viewMode: "list" })}
+                title="List view"
+              >
+                <List className="h-3.5 w-3.5" />
+              </button>
+              <button
+                className={`flex h-9 w-9 items-center justify-center transition-colors ${viewState.viewMode === "board" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => updateView({ viewMode: "board" })}
+                title="Board view"
+              >
+                <Columns3 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          <div className="relative w-36 sm:w-48 md:w-56">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={issueSearch}
@@ -749,7 +773,7 @@ export function IssuesList({
                 onSearchChange?.(e.target.value);
               }}
               placeholder="Search tasks..."
-              className="pl-7 text-xs sm:text-sm"
+              className="h-9 pl-7 text-sm"
               aria-label="Search issues"
             />
           </div>
@@ -762,257 +786,217 @@ export function IssuesList({
               onClear={() => updateView({ assignees: [] })}
             />
           )}
-        </div>
+          </div>
 
-        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
-          {/* View mode toggle — hidden on the global Tasks page (forceListView), visible on project pages */}
-          {!forceListView && (
-            <div className="flex items-center border border-border rounded-md overflow-hidden mr-1">
-              <button
-                className={`p-1.5 transition-colors ${viewState.viewMode === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() => updateView({ viewMode: "list" })}
-                title="List view"
-              >
-                <List className="h-3.5 w-3.5" />
-              </button>
-              <button
-                className={`p-1.5 transition-colors ${viewState.viewMode === "board" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() => updateView({ viewMode: "board" })}
-                title="Board view"
-              >
-                <Columns3 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Filter */}
+        <div className="flex items-center gap-1.5">
+          {/* Top-level filter dropdowns */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className={`text-xs ${activeFilterCount > 0 ? "text-blue-600 dark:text-blue-400" : ""}`}>
-                <Filter className="h-3.5 w-3.5 sm:h-3 sm:w-3 sm:mr-1" />
-                <span className="hidden sm:inline">{activeFilterCount > 0 ? `Filters: ${activeFilterCount}` : "Filter"}</span>
-                {activeFilterCount > 0 && (
-                  <span className="sm:hidden text-[10px] font-medium ml-0.5">{activeFilterCount}</span>
-                )}
-                {activeFilterCount > 0 && (
-                  <X
-                    className="h-3 w-3 ml-1 hidden sm:block"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateView({ statuses: [], priorities: [], assignees: [], reporters: [], labels: [], projects: [] });
-                    }}
-                  />
-                )}
+              <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", statusFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
+                <span>Status</span>
+                {statusFilterCount > 0 && <span className="text-[10px] font-medium">{statusFilterCount}</span>}
+                <ChevronDown className="h-3.5 w-3.5" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-[min(480px,calc(100vw-2rem))] p-0">
-              <div className="p-3 space-y-3 max-h-[min(70vh,600px)] overflow-y-auto">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Filters</span>
-                  {activeFilterCount > 0 && (
-                    <button
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => updateView({ statuses: [], priorities: [], assignees: [], reporters: [], labels: [], projects: [] })}
-                    >
-                      Clear
-                    </button>
+            <PopoverContent align="end" className="w-64 p-2">
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5 border-b border-border pb-2">
+                  {quickFilterPresets.map((preset) => {
+                    const isActive = !viewState.showHidden && arraysEqual(viewState.statuses, preset.statuses);
+                    return (
+                      <button
+                        key={preset.label}
+                        className={cn(
+                          "h-7 rounded-full border px-2.5 text-[11px] font-medium transition-colors",
+                          isActive
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                        )}
+                        onClick={() => updateView({ statuses: isActive ? [] : [...preset.statuses], showHidden: false })}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors",
+                    viewState.showHidden
+                      ? "border-amber-400/50 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
                   )}
-                </div>
-
-                {/* Quick filters */}
-                <div className="space-y-1.5">
-                  <span className="text-xs text-muted-foreground">Quick filters</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {quickFilterPresets.map((preset) => {
-                      const isActive = !viewState.showHidden && arraysEqual(viewState.statuses, preset.statuses);
-                      return (
-                        <button
-                          key={preset.label}
-                          className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                            isActive
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                          }`}
-                          onClick={() => updateView({ statuses: isActive ? [] : [...preset.statuses], showHidden: false })}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    })}
-                    <button
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                        viewState.showHidden
-                          ? "bg-amber-500/10 text-amber-600 border-amber-400/50 dark:text-amber-400"
-                          : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                      }`}
-                      onClick={() => updateView({ showHidden: !viewState.showHidden, statuses: [] })}
-                    >
-                      <EyeOff className="h-3 w-3" />
-                      Hidden
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border-t border-border" />
-
-                {/* Multi-column filter sections */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-                  {/* Status */}
-                  <div className="space-y-1">
-                    <span className="text-xs text-muted-foreground">Status</span>
-                    <div className="space-y-0.5">
-                      {/* {(projectStatuses && projectStatuses.length > 0
-                        ? projectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position)
-                        : statusOrder.map((s) => ({ value: s, name: statusLabel(s), color: undefined }))
-                      ).map((s) => ( */}
-                      {effectiveStatusOptions.map((s) => (
-                        <label key={s.value} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                          <Checkbox
-                            checked={viewState.statuses.includes(s.value)}
-                            onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s.value) })}
-                          />
-                          <StatusIcon status={s.value} projectStatuses={projectStatuses} />
-                          <span className="text-sm">{s.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Priority + Assignee stacked in right column */}
-                  <div className="space-y-3">
-                    {/* Priority */}
-                    <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">Priority</span>
-                      <div className="space-y-0.5">
-                        {priorityOrder.map((p) => (
-                          <label key={p} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                            <Checkbox
-                              checked={viewState.priorities.includes(p)}
-                              onCheckedChange={() => updateView({ priorities: toggleInArray(viewState.priorities, p) })}
-                            />
-                            <PriorityIcon priority={p} />
-                            <span className="text-sm">{statusLabel(p)}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Assignee */}
-                    <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">Assignee</span>
-                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                        <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                          <Checkbox
-                            checked={viewState.assignees.includes("__unassigned")}
-                            onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, "__unassigned") })}
-                          />
-                          <span className="text-sm">No assignee</span>
-                        </label>
-                        {currentUserId && (
-                          <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                            <Checkbox
-                              checked={viewState.assignees.includes("__me")}
-                              onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, "__me") })}
-                            />
-                            <User className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-sm">Me</span>
-                          </label>
-                        )}
-                        {(agents ?? []).map((agent) => (
-                          <label key={agent.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                            <Checkbox
-                              checked={viewState.assignees.includes(agent.id)}
-                              onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, agent.id) })}
-                            />
-                            <span className="text-sm">{agent.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Reporter */}
-                    <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">Reporter</span>
-                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                        {currentUserId && (
-                          <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                            <Checkbox
-                              checked={viewState.reporters.includes("__me")}
-                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, "__me") })}
-                            />
-                            <User className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-sm">Me</span>
-                          </label>
-                        )}
-                        {humanMembers
-                          .filter((m) => m.id !== currentUserId)
-                          .map((member) => (
-                          <label key={member.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                            <Checkbox
-                              checked={viewState.reporters.includes(member.id)}
-                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, member.id) })}
-                            />
-                            <span className="text-sm">{member.name}</span>
-                          </label>
-                        ))}
-                        {(agents ?? []).map((agent) => (
-                          <label key={agent.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                            <Checkbox
-                              checked={viewState.reporters.includes(agent.id)}
-                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, agent.id) })}
-                            />
-                            <span className="text-sm">{agent.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {labels && labels.length > 0 && (
-                      <div className="space-y-1">
-                        <span className="text-xs text-muted-foreground">Labels</span>
-                        <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                          {labels.map((label) => (
-                            <label key={label.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                              <Checkbox
-                                checked={viewState.labels.includes(label.id)}
-                                onCheckedChange={() => updateView({ labels: toggleInArray(viewState.labels, label.id) })}
-                              />
-                              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: label.color }} />
-                              <span className="text-sm">{label.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {projects && projects.length > 0 && (
-                      <div className="space-y-1">
-                        <span className="text-xs text-muted-foreground">Project</span>
-                        <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                          {projects.map((project) => (
-                            <label key={project.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
-                              <Checkbox
-                                checked={viewState.projects.includes(project.id)}
-                                onCheckedChange={() => updateView({ projects: toggleInArray(viewState.projects, project.id) })}
-                              />
-                              <span className="text-sm">{project.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  onClick={() => updateView({ showHidden: !viewState.showHidden, statuses: [] })}
+                >
+                  <EyeOff className="h-3 w-3" />
+                  Hidden
+                </button>
+                <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                  {effectiveStatusOptions.map((s) => (
+                    <label key={s.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+                      <Checkbox
+                        checked={viewState.statuses.includes(s.value)}
+                        onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s.value) })}
+                      />
+                      <StatusIcon status={s.value} projectStatuses={projectStatuses} />
+                      <span>{s.name}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             </PopoverContent>
           </Popover>
 
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", priorityFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
+                <span>Priority</span>
+                {priorityFilterCount > 0 && <span className="text-[10px] font-medium">{priorityFilterCount}</span>}
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 p-2">
+              <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                {priorityOrder.map((p) => (
+                  <label key={p} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+                    <Checkbox
+                      checked={viewState.priorities.includes(p)}
+                      onCheckedChange={() => updateView({ priorities: toggleInArray(viewState.priorities, p) })}
+                    />
+                    <PriorityIcon priority={p} />
+                    <span>{statusLabel(p)}</span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", reporterFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
+                <span>Reporter</span>
+                {reporterFilterCount > 0 && <span className="text-[10px] font-medium">{reporterFilterCount}</span>}
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 p-2">
+              <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                {currentUserId && (
+                  <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+                    <Checkbox
+                      checked={viewState.reporters.includes("__me")}
+                      onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, "__me") })}
+                    />
+                    <AssigneeAvatar
+                      name={userLabel(currentUserId) ?? "Me"}
+                      isAgent={false}
+                      size="sm"
+                    />
+                    <span>Me</span>
+                  </label>
+                )}
+                {humanMembers
+                  .filter((m) => m.id !== currentUserId)
+                  .map((member) => (
+                    <label key={member.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+                      <Checkbox
+                        checked={viewState.reporters.includes(member.id)}
+                        onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, member.id) })}
+                      />
+                      <AssigneeAvatar
+                        name={member.name}
+                        isAgent={false}
+                        size="sm"
+                      />
+                      <span>{member.name}</span>
+                    </label>
+                  ))}
+                {(agents ?? []).map((agent) => (
+                  <label key={agent.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+                    <Checkbox
+                      checked={viewState.reporters.includes(agent.id)}
+                      onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, agent.id) })}
+                    />
+                    <AssigneeAvatar
+                      name={agent.name}
+                      isAgent
+                      size="sm"
+                    />
+                    <span>{agent.name}</span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {labels && labels.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", labelFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
+                  <span>Labels</span>
+                  {labelFilterCount > 0 && <span className="text-[10px] font-medium">{labelFilterCount}</span>}
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-2">
+                <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                  {labels.map((label) => (
+                    <label key={label.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+                      <Checkbox
+                        checked={viewState.labels.includes(label.id)}
+                        onCheckedChange={() => updateView({ labels: toggleInArray(viewState.labels, label.id) })}
+                      />
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: label.color }} />
+                      <span>{label.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {projects && projects.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", projectFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
+                  <span>Project</span>
+                  {projectFilterCount > 0 && <span className="text-[10px] font-medium">{projectFilterCount}</span>}
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-2">
+                <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                  {projects.map((project) => (
+                    <label key={project.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+                      <Checkbox
+                        checked={viewState.projects.includes(project.id)}
+                        onCheckedChange={() => updateView({ projects: toggleInArray(viewState.projects, project.id) })}
+                      />
+                      <span>{project.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {activeFilterCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => updateView({ statuses: [], priorities: [], assignees: [], reporters: [], labels: [], projects: [] })}
+            >
+              Clear filters
+            </Button>
+          )}
+
           {/* Sort (list view only) */}
           {(forceListView || viewState.viewMode === "list") && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-xs">
-                  <ArrowUpDown className="h-3.5 w-3.5 sm:h-3 sm:w-3 sm:mr-1" />
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 px-3 text-xs">
+                  <ArrowUpDown className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Sort</span>
                 </Button>
               </PopoverTrigger>
@@ -1055,8 +1039,8 @@ export function IssuesList({
           {(forceListView || viewState.viewMode === "list") && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-xs">
-                  <Layers className="h-3.5 w-3.5 sm:h-3 sm:w-3 sm:mr-1" />
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 px-3 text-xs">
+                  <Layers className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Group</span>
                 </Button>
               </PopoverTrigger>
@@ -1083,6 +1067,12 @@ export function IssuesList({
               </PopoverContent>
             </Popover>
           )}
+
+        </div>
+        <Button size="sm" className="ml-auto h-9 px-3" onClick={() => openNewIssue(newIssueDefaults())}>
+          <Plus className="h-4 w-4 sm:mr-1" />
+          <span>New Task</span>
+        </Button>
         </div>
       </div>
 
@@ -1171,7 +1161,7 @@ export function IssuesList({
                   showNewBadge={newBadgeIssueId === issue.id}
                   className={
                     highlightIssueId === issue.id
-                      ? "relative z-[1] ring-2 ring-inset ring-primary/80 bg-primary/[0.06] motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]"
+                      ? "relative z-1 ring-2 ring-inset ring-primary/80 bg-primary/6 motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]"
                       : undefined
                   }
                   desktopLeadingSpacer
