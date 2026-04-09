@@ -132,6 +132,7 @@ export {
 
 export {
   manualIssueProjectIdRequiredMessage,
+  ISSUE_EXECUTION_WORKSPACE_PREFERENCES,
   createIssueSchema,
   createIssueLabelSchema,
   updateIssueSchema,
