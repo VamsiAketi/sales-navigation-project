@@ -5,7 +5,7 @@ import { authApi } from "../api/auth";
 import { healthApi } from "../api/health";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Eye, EyeOff, Mail, Lock } from "lucide-react";
+import { Sparkles, Eye, EyeOff, KeyRound, Mail, Lock } from "lucide-react";
 import { buildVisibleVersionLabel } from "@/components/Layout";
 
 type AuthMode = "sign_in" | "sign_up";
@@ -97,6 +97,21 @@ export function AuthPage() {
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Failed to send sign-in code");
+    },
+  });
+
+  const passkeyMutation = useMutation({
+    mutationFn: async () => {
+      await authApi.signInPasskey();
+    },
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      navigate(nextPath, { replace: true });
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Passkey sign-in failed");
     },
   });
 
@@ -322,6 +337,18 @@ export function AuthPage() {
                   >
                     <Mail className="h-3.5 w-3.5" />
                     Email OTP
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-1 rounded-md border border-border bg-background px-2 py-2 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+                    disabled={passkeyMutation.isPending}
+                    onClick={() => {
+                      setError(null);
+                      passkeyMutation.mutate();
+                    }}
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {passkeyMutation.isPending ? "..." : "Passkey"}
                   </button>
                 </div>
               </div>
