@@ -24,7 +24,6 @@ import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
 import { IssueProperties } from "../components/IssueProperties";
 import { LiveRunWidget } from "../components/LiveRunWidget";
 import type { MentionOption } from "../components/MarkdownEditor";
-import { ScrollToBottom } from "../components/ScrollToBottom";
 import { StatusIcon } from "../components/StatusIcon";
 import { PriorityIcon } from "../components/PriorityIcon";
 import { StatusBadge } from "../components/StatusBadge";
@@ -1266,7 +1265,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
         />
       )}
 
-      <ScrollToBottom rightOffset={panelVisible ? 320 : 0} />
     </div>
   );
 }
