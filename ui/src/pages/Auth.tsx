@@ -100,6 +100,21 @@ export function AuthPage() {
     },
   });
 
+  const passkeyMutation = useMutation({
+    mutationFn: async () => {
+      await authApi.signInPasskey();
+    },
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      navigate(nextPath, { replace: true });
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Passkey sign-in failed");
+    },
+  });
+
   const forgotPasswordMutation = useMutation({
     mutationFn: async () => {
       const redirectTo = typeof window !== "undefined"
@@ -445,6 +460,20 @@ export function AuthPage() {
                 </button>
                 <div className="h-px flex-1 bg-border" />
               </div>
+            )}
+            {!isResetMode && mode === "sign_in" && !useEmailCode && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={passkeyMutation.isPending}
+                onClick={() => {
+                  setError(null);
+                  passkeyMutation.mutate();
+                }}
+                className="w-full"
+              >
+                {passkeyMutation.isPending ? "Opening passkey..." : "Sign in with passkey"}
+              </Button>
             )}
             {!isResetMode && mode === "sign_in" && forgotRequested && (
               <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">

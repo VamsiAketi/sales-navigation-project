@@ -1,7 +1,15 @@
+import { createAuthClient } from "better-auth/client";
+import { passkeyClient } from "@better-auth/passkey/client";
+
 export type AuthSession = {
   session: { id: string; userId: string };
   user: { id: string; email: string | null; name: string | null; mustChangePassword?: boolean };
 };
+
+const betterAuthClient = createAuthClient({
+  baseURL: "/api/auth",
+  plugins: [passkeyClient()],
+});
 
 export type NotificationChannelType = "email" | "sms" | "whatsapp";
 export type ProjectNotificationEventType = "issue.status_changed" | "issue.comment_added" | "issue.assigned";
@@ -116,6 +124,28 @@ export const authApi = {
       email: input.email,
       otp: input.code,
     });
+  },
+
+  signInPasskey: async () => {
+    const result = await betterAuthClient.signIn.passkey();
+    if ("error" in result && result.error) {
+      const message =
+        (typeof result.error.message === "string" && result.error.message.length > 0)
+          ? result.error.message
+          : "Passkey sign-in failed";
+      throw new Error(message);
+    }
+  },
+
+  addPasskey: async (input?: { name?: string }) => {
+    const result = await betterAuthClient.passkey.addPasskey({ name: input?.name });
+    if ("error" in result && result.error) {
+      const message =
+        (typeof result.error.message === "string" && result.error.message.length > 0)
+          ? result.error.message
+          : "Passkey setup failed";
+      throw new Error(message);
+    }
   },
 
   signUpEmail: async (input: { name: string; email: string; password: string }) => {
