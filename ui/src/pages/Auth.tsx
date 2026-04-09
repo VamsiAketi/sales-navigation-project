@@ -391,19 +391,6 @@ export function AuthPage() {
                 >
                   Change email
                 </button>
-                <button
-                  type="button"
-                  className="w-full text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                  onClick={() => {
-                    setUseEmailCode(false);
-                    setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-                    setEmailCode("");
-                    setCodeSuccess(null);
-                    setError(null);
-                  }}
-                >
-                  Use password instead
-                </button>
               </div>
             )}
             {isResetMode && (
@@ -493,32 +480,53 @@ export function AuthPage() {
             {forgotSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{forgotSuccess}</p>}
             {resetSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{resetSuccess}</p>}
             {!(!isResetMode && mode === "sign_in" && forgotRequested) && !(useEmailCode && !codeSent) && (
-              <Button
-                type="submit"
-                disabled={isResetMode ? resetPasswordMutation.isPending : mutation.isPending}
-                aria-disabled={
-                  isResetMode
-                    ? !canSubmitReset || resetPasswordMutation.isPending
-                    : !canSubmit || mutation.isPending
-                }
-                className={`w-full ${
-                  isResetMode
-                    ? !canSubmitReset && !resetPasswordMutation.isPending ? "opacity-50" : ""
-                    : !canSubmit && !mutation.isPending ? "opacity-50" : ""
-                }`}
-              >
-                {isResetMode
-                  ? resetPasswordMutation.isPending
-                    ? "Resetting…"
-                    : "Reset Password"
-                  : mutation.isPending
-                    ? "Working…"
-                    : mode === "sign_in"
-                      ? useEmailCode
-                        ? "Verify & Login"
-                        : "Login"
-                      : "Create Account"}
-              </Button>
+              <>
+                <Button
+                  type="submit"
+                  disabled={isResetMode ? resetPasswordMutation.isPending : mutation.isPending}
+                  aria-disabled={
+                    isResetMode
+                      ? !canSubmitReset || resetPasswordMutation.isPending
+                      : !canSubmit || mutation.isPending
+                  }
+                  className={`w-full ${
+                    isResetMode
+                      ? !canSubmitReset && !resetPasswordMutation.isPending ? "opacity-50" : ""
+                      : !canSubmit && !mutation.isPending ? "opacity-50" : ""
+                  }`}
+                >
+                  {isResetMode
+                    ? resetPasswordMutation.isPending
+                      ? "Resetting…"
+                      : "Reset Password"
+                    : mutation.isPending
+                      ? "Working…"
+                      : mode === "sign_in"
+                        ? useEmailCode
+                          ? "Verify & Login"
+                          : "Login"
+                        : "Create Account"}
+                </Button>
+                {!isResetMode && mode === "sign_in" && useEmailCode && codeSent && (
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-border" />
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                      onClick={() => {
+                        setUseEmailCode(false);
+                        setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+                        setEmailCode("");
+                        setCodeSuccess(null);
+                        setError(null);
+                      }}
+                    >
+                      Use password instead
+                    </button>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+                )}
+              </>
             )}
           </form>
 
