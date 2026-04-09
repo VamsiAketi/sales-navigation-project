@@ -678,14 +678,16 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
           valueClassName="space-y-0.5"
         >
           {onUpdate || onFieldUpdate ? (
-            <InlineEditor
-              value={project.description ?? ""}
-              onSave={(description) => commitField("description", { description })}
-              as="p"
-              className="text-sm text-muted-foreground"
-              placeholder="Add a description..."
-              multiline
-            />
+            <div className="rounded-md border border-border bg-background p-2.5">
+              <InlineEditor
+                value={project.description ?? ""}
+                onSave={(description) => commitField("description", { description })}
+                as="p"
+                className="text-sm text-muted-foreground"
+                placeholder="Add a description..."
+                multiline
+              />
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">
               {project.description?.trim() || "No description"}

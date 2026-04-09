@@ -560,14 +560,14 @@ export function ProjectDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3 pt-4">
+      <div className="flex items-center gap-3 pt-4">
         <div className="h-7 flex items-center">
           <ColorPicker
             currentColor={project.color ?? "#6366f1"}
             onSelect={(color) => updateProject.mutate({ color })}
           />
         </div>
-        <div className="min-w-0 space-y-2">
+        <div className="min-w-0 space-y-1.5">
           <InlineEditor
             value={project.name}
             onSave={(name) => updateProject.mutate({ name })}
