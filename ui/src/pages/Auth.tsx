@@ -9,6 +9,7 @@ import { Sparkles, Eye, EyeOff } from "lucide-react";
 import { buildVisibleVersionLabel } from "@/components/Layout";
 
 type AuthMode = "sign_in" | "sign_up";
+type SignInMethod = "password" | "email_code";
 
 export function AuthPage() {
   const queryClient = useQueryClient();
@@ -21,6 +22,10 @@ export function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [signInMethod, setSignInMethod] = useState<SignInMethod>("password");
+  const [emailCode, setEmailCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [codeSuccess, setCodeSuccess] = useState<string | null>(null);
   const [forgotRequested, setForgotRequested] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
@@ -54,6 +59,10 @@ export function AuthPage() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (mode === "sign_in") {
+        if (signInMethod === "email_code") {
+          await authApi.signInEmailCode({ email: email.trim(), code: emailCode.trim() });
+          return;
+        }
         await authApi.signInEmail({ email: email.trim(), password });
         return;
       }
@@ -72,6 +81,20 @@ export function AuthPage() {
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Authentication failed");
+    },
+  });
+
+  const sendCodeMutation = useMutation({
+    mutationFn: async () => {
+      await authApi.sendEmailSignInCode({ email: email.trim() });
+    },
+    onSuccess: () => {
+      setError(null);
+      setCodeSent(true);
+      setCodeSuccess("Code sent. Check your email and enter the code to continue.");
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Failed to send sign-in code");
     },
   });
 
@@ -109,7 +132,7 @@ export function AuthPage() {
 
   const canSubmit =
     email.trim().length > 0 &&
-    password.trim().length > 0 &&
+    (signInMethod === "email_code" ? emailCode.trim().length > 0 : password.trim().length > 0) &&
     (mode === "sign_in" || (name.trim().length > 0 && password.trim().length >= 8));
   const canRequestReset = email.trim().length > 0;
   const canSubmitReset = password.trim().length >= 8 && confirmPassword === password;
@@ -169,7 +192,11 @@ export function AuthPage() {
               }
               if (mutation.isPending) return;
               if (!canSubmit) {
-                setError("Please fill in all required fields.");
+                setError(
+                  signInMethod === "email_code"
+                    ? "Enter your email and verification code."
+                    : "Please fill in all required fields.",
+                );
                 return;
               }
               mutation.mutate();
@@ -210,31 +237,97 @@ export function AuthPage() {
                 />
               </div>
             )}
-            <div>
-              <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
-              {!(!isResetMode && mode === "sign_in" && forgotRequested) && (
-                <div className="relative">
-                  <input
-                    id="password"
-                    name="password"
-                    className="w-full rounded-md border border-border bg-transparent px-3 py-2 pr-10 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
-                  />
+            {!isResetMode && mode === "sign_in" && (
+              <div className="rounded-md border border-border bg-muted/20 p-1 text-xs">
+                <div className="grid grid-cols-2 gap-1">
                   <button
                     type="button"
-                    tabIndex={-1}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className={`rounded-sm px-2 py-1 text-left ${
+                      signInMethod === "password" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setSignInMethod("password");
+                      setError(null);
+                    }}
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    Password
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-sm px-2 py-1 text-left ${
+                      signInMethod === "email_code" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setSignInMethod("email_code");
+                      setError(null);
+                    }}
+                  >
+                    Email code
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+            {(isResetMode || signInMethod === "password") && (
+              <div>
+                <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
+                {!(!isResetMode && mode === "sign_in" && forgotRequested) && (
+                  <div className="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 pr-10 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {!isResetMode && mode === "sign_in" && signInMethod === "email_code" && (
+              <div className="space-y-2">
+                <div>
+                  <label htmlFor="email-code" className="text-xs text-muted-foreground mb-1 block">Verification code</label>
+                  <input
+                    id="email-code"
+                    className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                    type="text"
+                    inputMode="numeric"
+                    value={emailCode}
+                    onChange={(event) => setEmailCode(event.target.value)}
+                    placeholder="Enter code"
+                    autoComplete="one-time-code"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={email.trim().length === 0 || sendCodeMutation.isPending}
+                  onClick={() => {
+                    if (email.trim().length === 0) {
+                      setError("Enter your email first.");
+                      return;
+                    }
+                    setCodeSuccess(null);
+                    setError(null);
+                    sendCodeMutation.mutate();
+                  }}
+                  className="w-full"
+                >
+                  {sendCodeMutation.isPending ? "Sending code…" : codeSent ? "Resend code" : "Send code"}
+                </Button>
+              </div>
+            )}
             {isResetMode && (
               <div>
                 <label htmlFor="confirm-password" className="text-xs text-muted-foreground mb-1 block">Confirm password</label>
@@ -296,6 +389,7 @@ export function AuthPage() {
               </div>
             )}
             {error && <p className="text-xs text-destructive">{error}</p>}
+            {codeSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{codeSuccess}</p>}
             {forgotSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{forgotSuccess}</p>}
             {resetSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{resetSuccess}</p>}
             {!(!isResetMode && mode === "sign_in" && forgotRequested) && (

@@ -104,6 +104,20 @@ export const authApi = {
     await authPost("/sign-in/email", input);
   },
 
+  sendEmailSignInCode: async (input: { email: string }) => {
+    await authPost("/email-otp/send-verification-otp", {
+      email: input.email,
+      type: "sign-in",
+    });
+  },
+
+  signInEmailCode: async (input: { email: string; code: string }) => {
+    await authPost("/sign-in/email-otp", {
+      email: input.email,
+      otp: input.code,
+    });
+  },
+
   signUpEmail: async (input: { name: string; email: string; password: string }) => {
     await authPost("/sign-up/email", input);
   },
