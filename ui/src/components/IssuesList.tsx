@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, ChevronDown } from "lucide-react";
+import { CircleDot, Plus, Filter, ArrowUpDown, Layers, Check, X, ChevronRight, List, Columns3, User, Search, ChevronDown, EyeOff, Eye } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { KanbanBoard, AssigneeAvatar, nameToInitials } from "./KanbanBoard";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
@@ -56,6 +56,7 @@ export type IssueViewState = {
   groupBy: "status" | "priority" | "assignee" | "none";
   viewMode: "list" | "board";
   collapsedGroups: string[];
+  showHidden: boolean;
 };
 
 const defaultViewState: IssueViewState = {
@@ -70,6 +71,7 @@ const defaultViewState: IssueViewState = {
   groupBy: "none",
   viewMode: "board",
   collapsedGroups: [],
+  showHidden: false,
 };
 
 const quickFilterPresets = [
@@ -489,16 +491,28 @@ export function IssuesList({
     enabled: !!selectedCompanyId && normalizedIssueSearch.length > 0,
   });
 
+  const { data: hiddenIssues = [], isLoading: hiddenLoading } = useQuery({
+    queryKey: [...queryKeys.issues.list(selectedCompanyId!), "hidden"],
+    queryFn: async () => {
+      const all = await issuesApi.list(selectedCompanyId!, { includeHidden: true });
+      return all.filter((i) => i.hiddenAt != null);
+    },
+    enabled: !!selectedCompanyId && viewState.showHidden,
+  });
+
   const agentName = useCallback((id: string | null) => {
     if (!id || !agents) return null;
     return agents.find((a) => a.id === id)?.name ?? null;
   }, [agents]);
 
   const filtered = useMemo(() => {
+    if (viewState.showHidden) {
+      return sortIssues(hiddenIssues, viewState);
+    }
     const sourceIssues = normalizedIssueSearch.length > 0 ? searchedIssues : issues;
     const filteredByControls = applyFilters(sourceIssues, viewState, currentUserId);
     return sortIssues(filteredByControls, viewState);
-  }, [issues, searchedIssues, viewState, normalizedIssueSearch, currentUserId]);
+  }, [issues, searchedIssues, hiddenIssues, viewState, normalizedIssueSearch, currentUserId]);
 
   useEffect(() => {
     focusHandledRef.current = null;
@@ -698,7 +712,10 @@ export function IssuesList({
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-2 sm:gap-3">
+      <div
+        className="sticky top-0 z-[60] bg-background -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center justify-between gap-2 sm:gap-3"
+        style={{ willChange: 'transform' }}
+      >
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Button size="sm" variant="outline" onClick={() => openNewIssue(newIssueDefaults())}>
             <Plus className="h-4 w-4 sm:mr-1" />
@@ -788,7 +805,7 @@ export function IssuesList({
                   <span className="text-xs text-muted-foreground">Quick filters</span>
                   <div className="flex flex-wrap gap-1.5">
                     {quickFilterPresets.map((preset) => {
-                      const isActive = arraysEqual(viewState.statuses, preset.statuses);
+                      const isActive = !viewState.showHidden && arraysEqual(viewState.statuses, preset.statuses);
                       return (
                         <button
                           key={preset.label}
@@ -797,12 +814,23 @@ export function IssuesList({
                               ? "bg-primary text-primary-foreground border-primary"
                               : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
                           }`}
-                          onClick={() => updateView({ statuses: isActive ? [] : [...preset.statuses] })}
+                          onClick={() => updateView({ statuses: isActive ? [] : [...preset.statuses], showHidden: false })}
                         >
                           {preset.label}
                         </button>
                       );
                     })}
+                    <button
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                        viewState.showHidden
+                          ? "bg-amber-500/10 text-amber-600 border-amber-400/50 dark:text-amber-400"
+                          : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                      }`}
+                      onClick={() => updateView({ showHidden: !viewState.showHidden, statuses: [] })}
+                    >
+                      <EyeOff className="h-3 w-3" />
+                      Hidden
+                    </button>
                   </div>
                 </div>
 
@@ -1038,15 +1066,22 @@ export function IssuesList({
         </div>
       </div>
 
-      {isLoading && <PageSkeleton variant="issues-list" />}
+      {(isLoading || (viewState.showHidden && hiddenLoading)) && <PageSkeleton variant="issues-list" />}
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
-      {!isLoading && filtered.length === 0 && (forceListView || viewState.viewMode === "list") && (
+      {viewState.showHidden && !hiddenLoading && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-300/50 bg-amber-50/60 px-3 py-2 text-xs text-amber-700 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-400">
+          <EyeOff className="h-3.5 w-3.5 shrink-0" />
+          <span>Showing <strong>{filtered.length}</strong> hidden task{filtered.length !== 1 ? "s" : ""}. Click <strong>Unhide</strong> on any task to restore it.</span>
+        </div>
+      )}
+
+      {!(isLoading || (viewState.showHidden && hiddenLoading)) && filtered.length === 0 && (forceListView || viewState.viewMode === "list") && (
         <EmptyState
-          icon={CircleDot}
-          message="No tasks match the current filters or search."
-          action="Create Task"
-          onAction={() => openNewIssue(newIssueDefaults())}
+          icon={viewState.showHidden ? EyeOff : CircleDot}
+          message={viewState.showHidden ? "No hidden tasks." : "No tasks match the current filters or search."}
+          action={viewState.showHidden ? undefined : "Create Task"}
+          onAction={viewState.showHidden ? undefined : () => openNewIssue(newIssueDefaults())}
         />
       )}
 
@@ -1297,7 +1332,23 @@ export function IssuesList({
                       </Popover>
                     </>
                   )}
-                  trailingMeta={formatDate(issue.createdAt)}
+                  trailingMeta={viewState.showHidden ? (
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{formatDate(issue.createdAt)}</span>
+                      <button
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-amber-600 transition-colors hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                        title="Unhide this task"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onUpdateIssue(issue.id, { hiddenAt: null });
+                        }}
+                      >
+                        <Eye className="h-3 w-3" />
+                        Unhide
+                      </button>
+                    </span>
+                  ) : formatDate(issue.createdAt)}
                   projectStatuses={projectStatuses}
                 />
               ))}

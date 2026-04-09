@@ -45,6 +45,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Eye,
   EyeOff,
   Hexagon,
   ListTree,
@@ -200,7 +201,7 @@ function ActorIdentity({ evt, agentMap, userNameMap }: { evt: ActivityEvent; age
   return <Identity name={id || "Unknown"} size="sm" />;
 }
 
-export function IssueDetail() {
+export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   const { issueId } = useParams<{ issueId: string }>();
   const { selectedCompanyId } = useCompany();
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
@@ -380,8 +381,18 @@ export function IssueDetail() {
         projectColor: project.color,
       });
     }
+    for (const member of members ?? []) {
+      if (member.principalType === "user" && member.user) {
+        options.push({
+          id: `user:${member.user.id}`,
+          name: member.user.id === currentUserId ? "Me" : member.user.name,
+          kind: "human",
+          userId: member.user.id,
+        });
+      }
+    }
     return options;
-  }, [agents, orderedProjects]);
+  }, [agents, orderedProjects, members, currentUserId]);
 
   const childIssues = useMemo(() => {
     if (!allIssues || !issue) return [];
@@ -715,7 +726,7 @@ export function IssueDetail() {
   );
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className={fullWidth ? "space-y-6" : "max-w-2xl space-y-6"}>
       {/* Parent chain breadcrumb */}
       {ancestors.length > 0 && (
         <nav className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
@@ -860,19 +871,35 @@ export function IssueDetail() {
                 </Button>
               </PopoverTrigger>
             <PopoverContent className="w-44 p-1" align="end">
-              <button
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
-                onClick={() => {
-                  updateIssue.mutate(
-                    { hiddenAt: new Date().toISOString() },
-                    { onSuccess: () => navigate("/issues/all") },
-                  );
-                  setMoreOpen(false);
-                }}
-              >
-                <EyeOff className="h-3 w-3" />
-                Hide this Task
-              </button>
+              {issue.hiddenAt ? (
+                <button
+                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-amber-600 dark:text-amber-400"
+                  onClick={() => {
+                    updateIssue.mutate(
+                      { hiddenAt: null },
+                      { onSuccess: () => navigate("/issues/all") },
+                    );
+                    setMoreOpen(false);
+                  }}
+                >
+                  <Eye className="h-3 w-3" />
+                  Unhide this Task
+                </button>
+              ) : (
+                <button
+                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
+                  onClick={() => {
+                    updateIssue.mutate(
+                      { hiddenAt: new Date().toISOString() },
+                      { onSuccess: () => navigate("/issues/all") },
+                    );
+                    setMoreOpen(false);
+                  }}
+                >
+                  <EyeOff className="h-3 w-3" />
+                  Hide this Task
+                </button>
+              )}
             </PopoverContent>
             </Popover>
             <Link to={sourceBreadcrumbs[0].href}>

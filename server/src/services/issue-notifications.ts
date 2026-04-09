@@ -401,5 +401,102 @@ export function issueNotificationService(db: Db) {
         }
       }
     },
+
+    notifyCommentMentions: async (input: {
+      issueId: string;
+      commentId: string;
+      mentionUserIds: string[];
+      actorType: "agent" | "user" | "system";
+      actorId: string | null;
+      payload: {
+        issueIdentifier: string | null;
+        issueTitle: string;
+        actorLabel?: string | null;
+        commentSnippet?: string | null;
+      };
+    }) => {
+      if (input.mentionUserIds.length === 0) return;
+      const issue = await db
+        .select({
+          id: issues.id,
+          companyId: issues.companyId,
+          projectId: issues.projectId,
+        })
+        .from(issues)
+        .where(eq(issues.id, input.issueId))
+        .then((rows) => rows[0] ?? null);
+      if (!issue) return;
+
+      const projectName = issue.projectId
+        ? await db
+          .select({ name: projects.name })
+          .from(projects)
+          .where(and(eq(projects.id, issue.projectId), eq(projects.companyId, issue.companyId)))
+          .then((rows) => rows[0]?.name ?? "Project")
+        : "Project";
+
+      let resolvedActorLabel = input.payload.actorLabel?.trim() || null;
+      if (!resolvedActorLabel) {
+        if (input.actorType === "user" && input.actorId) {
+          const actorUser = await db
+            .select({ name: authUsers.name })
+            .from(authUsers)
+            .where(eq(authUsers.id, input.actorId))
+            .then((rows) => rows[0] ?? null);
+          resolvedActorLabel = actorUser?.name?.trim() || "A user";
+        } else if (input.actorType === "agent" && input.actorId) {
+          const actorAgent = await db
+            .select({ name: agents.name })
+            .from(agents)
+            .where(eq(agents.id, input.actorId))
+            .then((rows) => rows[0] ?? null);
+          resolvedActorLabel = actorAgent?.name?.trim() || "An agent";
+        } else {
+          resolvedActorLabel = "System";
+        }
+      }
+
+      const recipientRows = await db
+        .select({
+          userId: authUsers.id,
+        })
+        .from(authUsers)
+        .innerJoin(
+          companyMemberships,
+          and(
+            eq(companyMemberships.principalType, "user"),
+            eq(companyMemberships.principalId, authUsers.id),
+            eq(companyMemberships.companyId, issue.companyId),
+            eq(companyMemberships.status, "active"),
+          ),
+        )
+        .where(inArray(authUsers.id, Array.from(new Set(input.mentionUserIds))));
+
+      const actor = resolvedActorLabel ?? input.actorType;
+      const title = `[${projectName}] Mentioned in ${input.payload.issueIdentifier ?? input.payload.issueTitle}`;
+      const message = `${actor} mentioned you in a comment${input.payload.commentSnippet ? `: "${input.payload.commentSnippet}"` : "."}`;
+
+      for (const recipient of recipientRows) {
+        if (input.actorType === "user" && input.actorId && recipient.userId === input.actorId) continue;
+        await notifications.create({
+          userId: recipient.userId,
+          companyId: issue.companyId,
+          projectId: issue.projectId,
+          issueId: issue.id,
+          eventType: "issue.comment_mentioned",
+          title,
+          message,
+          channel: "in_app",
+          emailDeliveryStatus: "skipped",
+          payload: {
+            issueIdentifier: input.payload.issueIdentifier,
+            issueTitle: input.payload.issueTitle,
+            commentId: input.commentId,
+            commentSnippet: input.payload.commentSnippet ?? null,
+            actorLabel: resolvedActorLabel,
+          },
+        });
+      }
+    },
   };
 }

@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "@/lib/router";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "@/lib/router";
 import {
   DndContext,
   DragOverlay,
@@ -161,6 +161,11 @@ interface KanbanBoardProps {
   newBadgeIssueId?: string | null;
 }
 
+type IssueModalLinkState = {
+  issueModal?: boolean;
+  backgroundLocation?: unknown;
+};
+
 function getSortKey(issue: Issue): number {
   if (issue.kanbanPosition !== null && issue.kanbanPosition !== undefined) {
     return issue.kanbanPosition;
@@ -311,6 +316,7 @@ function KanbanCard({
   isLive,
   isOverlay,
   issueLinkState,
+  modalLinkState,
   statusColorMap,
   highlight,
   showNewBadge,
@@ -321,6 +327,7 @@ function KanbanCard({
   isLive: boolean;
   isOverlay?: boolean;
   issueLinkState?: unknown;
+  modalLinkState?: IssueModalLinkState;
   statusColorMap?: Map<string, string>;
   highlight?: boolean;
   showNewBadge?: boolean;
@@ -356,7 +363,7 @@ function KanbanCard({
     >
       <Link
         to={`/issues/${issue.identifier ?? issue.id}`}
-        state={issueLinkState}
+        state={modalLinkState ? { ...(issueLinkState as Record<string, unknown> | undefined), ...modalLinkState } : issueLinkState}
         className="block no-underline text-inherit"
       >
         <KanbanCardContent
@@ -382,6 +389,7 @@ const KanbanColumn = memo(function KanbanColumn({
   memberMap,
   liveIssueIds,
   issueLinkState,
+  modalLinkState,
   statusColorMap,
   highlightIssueId,
   newBadgeIssueId,
@@ -394,6 +402,7 @@ const KanbanColumn = memo(function KanbanColumn({
   memberMap: Map<string, string>;
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
+  modalLinkState?: IssueModalLinkState;
   statusColorMap?: Map<string, string>;
   highlightIssueId?: string | null;
   newBadgeIssueId?: string | null;
@@ -405,57 +414,17 @@ const KanbanColumn = memo(function KanbanColumn({
 
   return (
     <div
-      className="flex min-h-0 min-w-[272px] w-[272px] shrink-0 flex-col rounded-2xl"
+      className="min-w-[272px] w-[272px] shrink-0 rounded-b-2xl flex flex-col"
       style={{
         border: `2px solid ${dotColor}45`,
+        borderTop: "none",
         boxShadow: `0 0 0 1px ${dotColor}18, 0 4px 16px ${dotColor}12`,
       }}
     >
-      {/* Fixed column chrome (accent + status header) — cards scroll in the pane below */}
-      <div className="relative z-20 shrink-0 rounded-t-2xl shadow-[0_10px_28px_-12px_rgba(0,0,0,0.55)] dark:shadow-[0_10px_28px_-12px_rgba(0,0,0,0.85)]">
-        <div
-          className="h-1 w-full shrink-0 rounded-t-2xl"
-          style={{ backgroundColor: dotColor }}
-        />
-        <div
-          className="flex items-center gap-2 border-b bg-card/95 px-3 py-2.5 backdrop-blur-md"
-          style={{
-            borderBottomColor: `${dotColor}40`,
-            backgroundImage: `linear-gradient(135deg, ${dotColor}20 0%, ${dotColor}0a 100%)`,
-          }}
-        >
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
-            style={{
-              backgroundColor: dotColor,
-              color: "#ffffff",
-              textShadow: "0 1px 2px rgba(0,0,0,0.25)",
-              boxShadow: `0 2px 6px ${dotColor}50`,
-            }}
-          >
-            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
-            {columnLabel ?? statusLabel(status)}
-          </span>
-
-          <span className="flex-1" />
-
-          <span
-            className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
-            style={{
-              backgroundColor: `${dotColor}22`,
-              color: dotColor,
-              border: `1.5px solid ${dotColor}55`,
-            }}
-          >
-            {issues.length}
-          </span>
-        </div>
-      </div>
-
-      {/* Drop zone / card list — scrolls under the header stack */}
+      {/* Drop zone / card list */}
       <div
         ref={setNodeRef}
-        className={`kanban-col-${status} min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
+        className={`kanban-col-${status} flex-1 min-h-[4rem] overflow-x-hidden rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
           isOver ? "bg-accent/30" : ""
         }`}
         style={{
@@ -474,6 +443,7 @@ const KanbanColumn = memo(function KanbanColumn({
             }
             isLive={liveIssueIds?.has(issue.id) ?? false}
             issueLinkState={issueLinkState}
+            modalLinkState={modalLinkState}
             statusColorMap={statusColorMap}
             highlight={highlightIssueId === issue.id}
             showNewBadge={newBadgeIssueId === issue.id}
@@ -496,7 +466,13 @@ export function KanbanBoard({
   highlightIssueId = null,
   newBadgeIssueId = null,
 }: KanbanBoardProps) {
+  const location = useLocation();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const modalLinkState = useMemo<IssueModalLinkState>(() => ({
+    issueModal: true,
+    backgroundLocation: location,
+  }), [location]);
+
   // optimisticMoves: issueId → targetStatus applied immediately on drop so the
   // card never flashes back into the source column while the network request
   // is in-flight. Cleared once the real `issues` prop reflects the change.
@@ -623,6 +599,15 @@ export function KanbanBoard({
 
   const handleDragCancel = useCallback(() => setActiveId(null), []);
 
+  const headerScrollRef = useRef<HTMLDivElement>(null);
+  const cardsScrollRef = useRef<HTMLDivElement>(null);
+
+  const onCardsScroll = useCallback(() => {
+    if (headerScrollRef.current && cardsScrollRef.current) {
+      headerScrollRef.current.scrollLeft = cardsScrollRef.current.scrollLeft;
+    }
+  }, []);
+
   return (
     <DndContext
       sensors={sensors}
@@ -632,7 +617,80 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="-mx-2 flex h-[min(100dvh-10.5rem,56rem)] min-h-0 items-stretch gap-4 overflow-x-auto px-2 pb-4">
+    {/* Single wrapper so ancestor space-y-* gaps don't bleed between
+        the sticky header div and the cards div (DndContext adds no DOM node) */}
+    <div>
+      {/* ── Sticky header row ─────────────────────────────────────────────────────
+          Lives outside the overflow-x-auto card container so sticky top-0 works
+          against the page scroll. bg-background ensures no bleed between the two
+          sibling divs. JS scroll-sync keeps columns aligned horizontally.       */}
+      <div className="sticky top-[52px] z-50 -mx-2 mb-0 bg-background overflow-hidden" style={{ willChange: 'transform' }}>
+        <div
+          ref={headerScrollRef}
+          className="flex gap-4 overflow-x-hidden px-2"
+        >
+          {activeColumns.map((status) => {
+            const ps = projectStatuses?.find((s) => s.value === status);
+            const accent = getAccent(status, ps?.color);
+            const dotColor = accent.dot;
+            return (
+              <div
+                key={status}
+                className="min-w-[272px] w-[272px] shrink-0 rounded-t-2xl"
+                style={{
+                  border: `2px solid ${dotColor}45`,
+                  borderBottom: "none",
+                }}
+              >
+                <div
+                  className="h-1 w-full rounded-t-2xl"
+                  style={{ backgroundColor: dotColor }}
+                />
+                <div
+                  className="flex items-center gap-2 border-b bg-card/95 px-3 py-2.5 backdrop-blur-md"
+                  style={{
+                    borderBottomColor: `${dotColor}40`,
+                    backgroundImage: `linear-gradient(135deg, ${dotColor}20 0%, ${dotColor}0a 100%)`,
+                  }}
+                >
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+                    style={{
+                      backgroundColor: dotColor,
+                      color: "#ffffff",
+                      textShadow: "0 1px 2px rgba(0,0,0,0.25)",
+                      boxShadow: `0 2px 6px ${dotColor}50`,
+                    }}
+                  >
+                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
+                    {ps?.name ?? statusLabel(status)}
+                  </span>
+                  <span className="flex-1" />
+                  <span
+                    className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
+                    style={{
+                      backgroundColor: `${dotColor}22`,
+                      color: dotColor,
+                      border: `1.5px solid ${dotColor}55`,
+                    }}
+                  >
+                    {(columnIssues[status] ?? []).length}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Card rows — horizontally scrollable, page scrolls vertically ───────── */}
+      {/* relative + z-0 creates a stacking context below the sticky header (z-50)
+          so no card can ever paint on top of the sticky status row              */}
+      <div
+        ref={cardsScrollRef}
+        className="-mx-2 relative z-0 flex items-stretch gap-4 overflow-x-auto px-2 pb-4"
+        onScroll={onCardsScroll}
+      >
         {activeColumns.map((status) => {
           const ps = projectStatuses?.find((s) => s.value === status);
           return (
@@ -646,6 +704,7 @@ export function KanbanBoard({
               memberMap={memberMap}
               liveIssueIds={liveIssueIds}
               issueLinkState={issueLinkState}
+              modalLinkState={modalLinkState}
               statusColorMap={statusColorMap}
               highlightIssueId={highlightIssueId}
               newBadgeIssueId={newBadgeIssueId}
@@ -666,12 +725,14 @@ export function KanbanBoard({
             }
             isLive={liveIssueIds?.has(activeIssue.id) ?? false}
             issueLinkState={issueLinkState}
+            modalLinkState={modalLinkState}
             statusColorMap={statusColorMap}
             showNewBadge={newBadgeIssueId === activeIssue.id}
             isOverlay
           />
         ) : null}
       </DragOverlay>
+    </div>
     </DndContext>
   );
 }

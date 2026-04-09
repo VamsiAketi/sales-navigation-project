@@ -583,14 +583,19 @@ export { deriveProjectUrlKey, normalizeProjectUrlKey } from "./project-url-key.j
 export {
   AGENT_MENTION_SCHEME,
   PROJECT_MENTION_SCHEME,
+  USER_MENTION_SCHEME,
   buildAgentMentionHref,
   buildProjectMentionHref,
+  buildUserMentionHref,
   extractAgentMentionIds,
+  extractUserMentionIds,
   parseAgentMentionHref,
   parseProjectMentionHref,
+  parseUserMentionHref,
   extractProjectMentionIds,
   type ParsedAgentMention,
   type ParsedProjectMention,
+  type ParsedUserMention,
 } from "./project-mentions.js";
 
 export {

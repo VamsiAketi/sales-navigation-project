@@ -1,6 +1,10 @@
-import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "@/lib/router";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import type { Location as RouterLocation } from "react-router-dom";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 import { Layout } from "./components/Layout";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { authApi } from "./api/auth";
@@ -49,6 +53,7 @@ import { AccountSettings } from "./pages/AccountSettings";
 import { NotFoundPage } from "./pages/NotFound";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
+import { usePanel } from "./context/PanelContext";
 import { useDialog } from "./context/DialogContext";
 import { loadLastInboxTab } from "./lib/inbox";
 import { shouldRedirectCompanylessRouteToOnboarding } from "./lib/onboarding-route";
@@ -309,9 +314,17 @@ function NoCompaniesStartPage() {
 }
 
 export function App() {
+  const location = useLocation();
+  const state = location.state as { issueModal?: boolean; backgroundLocation?: RouterLocation } | null;
+  const hasBoardBackground = Boolean(
+    state?.backgroundLocation &&
+    !/^\/[^/]+\/issues\/[^/]+$/.test(state.backgroundLocation.pathname),
+  );
+  const backgroundLocation = state?.issueModal && hasBoardBackground ? state.backgroundLocation : null;
+
   return (
     <>
-      <Routes>
+      <Routes location={backgroundLocation ?? location}>
         <Route path="auth" element={<AuthPage />} />
         <Route path="reset-password/:token" element={<ResetPasswordPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
@@ -360,7 +373,74 @@ export function App() {
           <Route path="*" element={<NotFoundPage scope="global" />} />
         </Route>
       </Routes>
+      {backgroundLocation ? (
+        <Routes>
+          <Route path=":companyPrefix/issues/:issueId" element={<IssueDetailModal />} />
+        </Routes>
+      ) : null}
       <OnboardingWizard />
     </>
+  );
+}
+
+function IssueDetailModal() {
+  const navigate = useNavigate();
+  const { issueId } = useParams<{ issueId: string }>();
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
+      <DialogContent
+        className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]"
+      >
+        <div className="flex h-full min-h-0">
+          <div className="min-w-0 flex-1 overflow-y-auto p-6">
+            <IssueDetail fullWidth />
+          </div>
+          <IssueDetailModalTaskInfoPanel
+            onGoToPage={() => { if (issueId) navigate(`/issues/${issueId}`); }}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function IssueDetailModalTaskInfoPanel({ onGoToPage }: { onGoToPage?: () => void }) {
+  const { panelContent } = usePanel();
+  const { selectedCompany } = useCompany();
+  const logoAssetId = selectedCompany?.logoAssetId ?? null;
+  const logoSrc = logoAssetId ? `/api/assets/${logoAssetId}/content` : null;
+
+  if (!panelContent) return null;
+
+  return (
+    <aside className="hidden md:flex w-fit min-w-[220px] max-w-[320px] shrink-0 flex-col border-l border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2 pr-[3.25rem]">
+        {logoSrc ? (
+          <img
+            src={logoSrc}
+            alt={selectedCompany?.name ? `${selectedCompany.name} logo` : "Company logo"}
+            className="h-6 w-6 rounded object-contain bg-background"
+          />
+        ) : null}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {selectedCompany?.name ? `${selectedCompany.name} • Task Info` : "Task Info"}
+        </span>
+        {onGoToPage && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 shrink-0 opacity-70 transition-opacity hover:opacity-100"
+            title="Open full task page"
+            aria-label="Open full task page"
+            onClick={onGoToPage}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="p-4">{panelContent}</div>
+      </ScrollArea>
+    </aside>
   );
 }
