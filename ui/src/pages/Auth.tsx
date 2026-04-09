@@ -9,7 +9,6 @@ import { Sparkles, Eye, EyeOff } from "lucide-react";
 import { buildVisibleVersionLabel } from "@/components/Layout";
 
 type AuthMode = "sign_in" | "sign_up";
-type SignInMethod = "password" | "email_code";
 
 export function AuthPage() {
   const queryClient = useQueryClient();
@@ -22,7 +21,7 @@ export function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [signInMethod, setSignInMethod] = useState<SignInMethod>("password");
+  const [useEmailCode, setUseEmailCode] = useState(false);
   const [emailCode, setEmailCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [codeSuccess, setCodeSuccess] = useState<string | null>(null);
@@ -59,7 +58,7 @@ export function AuthPage() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (mode === "sign_in") {
-        if (signInMethod === "email_code") {
+        if (useEmailCode) {
           await authApi.signInEmailCode({ email: email.trim(), code: emailCode.trim() });
           return;
         }
@@ -132,7 +131,7 @@ export function AuthPage() {
 
   const canSubmit =
     email.trim().length > 0 &&
-    (signInMethod === "email_code" ? emailCode.trim().length > 0 : password.trim().length > 0) &&
+    (useEmailCode ? emailCode.trim().length > 0 : password.trim().length > 0) &&
     (mode === "sign_in" || (name.trim().length > 0 && password.trim().length >= 8));
   const canRequestReset = email.trim().length > 0;
   const canSubmitReset = password.trim().length >= 8 && confirmPassword === password;
@@ -193,7 +192,7 @@ export function AuthPage() {
               if (mutation.isPending) return;
               if (!canSubmit) {
                 setError(
-                  signInMethod === "email_code"
+                  useEmailCode
                     ? "Enter your email and verification code."
                     : "Please fill in all required fields.",
                 );
@@ -237,37 +236,7 @@ export function AuthPage() {
                 />
               </div>
             )}
-            {!isResetMode && mode === "sign_in" && (
-              <div className="rounded-md border border-border bg-muted/20 p-1 text-xs">
-                <div className="grid grid-cols-2 gap-1">
-                  <button
-                    type="button"
-                    className={`rounded-sm px-2 py-1 text-left ${
-                      signInMethod === "password" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => {
-                      setSignInMethod("password");
-                      setError(null);
-                    }}
-                  >
-                    Password
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-sm px-2 py-1 text-left ${
-                      signInMethod === "email_code" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => {
-                      setSignInMethod("email_code");
-                      setError(null);
-                    }}
-                  >
-                    Email code
-                  </button>
-                </div>
-              </div>
-            )}
-            {(isResetMode || signInMethod === "password") && (
+            {(isResetMode || !useEmailCode) && (
               <div>
                 <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
                 {!(!isResetMode && mode === "sign_in" && forgotRequested) && (
@@ -294,7 +263,7 @@ export function AuthPage() {
                 )}
               </div>
             )}
-            {!isResetMode && mode === "sign_in" && signInMethod === "email_code" && (
+            {!isResetMode && mode === "sign_in" && useEmailCode && (
               <div className="space-y-2">
                 <div>
                   <label htmlFor="email-code" className="text-xs text-muted-foreground mb-1 block">Verification code</label>
@@ -326,6 +295,18 @@ export function AuthPage() {
                 >
                   {sendCodeMutation.isPending ? "Sending code…" : codeSent ? "Resend code" : "Send code"}
                 </Button>
+                <button
+                  type="button"
+                  className="w-full text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  onClick={() => {
+                    setUseEmailCode(false);
+                    setEmailCode("");
+                    setCodeSuccess(null);
+                    setError(null);
+                  }}
+                >
+                  Use password instead
+                </button>
               </div>
             )}
             {isResetMode && (
@@ -352,7 +333,7 @@ export function AuthPage() {
                 </div>
               </div>
             )}
-            {!isResetMode && mode === "sign_in" && (
+            {!isResetMode && mode === "sign_in" && !useEmailCode && (
               <div className="flex items-center justify-between gap-2 text-xs">
                 <button
                   type="button"
@@ -367,6 +348,21 @@ export function AuthPage() {
                   {forgotRequested ? "Back to sign in" : "Forgot password?"}
                 </button>
               </div>
+            )}
+            {!isResetMode && mode === "sign_in" && !useEmailCode && (
+              <button
+                type="button"
+                className="w-full text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                onClick={() => {
+                  setUseEmailCode(true);
+                  setForgotRequested(false);
+                  setPassword("");
+                  setError(null);
+                  setCodeSuccess(null);
+                }}
+              >
+                Login using Email Code
+              </button>
             )}
             {!isResetMode && mode === "sign_in" && forgotRequested && (
               <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
@@ -414,7 +410,7 @@ export function AuthPage() {
                   : mutation.isPending
                     ? "Working…"
                     : mode === "sign_in"
-                      ? "Sign In"
+                      ? "Login"
                       : "Create Account"}
               </Button>
             )}

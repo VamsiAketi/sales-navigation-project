@@ -106,7 +106,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         });
         const delivery = await sendSystemEmail({
           toEmail: email,
-          subject: "Reset your Paperclip password",
+          subject: "Reset your AI-Harness password",
           textBody,
           htmlBody,
         });
@@ -146,7 +146,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         async sendVerificationOTP(input: { email: string; otp: string; type: string }) {
           const email = input.email.trim().toLowerCase();
           const textBody = [
-            "Your Paperclip sign-in code:",
+            "Your AI-Harness sign-in code:",
             "",
             input.otp,
             "",
@@ -154,14 +154,14 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
             "If you did not request this code, you can ignore this email.",
           ].join("\n");
           const htmlBody = [
-            "<p>Your Paperclip sign-in code:</p>",
+            "<p>Your AI-Harness sign-in code:</p>",
             `<p style="font-size: 24px; font-weight: 700; letter-spacing: 0.08em;">${input.otp}</p>`,
             "<p>This code expires in 10 minutes.</p>",
             "<p>If you did not request this code, you can ignore this email.</p>",
           ].join("");
           const delivery = await sendSystemEmail({
             toEmail: email,
-            subject: "Your Paperclip sign-in code",
+            subject: "Your AI-Harness sign-in code",
             textBody,
             htmlBody,
           });

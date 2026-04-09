@@ -128,7 +128,7 @@ export function buildPasswordResetEmailBodies(input: { resetUrl: string; recipie
   htmlBody: string;
 } {
   const textBody = [
-    "Reset your Paperclip password",
+    "Reset your AI-Harness password",
     "",
     "We received a request to reset the password for:",
     input.recipientEmail,
@@ -158,7 +158,7 @@ export function buildPasswordResetEmailBodies(input: { resetUrl: string; recipie
         <tr>
           <td style="padding:28px 28px 8px 28px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;color:#18181b;">
             <p style="margin:0 0 8px 0;font-size:20px;font-weight:600;letter-spacing:-0.02em;color:#18181b;">Reset your password</p>
-            <p style="margin:0 0 20px 0;color:#52525b;font-size:14px;line-height:1.55;">We received a request to reset your Paperclip password. Use the button below to choose a new one.</p>
+            <p style="margin:0 0 20px 0;color:#52525b;font-size:14px;line-height:1.55;">We received a request to reset your AI-Harness password. Use the button below to choose a new one.</p>
             <p style="margin:0 0 20px 0;font-size:13px;color:#71717a;"><strong style="color:#3f3f46;">Account</strong><br />${safeEmail}</p>
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px 0;">
               <tr>
@@ -177,7 +177,7 @@ export function buildPasswordResetEmailBodies(input: { resetUrl: string; recipie
           </td>
         </tr>
       </table>
-      <p style="margin:20px 0 0 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:11px;color:#a1a1aa;text-align:center;">Paperclip &mdash; control plane for AI companies</p>
+      <p style="margin:20px 0 0 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:11px;color:#a1a1aa;text-align:center;">AI-Harness &mdash; control plane for AI companies</p>
     </td>
   </tr>
 </table>
