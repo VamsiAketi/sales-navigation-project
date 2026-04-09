@@ -244,6 +244,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
   const setEditorRef = useCallback((instance: MDXEditorMethods | null) => {
     ref.current = instance;
     setEditorReady(Boolean(instance));
+    if (instance) {
+      instance.setMarkdown(latestValueRef.current);
+    }
   }, []);
 
   // Whether the image plugin should be included (boolean is stable across renders

@@ -106,8 +106,14 @@ describe("IssueRow", () => {
     expect(unreadDot?.className).toContain("bg-muted-foreground/70");
     expect(unreadDot?.className).not.toContain("bg-blue-600");
     expect(statusIcon).not.toBeNull();
-    expect(statusIcon?.className).toContain("!border-muted-foreground");
-    expect(statusIcon?.className).toContain("!text-muted-foreground");
+    expect(
+      statusIcon?.className?.includes("!border-muted-foreground")
+      || statusIcon?.className?.includes("border-muted-foreground!"),
+    ).toBe(true);
+    expect(
+      statusIcon?.className?.includes("!text-muted-foreground")
+      || statusIcon?.className?.includes("text-muted-foreground!"),
+    ).toBe(true);
 
     act(() => {
       root.unmount();

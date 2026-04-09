@@ -7,6 +7,8 @@ type IssueDetailLocationState = {
   issueDetailBreadcrumb?: IssueDetailBreadcrumb;
   issueDetailBreadcrumbs?: IssueDetailBreadcrumb[];
   issueSource?: string;
+  // Backward compatibility with older callers/tests.
+  issueDetailSource?: string;
   armInboxQuickArchive?: boolean;
 };
 
@@ -79,8 +81,8 @@ export function createIssueDetailPath(
 ): string {
   const params = new URLSearchParams();
   const typedState = typeof state === "object" && state !== null ? (state as IssueDetailLocationState) : null;
-  const stateSource =
-    typedState?.issueSource && typedState.issueSource.trim().length > 0 ? typedState.issueSource.trim() : null;
+  const rawStateSource = typedState?.issueSource ?? typedState?.issueDetailSource ?? null;
+  const stateSource = rawStateSource && rawStateSource.trim().length > 0 ? rawStateSource.trim() : null;
   const stateHref = isIssueDetailBreadcrumb(typedState?.issueDetailBreadcrumb ?? null)
     ? typedState?.issueDetailBreadcrumb?.href ?? null
     : null;
