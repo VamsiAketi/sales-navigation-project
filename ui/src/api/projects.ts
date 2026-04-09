@@ -29,6 +29,20 @@ export const projectsApi = {
     ),
   removeWorkspace: (projectId: string, workspaceId: string, companyId?: string) =>
     api.delete<ProjectWorkspace>(projectPath(projectId, companyId, `/workspaces/${encodeURIComponent(workspaceId)}`)),
+  controlWorkspaceRuntimeServices: (
+    projectId: string,
+    workspaceId: string,
+    action: "start" | "stop" | "restart",
+    companyId?: string,
+  ) =>
+    api.post<{ workspace: ProjectWorkspace; operation: unknown }>(
+      projectPath(
+        projectId,
+        companyId,
+        `/workspaces/${encodeURIComponent(workspaceId)}/runtime-services/${encodeURIComponent(action)}`,
+      ),
+      {},
+    ),
   remove: (id: string, companyId?: string) => api.delete<Project>(projectPath(id, companyId)),
   listIssueStatuses: (projectId: string, companyId?: string) =>
     api.get<ProjectIssueStatus[]>(projectPath(projectId, companyId, "/issue-statuses")),

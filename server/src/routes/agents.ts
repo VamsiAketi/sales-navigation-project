@@ -5,6 +5,7 @@ import type { Db } from "@paperclipai/db";
 import { agents as agentsTable, authUsers, companies, companyMemberships, heartbeatRuns } from "@paperclipai/db";
 import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import {
+  INBOX_MINE_ISSUE_STATUS_FILTER,
   agentSkillSyncSchema,
   createAgentKeySchema,
   createAgentHireSchema,
@@ -1121,6 +1122,30 @@ export function agentRoutes(db: Db) {
         activeRun: issue.activeRun,
       })),
     );
+  });
+
+  router.get("/agents/me/inbox/mine", async (req, res) => {
+    if (req.actor.type !== "agent" || !req.actor.agentId || !req.actor.companyId) {
+      res.status(401).json({ error: "Agent authentication required" });
+      return;
+    }
+
+    const userId = typeof req.query.userId === "string" ? req.query.userId.trim() : "";
+    if (!userId) {
+      res.status(400).json({ error: "Invalid query", issues: { userId: ["userId is required"] } });
+      return;
+    }
+    const status = typeof req.query.status === "string" && req.query.status.trim().length > 0
+      ? req.query.status.trim()
+      : INBOX_MINE_ISSUE_STATUS_FILTER;
+
+    const issuesSvc = issueService(db);
+    const rows = await issuesSvc.list(req.actor.companyId, {
+      touchedByUserId: userId,
+      status,
+    });
+
+    res.json(rows);
   });
 
   router.get("/agents/:id", async (req, res) => {

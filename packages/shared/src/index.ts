@@ -10,6 +10,8 @@ export {
   AGENT_ICON_NAMES,
   ISSUE_STATUSES,
   DEFAULT_PROJECT_ISSUE_STATUSES,
+  INBOX_MINE_ISSUE_STATUSES,
+  INBOX_MINE_ISSUE_STATUS_FILTER,
   ISSUE_PRIORITIES,
   ISSUE_ORIGIN_KINDS,
   GOAL_LEVELS,
@@ -20,6 +22,7 @@ export {
   ROUTINE_CATCH_UP_POLICIES,
   ROUTINE_TRIGGER_KINDS,
   ROUTINE_TRIGGER_SIGNING_MODES,
+  ROUTINE_VARIABLE_TYPES,
   ROUTINE_RUN_STATUSES,
   ROUTINE_RUN_SOURCES,
   PAUSE_REASONS,
@@ -87,6 +90,7 @@ export {
   type RoutineCatchUpPolicy,
   type RoutineTriggerKind,
   type RoutineTriggerSigningMode,
+  type RoutineVariableType,
   type RoutineRunStatus,
   type RoutineRunSource,
   type PauseReason,
@@ -136,6 +140,16 @@ export {
 } from "./constants.js";
 
 export type {
+  FeedbackVote,
+  FeedbackDataSharingPreference,
+  FeedbackTargetType,
+  FeedbackVoteValue,
+  FeedbackTrace,
+  FeedbackTraceStatus,
+  FeedbackTraceTargetSummary,
+  FeedbackTraceBundleCaptureStatus,
+  FeedbackTraceBundleFile,
+  FeedbackTraceBundle,
   Company,
   CompanySkillSourceType,
   CompanySkillTrustLevel,
@@ -193,6 +207,14 @@ export type {
   ProjectNotificationChannel,
   ProjectNotificationRecipientRole,
   ExecutionWorkspace,
+  ExecutionWorkspaceConfig,
+  ExecutionWorkspaceCloseAction,
+  ExecutionWorkspaceCloseActionKind,
+  ExecutionWorkspaceCloseGitReadiness,
+  ExecutionWorkspaceCloseLinkedIssue,
+  ExecutionWorkspaceCloseReadiness,
+  ExecutionWorkspaceCloseReadinessState,
+  ProjectWorkspaceRuntimeConfig,
   WorkspaceRuntimeService,
   WorkspaceOperation,
   WorkspaceOperationPhase,
@@ -241,6 +263,8 @@ export type {
   FinanceSummary,
   FinanceByBiller,
   FinanceByKind,
+  AgentWakeupResponse,
+  AgentWakeupSkipped,
   HeartbeatRun,
   HeartbeatRunEvent,
   AgentRuntimeState,
@@ -290,6 +314,8 @@ export type {
   CompanySecret,
   SecretProviderDescriptor,
   Routine,
+  RoutineVariable,
+  RoutineVariableDefaultValue,
   RoutineTrigger,
   RoutineRun,
   RoutineTriggerSecretMaterial,
@@ -337,12 +363,26 @@ export {
 } from "./validators/index.js";
 
 export {
+  DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
+  FEEDBACK_TARGET_TYPES,
+  FEEDBACK_DATA_SHARING_PREFERENCES,
+  FEEDBACK_TRACE_STATUSES,
+  FEEDBACK_VOTE_VALUES,
+  DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION,
+} from "./types/feedback.js";
+
+export {
   createCompanySchema,
   updateCompanySchema,
   updateCompanyBrandingSchema,
+  feedbackTargetTypeSchema,
+  feedbackTraceStatusSchema,
+  feedbackVoteValueSchema,
+  upsertIssueFeedbackVoteSchema,
   type CreateCompany,
   type UpdateCompany,
   type UpdateCompanyBranding,
+  type UpsertIssueFeedbackVote,
   agentSkillStateSchema,
   agentSkillSyncModeSchema,
   agentSkillEntrySchema,
@@ -579,7 +619,7 @@ export {
 
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
-export { deriveProjectUrlKey, normalizeProjectUrlKey } from "./project-url-key.js";
+export { deriveProjectUrlKey, normalizeProjectUrlKey, hasNonAsciiContent } from "./project-url-key.js";
 export {
   AGENT_MENTION_SCHEME,
   PROJECT_MENTION_SCHEME,
@@ -597,6 +637,14 @@ export {
   type ParsedProjectMention,
   type ParsedUserMention,
 } from "./project-mentions.js";
+
+export {
+  extractRoutineVariableNames,
+  interpolateRoutineTemplate,
+  isValidRoutineVariableName,
+  stringifyRoutineVariableValue,
+  syncRoutineVariablesWithTemplate,
+} from "./routine-variables.js";
 
 export {
   paperclipConfigSchema,

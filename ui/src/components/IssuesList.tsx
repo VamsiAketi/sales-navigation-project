@@ -514,6 +514,25 @@ export function IssuesList({
     return sortIssues(filteredByControls, viewState);
   }, [issues, searchedIssues, hiddenIssues, viewState, normalizedIssueSearch, currentUserId]);
 
+  // Status options for the filter panel. When projectStatuses is provided (project page),
+  // use those. Otherwise, show defaults + any custom status values found in the issues list.
+  const effectiveStatusOptions = useMemo(() => {
+    if (projectStatuses && projectStatuses.length > 0) {
+      return projectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
+    }
+    const base = statusOrder.map((s) => ({ value: s, name: statusLabel(s), color: undefined as string | undefined }));
+    const baseValues = new Set(statusOrder);
+    const seen = new Set<string>();
+    const custom: typeof base = [];
+    for (const issue of issues) {
+      if (!baseValues.has(issue.status) && !seen.has(issue.status)) {
+        seen.add(issue.status);
+        custom.push({ value: issue.status, name: statusLabel(issue.status), color: undefined });
+      }
+    }
+    return custom.length > 0 ? [...base, ...custom] : base;
+  }, [projectStatuses, issues]);
+
   useEffect(() => {
     focusHandledRef.current = null;
   }, [selectedCompanyId]);
@@ -842,10 +861,11 @@ export function IssuesList({
                   <div className="space-y-1">
                     <span className="text-xs text-muted-foreground">Status</span>
                     <div className="space-y-0.5">
-                      {(projectStatuses && projectStatuses.length > 0
+                      {/* {(projectStatuses && projectStatuses.length > 0
                         ? projectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position)
                         : statusOrder.map((s) => ({ value: s, name: statusLabel(s), color: undefined }))
-                      ).map((s) => (
+                      ).map((s) => ( */}
+                      {effectiveStatusOptions.map((s) => (
                         <label key={s.value} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
                           <Checkbox
                             checked={viewState.statuses.includes(s.value)}

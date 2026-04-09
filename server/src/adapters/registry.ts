@@ -44,6 +44,7 @@ import {
 } from "@paperclipai/adapter-opencode-local/server";
 import {
   agentConfigurationDoc as openCodeAgentConfigurationDoc,
+  models as openCodeModels,
 } from "@paperclipai/adapter-opencode-local";
 import {
   execute as openclawGatewayExecute,
@@ -150,8 +151,8 @@ const openCodeLocalAdapter: ServerAdapterModule = {
   listSkills: listOpenCodeSkills,
   syncSkills: syncOpenCodeSkills,
   sessionCodec: openCodeSessionCodec,
+  models: openCodeModels,
   sessionManagement: getAdapterSessionManagement("opencode_local") ?? undefined,
-  models: [],
   listModels: listOpenCodeModels,
   supportsLocalAgentJwt: true,
   agentConfigurationDoc: openCodeAgentConfigurationDoc,
@@ -217,6 +218,15 @@ export async function listAdapterModels(type: string): Promise<{ id: string; lab
 
 export function listServerAdapters(): ServerAdapterModule[] {
   return Array.from(adaptersByType.values());
+}
+
+export async function detectAdapterModel(
+  type: string,
+): Promise<{ model: string; provider: string; source: string } | null> {
+  const adapter = adaptersByType.get(type);
+  if (!adapter?.detectModel) return null;
+  const detected = await adapter.detectModel();
+  return detected ? { model: detected.model, provider: detected.provider, source: detected.source } : null;
 }
 
 export function findServerAdapter(type: string): ServerAdapterModule | null {
