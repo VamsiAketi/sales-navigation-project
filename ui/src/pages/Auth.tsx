@@ -100,6 +100,14 @@ export function AuthPage() {
     },
   });
 
+  useEffect(() => {
+    if (!useEmailCode || !codeSent) return;
+    if (emailCode.trim().length !== OTP_LENGTH) return;
+    if (mutation.isPending) return;
+    setError(null);
+    mutation.mutate();
+  }, [useEmailCode, codeSent, emailCode, mutation]);
+
   const forgotPasswordMutation = useMutation({
     mutationFn: async () => {
       const redirectTo = typeof window !== "undefined"
@@ -479,7 +487,7 @@ export function AuthPage() {
             {codeSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{codeSuccess}</p>}
             {forgotSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{forgotSuccess}</p>}
             {resetSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{resetSuccess}</p>}
-            {!(!isResetMode && mode === "sign_in" && forgotRequested) && !(useEmailCode && !codeSent) && (
+            {!(!isResetMode && mode === "sign_in" && forgotRequested) && !(useEmailCode && codeSent) && (
               <>
                 <Button
                   type="submit"
@@ -527,6 +535,9 @@ export function AuthPage() {
                   </div>
                 )}
               </>
+            )}
+            {!isResetMode && mode === "sign_in" && useEmailCode && codeSent && mutation.isPending && (
+              <p className="text-xs text-muted-foreground">Verifying OTP...</p>
             )}
           </form>
 
