@@ -4,12 +4,10 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { toNodeHandler } from "better-auth/node";
 import { emailOTP } from "better-auth/plugins";
-import { passkey } from "@better-auth/passkey";
 import type { Db } from "@paperclipai/db";
 import {
   authAccounts,
   authSessions,
-  authPasskeys,
   authUsers,
   authVerifications,
 } from "@paperclipai/db";
@@ -77,17 +75,6 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
 
   const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? baseUrl;
   const isHttpOnly = publicUrl ? publicUrl.startsWith("http://") : false;
-  let passkeyOrigin: string | undefined;
-  let passkeyRpId: string | undefined;
-  if (publicUrl) {
-    try {
-      const parsed = new URL(publicUrl);
-      passkeyOrigin = parsed.origin;
-      passkeyRpId = parsed.hostname;
-    } catch {
-      logger.warn({ publicUrl }, "Better Auth: invalid public URL for passkey origin/rpID");
-    }
-  }
 
   const authConfig = {
     baseURL: baseUrl,
@@ -100,7 +87,6 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         session: authSessions,
         account: authAccounts,
         verification: authVerifications,
-        passkey: authPasskeys,
       },
     }),
     emailAndPassword: {
@@ -192,11 +178,6 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
           }
           logger.info({ email, type: input.type }, "Better Auth: sign-in OTP email sent");
         },
-      }),
-      passkey({
-        ...(passkeyOrigin ? { origin: passkeyOrigin } : {}),
-        ...(passkeyRpId ? { rpID: passkeyRpId } : {}),
-        rpName: "AI-Harness",
       }),
     ],
     ...(isHttpOnly ? { advanced: { useSecureCookies: false } } : {}),
