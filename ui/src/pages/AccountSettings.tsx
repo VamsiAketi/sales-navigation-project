@@ -457,6 +457,60 @@ function SendResetLinkSection({ email }: { email: string | null }) {
   );
 }
 
+function PasskeySection() {
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+  const [message, setMessage] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => authApi.addPasskey(),
+    onSuccess: () => {
+      setStatus("success");
+      setMessage("Passkey added successfully. You can now use passkey sign-in on the login page.");
+    },
+    onError: (err) => {
+      setStatus("error");
+      setMessage(err instanceof Error ? err.message : "Failed to register passkey.");
+    },
+  });
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold">Passkey Sign-In</h3>
+        <p className="text-sm text-muted-foreground">
+          Register a device passkey (Face ID, fingerprint, or security key) for faster and safer sign-in.
+        </p>
+      </div>
+
+      <div className="border-t border-border pt-4 space-y-3">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={mutation.isPending}
+          onClick={() => {
+            setStatus("idle");
+            setMessage(null);
+            mutation.mutate();
+          }}
+        >
+          {mutation.isPending ? "Registering passkey..." : "Add Passkey"}
+        </Button>
+
+        {status === "success" && message && (
+          <p className="rounded-md border border-green-500/40 bg-green-500/5 px-3 py-2 text-sm text-green-600 dark:text-green-400">
+            {message}
+          </p>
+        )}
+        {status === "error" && message && (
+          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {message}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function AccountDetailsTab({ email }: { email: string | null }) {
   return (
     <div className="space-y-6">
@@ -479,6 +533,8 @@ function AccountDetailsTab({ email }: { email: string | null }) {
           <ChangePasswordForm />
         </div>
       </section>
+
+      <PasskeySection />
 
       <SendResetLinkSection email={email} />
     </div>
