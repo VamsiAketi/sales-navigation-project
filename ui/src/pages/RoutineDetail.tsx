@@ -948,7 +948,7 @@ export function RoutineDetail() {
           </TabsTrigger>
 <TabsTrigger value="activity" className="gap-1.5">
             <ActivityIcon className="h-3.5 w-3.5" />
-            Activity
+            Aduit Log
           </TabsTrigger>
         </TabsList>
 

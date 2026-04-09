@@ -17,14 +17,13 @@ import { assigneeValueFromSelection, suggestedCommentAssigneeValue } from "../li
 import { queryKeys } from "../lib/queryKeys";
 import { readIssueDetailBreadcrumb, readIssueDetailBreadcrumbChain } from "../lib/issueDetailBreadcrumb";
 import { useProjectOrder } from "../hooks/useProjectOrder";
-import { relativeTime, cn, formatTokens, visibleRunCostUsd } from "../lib/utils";
+import { relativeTime, cn } from "../lib/utils";
 import { InlineEditor } from "../components/InlineEditor";
 import { CommentThread } from "../components/CommentThread";
 import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
 import { IssueProperties } from "../components/IssueProperties";
 import { LiveRunWidget } from "../components/LiveRunWidget";
 import type { MentionOption } from "../components/MarkdownEditor";
-import { ScrollToBottom } from "../components/ScrollToBottom";
 import { StatusIcon } from "../components/StatusIcon";
 import { PriorityIcon } from "../components/PriorityIcon";
 import { StatusBadge } from "../components/StatusBadge";
@@ -70,12 +69,19 @@ const ACTION_LABELS: Record<string, string> = {
   "issue.updated": "updated the issue",
   "issue.checked_out": "checked out the issue",
   "issue.released": "released the issue",
+  "issue.read_marked": "marked the issue as read",
   "issue.comment_added": "added a comment",
   "issue.attachment_added": "added an attachment",
   "issue.attachment_removed": "removed an attachment",
   "issue.document_created": "created a document",
   "issue.document_updated": "updated a document",
   "issue.document_deleted": "deleted a document",
+  "issue.work_product_created": "created a work product",
+  "issue.work_product_updated": "updated a work product",
+  "issue.work_product_deleted": "deleted a work product",
+  "issue.approval_linked": "linked an approval",
+  "issue.approval_unlinked": "unlinked an approval",
+  "issue.checkout_lock_adopted": "adopted a checkout lock",
   "issue.deleted": "deleted the issue",
   "agent.created": "created an agent",
   "agent.updated": "updated the agent",
@@ -94,18 +100,56 @@ function humanizeValue(value: unknown): string {
   return value.replace(/_/g, " ");
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string");
 }
 
-function usageNumber(usage: Record<string, unknown> | null, ...keys: string[]) {
-  if (!usage) return 0;
-  for (const key of keys) {
-    const value = usage[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
+function shortId(value: string): string {
+  return value.length > 8 ? value.slice(0, 8) : value;
+}
+
+function resolveAssigneeName(
+  payload: Record<string, unknown>,
+  agentMap: Map<string, Agent>,
+  userNameMap: Map<string, string>,
+): string | null {
+  const assigneeAgentId = typeof payload.assigneeAgentId === "string" ? payload.assigneeAgentId : null;
+  if (assigneeAgentId) {
+    return agentMap.get(assigneeAgentId)?.name ?? `agent ${shortId(assigneeAgentId)}`;
   }
-  return 0;
+  const assigneeUserId = typeof payload.assigneeUserId === "string" ? payload.assigneeUserId : null;
+  if (!assigneeUserId) return null;
+  const assigneeUserName = typeof payload.assigneeUserName === "string" ? payload.assigneeUserName : null;
+  if (assigneeUserName) return assigneeUserName;
+  if (assigneeUserId === "local-board") return "Board";
+  return userNameMap.get(assigneeUserId) ?? `user ${shortId(assigneeUserId)}`;
+}
+
+function resolvePreviousAssigneeName(
+  details: Record<string, unknown>,
+  previous: Record<string, unknown>,
+  agentMap: Map<string, Agent>,
+  userNameMap: Map<string, string>,
+): string | null {
+  const previousAssigneeAgentId = typeof previous.assigneeAgentId === "string" ? previous.assigneeAgentId : null;
+  if (previousAssigneeAgentId) {
+    return agentMap.get(previousAssigneeAgentId)?.name ?? `agent ${shortId(previousAssigneeAgentId)}`;
+  }
+  const previousAssigneeUserId = typeof previous.assigneeUserId === "string" ? previous.assigneeUserId : null;
+  if (!previousAssigneeUserId) return null;
+  const previousAssigneeUserName = typeof details.previousAssigneeUserName === "string"
+    ? details.previousAssigneeUserName
+    : null;
+  if (previousAssigneeUserName) return previousAssigneeUserName;
+  if (previousAssigneeUserId === "local-board") return "Board";
+  return userNameMap.get(previousAssigneeUserId) ?? `user ${shortId(previousAssigneeUserId)}`;
+}
+
+function renderLabelList(labelIds: string[], labelNameMap: Map<string, string>): string {
+  return labelIds
+    .map((labelId) => labelNameMap.get(labelId) ?? `label ${shortId(labelId)}`)
+    .join(", ");
 }
 
 function truncate(text: string, max: number): string {
@@ -143,7 +187,13 @@ function titleizeFilename(input: string) {
     .join(" ");
 }
 
-function formatAction(action: string, details?: Record<string, unknown> | null): string {
+function formatAction(
+  action: string,
+  details: Record<string, unknown> | null | undefined,
+  agentMap: Map<string, Agent>,
+  userNameMap: Map<string, string>,
+  labelNameMap: Map<string, string>,
+): string {
   if (action === "issue.updated" && details) {
     const previous = (details._previous ?? {}) as Record<string, unknown>;
     const parts: string[] = [];
@@ -165,11 +215,31 @@ function formatAction(action: string, details?: Record<string, unknown> | null):
       );
     }
     if (details.assigneeAgentId !== undefined || details.assigneeUserId !== undefined) {
-      parts.push(
-        details.assigneeAgentId || details.assigneeUserId
-          ? "assigned the issue"
-          : "unassigned the issue",
-      );
+      const nextAssignee = resolveAssigneeName(details, agentMap, userNameMap);
+      const previousAssignee = resolvePreviousAssigneeName(details, previous, agentMap, userNameMap);
+      if (previousAssignee && nextAssignee) {
+        parts.push(`reassigned from ${previousAssignee} to ${nextAssignee}`);
+      } else if (nextAssignee) {
+        parts.push(`assigned to ${nextAssignee}`);
+      } else if (previousAssignee) {
+        parts.push(`unassigned (was ${previousAssignee})`);
+      } else {
+        parts.push("updated assignee");
+      }
+    }
+
+    if (details.labelIds !== undefined) {
+      const nextLabels = asStringArray(details.labelIds);
+      const previousLabels = asStringArray(previous.labelIds);
+      const addedLabels = nextLabels.filter((id) => !previousLabels.includes(id));
+      const removedLabels = previousLabels.filter((id) => !nextLabels.includes(id));
+      if (addedLabels.length > 0 && removedLabels.length > 0) {
+        parts.push(`updated labels (+${renderLabelList(addedLabels, labelNameMap)}; -${renderLabelList(removedLabels, labelNameMap)})`);
+      } else if (addedLabels.length > 0) {
+        parts.push(`added labels ${renderLabelList(addedLabels, labelNameMap)}`);
+      } else if (removedLabels.length > 0) {
+        parts.push(`removed labels ${renderLabelList(removedLabels, labelNameMap)}`);
+      }
     }
     if (details.title !== undefined) parts.push("updated the title");
     if (details.description !== undefined) parts.push("updated the description");
@@ -184,7 +254,7 @@ function formatAction(action: string, details?: Record<string, unknown> | null):
     const title = typeof details.title === "string" && details.title ? ` (${details.title})` : "";
     return `${ACTION_LABELS[action] ?? action} ${key}${title}`;
   }
-  return ACTION_LABELS[action] ?? action.replace(/[._]/g, " ");
+  return ACTION_LABELS[action] ?? action.replace(/[._]/g, " ").replace(/\s+/g, " ").trim().replace("issue", "task");
 }
 
 function ActorIdentity({ evt, agentMap, userNameMap }: { evt: ActivityEvent; agentMap: Map<string, Agent>; userNameMap: Map<string, string> }) {
@@ -314,6 +384,11 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const { data: labels } = useQuery({
+    queryKey: queryKeys.issues.labels(resolvedCompanyId!),
+    queryFn: () => issuesApi.listLabels(resolvedCompanyId!),
+    enabled: !!resolvedCompanyId,
+  });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
 
   const { data: members } = useQuery({
@@ -357,6 +432,14 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     }
     return map;
   }, [members]);
+
+  const labelNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const label of labels ?? []) {
+      map.set(label.id, label.name);
+    }
+    return map;
+  }, [labels]);
 
   const mentionOptions = useMemo<MentionOption[]>(() => {
     const options: MentionOption[] = [];
@@ -459,45 +542,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
       return meta ? { ...comment, ...meta } : comment;
     });
   }, [activity, comments, linkedRuns]);
-
-  const issueCostSummary = useMemo(() => {
-    let input = 0;
-    let output = 0;
-    let cached = 0;
-    let cost = 0;
-    let hasCost = false;
-    let hasTokens = false;
-
-    for (const run of linkedRuns ?? []) {
-      const usage = asRecord(run.usageJson);
-      const result = asRecord(run.resultJson);
-      const runInput = usageNumber(usage, "inputTokens", "input_tokens");
-      const runOutput = usageNumber(usage, "outputTokens", "output_tokens");
-      const runCached = usageNumber(
-        usage,
-        "cachedInputTokens",
-        "cached_input_tokens",
-        "cache_read_input_tokens",
-      );
-      const runCost = visibleRunCostUsd(usage, result);
-      if (runCost > 0) hasCost = true;
-      if (runInput + runOutput + runCached > 0) hasTokens = true;
-      input += runInput;
-      output += runOutput;
-      cached += runCached;
-      cost += runCost;
-    }
-
-    return {
-      input,
-      output,
-      cached,
-      cost,
-      totalTokens: input + output,
-      hasCost,
-      hasTokens,
-    };
-  }, [linkedRuns]);
 
   const invalidateIssue = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issueId!) });
@@ -1075,7 +1119,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           </TabsTrigger>
           <TabsTrigger value="activity" className="gap-1.5">
             <ActivityIcon className="h-3.5 w-3.5" />
-            Activity
+            Aduit Log
           </TabsTrigger>
           {issuePluginTabItems.map((item) => (
             <TabsTrigger key={item.value} value={item.value}>
@@ -1151,30 +1195,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
         </TabsContent>
 
         <TabsContent value="activity">
-          {linkedRuns && linkedRuns.length > 0 && (
-            <div className="mb-3 px-3 py-2 rounded-lg border border-border">
-              <div className="text-sm font-medium text-muted-foreground mb-1">Cost Summary</div>
-              {!issueCostSummary.hasCost && !issueCostSummary.hasTokens ? (
-                <div className="text-xs text-muted-foreground">No cost data yet.</div>
-              ) : (
-                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground tabular-nums">
-                  {issueCostSummary.hasCost && (
-                    <span className="font-medium text-foreground">
-                      ${issueCostSummary.cost.toFixed(4)}
-                    </span>
-                  )}
-                  {issueCostSummary.hasTokens && (
-                    <span>
-                      Tokens {formatTokens(issueCostSummary.totalTokens)}
-                      {issueCostSummary.cached > 0
-                        ? ` (in ${formatTokens(issueCostSummary.input)}, out ${formatTokens(issueCostSummary.output)}, cached ${formatTokens(issueCostSummary.cached)})`
-                        : ` (in ${formatTokens(issueCostSummary.input)}, out ${formatTokens(issueCostSummary.output)})`}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
           {!activity || activity.length === 0 ? (
             <p className="text-xs text-muted-foreground">No activity yet.</p>
           ) : (
@@ -1182,7 +1202,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
               {activity.slice(0, 20).map((evt) => (
                 <div key={evt.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <ActorIdentity evt={evt} agentMap={agentMap} userNameMap={userNameMap} />
-                  <span>{formatAction(evt.action, evt.details)}</span>
+                  <span>{formatAction(evt.action, evt.details, agentMap, userNameMap, labelNameMap)}</span>
                   <span className="ml-auto shrink-0">{relativeTime(evt.createdAt)}</span>
                 </div>
               ))}
@@ -1266,7 +1286,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
         />
       )}
 
-      <ScrollToBottom rightOffset={panelVisible ? 320 : 0} />
     </div>
   );
 }

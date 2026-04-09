@@ -18,6 +18,28 @@ export type WorktreeUiBranding = {
   faviconHref: string | null;
 };
 
+export type SiteWebManifest = {
+  id: string;
+  name: string;
+  short_name: string;
+  description: string;
+  start_url: string;
+  scope: string;
+  display: "standalone";
+  orientation: "any";
+  theme_color: string;
+  background_color: string;
+  icons: Array<{
+    src: string;
+    sizes: string;
+    type: "image/png";
+    purpose?: "maskable";
+  }>;
+};
+
+const DEFAULT_APP_NAME = "AI-Harness";
+const DEFAULT_INSTANCE_ID = "default";
+
 function isTruthyEnvValue(value: string | undefined): boolean {
   if (!value) return false;
   const normalized = value.trim().toLowerCase();
@@ -165,6 +187,51 @@ export function getWorktreeUiBranding(env: NodeJS.ProcessEnv = process.env): Wor
     color,
     textColor,
     faviconHref: createFaviconDataUrl(color, textColor),
+  };
+}
+
+export function getInstanceDisplayName(env: NodeJS.ProcessEnv = process.env): string {
+  const explicitName = nonEmpty(env.PAPERCLIP_WORKTREE_NAME);
+  if (explicitName) return explicitName;
+
+  const instanceId = nonEmpty(env.PAPERCLIP_INSTANCE_ID);
+  if (!instanceId || instanceId.toLowerCase() === DEFAULT_INSTANCE_ID) {
+    return DEFAULT_APP_NAME;
+  }
+  return instanceId;
+}
+
+export function buildSiteWebManifest(env: NodeJS.ProcessEnv = process.env): SiteWebManifest {
+  const name = getInstanceDisplayName(env);
+  return {
+    id: "/",
+    name,
+    short_name: name,
+    description: "AI-powered project management and agent coordination platform",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    orientation: "any",
+    theme_color: "#18181b",
+    background_color: "#18181b",
+    icons: [
+      {
+        src: "/android-chrome-192x192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+      {
+        src: "/android-chrome-512x512.png",
+        sizes: "512x512",
+        type: "image/png",
+      },
+      {
+        src: "/android-chrome-512x512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
+    ],
   };
 }
 

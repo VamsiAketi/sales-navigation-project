@@ -688,7 +688,7 @@ export function KanbanBoard({
           so no card can ever paint on top of the sticky status row              */}
       <div
         ref={cardsScrollRef}
-        className="-mx-2 relative z-0 flex items-stretch gap-4 overflow-x-auto px-2 pb-4"
+        className="-mx-2 relative z-0 flex min-h-[calc(100dvh-16rem)] items-stretch gap-4 overflow-x-auto px-2 pb-4"
         onScroll={onCardsScroll}
       >
         {activeColumns.map((status) => {

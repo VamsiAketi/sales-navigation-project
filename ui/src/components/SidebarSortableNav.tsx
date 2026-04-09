@@ -311,7 +311,7 @@ export function SidebarCompanyNavSection() {
         return (
           <SidebarNavItem
             to="/activity"
-            label="Audit Log"
+            label="Aduit Log"
             icon={History}
             iconClassName={azureSidebarIcon.audit}
             className={dragDisabled ? undefined : "!pl-2"}

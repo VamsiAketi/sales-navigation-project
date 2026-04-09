@@ -708,8 +708,10 @@ export function Layout() {
               id="main-content"
               tabIndex={-1}
               className={cn(
-                "flex-1 p-4 md:p-6",
-                isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto",
+                "flex-1",
+                isMobile
+                  ? "overflow-visible p-4 pb-[calc(5rem+env(safe-area-inset-bottom))]"
+                  : "overflow-auto md:px-6 md:pb-6 md:pt-0",
               )}
             >
               {hasUnknownCompanyPrefix ? (
