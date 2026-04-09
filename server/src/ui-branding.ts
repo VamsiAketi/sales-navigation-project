@@ -198,7 +198,7 @@ export function getInstanceDisplayName(env: NodeJS.ProcessEnv = process.env): st
   if (!instanceId || instanceId.toLowerCase() === DEFAULT_INSTANCE_ID) {
     return DEFAULT_APP_NAME;
   }
-  return instanceId;
+  return `${DEFAULT_APP_NAME}:${instanceId}`;
 }
 
 export function buildSiteWebManifest(env: NodeJS.ProcessEnv = process.env): SiteWebManifest {

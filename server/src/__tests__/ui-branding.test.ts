@@ -89,10 +89,10 @@ describe("ui branding", () => {
     })).toBe("feature-pr-321");
   });
 
-  it("falls back to instance id when non-default", () => {
+  it("prefixes non-default instance id with app name", () => {
     expect(getInstanceDisplayName({
       PAPERCLIP_INSTANCE_ID: "acme-dev",
-    })).toBe("acme-dev");
+    })).toBe("AI-Harness:acme-dev");
   });
 
   it("keeps default product name for default instance id", () => {
@@ -106,8 +106,8 @@ describe("ui branding", () => {
       PAPERCLIP_INSTANCE_ID: "tenant-alpha",
     });
 
-    expect(manifest.name).toBe("tenant-alpha");
-    expect(manifest.short_name).toBe("tenant-alpha");
+    expect(manifest.name).toBe("AI-Harness:tenant-alpha");
+    expect(manifest.short_name).toBe("AI-Harness:tenant-alpha");
     expect(manifest.icons).toHaveLength(3);
   });
 });
