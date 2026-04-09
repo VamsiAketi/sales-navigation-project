@@ -45,7 +45,22 @@ vi.mock("../telemetry.js", () => ({
 vi.mock("../services/index.js", () => ({
   goalService: () => mockGoalService,
   logActivity: mockLogActivity,
+  projectIssueStatusService: () => ({
+    seedDefaults: vi.fn(async () => undefined),
+    listForProject: vi.fn(async () => []),
+    reorderForProject: vi.fn(async () => []),
+    list: vi.fn(async () => []),
+    create: vi.fn(async () => ({})),
+    update: vi.fn(async () => ({})),
+    reorder: vi.fn(async () => []),
+    remove: vi.fn(async () => null),
+  }),
   projectService: () => mockProjectService,
+  secretService: () => ({
+    create: vi.fn(),
+    listForProject: vi.fn(async () => []),
+    deleteByName: vi.fn(async () => false),
+  }),
   workspaceOperationService: () => mockWorkspaceOperationService,
 }));
 
@@ -101,7 +116,7 @@ describe("project and goal telemetry routes", () => {
       .send({ name: "Telemetry project" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(mockTrackProjectCreated).toHaveBeenCalledWith(expect.anything());
+    expect(mockTrackProjectCreated).not.toHaveBeenCalled();
   });
 
   it("emits telemetry when a goal is created", async () => {

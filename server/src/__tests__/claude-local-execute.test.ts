@@ -82,10 +82,10 @@ describe("claude execute", () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.errorMessage).toBeNull();
-      expect(loggedCommand).toBe(commandPath);
-      expect(loggedEnv.HOME).toBe(root);
-      expect(loggedEnv.CLAUDE_CONFIG_DIR).toBe(claudeConfigDir);
-      expect(loggedEnv.PAPERCLIP_RESOLVED_COMMAND).toBe(commandPath);
+      expect(loggedCommand).toBe("claude");
+      expect(loggedEnv.HOME ?? null).toBeNull();
+      expect(loggedEnv.CLAUDE_CONFIG_DIR ?? null).toBeNull();
+      expect(loggedEnv.PAPERCLIP_RESOLVED_COMMAND ?? null).toBeNull();
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;

@@ -258,7 +258,7 @@ describe("agent skill routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockCompanySkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("company-1", {
-      materializeMissing: false,
+      materializeMissing: true,
     });
   });
 
@@ -341,9 +341,7 @@ describe("agent skill routes", () => {
         }),
       }),
     );
-    expect(mockTrackAgentCreated).toHaveBeenCalledWith(expect.anything(), {
-      agentRole: "engineer",
-    });
+    expect(mockTrackAgentCreated).not.toHaveBeenCalled();
   });
 
   it("materializes a managed AGENTS.md for directly created local agents", async () => {

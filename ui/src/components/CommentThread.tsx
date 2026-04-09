@@ -23,6 +23,7 @@ interface LinkedRunItem {
   agentId: string;
   createdAt: Date | string;
   startedAt: Date | string | null;
+  finishedAt?: Date | string | null;
 }
 
 interface CommentReassignment {

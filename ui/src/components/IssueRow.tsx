@@ -9,6 +9,7 @@ type UnreadState = "hidden" | "visible" | "fading";
 
 interface IssueRowProps {
   issue: Issue;
+  selected?: boolean;
   issueLinkState?: unknown;
   mobileLeading?: ReactNode;
   desktopMetaLeading?: ReactNode;
@@ -18,6 +19,8 @@ interface IssueRowProps {
   trailingMeta?: ReactNode;
   unreadState?: UnreadState | null;
   onMarkRead?: () => void;
+  onArchive?: () => void;
+  archiveDisabled?: boolean;
   className?: string;
   /** Short-lived marker after creating a task (e.g. 30s). */
   showNewBadge?: boolean;
@@ -27,6 +30,7 @@ interface IssueRowProps {
 
 export function IssueRow({
   issue,
+  selected = false,
   issueLinkState,
   mobileLeading,
   desktopMetaLeading,
@@ -52,6 +56,7 @@ export function IssueRow({
       state={issueLinkState}
       className={cn(
         "flex items-start gap-2 border-b border-border py-2.5 pl-2 pr-3 text-sm no-underline text-inherit transition-colors hover:bg-accent/50 last:border-b-0 sm:items-center sm:py-2 sm:pl-1",
+        selected && "bg-accent",
         className,
       )}
     >

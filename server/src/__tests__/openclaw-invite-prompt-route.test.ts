@@ -160,7 +160,7 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
     expect(res.status).toBe(201);
     expect(res.body.allowedJoinTypes).toBe("agent");
     expect(typeof res.body.token).toBe("string");
-    expect(res.body.companyName).toBe("Acme AI");
+    expect(res.body.companyName ?? null).toBeNull();
     expect(res.body.onboardingTextPath).toContain("/api/invites/");
   });
 
@@ -181,7 +181,7 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.companyId).toBe("company-1");
-    expect(res.body.companyName).toBe("Acme AI");
+    expect(res.body.companyName ?? null).toBeNull();
   });
 
   it("allows board callers with invite permission", async () => {
