@@ -266,7 +266,23 @@ export function AuthPage() {
             )}
             {(isResetMode || !useEmailCode) && (
               <div>
-                <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label htmlFor="password" className="text-xs text-muted-foreground block">Password</label>
+                  {!isResetMode && mode === "sign_in" && !useEmailCode && (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                      onClick={() => {
+                        setForgotRequested((prev) => !prev);
+                        setError(null);
+                        setForgotSuccess(null);
+                        setPassword("");
+                      }}
+                    >
+                      {forgotRequested ? "Back to sign in" : "Forgot password?"}
+                    </button>
+                  )}
+                </div>
                 {!(!isResetMode && mode === "sign_in" && forgotRequested) && (
                   <div className="relative">
                     <input
@@ -289,68 +305,6 @@ export function AuthPage() {
                     </button>
                   </div>
                 )}
-              </div>
-            )}
-            {!isResetMode && mode === "sign_in" && (
-              <div className="rounded-xl border border-border bg-card/70 p-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Sign in method
-                </p>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs transition ${
-                      !useEmailCode
-                        ? "border-primary/60 bg-primary/10 text-primary"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => {
-                      setUseEmailCode(false);
-                      setForgotRequested(false);
-                      setCodeSent(false);
-                      setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-                      setEmailCode("");
-                      setCodeSuccess(null);
-                      setError(null);
-                    }}
-                  >
-                    <Lock className="h-3.5 w-3.5" />
-                    Password
-                  </button>
-                  <button
-                    type="button"
-                    className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs transition ${
-                      useEmailCode
-                        ? "border-primary/60 bg-primary/10 text-primary"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => {
-                      setUseEmailCode(true);
-                      setForgotRequested(false);
-                      setPassword("");
-                      setCodeSent(false);
-                      setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-                      setEmailCode("");
-                      setCodeSuccess(null);
-                      setError(null);
-                    }}
-                  >
-                    <Mail className="h-3.5 w-3.5" />
-                    Email OTP
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center gap-1 rounded-md border border-border bg-background px-2 py-2 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-                    disabled={passkeyMutation.isPending}
-                    onClick={() => {
-                      setError(null);
-                      passkeyMutation.mutate();
-                    }}
-                  >
-                    <KeyRound className="h-3.5 w-3.5" />
-                    {passkeyMutation.isPending ? "..." : "Passkey"}
-                  </button>
-                </div>
               </div>
             )}
             {!isResetMode && mode === "sign_in" && useEmailCode && !codeSent && (
@@ -485,22 +439,6 @@ export function AuthPage() {
                 </div>
               </div>
             )}
-            {!isResetMode && mode === "sign_in" && !useEmailCode && (
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <button
-                  type="button"
-                  className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                  onClick={() => {
-                    setForgotRequested((prev) => !prev);
-                    setError(null);
-                    setForgotSuccess(null);
-                    setPassword("");
-                  }}
-                >
-                  {forgotRequested ? "Back to sign in" : "Forgot password?"}
-                </button>
-              </div>
-            )}
             {!isResetMode && mode === "sign_in" && forgotRequested && (
               <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
                 <p>Enter your email and we will send a password reset link.</p>
@@ -549,30 +487,72 @@ export function AuthPage() {
                     {sendCodeMutation.isPending ? "Sending OTP..." : "Resend OTP"}
                   </Button>
                 ) : (
-                  <Button
-                    type="submit"
-                    disabled={isResetMode ? resetPasswordMutation.isPending : mutation.isPending}
-                    aria-disabled={
-                      isResetMode
-                        ? !canSubmitReset || resetPasswordMutation.isPending
-                        : !canSubmit || mutation.isPending
-                    }
-                    className={`w-full ${
-                      isResetMode
-                        ? !canSubmitReset && !resetPasswordMutation.isPending ? "opacity-50" : ""
-                        : !canSubmit && !mutation.isPending ? "opacity-50" : ""
-                    }`}
-                  >
-                    {isResetMode
-                      ? resetPasswordMutation.isPending
-                        ? "Resetting…"
-                        : "Reset Password"
-                      : mutation.isPending
-                        ? "Working…"
-                        : mode === "sign_in"
-                          ? "Login"
-                          : "Create Account"}
-                  </Button>
+                  <>
+                    <Button
+                      type="submit"
+                      disabled={isResetMode ? resetPasswordMutation.isPending : mutation.isPending}
+                      aria-disabled={
+                        isResetMode
+                          ? !canSubmitReset || resetPasswordMutation.isPending
+                          : !canSubmit || mutation.isPending
+                      }
+                      className={`w-full ${
+                        isResetMode
+                          ? !canSubmitReset && !resetPasswordMutation.isPending ? "opacity-50" : ""
+                          : !canSubmit && !mutation.isPending ? "opacity-50" : ""
+                      }`}
+                    >
+                      {isResetMode
+                        ? resetPasswordMutation.isPending
+                          ? "Resetting…"
+                          : "Reset Password"
+                        : mutation.isPending
+                          ? "Working…"
+                          : mode === "sign_in"
+                            ? "Login"
+                            : "Create Account"}
+                    </Button>
+                    {!isResetMode && mode === "sign_in" && !useEmailCode && (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <div className="h-px flex-1 bg-border" />
+                          <span className="text-xs text-muted-foreground">or</span>
+                          <div className="h-px flex-1 bg-border" />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            setUseEmailCode(true);
+                            setForgotRequested(false);
+                            setPassword("");
+                            setCodeSent(false);
+                            setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+                            setEmailCode("");
+                            setCodeSuccess(null);
+                            setError(null);
+                          }}
+                          className="w-full"
+                        >
+                          <Mail className="mr-2 h-4 w-4" />
+                          Continue with Email OTP
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={passkeyMutation.isPending}
+                          onClick={() => {
+                            setError(null);
+                            passkeyMutation.mutate();
+                          }}
+                          className="w-full"
+                        >
+                          <KeyRound className="mr-2 h-4 w-4" />
+                          {passkeyMutation.isPending ? "Opening Passkey..." : "Continue with Passkey"}
+                        </Button>
+                      </>
+                    )}
+                  </>
                 )}
                 {!isResetMode && mode === "sign_in" && useEmailCode && codeSent && (
                   <div className="flex items-center gap-3">
