@@ -6,8 +6,15 @@ export type AuthSession = {
   user: { id: string; email: string | null; name: string | null; mustChangePassword?: boolean };
 };
 
+function resolveBetterAuthBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    return new URL("/api/auth", window.location.origin).toString();
+  }
+  return "http://localhost:3100/api/auth";
+}
+
 const betterAuthClient = createAuthClient({
-  baseURL: "/api/auth",
+  baseURL: resolveBetterAuthBaseUrl(),
   plugins: [passkeyClient()],
 });
 
