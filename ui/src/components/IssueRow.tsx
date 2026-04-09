@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
+import { createIssueDetailPath } from "../lib/issueDetailBreadcrumb";
 import { cn } from "../lib/utils";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import { StatusIcon } from "./StatusIcon";
@@ -45,6 +46,7 @@ export function IssueRow({
   projectStatuses,
 }: IssueRowProps) {
   const issuePathId = issue.identifier ?? issue.id;
+  const issueHref = createIssueDetailPath(issuePathId, issueLinkState);
   const identifier = issue.identifier ?? issue.id.slice(0, 8);
   const showUnreadSlot = unreadState !== null;
   const showUnreadDot = unreadState === "visible" || unreadState === "fading";
@@ -52,11 +54,12 @@ export function IssueRow({
   return (
     <Link
       id={`issue-surface-${issue.id}`}
-      to={`/issues/${issuePathId}`}
+      data-inbox-issue-link
+      to={issueHref}
       state={issueLinkState}
       className={cn(
         "flex items-start gap-2 border-b border-border py-2.5 pl-2 pr-3 text-sm no-underline text-inherit transition-colors hover:bg-accent/50 last:border-b-0 sm:items-center sm:py-2 sm:pl-1",
-        selected && "bg-accent",
+        selected && "bg-accent hover:bg-transparent",
         className,
       )}
     >
@@ -74,7 +77,11 @@ export function IssueRow({
           {desktopMetaLeading ?? (
             <>
               <span className="hidden shrink-0 sm:inline-flex">
-                <StatusIcon status={issue.status} projectStatuses={projectStatuses} />
+                <StatusIcon
+                  status={issue.status}
+                  projectStatuses={projectStatuses}
+                  className={selected ? "border-muted-foreground! text-muted-foreground!" : undefined}
+                />
               </span>
               <span className="shrink-0 font-mono text-xs text-muted-foreground">
                 {identifier}
@@ -121,12 +128,16 @@ export function IssueRow({
                   onMarkRead?.();
                 }
               }}
-              className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-blue-500/20"
+              className={cn(
+                "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
+                selected ? "hover:bg-muted/80" : "hover:bg-blue-500/20",
+              )}
               aria-label="Mark as read"
             >
               <span
                 className={cn(
-                  "block h-2 w-2 rounded-full bg-blue-600 transition-opacity duration-300 dark:bg-blue-400",
+                  "block h-2 w-2 rounded-full transition-opacity duration-300",
+                  selected ? "bg-muted-foreground/70" : "bg-blue-600 dark:bg-blue-400",
                   unreadState === "fading" ? "opacity-0" : "opacity-100",
                 )}
               />
