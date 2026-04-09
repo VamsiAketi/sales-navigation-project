@@ -32,6 +32,7 @@ type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
 const HUMAN_ROLE_OPTIONS = [
   "Owner",
+  "Director",
   "CEO",
   "COO",
   "CTO",

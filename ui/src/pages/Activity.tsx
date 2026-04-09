@@ -22,13 +22,24 @@ import {
 import { History } from "lucide-react";
 import type { Agent } from "@paperclipai/shared";
 
+function formatEntityTypeLabel(value: string): string {
+  return value
+    .replace(/[._]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function Activity() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Audit Log" }]);
+    setBreadcrumbs([{ label: "Aduit Log" }]);
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({
@@ -52,6 +63,12 @@ export function Activity() {
   const { data: issues } = useQuery({
     queryKey: queryKeys.issues.list(selectedCompanyId!),
     queryFn: () => issuesApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: labels } = useQuery({
+    queryKey: queryKeys.issues.labels(selectedCompanyId!),
+    queryFn: () => issuesApi.listLabels(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
 
@@ -87,6 +104,12 @@ export function Activity() {
     for (const i of issues ?? []) map.set(`issue:${i.id}`, i.title);
     return map;
   }, [issues]);
+
+  const labelNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const label of labels ?? []) map.set(label.id, label.name);
+    return map;
+  }, [labels]);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -126,7 +149,7 @@ export function Activity() {
             <SelectItem value="all">All types</SelectItem>
             {entityTypes.map((type) => (
               <SelectItem key={type} value={type}>
-                {type.charAt(0).toUpperCase() + type.slice(1)}
+                {formatEntityTypeLabel(type)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -147,6 +170,7 @@ export function Activity() {
               event={event}
               agentMap={agentMap}
               userNameMap={userNameMap}
+              labelNameMap={labelNameMap}
               entityNameMap={entityNameMap}
               entityTitleMap={entityTitleMap}
             />

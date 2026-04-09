@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applyUiBranding,
+  buildSiteWebManifest,
   getWorktreeUiBranding,
+  getInstanceDisplayName,
   isWorktreeUiBrandingEnabled,
   renderFaviconLinks,
   renderRuntimeBrandingMeta,
@@ -78,5 +80,34 @@ describe("ui branding", () => {
     const defaultHtml = applyUiBranding(TEMPLATE, {});
     expect(defaultHtml).toContain('href="/favicon.svg"');
     expect(defaultHtml).not.toContain('name="paperclip-worktree-name"');
+  });
+
+  it("derives instance display name from worktree first", () => {
+    expect(getInstanceDisplayName({
+      PAPERCLIP_WORKTREE_NAME: "feature-pr-321",
+      PAPERCLIP_INSTANCE_ID: "dev",
+    })).toBe("feature-pr-321");
+  });
+
+  it("falls back to instance id when non-default", () => {
+    expect(getInstanceDisplayName({
+      PAPERCLIP_INSTANCE_ID: "acme-dev",
+    })).toBe("acme-dev");
+  });
+
+  it("keeps default product name for default instance id", () => {
+    expect(getInstanceDisplayName({
+      PAPERCLIP_INSTANCE_ID: "default",
+    })).toBe("AI-Harness");
+  });
+
+  it("builds a manifest using the resolved instance name", () => {
+    const manifest = buildSiteWebManifest({
+      PAPERCLIP_INSTANCE_ID: "tenant-alpha",
+    });
+
+    expect(manifest.name).toBe("tenant-alpha");
+    expect(manifest.short_name).toBe("tenant-alpha");
+    expect(manifest.icons).toHaveLength(3);
   });
 });
