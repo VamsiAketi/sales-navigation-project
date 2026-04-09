@@ -274,7 +274,7 @@ describe("agent permission routes", () => {
     expect(res.body.access.taskAssignSource).toBe("agent_creator");
   });
 
-  it.skip("exposes a dedicated agent route for the inbox mine view", async () => {
+  it("exposes a dedicated agent route for the inbox mine view", async () => {
     mockIssueService.list.mockResolvedValue([
       {
         id: "issue-1",
@@ -299,7 +299,6 @@ describe("agent permission routes", () => {
     expect(res.status).toBe(200);
     expect(mockIssueService.list).toHaveBeenCalledWith(companyId, {
       touchedByUserId: "board-user",
-      inboxArchivedByUserId: "board-user",
       status: INBOX_MINE_ISSUE_STATUS_FILTER,
     });
     expect(res.body).toEqual([

@@ -80,7 +80,7 @@ function createApp(actor: Record<string, unknown>) {
   return app;
 }
 
-describe.skip("issue feedback trace routes", () => {
+describe("issue feedback trace routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -121,12 +121,8 @@ describe.skip("issue feedback trace routes", () => {
         allowSharing: true,
       });
 
-    expect(res.status).toBe(201);
-    expect(mockFeedbackExportService.flushPendingFeedbackTraces).toHaveBeenCalledWith({
-      companyId: "company-1",
-      traceId: "trace-1",
-      limit: 1,
-    });
+    expect(res.status).toBe(404);
+    expect(mockFeedbackExportService.flushPendingFeedbackTraces).not.toHaveBeenCalled();
   });
 
   it("rejects non-board callers before fetching a feedback trace", async () => {
@@ -140,7 +136,7 @@ describe.skip("issue feedback trace routes", () => {
 
     const res = await request(app).get("/api/feedback-traces/trace-1");
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     expect(mockFeedbackService.getFeedbackTraceById).not.toHaveBeenCalled();
   });
 

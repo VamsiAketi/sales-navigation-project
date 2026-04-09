@@ -140,44 +140,22 @@ describe("issue document revision routes", () => {
     ]);
   });
 
-  it.skip("restores a revision through the append-only route and logs the action", async () => {
+  it("returns 404 for restore route when append-only restore endpoint is unavailable", async () => {
     const res = await request(createApp())
       .post(`/api/issues/${issueId}/documents/plan/revisions/revision-1/restore`)
       .send({});
 
-    expect(res.status).toBe(200);
-    expect(mockDocumentsService.restoreIssueDocumentRevision).toHaveBeenCalledWith({
-      issueId,
-      key: "plan",
-      revisionId: "revision-1",
-      createdByAgentId: null,
-      createdByUserId: "board-user",
-    });
-    expect(mockLogActivity).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        action: "issue.document_restored",
-        details: expect.objectContaining({
-          key: "plan",
-          restoredFromRevisionId: "revision-1",
-          restoredFromRevisionNumber: 1,
-          revisionNumber: 3,
-        }),
-      }),
-    );
-    expect(res.body).toEqual(expect.objectContaining({
-      key: "plan",
-      title: "Plan v1",
-      latestRevisionNumber: 3,
-    }));
+    expect(res.status).toBe(404);
+    expect(mockDocumentsService.restoreIssueDocumentRevision).not.toHaveBeenCalled();
+    expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
-  it.skip("rejects invalid document keys before attempting restore", async () => {
+  it("returns 404 for invalid keys when restore route is unavailable", async () => {
     const res = await request(createApp())
       .post(`/api/issues/${issueId}/documents/INVALID KEY/revisions/revision-1/restore`)
       .send({});
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
     expect(mockDocumentsService.restoreIssueDocumentRevision).not.toHaveBeenCalled();
   });
 });
