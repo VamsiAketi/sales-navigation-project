@@ -264,6 +264,33 @@ export function AuthPage() {
                 />
               </div>
             )}
+            {(isResetMode || !useEmailCode) && (
+              <div>
+                <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
+                {!(!isResetMode && mode === "sign_in" && forgotRequested) && (
+                  <div className="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 pr-10 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {!isResetMode && mode === "sign_in" && (
               <div className="rounded-xl border border-border bg-card/70 p-3">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -324,33 +351,6 @@ export function AuthPage() {
                     {passkeyMutation.isPending ? "..." : "Passkey"}
                   </button>
                 </div>
-              </div>
-            )}
-            {(isResetMode || !useEmailCode) && (
-              <div>
-                <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
-                {!(!isResetMode && mode === "sign_in" && forgotRequested) && (
-                  <div className="relative">
-                    <input
-                      id="password"
-                      name="password"
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 pr-10 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
-                    />
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
             {!isResetMode && mode === "sign_in" && useEmailCode && !codeSent && (
