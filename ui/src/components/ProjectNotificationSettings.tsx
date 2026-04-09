@@ -170,10 +170,9 @@ export function ProjectNotificationSettings({
             <Bell className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">Task notifications</h3>
           </div>
-          <p className="text-xs text-muted-foreground max-w-xl leading-relaxed">
-            Control which issue events notify people on this project. Individual users can still turn off channels in{" "}
-            <span className="text-foreground/90">Account → Notifications</span>. In-app notifications are created when
-            rules match; email is sent only if email is enabled here, SMTP is configured, and the user allows email.
+          <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
+            Choose which task events trigger alerts for this project. Team members can still manage their own preferences in{" "}
+            <span className="text-foreground/90">Account → Notifications</span>. In-app alerts are sent when a rule matches. Email is sent only when email is enabled here, company email delivery is configured, and the recipient has email notifications turned on.
           </p>
         </div>
       </div>

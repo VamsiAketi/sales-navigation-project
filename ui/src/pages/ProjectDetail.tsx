@@ -26,6 +26,9 @@ import { PageTabBar } from "../components/PageTabBar";
 import { projectRouteRef, cn } from "../lib/utils";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { Tabs } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronDown } from "lucide-react";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 
@@ -34,6 +37,14 @@ import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slo
 type ProjectBaseTab = "overview" | "list" | "configuration" | "budget";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
+
+const PROJECT_STATUSES = [
+  { value: "backlog", label: "Backlog" },
+  { value: "planned", label: "Planned" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+] as const;
 
 function isProjectPluginTab(value: string | null): value is ProjectPluginTab {
   return typeof value === "string" && value.startsWith("plugin:");
@@ -62,29 +73,68 @@ function OverviewContent({
   onUpdate: (data: Record<string, unknown>) => void;
   imageUploadHandler?: (file: File) => Promise<string>;
 }) {
-  return (
-    <div className="space-y-6">
-      <InlineEditor
-        value={project.description ?? ""}
-        onSave={(description) => onUpdate({ description })}
-        as="p"
-        className="text-sm text-muted-foreground"
-        placeholder="Add a description..."
-        multiline
-        imageUploadHandler={imageUploadHandler}
-      />
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+  return (
+    <div className="space-y-6 rounded-lg border border-border/70 bg-card p-4 sm:p-5">
+      <div className="space-y-2">
+        <span className="text-sm font-medium text-foreground">Description</span>
+        <div className="min-h-16 rounded-md border border-border bg-background p-3">
+          <InlineEditor
+            value={project.description ?? ""}
+            onSave={(description) => onUpdate({ description })}
+            as="p"
+            className="text-sm text-muted-foreground"
+            placeholder="Add a project description..."
+            multiline
+            imageUploadHandler={imageUploadHandler}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 border-t border-border/60 pt-4 text-sm sm:grid-cols-2">
         <div>
           <span className="text-muted-foreground">Status</span>
           <div className="mt-1">
-            <StatusBadge status={project.status} />
+            <Popover open={statusPickerOpen} onOpenChange={setStatusPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-2 px-2.5"
+                >
+                  <StatusBadge status={project.status} />
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-48 p-1">
+                {PROJECT_STATUSES.map((status) => {
+                  const isActive = status.value === project.status;
+                  return (
+                    <button
+                      key={status.value}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
+                        isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                      )}
+                      onClick={() => {
+                        onUpdate({ status: status.value });
+                        setStatusPickerOpen(false);
+                      }}
+                    >
+                      <span>{status.label}</span>
+                      {isActive ? <Check className="h-3.5 w-3.5" /> : null}
+                    </button>
+                  );
+                })}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
         {project.targetDate && (
           <div>
             <span className="text-muted-foreground">Target Date</span>
-            <p>{project.targetDate}</p>
+            <p className="mt-1">{project.targetDate}</p>
           </div>
         )}
       </div>
@@ -119,7 +169,7 @@ function ColorPicker({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="shrink-0 h-5 w-5 rounded-md cursor-pointer hover:ring-2 hover:ring-foreground/20 transition-[box-shadow]"
+        className="shrink-0 h-5 w-5 rounded-md cursor-pointer transition-shadow hover:ring-2 hover:ring-foreground/20"
         style={{ backgroundColor: currentColor }}
         aria-label="Change project color"
       />
@@ -523,6 +573,7 @@ export function ProjectDetail() {
             onSave={(name) => updateProject.mutate({ name })}
             as="h2"
             className="text-xl font-bold"
+            showEditButton
           />
           {project.pauseReason === "budget" ? (
             <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-red-200">

@@ -3,6 +3,7 @@ import { cn } from "../lib/utils";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { useAutosaveIndicator } from "../hooks/useAutosaveIndicator";
 import { ImageLightbox, type ImageLightboxState } from "./ImageLightbox";
+import { Pencil } from "lucide-react";
 
 interface InlineEditorProps {
   value: string;
@@ -11,6 +12,7 @@ interface InlineEditorProps {
   className?: string;
   placeholder?: string;
   multiline?: boolean;
+  showEditButton?: boolean;
   imageUploadHandler?: (file: File) => Promise<string>;
   mentions?: MentionOption[];
 }
@@ -27,6 +29,7 @@ export function InlineEditor({
   className,
   placeholder = "Click to edit...",
   multiline = false,
+  showEditButton = false,
   imageUploadHandler,
   mentions,
 }: InlineEditorProps) {
@@ -252,16 +255,28 @@ export function InlineEditor({
   const DisplayTag = value && multiline ? "div" : Tag;
 
   return (
-    <DisplayTag
-      className={cn(
-        "cursor-pointer rounded hover:bg-accent/50 transition-colors overflow-hidden",
-        pad,
-        !value && "text-muted-foreground italic",
-        className,
+    <div className="group flex min-w-0 items-start gap-1.5">
+      <DisplayTag
+        className={cn(
+          "min-w-0 flex-1 cursor-pointer overflow-hidden rounded transition-colors hover:bg-accent/50",
+          pad,
+          !value && "text-muted-foreground italic",
+          className,
+        )}
+        onClick={() => setEditing(true)}
+      >
+        {value || placeholder}
+      </DisplayTag>
+      {showEditButton && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/70 bg-background text-muted-foreground opacity-0 transition-all hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+          aria-label="Edit"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
       )}
-      onClick={() => setEditing(true)}
-    >
-      {value || placeholder}
-    </DisplayTag>
+    </div>
   );
 }

@@ -23,7 +23,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AlertCircle, Archive, ArchiveRestore, Check, ExternalLink, Github, Loader2, Plus, Trash2, X } from "lucide-react";
-import { ChoosePathButton } from "./PathInstructionsModal";
 import { DraftInput } from "./agent-config-primitives";
 import { InlineEditor } from "./InlineEditor";
 
@@ -370,8 +369,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const [goalOpen, setGoalOpen] = useState(false);
   const [projectSecretsModalOpen, setProjectSecretsModalOpen] = useState(false);
   const [executionWorkspaceAdvancedOpen, setExecutionWorkspaceAdvancedOpen] = useState(false);
-  const [workspaceMode, setWorkspaceMode] = useState<"local" | "repo" | null>(null);
-  const [workspaceCwd, setWorkspaceCwd] = useState("");
+  const [workspaceMode, setWorkspaceMode] = useState<"repo" | null>(null);
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
@@ -447,7 +445,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const createWorkspace = useMutation({
     mutationFn: (data: Record<string, unknown>) => projectsApi.createWorkspace(project.id, data),
     onSuccess: () => {
-      setWorkspaceCwd("");
       setWorkspaceRepoUrl("");
       setWorkspaceMode(null);
       setWorkspaceError(null);
@@ -458,7 +455,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const removeWorkspace = useMutation({
     mutationFn: (workspaceId: string) => projectsApi.removeWorkspace(project.id, workspaceId),
     onSuccess: () => {
-      setWorkspaceCwd("");
       setWorkspaceRepoUrl("");
       setWorkspaceMode(null);
       setWorkspaceError(null);
@@ -469,7 +465,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     mutationFn: ({ workspaceId, data }: { workspaceId: string; data: Record<string, unknown> }) =>
       projectsApi.updateWorkspace(project.id, workspaceId, data),
     onSuccess: () => {
-      setWorkspaceCwd("");
       setWorkspaceRepoUrl("");
       setWorkspaceMode(null);
       setWorkspaceError(null);
@@ -500,8 +495,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       },
     };
   };
-
-  const isAbsolutePath = (value: string) => value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
 
   const looksLikeRepoUrl = (value: string) => {
     try {
@@ -569,21 +562,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     createWorkspace.mutate(data);
   };
 
-  const submitLocalWorkspace = () => {
-    const cwd = workspaceCwd.trim();
-    if (!cwd) {
-      setWorkspaceError(null);
-      persistCodebase({ cwd: null });
-      return;
-    }
-    if (!isAbsolutePath(cwd)) {
-      setWorkspaceError("Local folder must be a full absolute path.");
-      return;
-    }
-    setWorkspaceError(null);
-    persistCodebase({ cwd });
-  };
-
   const submitRepoWorkspace = () => {
     const repoUrl = workspaceRepoUrl.trim();
     if (!repoUrl) {
@@ -597,16 +575,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     }
     setWorkspaceError(null);
     persistCodebase({ repoUrl });
-  };
-
-  const clearLocalWorkspace = () => {
-    const confirmed = window.confirm(
-      codebase.repoUrl
-        ? "Clear local folder from this workspace?"
-        : "Delete this workspace local folder?",
-    );
-    if (!confirmed) return;
-    persistCodebase({ cwd: null });
   };
 
   const clearRepoWorkspace = () => {
@@ -851,7 +819,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top">
-                Repo identifies the source of truth. Local folder is the default place agents write code.
+                Repo identifies the source of truth for this project's codebase.
               </TooltipContent>
             </Tooltip>
           </div>
@@ -945,44 +913,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
               )}
             </div>
 
-            <div className="space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Local folder</div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 space-y-1">
-                  <div className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-                    {codebase.effectiveLocalFolder}
-                  </div>
-                  {codebase.origin === "managed_checkout" && (
-                    <div className="text-[11px] text-muted-foreground">Paperclip-managed folder.</div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    className="h-6 px-2"
-                    onClick={() => {
-                      setWorkspaceMode("local");
-                      setWorkspaceCwd(codebase.localFolder ?? "");
-                      setWorkspaceError(null);
-                    }}
-                  >
-                    {codebase.localFolder ? "Change local folder" : "Set local folder"}
-                  </Button>
-                  {codebase.localFolder ? (
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={clearLocalWorkspace}
-                      aria-label="Clear local folder"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
             {hasAdditionalLegacyWorkspaces && (
               <div className="text-[11px] text-muted-foreground">
                 Additional legacy workspace records exist on this project. Paperclip is using the primary workspace as the codebase view.
@@ -1035,42 +965,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
               </div>
             ) : null}
           </div>
-          {workspaceMode === "local" && (
-            <div className="space-y-1.5 rounded-md border border-border p-2">
-              <div className="flex items-center gap-2">
-                <input
-                  className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
-                  value={workspaceCwd}
-                  onChange={(e) => setWorkspaceCwd(e.target.value)}
-                  placeholder="/absolute/path/to/workspace"
-                />
-                <ChoosePathButton />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="xs"
-                  className="h-6 px-2"
-                  disabled={(!workspaceCwd.trim() && !primaryCodebaseWorkspace) || createWorkspace.isPending || updateWorkspace.isPending}
-                  onClick={submitLocalWorkspace}
-                >
-                  Save
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="h-6 px-2"
-                  onClick={() => {
-                    setWorkspaceMode(null);
-                    setWorkspaceCwd("");
-                    setWorkspaceError(null);
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
           {workspaceMode === "repo" && (
             <div className="space-y-1.5 rounded-md border border-border p-2">
               <input
