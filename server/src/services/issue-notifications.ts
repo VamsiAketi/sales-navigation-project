@@ -64,37 +64,7 @@ function mergeNotificationConfig(raw: unknown): ProjectNotificationConfig {
   };
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function resolvePublicAppOrigin(): string | null {
-  const raw =
-    process.env.PAPERCLIP_PUBLIC_URL
-    ?? process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL
-    ?? process.env.BETTER_AUTH_URL
-    ?? process.env.BETTER_AUTH_BASE_URL
-    ?? null;
-  if (!raw) return null;
-  try {
-    return new URL(raw).origin;
-  } catch {
-    return null;
-  }
-}
-
-function buildIssueLink(issueRef: string): string | null {
-  const origin = resolvePublicAppOrigin();
-  if (!origin) return null;
-  return `${origin}/issues/${encodeURIComponent(issueRef)}`;
-}
-
-function buildIssueEmailBodies(input: {
+function buildEmailBody(input: {
   recipientName: string;
   issueIdentifier: string | null;
   issueTitle: string;
@@ -105,7 +75,6 @@ function buildIssueEmailBodies(input: {
   newStatus?: string | null;
   commentSnippet?: string | null;
   assignedUserName?: string | null;
-  issueUrl?: string | null;
 }) {
   const issueRef = input.issueIdentifier ?? input.issueTitle;
   const actor = input.actorLabel?.trim() || input.actorType;
@@ -125,38 +94,8 @@ function buildIssueEmailBodies(input: {
     const assignee = input.assignedUserName?.trim() || "a user";
     lines.push(`${actor} assigned this issue to ${assignee}.`);
   }
-  if (input.issueUrl) {
-    lines.push("", `View ticket: ${input.issueUrl}`);
-  }
   lines.push("", "This email was sent by your project notification settings.");
-  const textBody = lines.join("\n");
-
-  const htmlLines: string[] = [
-    `<p>Hello ${escapeHtml(input.recipientName)},</p>`,
-    `<p>Update on issue <strong>${escapeHtml(issueRef)}</strong> (${escapeHtml(input.issueTitle)}):</p>`,
-  ];
-  if (input.eventType === "issue.status_changed" && input.newStatus) {
-    htmlLines.push(
-      `<p>${escapeHtml(actor)} changed status from "${escapeHtml(input.oldStatus ?? "unknown")}" to "${escapeHtml(input.newStatus)}".</p>`,
-    );
-  }
-  if (input.eventType === "issue.comment_added") {
-    htmlLines.push("<p>Added a comment.</p>");
-    if (input.commentSnippet) {
-      htmlLines.push(`<p>Comment: "${escapeHtml(input.commentSnippet)}"</p>`);
-    }
-  }
-  if (input.eventType === "issue.assigned") {
-    const assignee = input.assignedUserName?.trim() || "a user";
-    htmlLines.push(`<p>${escapeHtml(actor)} assigned this issue to ${escapeHtml(assignee)}.</p>`);
-  }
-  if (input.issueUrl) {
-    const href = escapeHtml(input.issueUrl);
-    htmlLines.push(`<p><a href="${href}">Open this ticket in AI-Harness</a></p>`);
-  }
-  htmlLines.push("<p>This email was sent by your project notification settings.</p>");
-
-  return { textBody, htmlBody: `<!DOCTYPE html><html><body>${htmlLines.join("")}</body></html>` };
+  return lines.join("\n");
 }
 
 function defaultUserPreferences(): UserNotificationPreferences {
@@ -290,9 +229,7 @@ export function issueNotificationService(db: Db) {
             : input.eventType === "issue.comment_added"
               ? `${actor} added a comment${input.payload.commentSnippet ? `: "${input.payload.commentSnippet}"` : "."}`
               : `${actor} assigned this issue to ${resolvedAssignedUserName || "a user"}.`;
-        const issueRefForLink = input.payload.issueIdentifier ?? issue.id;
-        const issueUrl = buildIssueLink(issueRefForLink);
-        const message = buildIssueEmailBodies({
+        const message = buildEmailBody({
           recipientName: recipient.name,
           issueIdentifier: input.payload.issueIdentifier,
           issueTitle: input.payload.issueTitle,
@@ -303,7 +240,6 @@ export function issueNotificationService(db: Db) {
           newStatus: input.payload.newStatus,
           commentSnippet: input.payload.commentSnippet,
           assignedUserName: resolvedAssignedUserName,
-          issueUrl,
         });
         const createdNotification = await notifications.create({
           userId: recipient.id,
@@ -339,8 +275,7 @@ export function issueNotificationService(db: Db) {
         const delivery = await sendSystemEmail({
           toEmail: recipient.email!,
           subject: `[AI-Harness] ${title}`,
-          textBody: message.textBody,
-          htmlBody: message.htmlBody,
+          textBody: message,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
         if (delivery.status === "failed") {
@@ -414,8 +349,6 @@ export function issueNotificationService(db: Db) {
 
       const issueRef = input.payload.issueIdentifier ?? input.payload.issueTitle;
       const title = `[${project.name}] Human Approval Required: ${issueRef}`;
-      const issueRefForLink = input.payload.issueIdentifier ?? issue.id;
-      const issueUrl = buildIssueLink(issueRefForLink);
 
       for (const member of members) {
         if (input.actorType === "user" && input.actorId && member.id === input.actorId) continue;
@@ -426,13 +359,11 @@ export function issueNotificationService(db: Db) {
           `Human approval is required for issue ${issueRef} (${input.payload.issueTitle}).`,
           "",
           `The issue has entered the "${approvalStatus.name}" step and is awaiting your review.`,
-          ...(issueUrl ? ["", `View ticket: ${issueUrl}`] : []),
           "",
           "Please log in to review and take action.",
           "",
           "This email was sent by your project notification settings.",
         ].join("\n");
-        const htmlBody = `<!DOCTYPE html><html><body><p>Hello ${escapeHtml(member.name)},</p><p>Human approval is required for issue <strong>${escapeHtml(issueRef)}</strong> (${escapeHtml(input.payload.issueTitle)}).</p><p>The issue has entered the "${escapeHtml(approvalStatus.name)}" step and is awaiting your review.</p>${issueUrl ? `<p><a href="${escapeHtml(issueUrl)}">Open this ticket in AI-Harness</a></p>` : ""}<p>Please log in to review and take action.</p><p>This email was sent by your project notification settings.</p></body></html>`;
 
         const createdNotification = await notifications.create({
           userId: member.id,
@@ -460,7 +391,6 @@ export function issueNotificationService(db: Db) {
           toEmail: member.email,
           subject: `[AI-Harness] ${title}`,
           textBody,
-          htmlBody,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
         if (delivery.status === "failed") {
