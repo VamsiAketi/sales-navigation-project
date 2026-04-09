@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { authApi } from "../api/auth";
@@ -9,6 +9,7 @@ import { Sparkles, Eye, EyeOff } from "lucide-react";
 import { buildVisibleVersionLabel } from "@/components/Layout";
 
 type AuthMode = "sign_in" | "sign_up";
+const OTP_LENGTH = 6;
 
 export function AuthPage() {
   const queryClient = useQueryClient();
@@ -23,6 +24,8 @@ export function AuthPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [useEmailCode, setUseEmailCode] = useState(false);
   const [emailCode, setEmailCode] = useState("");
+  const [otpDigits, setOtpDigits] = useState<string[]>(Array.from({ length: OTP_LENGTH }, () => ""));
+  const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [codeSent, setCodeSent] = useState(false);
   const [codeSuccess, setCodeSuccess] = useState<string | null>(null);
   const [forgotRequested, setForgotRequested] = useState(false);
@@ -131,7 +134,7 @@ export function AuthPage() {
 
   const canSubmit =
     email.trim().length > 0 &&
-    (useEmailCode ? emailCode.trim().length > 0 : password.trim().length > 0) &&
+    (useEmailCode ? emailCode.trim().length === OTP_LENGTH : password.trim().length > 0) &&
     (mode === "sign_in" || (name.trim().length > 0 && password.trim().length >= 8));
   const canRequestReset = email.trim().length > 0;
   const canSubmitReset = password.trim().length >= 8 && confirmPassword === password;
@@ -264,19 +267,52 @@ export function AuthPage() {
               </div>
             )}
             {!isResetMode && mode === "sign_in" && useEmailCode && (
-              <div className="space-y-2">
+              <div className="space-y-3 rounded-xl border border-border bg-card/70 p-4">
                 <div>
-                  <label htmlFor="email-code" className="text-xs text-muted-foreground mb-1 block">Verification code</label>
-                  <input
-                    id="email-code"
-                    className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                    type="text"
-                    inputMode="numeric"
-                    value={emailCode}
-                    onChange={(event) => setEmailCode(event.target.value)}
-                    placeholder="Enter code"
-                    autoComplete="one-time-code"
-                  />
+                  <label className="mb-2 block text-xs text-muted-foreground">Verification code</label>
+                  <div className="grid grid-cols-6 gap-2">
+                    {otpDigits.map((digit, index) => (
+                      <input
+                        key={`otp-${index}`}
+                        ref={(el) => {
+                          otpRefs.current[index] = el;
+                        }}
+                        className="h-10 rounded-md border border-border bg-background text-center text-sm font-semibold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/30"
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        autoComplete={index === 0 ? "one-time-code" : "off"}
+                        onChange={(event) => {
+                          const raw = event.target.value;
+                          const nextChar = raw.replace(/\D/g, "").slice(-1);
+                          const next = [...otpDigits];
+                          next[index] = nextChar;
+                          setOtpDigits(next);
+                          const joined = next.join("");
+                          setEmailCode(joined);
+                          if (nextChar && index < OTP_LENGTH - 1) {
+                            otpRefs.current[index + 1]?.focus();
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Backspace" && !otpDigits[index] && index > 0) {
+                            otpRefs.current[index - 1]?.focus();
+                          }
+                        }}
+                        onPaste={(event) => {
+                          event.preventDefault();
+                          const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, OTP_LENGTH);
+                          if (!pasted) return;
+                          const next = Array.from({ length: OTP_LENGTH }, (_, i) => pasted[i] ?? "");
+                          setOtpDigits(next);
+                          setEmailCode(next.join(""));
+                          const focusIndex = Math.min(pasted.length, OTP_LENGTH - 1);
+                          otpRefs.current[focusIndex]?.focus();
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
                 <Button
                   type="button"
@@ -287,6 +323,9 @@ export function AuthPage() {
                       setError("Enter your email first.");
                       return;
                     }
+                    const next = Array.from({ length: OTP_LENGTH }, () => "");
+                    setOtpDigits(next);
+                    setEmailCode("");
                     setCodeSuccess(null);
                     setError(null);
                     sendCodeMutation.mutate();
@@ -300,6 +339,7 @@ export function AuthPage() {
                   className="w-full text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
                   onClick={() => {
                     setUseEmailCode(false);
+                    setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
                     setEmailCode("");
                     setCodeSuccess(null);
                     setError(null);
@@ -350,19 +390,26 @@ export function AuthPage() {
               </div>
             )}
             {!isResetMode && mode === "sign_in" && !useEmailCode && (
-              <button
-                type="button"
-                className="w-full text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                onClick={() => {
-                  setUseEmailCode(true);
-                  setForgotRequested(false);
-                  setPassword("");
-                  setError(null);
-                  setCodeSuccess(null);
-                }}
-              >
-                Login using Email Code
-              </button>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <button
+                  type="button"
+                  className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/15"
+                  onClick={() => {
+                    setUseEmailCode(true);
+                    setForgotRequested(false);
+                    setPassword("");
+                    setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+                    setEmailCode("");
+                    setError(null);
+                    setCodeSuccess(null);
+                    setTimeout(() => otpRefs.current[0]?.focus(), 0);
+                  }}
+                >
+                  or Login using Email Code
+                </button>
+                <div className="h-px flex-1 bg-border" />
+              </div>
             )}
             {!isResetMode && mode === "sign_in" && forgotRequested && (
               <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
