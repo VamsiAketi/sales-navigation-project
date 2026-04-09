@@ -372,6 +372,20 @@
       "when": 1775500000000,
       "tag": "0052_backlog_board_hidden",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1775600000000,
+      "tag": "0053_projects_board_closed_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1775700000000,
+      "tag": "0054_board_retention_default",
+      "breakpoints": true
     }
   ]
 }

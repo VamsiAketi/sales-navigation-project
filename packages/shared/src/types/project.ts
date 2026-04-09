@@ -109,6 +109,11 @@ export interface Project {
   notificationConfig?: ProjectNotificationConfig | null;
   /** Short uppercase key used as the prefix for issue identifiers in this project (e.g. "AIH"). */
   issuePrefix?: string | null;
+  /**
+   * Done/Cancelled tasks remain on the board only for this many full days after close.
+   * Older closed tasks are listed under the project Archive tab. Minimum 1; default 7.
+   */
+  boardClosedRetentionDays: number;
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;

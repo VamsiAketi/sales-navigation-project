@@ -129,6 +129,7 @@ const projectFields = {
   notificationConfig: projectNotificationConfigSchema.optional().nullable(),
   archivedAt: z.string().datetime().optional().nullable(),
   envConfig: projectSecretBindingsSchema,
+  boardClosedRetentionDays: z.number().int().min(1).max(3650).optional(),
 };
 
 export const createProjectSchema = z.object({

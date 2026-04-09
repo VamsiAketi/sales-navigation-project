@@ -119,6 +119,19 @@ export const ISSUE_STATUSES = [
 ] as const;
 export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 
+/** Issue statuses considered "closed" for board retention (Done and Cancelled). */
+export const BOARD_RETENTION_TERMINAL_ISSUE_STATUSES = ["done", "cancelled"] as const;
+export type BoardRetentionTerminalIssueStatus = (typeof BOARD_RETENTION_TERMINAL_ISSUE_STATUSES)[number];
+
+const BOARD_RETENTION_TERMINAL_ISSUE_STATUS_SET = new Set<string>(BOARD_RETENTION_TERMINAL_ISSUE_STATUSES);
+
+export function isBoardRetentionTerminalIssueStatus(status: string): boolean {
+  return BOARD_RETENTION_TERMINAL_ISSUE_STATUS_SET.has(status);
+}
+
+/** Default days Done/Cancelled issues stay on the project board before moving to Archive. */
+export const DEFAULT_BOARD_CLOSED_RETENTION_DAYS = 7;
+
 export const DEFAULT_PROJECT_ISSUE_STATUSES = [
   { name: "Backlog",     value: "backlog",     color: "#6b7280", position: 0 },
   { name: "Todo",        value: "todo",        color: "#3b82f6", position: 1 },

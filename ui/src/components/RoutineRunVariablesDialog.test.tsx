@@ -79,6 +79,7 @@ function createProject(): Project {
     },
     workspaces: [],
     primaryWorkspace: null,
+    boardClosedRetentionDays: 7,
     createdAt: new Date("2026-04-02T00:00:00.000Z"),
     updatedAt: new Date("2026-04-02T00:00:00.000Z"),
   };

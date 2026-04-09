@@ -31,9 +31,42 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import { CircleDot, Plus, ArrowUpDown, Layers, Check, ChevronRight, List, Columns3, User, Search, ChevronDown, EyeOff, Eye } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { KanbanBoard, AssigneeAvatar, nameToInitials } from "./KanbanBoard";
-import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
+import { isBoardRetentionTerminalIssueStatus, type Issue, type ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Helpers ── */
+
+function terminalCloseTimestampMs(issue: Issue): number | null {
+  if (!isBoardRetentionTerminalIssueStatus(issue.status)) return null;
+  const raw =
+    issue.status === "done"
+      ? issue.completedAt ?? issue.updatedAt
+      : issue.cancelledAt ?? issue.updatedAt;
+  if (raw == null) return null;
+  const t = new Date(raw as string | Date).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+/** Done/Cancelled and closed more than `retentionDays` full 24h periods ago. */
+function isClosedPastBoardRetention(issue: Issue, retentionDays: number, nowMs = Date.now()): boolean {
+  if (retentionDays <= 0) return false;
+  if (!isBoardRetentionTerminalIssueStatus(issue.status)) return false;
+  const closedMs = terminalCloseTimestampMs(issue);
+  if (closedMs == null) return false;
+  return closedMs < nowMs - retentionDays * 86_400_000;
+}
+
+/** Board column visibility when retention is enabled (missing close time keeps the card on the board). */
+function isVisibleOnBoardWithRetention(
+  issue: Issue,
+  retentionDays: number | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  if (retentionDays == null || retentionDays <= 0) return true;
+  if (!isBoardRetentionTerminalIssueStatus(issue.status)) return true;
+  const closedMs = terminalCloseTimestampMs(issue);
+  if (closedMs == null) return true;
+  return closedMs >= nowMs - retentionDays * 86_400_000;
+}
 
 /** Fallback column order when `projectStatuses` is not passed (e.g. company-wide Issues page). */
 const statusOrder = ["in_progress", "todo", "backlog", "in_review", "blocked", "done", "cancelled"];
@@ -257,6 +290,15 @@ interface IssuesListProps {
   fixedStatusFilter?: string[];
   /** Hide the Status filter popover (e.g. project Backlog tab). */
   hideStatusFilter?: boolean;
+  /**
+   * When set (project Tasks view), Done/Cancelled issues older than this many full days (from completed/cancelled time)
+   * are omitted from the board only; list view still shows the full filtered set. Omit on company-wide Issues.
+   */
+  boardClosedRetentionDays?: number;
+  /**
+   * When set (project Archive tab), list only Done/Cancelled issues past this retention window.
+   */
+  pastBoardClosedRetentionDays?: number | null;
 }
 
 /* ── Assignee filter strip component ─────────────────────────────────────────
@@ -470,6 +512,8 @@ export function IssuesList({
   forceListView = false,
   fixedStatusFilter,
   hideStatusFilter = false,
+  boardClosedRetentionDays,
+  pastBoardClosedRetentionDays,
 }: IssuesListProps) {
   const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialog();
@@ -578,12 +622,36 @@ export function IssuesList({
   const filtered = useMemo(() => {
     const useHiddenBranch = viewState.showHidden && !(fixedStatusFilter && fixedStatusFilter.length > 0);
     if (useHiddenBranch) {
-      return sortIssues(hiddenIssues, viewState, statusColumnOrder);
+      let h = hiddenIssues;
+      if (pastBoardClosedRetentionDays != null && pastBoardClosedRetentionDays > 0) {
+        h = h.filter((i) => isClosedPastBoardRetention(i, pastBoardClosedRetentionDays));
+      }
+      return sortIssues(h, viewState, statusColumnOrder);
     }
     const sourceIssues = normalizedIssueSearch.length > 0 ? searchedIssues : issues;
-    const filteredByControls = applyFilters(sourceIssues, viewState, currentUserId, fixedStatusFilter);
+    let filteredByControls = applyFilters(sourceIssues, viewState, currentUserId, fixedStatusFilter);
+    if (pastBoardClosedRetentionDays != null && pastBoardClosedRetentionDays > 0) {
+      filteredByControls = filteredByControls.filter((i) =>
+        isClosedPastBoardRetention(i, pastBoardClosedRetentionDays),
+      );
+    }
     return sortIssues(filteredByControls, viewState, statusColumnOrder);
-  }, [issues, searchedIssues, hiddenIssues, viewState, normalizedIssueSearch, currentUserId, statusColumnOrder, fixedStatusFilter]);
+  }, [
+    issues,
+    searchedIssues,
+    hiddenIssues,
+    viewState,
+    normalizedIssueSearch,
+    currentUserId,
+    statusColumnOrder,
+    fixedStatusFilter,
+    pastBoardClosedRetentionDays,
+  ]);
+
+  const boardIssues = useMemo(() => {
+    if (boardClosedRetentionDays === undefined) return filtered;
+    return filtered.filter((i) => isVisibleOnBoardWithRetention(i, boardClosedRetentionDays));
+  }, [filtered, boardClosedRetentionDays]);
 
   // Status options for the filter panel. When projectStatuses is provided (project page),
   // use those. Otherwise, show defaults + any custom status values found in the issues list.
@@ -1171,9 +1239,17 @@ export function IssuesList({
       {!(isLoading || (viewState.showHidden && hiddenLoading)) && filtered.length === 0 && (forceListView || viewState.viewMode === "list") && (
         <EmptyState
           icon={viewState.showHidden ? EyeOff : CircleDot}
-          message={viewState.showHidden ? "No hidden tasks." : "No tasks match the current filters or search."}
-          action={viewState.showHidden ? undefined : "Create Task"}
-          onAction={viewState.showHidden ? undefined : () => openNewIssue(newIssueDefaults())}
+          message={
+            viewState.showHidden
+              ? "No hidden tasks."
+              : pastBoardClosedRetentionDays
+                ? "No Done or Cancelled tasks past the board retention window."
+                : "No tasks match the current filters or search."
+          }
+          action={viewState.showHidden || pastBoardClosedRetentionDays ? undefined : "Create Task"}
+          onAction={
+            viewState.showHidden || pastBoardClosedRetentionDays ? undefined : () => openNewIssue(newIssueDefaults())
+          }
         />
       )}
 
@@ -1193,7 +1269,7 @@ export function IssuesList({
 
       {!forceListView && viewState.viewMode === "board" ? (
         <KanbanBoard
-          issues={filtered}
+          issues={boardIssues}
           agents={agents}
           members={humanMembers}
           liveIssueIds={liveIssueIds}

@@ -35,7 +35,7 @@ import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slo
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "backlog" | "overview" | "list" | "configuration" | "workflow" | "budget";
+type ProjectBaseTab = "backlog" | "overview" | "list" | "configuration" | "workflow" | "budget" | "archive";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -61,6 +61,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (tab === "configuration") return "configuration";
   if (tab === "workflow") return "workflow";
   if (tab === "budget") return "budget";
+  if (tab === "archive") return "archive";
   if (tab === "issues") return "list";
   return null;
 }
@@ -263,7 +264,86 @@ function ProjectBacklogList({ projectId, companyId, issueLinkState }: { projectI
   );
 }
 
-function ProjectIssuesList({ projectId, companyId, issueLinkState }: { projectId: string; companyId: string; issueLinkState?: unknown }) {
+function ProjectArchiveList({
+  projectId,
+  companyId,
+  retentionDays,
+  issueLinkState,
+}: {
+  projectId: string;
+  companyId: string;
+  retentionDays: number;
+  issueLinkState?: unknown;
+}) {
+  const queryClient = useQueryClient();
+  const projectStatuses = useProjectIssueStatuses(projectId);
+
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+    enabled: !!companyId,
+  });
+
+  const { data: liveRuns } = useQuery({
+    queryKey: queryKeys.liveRuns(companyId),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(companyId),
+    enabled: !!companyId,
+    refetchInterval: 5000,
+  });
+
+  const liveIssueIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const run of liveRuns ?? []) {
+      if (run.issueId) ids.add(run.issueId);
+    }
+    return ids;
+  }, [liveRuns]);
+
+  const { data: issues, isLoading, error } = useQuery({
+    queryKey: queryKeys.issues.listByProject(companyId, projectId),
+    queryFn: () => issuesApi.list(companyId, { projectId }),
+    enabled: !!companyId,
+  });
+
+  const updateIssue = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      issuesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
+    },
+  });
+
+  return (
+    <IssuesList
+      issues={issues ?? []}
+      isLoading={isLoading}
+      error={error as Error | null}
+      agents={agents}
+      liveIssueIds={liveIssueIds}
+      projectId={projectId}
+      viewStateKey={`paperclip:project-archive:${projectId}`}
+      issueLinkState={issueLinkState}
+      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+      projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
+      forceListView
+      hideStatusFilter
+      pastBoardClosedRetentionDays={retentionDays}
+    />
+  );
+}
+
+function ProjectIssuesList({
+  projectId,
+  companyId,
+  issueLinkState,
+  boardClosedRetentionDays,
+}: {
+  projectId: string;
+  companyId: string;
+  issueLinkState?: unknown;
+  boardClosedRetentionDays: number;
+}) {
   const queryClient = useQueryClient();
   const projectStatuses = useProjectIssueStatuses(projectId);
 
@@ -315,6 +395,7 @@ function ProjectIssuesList({ projectId, companyId, issueLinkState }: { projectId
       issueLinkState={issueLinkState}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
       projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
+      boardClosedRetentionDays={boardClosedRetentionDays}
     />
   );
 }
@@ -474,6 +555,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/budget`, { replace: true });
       return;
     }
+    if (activeTab === "archive") {
+      navigate(`/projects/${canonicalProjectRef}/archive`, { replace: true });
+      return;
+    }
     if (activeTab === "list") {
       if (filter) {
         navigate(`/projects/${canonicalProjectRef}/issues/${filter}`, { replace: true });
@@ -609,6 +694,9 @@ export function ProjectDetail() {
     if (cachedTab === "budget") {
       return <Navigate to={`/projects/${canonicalProjectRef}/budget`} replace />;
     }
+    if (cachedTab === "shelf" || cachedTab === "archive") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/archive`} replace />;
+    }
     if (isProjectPluginTab(cachedTab)) {
       return <Navigate to={`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(cachedTab)}`} replace />;
     }
@@ -638,6 +726,8 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/configuration`);
     } else if (tab === "workflow") {
       navigate(`/projects/${canonicalProjectRef}/workflow`);
+    } else if (tab === "archive") {
+      navigate(`/projects/${canonicalProjectRef}/archive`);
     } else {
       navigate(`/projects/${canonicalProjectRef}/issues`);
     }
@@ -713,6 +803,7 @@ export function ProjectDetail() {
               value: item.value,
               label: item.label,
             })),
+            { value: "archive" as const, label: "Archive" },
           ]}
           align="start"
           value={activeTab ?? "list"}
@@ -743,7 +834,17 @@ export function ProjectDetail() {
         <ProjectIssuesList
           projectId={project.id}
           companyId={resolvedCompanyId}
+          boardClosedRetentionDays={project.boardClosedRetentionDays}
           issueLinkState={createIssueDetailLocationState(project.name, `/projects/${canonicalProjectRef}/issues`)}
+        />
+      )}
+
+      {activeTab === "archive" && project?.id && resolvedCompanyId && (
+        <ProjectArchiveList
+          projectId={project.id}
+          companyId={resolvedCompanyId}
+          retentionDays={project.boardClosedRetentionDays}
+          issueLinkState={createIssueDetailLocationState(project.name, `/projects/${canonicalProjectRef}/archive`)}
         />
       )}
 

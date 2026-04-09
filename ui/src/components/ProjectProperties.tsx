@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CompanySecret, Project } from "@paperclipai/shared";
+import { DEFAULT_BOARD_CLOSED_RETENTION_DAYS } from "@paperclipai/shared";
 import { StatusBadge } from "./StatusBadge";
 import { cn, formatDate } from "../lib/utils";
 import { goalsApi } from "../api/goals";
@@ -187,6 +188,7 @@ export type ProjectConfigFieldKey =
   | "description"
   | "status"
   | "goals"
+  | "board_closed_retention_days"
   | "env_config"
   | "notification_config"
   | "execution_workspace_enabled"
@@ -386,6 +388,13 @@ export function ProjectProperties({
   const [workspaceMode, setWorkspaceMode] = useState<"repo" | null>(null);
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [boardRetentionDraft, setBoardRetentionDraft] = useState(() =>
+    String(project.boardClosedRetentionDays ?? DEFAULT_BOARD_CLOSED_RETENTION_DAYS),
+  );
+
+  useEffect(() => {
+    setBoardRetentionDraft(String(project.boardClosedRetentionDays ?? DEFAULT_BOARD_CLOSED_RETENTION_DAYS));
+  }, [project.boardClosedRetentionDays]);
 
   const commitField = (field: ProjectConfigFieldKey, data: Record<string, unknown>) => {
     if (onFieldUpdate) {
@@ -807,6 +816,50 @@ export function ProjectProperties({
             <span className="text-sm">{formatDate(project.targetDate)}</span>
           </PropertyRow>
         )}
+        <PropertyRow
+          label={<FieldLabel label="Board retention" state={fieldState("board_closed_retention_days")} />}
+          alignStart
+        >
+          <div className="space-y-1.5 max-w-lg">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                placeholder={String(DEFAULT_BOARD_CLOSED_RETENTION_DAYS)}
+                className="h-8 w-24 rounded border border-border bg-transparent px-2 py-1 text-sm tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={boardRetentionDraft}
+                onChange={(e) => setBoardRetentionDraft(e.target.value)}
+                onBlur={() => {
+                  const t = boardRetentionDraft.trim();
+                  if (t === "") {
+                    setBoardRetentionDraft(String(DEFAULT_BOARD_CLOSED_RETENTION_DAYS));
+                    if (project.boardClosedRetentionDays !== DEFAULT_BOARD_CLOSED_RETENTION_DAYS) {
+                      commitField("board_closed_retention_days", {
+                        boardClosedRetentionDays: DEFAULT_BOARD_CLOSED_RETENTION_DAYS,
+                      });
+                    }
+                    return;
+                  }
+                  const n = Number.parseInt(t, 10);
+                  if (!Number.isFinite(n) || n < 1 || n > 3650) {
+                    setBoardRetentionDraft(String(project.boardClosedRetentionDays));
+                    return;
+                  }
+                  if (n !== project.boardClosedRetentionDays) {
+                    commitField("board_closed_retention_days", { boardClosedRetentionDays: n });
+                  }
+                }}
+              />
+              <span className="text-xs text-muted-foreground">days (Done / Cancelled on board)</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Default {DEFAULT_BOARD_CLOSED_RETENTION_DAYS} days. Closed tasks stay on the board only for this many full
+              days after completion or cancellation (minimum 1). Older tasks appear on the{" "}
+              <span className="font-medium text-foreground/90">Archive</span> tab.
+            </p>
+          </div>
+        </PropertyRow>
         {aboveSecrets != null ? (
           <PropertyRow
             label={<FieldLabel label="Notifications" state={fieldState("notification_config")} />}
