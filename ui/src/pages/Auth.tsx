@@ -5,7 +5,7 @@ import { authApi } from "../api/auth";
 import { healthApi } from "../api/health";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Eye, EyeOff } from "lucide-react";
+import { Sparkles, Eye, EyeOff, KeyRound, Mail, Lock } from "lucide-react";
 import { buildVisibleVersionLabel } from "@/components/Layout";
 
 type AuthMode = "sign_in" | "sign_up";
@@ -264,6 +264,68 @@ export function AuthPage() {
                 />
               </div>
             )}
+            {!isResetMode && mode === "sign_in" && (
+              <div className="rounded-xl border border-border bg-card/70 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Sign in method
+                </p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs transition ${
+                      !useEmailCode
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setUseEmailCode(false);
+                      setForgotRequested(false);
+                      setCodeSent(false);
+                      setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+                      setEmailCode("");
+                      setCodeSuccess(null);
+                      setError(null);
+                    }}
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    Password
+                  </button>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs transition ${
+                      useEmailCode
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setUseEmailCode(true);
+                      setForgotRequested(false);
+                      setPassword("");
+                      setCodeSent(false);
+                      setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+                      setEmailCode("");
+                      setCodeSuccess(null);
+                      setError(null);
+                    }}
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    Email OTP
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-1 rounded-md border border-border bg-background px-2 py-2 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+                    disabled={passkeyMutation.isPending}
+                    onClick={() => {
+                      setError(null);
+                      passkeyMutation.mutate();
+                    }}
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {passkeyMutation.isPending ? "..." : "Passkey"}
+                  </button>
+                </div>
+              </div>
+            )}
             {(isResetMode || !useEmailCode) && (
               <div>
                 <label htmlFor="password" className="text-xs text-muted-foreground mb-1 block">Password</label>
@@ -438,42 +500,6 @@ export function AuthPage() {
                   {forgotRequested ? "Back to sign in" : "Forgot password?"}
                 </button>
               </div>
-            )}
-            {!isResetMode && mode === "sign_in" && !useEmailCode && (
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-border" />
-                <button
-                  type="button"
-                  className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/15"
-                  onClick={() => {
-                    setUseEmailCode(true);
-                    setForgotRequested(false);
-                    setPassword("");
-                    setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-                    setEmailCode("");
-                    setError(null);
-                    setCodeSuccess(null);
-                    setTimeout(() => otpRefs.current[0]?.focus(), 0);
-                  }}
-                >
-                  or Login using Email Code
-                </button>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-            )}
-            {!isResetMode && mode === "sign_in" && !useEmailCode && (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={passkeyMutation.isPending}
-                onClick={() => {
-                  setError(null);
-                  passkeyMutation.mutate();
-                }}
-                className="w-full"
-              >
-                {passkeyMutation.isPending ? "Opening passkey..." : "Sign in with passkey"}
-              </Button>
             )}
             {!isResetMode && mode === "sign_in" && forgotRequested && (
               <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
