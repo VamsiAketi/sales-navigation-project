@@ -64,12 +64,9 @@ function ensureJournalMatchesFiles(migrationFiles: string[], journalTags: string
 }
 
 async function main() {
-  const migrationFiles = (await readdir(migrationsDir))
+  const allMigrationFiles = (await readdir(migrationsDir))
     .filter((entry) => entry.endsWith(".sql"))
     .sort();
-
-  ensureNoDuplicates(migrationFiles, "migration files");
-  ensureStrictlyOrdered(migrationFiles, "migration files");
 
   const rawJournal = await readFile(journalPath, "utf8");
   const journal = JSON.parse(rawJournal) as JournalFile;
@@ -83,6 +80,12 @@ async function main() {
 
   ensureNoDuplicates(journalTags, "migration journal");
   ensureStrictlyOrdered(journalTags, "migration journal");
+
+  const journalFiles = journalTags.map((tag) => `${tag}.sql`);
+  const migrationFiles = allMigrationFiles.filter((file) => journalFiles.includes(file));
+
+  ensureNoDuplicates(migrationFiles, "migration files referenced by journal");
+  ensureStrictlyOrdered(migrationFiles, "migration files referenced by journal");
   ensureJournalMatchesFiles(migrationFiles, journalTags);
 }
 

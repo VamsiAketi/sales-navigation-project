@@ -294,6 +294,8 @@ export type {
   CompanySecret,
   SecretProviderDescriptor,
   Routine,
+  RoutineVariable,
+  RoutineVariableDefaultValue,
   RoutineTrigger,
   RoutineRun,
   RoutineTriggerSecretMaterial,
