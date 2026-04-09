@@ -25,6 +25,14 @@ export {
   type UpdateCompanyBranding,
 } from "./company.js";
 export {
+  feedbackDataSharingPreferenceSchema,
+  feedbackTargetTypeSchema,
+  feedbackTraceStatusSchema,
+  feedbackVoteValueSchema,
+  upsertIssueFeedbackVoteSchema,
+  type UpsertIssueFeedbackVote,
+} from "./feedback.js";
+export {
   companySkillSourceTypeSchema,
   companySkillTrustLevelSchema,
   companySkillCompatibilitySchema,
@@ -132,6 +140,7 @@ export {
 
 export {
   manualIssueProjectIdRequiredMessage,
+  ISSUE_EXECUTION_WORKSPACE_PREFERENCES,
   createIssueSchema,
   createIssueLabelSchema,
   updateIssueSchema,

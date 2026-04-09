@@ -200,6 +200,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
 }: MarkdownEditorProps, forwardedRef) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ref = useRef<MDXEditorMethods>(null);
+  const [editorReady, setEditorReady] = useState(false);
   const latestValueRef = useRef(value);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -239,6 +240,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       ref.current?.focus(undefined, { defaultSelection: "rootEnd" });
     },
   }), []);
+
+  const setEditorRef = useCallback((instance: MDXEditorMethods | null) => {
+    ref.current = instance;
+    setEditorReady(Boolean(instance));
+    if (instance) {
+      instance.setMarkdown(latestValueRef.current);
+    }
+  }, []);
 
   // Whether the image plugin should be included (boolean is stable across renders
   // as long as the handler presence doesn't toggle)
@@ -302,10 +311,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
 
   useEffect(() => {
     if (value !== latestValueRef.current) {
-      ref.current?.setMarkdown(value);
       latestValueRef.current = value;
+      if (ref.current) {
+        ref.current.setMarkdown(value);
+      }
     }
-  }, [value]);
+  }, [editorReady, value]);
 
   const decorateProjectMentions = useCallback(() => {
     const editable = containerRef.current?.querySelector('[contenteditable="true"]');
@@ -543,10 +554,18 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       }}
     >
       <MDXEditor
-        ref={ref}
         markdown={value}
         placeholder={placeholder}
+        ref={setEditorRef}
         onChange={(next) => {
+          if (
+            next === "" &&
+            latestValueRef.current.trim().length > 0 &&
+            !containerRef.current?.contains(document.activeElement)
+          ) {
+            ref.current?.setMarkdown(latestValueRef.current);
+            return;
+          }
           latestValueRef.current = next;
           onChange(next);
         }}

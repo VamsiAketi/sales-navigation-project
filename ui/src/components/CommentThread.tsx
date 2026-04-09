@@ -9,7 +9,7 @@ import { MarkdownBody } from "./MarkdownBody";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { StatusBadge } from "./StatusBadge";
 import { AgentIcon } from "./AgentIconPicker";
-import { formatDateTime } from "../lib/utils";
+import { formatDateTime, relativeTime } from "../lib/utils";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
 interface CommentWithRunMeta extends IssueComment {
@@ -23,6 +23,7 @@ interface LinkedRunItem {
   agentId: string;
   createdAt: Date | string;
   startedAt: Date | string | null;
+  finishedAt?: Date | string | null;
 }
 
 interface CommentReassignment {
@@ -149,7 +150,11 @@ const TimelineList = memo(function TimelineList({
         if (item.kind === "run") {
           const run = item.run;
           return (
-            <div key={`run:${run.runId}`} className="border border-border bg-accent/20 p-3 overflow-hidden min-w-0 rounded-sm">
+            <div
+              key={`run:${run.runId}`}
+              id={`run-${run.runId}`}
+              className="flex items-center gap-2 py-1.5 text-xs text-muted-foreground"
+            >
               <div className="flex items-center justify-between mb-2">
                 <Link to={`/agents/${run.agentId}`} className="hover:underline">
                   <Identity
@@ -157,20 +162,18 @@ const TimelineList = memo(function TimelineList({
                     size="sm"
                   />
                 </Link>
-                <span className="text-xs text-muted-foreground">
-                  {formatDateTime(run.startedAt ?? run.createdAt)}
-                </span>
               </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Run</span>
-                <Link
-                  to={`/agents/${run.agentId}/runs/${run.runId}`}
-                  className="inline-flex items-center rounded-md border border-border bg-accent/40 px-2 py-1 font-mono text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
-                >
-                  {run.runId.slice(0, 8)}
-                </Link>
-                <StatusBadge status={run.status} />
-              </div>
+              <span className="text-muted-foreground">Run</span>
+              <Link
+                to={`/agents/${run.agentId}/runs/${run.runId}`}
+                className="inline-flex items-center rounded-md border border-border bg-accent/40 px-2 py-1 font-mono text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+              >
+                {run.runId.slice(0, 8)}
+              </Link>
+              <StatusBadge status={run.status} />
+              <span className="ml-auto">
+                {relativeTime(run.finishedAt ?? run.startedAt ?? run.createdAt)}
+              </span>
             </div>
           );
         }

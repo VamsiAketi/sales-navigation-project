@@ -2,6 +2,14 @@ import { z } from "zod";
 import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants.js";
 
 export const manualIssueProjectIdRequiredMessage = "Manual task creation requires a projectId.";
+export const ISSUE_EXECUTION_WORKSPACE_PREFERENCES = [
+  "inherit",
+  "shared_workspace",
+  "isolated_workspace",
+  "operator_branch",
+  "reuse_existing",
+  "agent_default",
+] as const;
 
 const executionWorkspaceStrategySchema = z
   .object({
@@ -16,7 +24,7 @@ const executionWorkspaceStrategySchema = z
 
 export const issueExecutionWorkspaceSettingsSchema = z
   .object({
-    mode: z.enum(["inherit", "shared_workspace", "isolated_workspace", "operator_branch", "reuse_existing", "agent_default"]).optional(),
+    mode: z.enum(ISSUE_EXECUTION_WORKSPACE_PREFERENCES).optional(),
     workspaceStrategy: executionWorkspaceStrategySchema.optional().nullable(),
     workspaceRuntime: z.record(z.unknown()).optional().nullable(),
   })
