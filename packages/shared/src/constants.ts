@@ -128,6 +128,40 @@ export const DEFAULT_PROJECT_ISSUE_STATUSES = [
   { name: "Done",        value: "done",        color: "#22c55e", position: 5 },
   { name: "Cancelled",   value: "cancelled",   color: "#6b7280", position: 6 },
 ] as const;
+
+/** Workflow `value` keys every project must keep; these rows cannot be deleted. */
+export const MANDATORY_PROJECT_ISSUE_STATUS_VALUES = ["backlog", "todo", "done", "cancelled"] as const;
+export type MandatoryProjectIssueStatusValue = (typeof MANDATORY_PROJECT_ISSUE_STATUS_VALUES)[number];
+
+const MANDATORY_PROJECT_ISSUE_STATUS_VALUE_SET = new Set<string>(MANDATORY_PROJECT_ISSUE_STATUS_VALUES);
+
+export function isMandatoryProjectIssueStatusValue(value: string): boolean {
+  return MANDATORY_PROJECT_ISSUE_STATUS_VALUE_SET.has(value);
+}
+
+/** Workflow values whose display names are fixed (Backlog and Done). */
+export const FIXED_NAME_PROJECT_ISSUE_STATUS_VALUES = ["backlog", "done"] as const;
+export type FixedNameProjectIssueStatusValue = (typeof FIXED_NAME_PROJECT_ISSUE_STATUS_VALUES)[number];
+
+const FIXED_NAME_PROJECT_ISSUE_STATUS_VALUE_SET = new Set<string>(FIXED_NAME_PROJECT_ISSUE_STATUS_VALUES);
+
+export function isFixedNameProjectIssueStatusValue(value: string): boolean {
+  return FIXED_NAME_PROJECT_ISSUE_STATUS_VALUE_SET.has(value);
+}
+
+/** Status values that stay first in workflow order, are never on the board (`isActive` false), and cannot be reordered. */
+export const BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUES = ["backlog"] as const;
+export type BoardPinnedHiddenProjectIssueStatusValue =
+  (typeof BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUES)[number];
+
+const BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUE_SET = new Set<string>(
+  BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUES,
+);
+
+export function isBoardPinnedHiddenProjectIssueStatusValue(value: string): boolean {
+  return BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUE_SET.has(value);
+}
+
 export const INBOX_MINE_ISSUE_STATUSES = [
   "backlog",
   "todo",

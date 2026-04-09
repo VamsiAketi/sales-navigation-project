@@ -14,7 +14,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Plus, Trash2, Eye, EyeOff, UserCheck, X } from "lucide-react";
+import { GripVertical, Plus, Trash2, Eye, EyeOff, UserCheck, X, Pin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -23,7 +23,12 @@ import { accessApi } from "../api/access";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
 import { cn } from "@/lib/utils";
-import type { ProjectIssueStatus } from "@paperclipai/shared";
+import {
+  isBoardPinnedHiddenProjectIssueStatusValue,
+  isFixedNameProjectIssueStatusValue,
+  isMandatoryProjectIssueStatusValue,
+  type ProjectIssueStatus,
+} from "@paperclipai/shared";
 
 const HUMAN_APPROVAL_COLOR = "#f59e0b";
 
@@ -231,6 +236,12 @@ function StatusRow({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: status.id });
   const [localName, setLocalName] = useState(status.name);
   const [localColor, setLocalColor] = useState(status.color);
+  const deleteDisabled = isMandatoryProjectIssueStatusValue(status.value);
+  const nameLocked = isFixedNameProjectIssueStatusValue(status.value);
+
+  useEffect(() => {
+    if (!nameLocked) setLocalName(status.name);
+  }, [status.name, status.id, nameLocked]);
 
   const style = { transform: CSS.Transform.toString(transform), transition };
 
@@ -264,15 +275,22 @@ function StatusRow({
           </div>
 
           <Input
-            value={localName}
+            value={nameLocked ? status.name : localName}
+            readOnly={nameLocked}
+            disabled={nameLocked}
+            title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
             onChange={(e) => setLocalName(e.target.value)}
             onBlur={() => {
+              if (nameLocked) return;
               if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="h-8 min-w-0 flex-1 border-border/80 bg-background/50 text-sm focus-visible:ring-1"
+            className={cn(
+              "h-8 min-w-0 flex-1 border-border/80 text-sm focus-visible:ring-1",
+              nameLocked ? "cursor-not-allowed bg-muted/40 text-muted-foreground" : "bg-background/50",
+            )}
           />
 
           <span className="hidden w-30 shrink-0 text-right font-mono text-[11px] text-muted-foreground sm:block">
@@ -286,7 +304,7 @@ function StatusRow({
               size="icon-xs"
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
               onClick={() => onToggleActive(status.id, !status.isActive)}
-              title={status.isActive ? "Deactivate (hide without deleting)" : "Activate"}
+              title={status.isActive ? "Hide from Board" : "Show on Board"}
             >
               {status.isActive ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5 opacity-60" />}
             </Button>
@@ -295,8 +313,13 @@ function StatusRow({
               variant="ghost"
               size="icon-xs"
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              disabled={deleteDisabled}
               onClick={() => onDelete(status.id)}
-              title="Delete status"
+              title={
+                deleteDisabled
+                  ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
+                  : "Delete status"
+              }
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -348,9 +371,13 @@ function StatusRow({
       />
 
       <Input
-        value={localName}
+        value={nameLocked ? status.name : localName}
+        readOnly={nameLocked}
+        disabled={nameLocked}
+        title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
         onChange={(e) => setLocalName(e.target.value)}
         onBlur={() => {
+          if (nameLocked) return;
           if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
         }}
         onKeyDown={(e) => {
@@ -358,7 +385,10 @@ function StatusRow({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        className="h-8 min-w-0 flex-1 border-border/80 bg-background/50 text-sm focus-visible:ring-1"
+        className={cn(
+          "h-8 min-w-0 flex-1 border-border/80 text-sm focus-visible:ring-1",
+          nameLocked ? "cursor-not-allowed bg-muted/40 text-muted-foreground" : "bg-background/50",
+        )}
       />
 
       <span
@@ -375,7 +405,7 @@ function StatusRow({
           size="icon-xs"
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
           onClick={() => onToggleActive(status.id, !status.isActive)}
-          title={status.isActive ? "Deactivate (hide without deleting)" : "Activate"}
+          title={status.isActive ? "Hide from Board" : "Show on Board"}
         >
           {status.isActive ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5 opacity-60" />}
         </Button>
@@ -384,8 +414,115 @@ function StatusRow({
           variant="ghost"
           size="icon-xs"
           className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          disabled={deleteDisabled}
           onClick={() => onDelete(status.id)}
-          title="Delete status"
+          title={
+            deleteDisabled
+              ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
+              : "Delete status"
+          }
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Backlog: pinned first, never on the board — no drag handle, visibility toggle disabled. */
+function BacklogWorkflowStatusRow({
+  status,
+  onRename,
+  onColorChange,
+  onDelete,
+}: {
+  status: ProjectIssueStatus;
+  onRename: (id: string, name: string) => void;
+  onColorChange: (id: string, color: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [localName, setLocalName] = useState(status.name);
+  const [localColor, setLocalColor] = useState(status.color);
+  const deleteDisabled = isMandatoryProjectIssueStatusValue(status.value);
+  const nameLocked = isFixedNameProjectIssueStatusValue(status.value);
+
+  useEffect(() => {
+    if (!nameLocked) setLocalName(status.name);
+  }, [status.name, status.id, nameLocked]);
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-lg border border-border/80 bg-card px-2 py-2 shadow-xs transition-[box-shadow,opacity,border-color] sm:gap-3 sm:px-3 sm:py-2.5",
+        "border-dashed border-muted-foreground/25 bg-muted/10",
+      )}
+    >
+      <div
+        className="flex h-8 w-7 shrink-0 items-center justify-center text-muted-foreground"
+        title="Backlog stays first and is not shown on the board"
+      >
+        <Pin className="h-3.5 w-3.5" aria-hidden />
+      </div>
+
+      <ColorSwatchPicker
+        value={localColor}
+        onChange={(color) => {
+          setLocalColor(color);
+          onColorChange(status.id, color);
+        }}
+      />
+
+      <Input
+        value={nameLocked ? status.name : localName}
+        readOnly={nameLocked}
+        disabled={nameLocked}
+        title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
+        onChange={(e) => setLocalName(e.target.value)}
+        onBlur={() => {
+          if (nameLocked) return;
+          if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className={cn(
+          "h-8 min-w-0 flex-1 border-border/80 text-sm focus-visible:ring-1",
+          nameLocked ? "cursor-not-allowed bg-muted/40 text-muted-foreground" : "bg-background/50",
+        )}
+      />
+
+      <span
+        className="hidden w-30 shrink-0 truncate text-right font-mono text-[11px] tabular-nums text-muted-foreground sm:block"
+        title={status.value}
+      >
+        {status.value}
+      </span>
+
+      <div className="flex shrink-0 items-center gap-0.5 border-l border-border/50 pl-2 sm:pl-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="h-8 w-8 text-muted-foreground"
+          disabled
+          title="Backlog is always hidden from the board"
+        >
+          <EyeOff className="h-3.5 w-3.5 opacity-60" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          disabled={deleteDisabled}
+          onClick={() => onDelete(status.id)}
+          title={
+            deleteDisabled
+              ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
+              : "Delete status"
+          }
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
@@ -414,13 +551,21 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
     [members],
   );
 
-  // Local ordered list for optimistic reordering
-  const [orderedIds, setOrderedIds] = useState<string[]>(() => statuses.map((s) => s.id));
+  const backlogStatus = useMemo(
+    () => statuses.find((s) => isBoardPinnedHiddenProjectIssueStatusValue(s.value)),
+    [statuses],
+  );
 
-  // Keep orderedIds in sync when external data changes (e.g. after creation/deletion)
+  // Local order for draggable rows (backlog is pinned above and omitted here)
+  const [orderedNonBacklogIds, setOrderedNonBacklogIds] = useState<string[]>(() =>
+    statuses.filter((s) => !isBoardPinnedHiddenProjectIssueStatusValue(s.value)).map((s) => s.id),
+  );
+
   useEffect(() => {
-    setOrderedIds(statuses.map((s) => s.id));
-  }, [statuses.map((s) => s.id).join(",")]);
+    setOrderedNonBacklogIds(
+      statuses.filter((s) => !isBoardPinnedHiddenProjectIssueStatusValue(s.value)).map((s) => s.id),
+    );
+  }, [statuses]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -460,14 +605,16 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = orderedIds.indexOf(active.id as string);
-    const newIndex = orderedIds.indexOf(over.id as string);
-    const next = arrayMove(orderedIds, oldIndex, newIndex);
-    setOrderedIds(next);
-    reorderMutation.mutate(next);
+    const oldIndex = orderedNonBacklogIds.indexOf(active.id as string);
+    const newIndex = orderedNonBacklogIds.indexOf(over.id as string);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(orderedNonBacklogIds, oldIndex, newIndex);
+    setOrderedNonBacklogIds(next);
+    if (!backlogStatus) return;
+    reorderMutation.mutate([backlogStatus.id, ...next]);
   }
 
-  const sortedStatuses = orderedIds
+  const sortedDraggableStatuses = orderedNonBacklogIds
     .map((id) => statuses.find((s) => s.id === id))
     .filter((s): s is ProjectIssueStatus => !!s);
 
@@ -524,7 +671,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
           <div className="min-w-0">
             <h2 className="text-sm font-semibold tracking-tight text-foreground">Task statuses</h2>
             <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
-              Define the workflow states issues move through. Drag handles to reorder. Deactivate to hide a state without deleting it or losing history.
+              Define the workflow states issues move through. Drag handles to reorder. Backlog stays first and is only on the list view, not the board. Deactivate other states to hide them from the board without deleting or losing history.
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -589,24 +736,36 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
         </div>
       )}
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {sortedStatuses.map((s) => (
-              <StatusRow
-                key={s.id}
-                status={s}
-                onRename={(id, name) => updateMutation.mutate({ id, data: { name } })}
-                onColorChange={(id, color) => updateMutation.mutate({ id, data: { color } })}
-                onToggleActive={(id, isActive) => updateMutation.mutate({ id, data: { isActive } })}
-                onDelete={(id) => deleteMutation.mutate(id)}
-                onUpdateApprovers={(id, approverUserIds) => updateMutation.mutate({ id, data: { approverUserIds } })}
-                allUsers={allUsers}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+      <div className="space-y-2">
+        {backlogStatus ? (
+          <BacklogWorkflowStatusRow
+            status={backlogStatus}
+            onRename={(id, name) => updateMutation.mutate({ id, data: { name } })}
+            onColorChange={(id, color) => updateMutation.mutate({ id, data: { color } })}
+            onDelete={(id) => deleteMutation.mutate(id)}
+          />
+        ) : null}
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <SortableContext items={orderedNonBacklogIds} strategy={verticalListSortingStrategy}>
+            <div className="space-y-2">
+              {sortedDraggableStatuses.map((s) => (
+                <StatusRow
+                  key={s.id}
+                  status={s}
+                  onRename={(id, name) => updateMutation.mutate({ id, data: { name } })}
+                  onColorChange={(id, color) => updateMutation.mutate({ id, data: { color } })}
+                  onToggleActive={(id, isActive) => updateMutation.mutate({ id, data: { isActive } })}
+                  onDelete={(id) => deleteMutation.mutate(id)}
+                  onUpdateApprovers={(id, approverUserIds) =>
+                    updateMutation.mutate({ id, data: { approverUserIds } })
+                  }
+                  allUsers={allUsers}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
       </div>
     </section>
   );

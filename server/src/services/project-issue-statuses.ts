@@ -1,7 +1,13 @@
 import { and, asc, eq, inArray, max } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { projectIssueStatuses, projects } from "@paperclipai/db";
-import { DEFAULT_PROJECT_ISSUE_STATUSES, type ProjectIssueStatus } from "@paperclipai/shared";
+import {
+  DEFAULT_PROJECT_ISSUE_STATUSES,
+  isBoardPinnedHiddenProjectIssueStatusValue,
+  isFixedNameProjectIssueStatusValue,
+  isMandatoryProjectIssueStatusValue,
+  type ProjectIssueStatus,
+} from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
 
 type StatusRow = typeof projectIssueStatuses.$inferSelect;
@@ -79,6 +85,21 @@ export function projectIssueStatusService(db: Db) {
     const existing = await getById(id);
     if (!existing || existing.projectId !== projectId) throw notFound("Status not found");
 
+    if (
+      data.name !== undefined &&
+      data.name !== existing.name &&
+      isFixedNameProjectIssueStatusValue(existing.value)
+    ) {
+      throw conflict("The display names for Backlog and Done cannot be changed.");
+    }
+
+    if (
+      data.position !== undefined &&
+      isBoardPinnedHiddenProjectIssueStatusValue(existing.value)
+    ) {
+      throw conflict("Backlog stays first in workflow order; use reorder to change other statuses.");
+    }
+
     const patch: Partial<StatusRow> = { updatedAt: new Date() };
     if (data.name !== undefined) patch.name = data.name;
     if (data.color !== undefined) patch.color = data.color;
@@ -86,6 +107,13 @@ export function projectIssueStatusService(db: Db) {
     if (data.isActive !== undefined) patch.isActive = data.isActive;
     if (data.isHumanApproval !== undefined) patch.isHumanApproval = data.isHumanApproval;
     if (data.approverUserIds !== undefined) patch.approverUserIds = data.approverUserIds;
+
+    if (isBoardPinnedHiddenProjectIssueStatusValue(existing.value)) {
+      if (data.isActive === true) {
+        throw conflict("Backlog is always hidden from the board and cannot be shown there.");
+      }
+      patch.isActive = false;
+    }
 
     const [row] = await db
       .update(projectIssueStatuses)
@@ -96,22 +124,40 @@ export function projectIssueStatusService(db: Db) {
   }
 
   async function reorder(projectId: string, orderedIds: string[]): Promise<ProjectIssueStatus[]> {
-    // Verify all IDs belong to this project
-    const existing = await db
-      .select({ id: projectIssueStatuses.id })
+    const allRows = await db
+      .select({ id: projectIssueStatuses.id, value: projectIssueStatuses.value })
       .from(projectIssueStatuses)
-      .where(and(eq(projectIssueStatuses.projectId, projectId), inArray(projectIssueStatuses.id, orderedIds)));
-
-    if (existing.length !== orderedIds.length) {
+      .where(eq(projectIssueStatuses.projectId, projectId));
+    const backlogRow = allRows.find((r) => isBoardPinnedHiddenProjectIssueStatusValue(r.value));
+    const idSet = new Set(orderedIds);
+    if (idSet.size !== orderedIds.length) {
+      throw unprocessable("Status reorder list cannot contain duplicate IDs");
+    }
+    if (orderedIds.length !== allRows.length) {
       throw unprocessable("All status IDs must belong to this project");
     }
+    for (const id of orderedIds) {
+      if (!allRows.some((r) => r.id === id)) {
+        throw unprocessable("All status IDs must belong to this project");
+      }
+    }
+
+    const finalIds =
+      backlogRow != null
+        ? (() => {
+            if (!orderedIds.includes(backlogRow.id)) {
+              throw unprocessable("Backlog must be included when reordering workflow statuses");
+            }
+            return [backlogRow.id, ...orderedIds.filter((id) => id !== backlogRow.id)];
+          })()
+        : orderedIds;
 
     await db.transaction(async (tx) => {
-      for (let i = 0; i < orderedIds.length; i++) {
+      for (let i = 0; i < finalIds.length; i++) {
         await tx
           .update(projectIssueStatuses)
           .set({ position: i, updatedAt: new Date() })
-          .where(and(eq(projectIssueStatuses.id, orderedIds[i]!), eq(projectIssueStatuses.projectId, projectId)));
+          .where(and(eq(projectIssueStatuses.id, finalIds[i]!), eq(projectIssueStatuses.projectId, projectId)));
       }
     });
 
@@ -121,6 +167,11 @@ export function projectIssueStatusService(db: Db) {
   async function remove(id: string, projectId: string): Promise<ProjectIssueStatus> {
     const existing = await getById(id);
     if (!existing || existing.projectId !== projectId) throw notFound("Status not found");
+    if (isMandatoryProjectIssueStatusValue(existing.value)) {
+      throw conflict(
+        "Backlog, Todo, Done, and Cancelled are required for every project and cannot be deleted.",
+      );
+    }
     const [row] = await db
       .delete(projectIssueStatuses)
       .where(and(eq(projectIssueStatuses.id, id), eq(projectIssueStatuses.projectId, projectId)))
@@ -136,6 +187,7 @@ export function projectIssueStatusService(db: Db) {
       value: s.value,
       color: s.color,
       position: s.position,
+      isActive: !isBoardPinnedHiddenProjectIssueStatusValue(s.value),
     }));
     await db.insert(projectIssueStatuses).values(values).onConflictDoNothing();
   }
