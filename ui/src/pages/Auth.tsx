@@ -269,27 +269,7 @@ export function AuthPage() {
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Sign in method
                 </p>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs transition ${
-                      !useEmailCode
-                        ? "border-primary/60 bg-primary/10 text-primary"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => {
-                      setUseEmailCode(false);
-                      setForgotRequested(false);
-                      setCodeSent(false);
-                      setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-                      setEmailCode("");
-                      setCodeSuccess(null);
-                      setError(null);
-                    }}
-                  >
-                    <Lock className="h-3.5 w-3.5" />
-                    Password
-                  </button>
+                <div className="mt-2 grid grid-cols-1 gap-2">
                   <button
                     type="button"
                     className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs transition ${
@@ -310,6 +290,26 @@ export function AuthPage() {
                   >
                     <Mail className="h-3.5 w-3.5" />
                     Email OTP
+                  </button>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-2 text-xs transition ${
+                      !useEmailCode
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      setUseEmailCode(false);
+                      setForgotRequested(false);
+                      setCodeSent(false);
+                      setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+                      setEmailCode("");
+                      setCodeSuccess(null);
+                      setError(null);
+                    }}
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    Password
                   </button>
                   <button
                     type="button"
