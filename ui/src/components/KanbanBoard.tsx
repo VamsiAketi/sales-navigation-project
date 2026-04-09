@@ -94,7 +94,6 @@ export function AssigneeAvatar({
 
 /* ── Per-status accent colours ───────────────────────────────────────────────── */
 type Accent = { dot: string; colBg: string; cardBorder: string };
-const INDUSTRIAL_AZURE_SURFACE = "rgba(37, 99, 235, 0.06)";
 
 /** Build accent tokens from any hex color (works for built-in and custom statuses) */
 function buildAccent(hex: string): Accent {
@@ -103,9 +102,8 @@ function buildAccent(hex: string): Accent {
   const [r, g, b] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
   return {
     dot:        hex.startsWith("#") ? hex : `#${hex}`,
-    // Keep a single, subtle board surface tone across statuses.
-    colBg:      INDUSTRIAL_AZURE_SURFACE,
-    cardBorder: `rgba(${r},${g},${b},0.22)`,
+    colBg:      `rgba(${r},${g},${b},0.07)`,
+    cardBorder: `rgba(${r},${g},${b},0.38)`,
   };
 }
 
@@ -353,7 +351,7 @@ function KanbanCard({
       style={{
         ...style,
         borderColor: accent.cardBorder,
-        background: "hsl(var(--card))",
+        background: `linear-gradient(145deg, ${accent.dot}08 0%, transparent 55%)`,
       }}
       {...attributes}
       {...listeners}
