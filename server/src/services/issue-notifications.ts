@@ -94,10 +94,6 @@ function buildIssueLink(issueRef: string): string | null {
   return `${origin}/issues/${encodeURIComponent(issueRef)}`;
 }
 
-function shouldDebugIssueEmailLogs(): boolean {
-  return process.env.PAPERCLIP_EMAIL_DEBUG_NOTIFICATIONS === "true";
-}
-
 function buildIssueEmailBodies(input: {
   recipientName: string;
   issueIdentifier: string | null;
@@ -279,17 +275,6 @@ export function issueNotificationService(db: Db) {
 
       for (const recipient of recipients) {
         if (input.actorType === "user" && input.actorId && recipient.id === input.actorId) {
-          if (shouldDebugIssueEmailLogs()) {
-            logger.info(
-              {
-                eventType: input.eventType,
-                issueId: issue.id,
-                recipientUserId: recipient.id,
-                actorUserId: input.actorId,
-              },
-              "Skipping ticket email: actor and recipient are the same user",
-            );
-          }
           continue;
         }
         const parsedUserPrefs = userNotificationPreferencesSchema.safeParse(recipient.notificationPreferences);
@@ -348,36 +333,8 @@ export function issueNotificationService(db: Db) {
           userPrefs.channels.email.enabled &&
           Boolean(recipient.email);
         if (!canEmail) {
-          if (shouldDebugIssueEmailLogs()) {
-            logger.info(
-              {
-                eventType: input.eventType,
-                issueId: issue.id,
-                recipientUserId: recipient.id,
-                recipientEmail: recipient.email ?? null,
-                channels,
-                userChannels,
-                userEmailChannelEnabled: userPrefs.channels.email.enabled,
-              },
-              "Skipping ticket email: notification channel or recipient email not eligible",
-            );
-          }
           await notifications.updateEmailDeliveryStatus(createdNotification.id, "skipped");
           continue;
-        }
-        if (shouldDebugIssueEmailLogs()) {
-          logger.info(
-            {
-              eventType: input.eventType,
-              issueId: issue.id,
-              recipientUserId: recipient.id,
-              toEmail: recipient.email!,
-              subject: `[AI-Harness] ${title}`,
-              textBody: message.textBody,
-              htmlBody: message.htmlBody,
-            },
-            "Prepared ticket email notification",
-          );
         }
         const delivery = await sendSystemEmail({
           toEmail: recipient.email!,
@@ -505,20 +462,6 @@ export function issueNotificationService(db: Db) {
           textBody,
           htmlBody,
         });
-        if (shouldDebugIssueEmailLogs()) {
-          logger.info(
-            {
-              eventType: "issue.status_changed",
-              issueId: issue.id,
-              recipientUserId: member.id,
-              toEmail: member.email,
-              subject: `[AI-Harness] ${title}`,
-              textBody,
-              htmlBody,
-            },
-            "Prepared human-approval email notification",
-          );
-        }
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
         if (delivery.status === "failed") {
           logger.warn(
