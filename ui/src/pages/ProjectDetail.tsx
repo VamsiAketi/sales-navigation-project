@@ -510,7 +510,7 @@ export function ProjectDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3 pt-4">
         <div className="h-7 flex items-center">
           <ColorPicker
             currentColor={project.color ?? "#6366f1"}
