@@ -47,6 +47,10 @@
   },
   "packageManager": "pnpm@9.15.4",
   "pnpm": {
+    "overrides": {
+      "@exodus/bytes": "1.14.0",
+      "html-encoding-sniffer": "4.0.0"
+    },
     "patchedDependencies": {
       "embedded-postgres@18.1.0-beta.16": "patches/embedded-postgres@18.1.0-beta.16.patch"
     }
