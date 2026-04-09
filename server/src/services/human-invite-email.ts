@@ -1,5 +1,6 @@
 import net from "node:net";
 import tls from "node:tls";
+import { logger } from "../middleware/logger.js";
 
 export type HumanInviteEmailInput = {
   toEmail: string;
@@ -402,12 +403,45 @@ export async function sendSystemEmail(input: SystemEmailInput): Promise<HumanInv
       htmlBody: input.htmlBody,
     });
 
+    const shouldLogBody = process.env.PAPERCLIP_EMAIL_DEBUG_BODY === "true";
+    logger.info(
+      {
+        toEmail: input.toEmail,
+        subject: input.subject,
+        smtpHost: smtpConfig.host,
+        smtpPort: smtpConfig.port,
+        htmlEnabled: Boolean(input.htmlBody),
+        ...(shouldLogBody
+          ? {
+              textBody: input.textBody,
+              htmlBody: input.htmlBody ?? null,
+            }
+          : {}),
+      },
+      "SMTP send succeeded",
+    );
+
     return {
       status: "sent",
       message: `Email sent to ${input.toEmail}`
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const shouldLogBody = process.env.PAPERCLIP_EMAIL_DEBUG_BODY === "true";
+    logger.error(
+      {
+        toEmail: input.toEmail,
+        subject: input.subject,
+        error: message,
+        ...(shouldLogBody
+          ? {
+              textBody: input.textBody,
+              htmlBody: input.htmlBody ?? null,
+            }
+          : {}),
+      },
+      "SMTP send failed",
+    );
     return {
       status: "failed",
       message: `Failed to send email: ${message}`
