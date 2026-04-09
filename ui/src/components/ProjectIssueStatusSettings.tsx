@@ -22,6 +22,7 @@ import { projectsApi } from "../api/projects";
 import { accessApi } from "../api/access";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
+import { cn } from "@/lib/utils";
 import type { ProjectIssueStatus } from "@paperclipai/shared";
 
 const HUMAN_APPROVAL_COLOR = "#f59e0b";
@@ -152,13 +153,14 @@ function ApproverPicker({
       {approvers.map((u) => (
         <span
           key={u.id}
-          className="inline-flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700 rounded-full px-2 py-0.5"
+          className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-muted/30 px-2 py-0.5 text-xs text-foreground"
         >
           {u.name}
           <button
             type="button"
             onClick={() => onRemoveApprover(u.id)}
-            className="hover:text-destructive transition-colors"
+            className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+            aria-label={`Remove ${u.name}`}
           >
             <X className="h-2.5 w-2.5" />
           </button>
@@ -169,10 +171,10 @@ function ApproverPicker({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="inline-flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 border border-dashed border-amber-300 dark:border-amber-700 rounded-full px-2 py-0.5 transition-colors"
+            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border/80 bg-transparent px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground"
           >
-            <Plus className="h-2.5 w-2.5" />
-            {approvers.length === 0 && "Add approver"}
+            <Plus className="h-3 w-3" />
+            {approvers.length === 0 ? "Add approver" : null}
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-2" align="start">
@@ -237,15 +239,28 @@ function StatusRow({
       <div
         ref={setNodeRef}
         style={style}
-        className={`rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-3 py-2 space-y-2 ${isDragging ? "opacity-40" : ""}`}
+        className={cn(
+          "space-y-3 rounded-lg border border-border/80 bg-card pl-1 pr-3 py-2.5 shadow-xs transition-[box-shadow,opacity,border-color] sm:pl-2",
+          "border-l-[3px] border-l-amber-500/85 dark:border-l-amber-500/70",
+          isDragging ? "opacity-50 shadow-md ring-2 ring-ring/25" : "hover:border-border hover:bg-muted/15",
+        )}
       >
-        <div className="flex items-center gap-2">
-          <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="-ml-0.5 flex h-8 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground active:cursor-grabbing"
+            aria-label="Drag to reorder"
+          >
             <GripVertical className="h-4 w-4" />
           </button>
 
-          <div className="h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-900/50 border border-amber-300 dark:border-amber-700 flex items-center justify-center shrink-0">
-            <UserCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+          <div
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-amber-500/35 bg-amber-500/10 dark:bg-amber-500/15"
+            title="Human approval"
+          >
+            <UserCheck className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
           </div>
 
           <Input
@@ -257,28 +272,39 @@ function StatusRow({
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="h-7 flex-1 text-sm bg-transparent border-amber-200 dark:border-amber-800 focus-visible:ring-amber-400"
+            className="h-8 min-w-0 flex-1 border-border/80 bg-background/50 text-sm focus-visible:ring-1"
           />
 
-          <button
-            onClick={() => onToggleActive(status.id, !status.isActive)}
-            title={status.isActive ? "Deactivate" : "Activate"}
-            className={`shrink-0 transition-colors ${status.isActive ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
-          >
-            {status.isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </button>
+          <span className="hidden w-30 shrink-0 text-right font-mono text-[11px] text-muted-foreground sm:block">
+            {status.value}
+          </span>
 
-          <button
-            onClick={() => onDelete(status.id)}
-            title="Delete status"
-            className="shrink-0 text-muted-foreground/40 hover:text-destructive transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5 border-l border-border/50 pl-2 sm:pl-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => onToggleActive(status.id, !status.isActive)}
+              title={status.isActive ? "Deactivate (hide without deleting)" : "Activate"}
+            >
+              {status.isActive ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5 opacity-60" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              onClick={() => onDelete(status.id)}
+              title="Delete status"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 pl-8">
-          <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0">Approvers:</span>
+        <div className="flex flex-wrap items-center gap-2 pl-8 sm:pl-10">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Approvers</span>
           <ApproverPicker
             approverUserIds={status.approverUserIds ?? []}
             allUsers={allUsers}
@@ -298,13 +324,21 @@ function StatusRow({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 ${isDragging ? "opacity-40" : ""}`}
+      className={cn(
+        "flex items-center gap-2 rounded-lg border border-border/80 bg-card px-2 py-2 shadow-xs transition-[box-shadow,opacity,border-color] sm:gap-3 sm:px-3 sm:py-2.5",
+        isDragging ? "opacity-50 shadow-md ring-2 ring-ring/25" : "hover:border-border hover:bg-muted/15",
+      )}
     >
-      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground shrink-0">
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="flex h-8 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground active:cursor-grabbing"
+        aria-label="Drag to reorder"
+      >
         <GripVertical className="h-4 w-4" />
       </button>
 
-      {/* Color swatch picker */}
       <ColorSwatchPicker
         value={localColor}
         onChange={(color) => {
@@ -313,7 +347,6 @@ function StatusRow({
         }}
       />
 
-      {/* Name */}
       <Input
         value={localName}
         onChange={(e) => setLocalName(e.target.value)}
@@ -325,29 +358,38 @@ function StatusRow({
             (e.target as HTMLInputElement).blur();
           }
         }}
-        className="h-7 flex-1 text-sm"
+        className="h-8 min-w-0 flex-1 border-border/80 bg-background/50 text-sm focus-visible:ring-1"
       />
 
-      {/* Value badge (read-only) */}
-      <span className="hidden sm:inline text-xs font-mono text-muted-foreground/60 shrink-0">{status.value}</span>
-
-      {/* Active toggle */}
-      <button
-        onClick={() => onToggleActive(status.id, !status.isActive)}
-        title={status.isActive ? "Deactivate" : "Activate"}
-        className={`shrink-0 transition-colors ${status.isActive ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
+      <span
+        className="hidden w-30 shrink-0 truncate text-right font-mono text-[11px] tabular-nums text-muted-foreground sm:block"
+        title={status.value}
       >
-        {status.isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-      </button>
+        {status.value}
+      </span>
 
-      {/* Delete */}
-      <button
-        onClick={() => onDelete(status.id)}
-        title="Delete status"
-        className="shrink-0 text-muted-foreground/40 hover:text-destructive transition-colors"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      <div className="flex shrink-0 items-center gap-0.5 border-l border-border/50 pl-2 sm:pl-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          onClick={() => onToggleActive(status.id, !status.isActive)}
+          title={status.isActive ? "Deactivate (hide without deleting)" : "Activate"}
+        >
+          {status.isActive ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5 opacity-60" />}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          onClick={() => onDelete(status.id)}
+          title="Delete status"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -476,56 +518,72 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold">Task Statuses</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Drag to reorder. Deactivate to hide without deleting.
-          </p>
+    <section className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
+      <header className="border-b border-border/60 bg-muted/20 px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold tracking-tight text-foreground">Task statuses</h2>
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
+              Define the workflow states issues move through. Drag handles to reorder. Deactivate to hide a state without deleting it or losing history.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 shadow-xs"
+              onClick={handleAddHumanApprovalStep}
+              disabled={createMutation.isPending}
+            >
+              <UserCheck className="h-3.5 w-3.5" />
+              Add approval step
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 shadow-xs"
+              onClick={() => setShowAddForm((v) => !v)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add status
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleAddHumanApprovalStep}
-            disabled={createMutation.isPending}
-            className="border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/50"
-          >
-            <UserCheck className="h-3.5 w-3.5 mr-1" />
-            Add Approval Step
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setShowAddForm((v) => !v)}>
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Add Status
-          </Button>
-        </div>
-      </div>
+      </header>
 
+      <div className="space-y-4 px-5 py-4 sm:px-6">
       {showAddForm && (
-        <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
-          <div className="flex items-center gap-2">
+        <div className="rounded-lg border border-border/80 bg-muted/10 p-4 space-y-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">New status</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <ColorSwatchPicker value={newColor} onChange={setNewColor} />
             <Input
-              placeholder="Status name"
+              placeholder="Display name"
               value={newName}
               onChange={(e) => handleNameChange(e.target.value)}
-              className="h-8 text-sm flex-1"
+              className="h-9 min-w-0 flex-1 text-sm"
               onKeyDown={(e) => e.key === "Enter" && handleAddStatus()}
             />
             <Input
               placeholder="value_key"
               value={newValue}
               onChange={(e) => { setNewValue(e.target.value); setValueError(""); }}
-              className="h-8 text-xs font-mono w-32 shrink-0"
+              className="h-9 w-full shrink-0 font-mono text-xs sm:w-36"
               onKeyDown={(e) => e.key === "Enter" && handleAddStatus()}
             />
           </div>
-          {valueError && <p className="text-xs text-destructive">{valueError}</p>}
-          <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>Cancel</Button>
-            <Button size="sm" onClick={handleAddStatus} disabled={createMutation.isPending}>
-              Create
+          <p className="text-[11px] text-muted-foreground">
+            Internal key: lowercase letters, numbers, and underscores only. Used in API and automation.
+          </p>
+          {valueError ? <p className="text-xs text-destructive">{valueError}</p> : null}
+          <div className="flex flex-wrap gap-2 justify-end pt-1">
+            <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setShowAddForm(false)}>
+              Cancel
+            </Button>
+            <Button type="button" size="sm" className="h-8" onClick={handleAddStatus} disabled={createMutation.isPending}>
+              Create status
             </Button>
           </div>
         </div>
@@ -533,7 +591,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {sortedStatuses.map((s) => (
               <StatusRow
                 key={s.id}
@@ -549,6 +607,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
           </div>
         </SortableContext>
       </DndContext>
-    </div>
+      </div>
+    </section>
   );
 }

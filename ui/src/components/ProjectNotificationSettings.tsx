@@ -134,6 +134,8 @@ interface ProjectNotificationSettingsProps {
   issueStatuses: ProjectIssueStatus[];
   onSave: (data: { notificationConfig: ProjectNotificationConfig | null }) => Promise<void>;
   saveState: ProjectFieldSaveState;
+  /** When true, omit the section title and intro (e.g. inside a dialog that provides its own header). */
+  embeddedInModal?: boolean;
 }
 
 export function ProjectNotificationSettings({
@@ -141,6 +143,7 @@ export function ProjectNotificationSettings({
   issueStatuses,
   onSave,
   saveState,
+  embeddedInModal = false,
 }: ProjectNotificationSettingsProps) {
   const defaults = defaultNotificationConfig();
   const [draft, setDraft] = useState(() => mergeForDisplay(project.notificationConfig));
@@ -163,21 +166,29 @@ export function ProjectNotificationSettings({
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Bell className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Task notifications</h3>
+    <section className={embeddedInModal ? "space-y-0" : "space-y-4"}>
+      {!embeddedInModal ? (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">Task notifications</h3>
+            </div>
+            <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
+              Choose which task events trigger alerts for this project. Team members can still manage their own preferences in{" "}
+              <span className="text-foreground/90">Account → Notifications</span>. In-app alerts are sent when a rule matches. Email is sent only when email is enabled here, company email delivery is configured, and the recipient has email notifications turned on.
+            </p>
           </div>
-          <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
-            Choose which task events trigger alerts for this project. Team members can still manage their own preferences in{" "}
-            <span className="text-foreground/90">Account → Notifications</span>. In-app alerts are sent when a rule matches. Email is sent only when email is enabled here, company email delivery is configured, and the recipient has email notifications turned on.
-          </p>
         </div>
-      </div>
+      ) : null}
 
-      <div className="rounded-lg border border-border bg-card px-4 py-4 space-y-4">
+      <div
+        className={
+          embeddedInModal
+            ? "space-y-4"
+            : "rounded-lg border border-border bg-card px-4 py-4 space-y-4"
+        }
+      >
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -273,7 +284,7 @@ export function ProjectNotificationSettings({
                         </p>
                         {activeStatuses.length === 0 ? (
                           <p className="text-[11px] text-muted-foreground italic">
-                            No active issue statuses yet. Configure them below.
+                            No active issue statuses yet. Configure them on the Workflow tab.
                           </p>
                         ) : (
                           <div className="flex flex-wrap gap-x-3 gap-y-1">

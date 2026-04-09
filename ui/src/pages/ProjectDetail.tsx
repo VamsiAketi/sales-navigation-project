@@ -29,12 +29,13 @@ import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Check, ChevronDown } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "overview" | "list" | "configuration" | "budget";
+type ProjectBaseTab = "overview" | "list" | "configuration" | "workflow" | "budget";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -57,6 +58,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   const tab = segments[projectsIdx + 2];
   if (tab === "overview") return "overview";
   if (tab === "configuration") return "configuration";
+  if (tab === "workflow") return "workflow";
   if (tab === "budget") return "budget";
   if (tab === "issues") return "list";
   return null;
@@ -273,6 +275,7 @@ export function ProjectDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const [fieldSaveStates, setFieldSaveStates] = useState<Partial<Record<ProjectConfigFieldKey, ProjectFieldSaveState>>>({});
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   const fieldSaveRequestIds = useRef<Partial<Record<ProjectConfigFieldKey, number>>>({});
   const fieldSaveTimers = useRef<Partial<Record<ProjectConfigFieldKey, ReturnType<typeof setTimeout>>>>({});
   const routeProjectRef = projectId ?? "";
@@ -399,6 +402,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/configuration`, { replace: true });
       return;
     }
+    if (activeTab === "workflow") {
+      navigate(`/projects/${canonicalProjectRef}/workflow`, { replace: true });
+      return;
+    }
     if (activeTab === "budget") {
       navigate(`/projects/${canonicalProjectRef}/budget`, { replace: true });
       return;
@@ -418,6 +425,10 @@ export function ProjectDetail() {
     closePanel();
     return () => closePanel();
   }, [closePanel]);
+
+  useEffect(() => {
+    if (activeTab !== "configuration") setNotificationSettingsOpen(false);
+  }, [activeTab]);
 
   useEffect(() => {
     return () => {
@@ -525,6 +536,9 @@ export function ProjectDetail() {
     if (cachedTab === "configuration") {
       return <Navigate to={`/projects/${canonicalProjectRef}/configuration`} replace />;
     }
+    if (cachedTab === "workflow") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/workflow`} replace />;
+    }
     if (cachedTab === "budget") {
       return <Navigate to={`/projects/${canonicalProjectRef}/budget`} replace />;
     }
@@ -553,6 +567,8 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/budget`);
     } else if (tab === "configuration") {
       navigate(`/projects/${canonicalProjectRef}/configuration`);
+    } else if (tab === "workflow") {
+      navigate(`/projects/${canonicalProjectRef}/workflow`);
     } else {
       navigate(`/projects/${canonicalProjectRef}/issues`);
     }
@@ -621,6 +637,7 @@ export function ProjectDetail() {
             { value: "list", label: "Tasks" },
             { value: "overview", label: "Overview" },
             { value: "configuration", label: "Configuration" },
+            { value: "workflow", label: "Workflow" },
             { value: "budget", label: "Budget" },
             ...pluginTabItems.map((item) => ({
               value: item.value,
@@ -653,7 +670,7 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "configuration" && (
-        <div className="max-w-4xl space-y-8">
+        <div className="max-w-3xl space-y-6 pb-2">
           <ProjectProperties
             project={project}
             onUpdate={(data) => updateProject.mutate(data)}
@@ -661,25 +678,51 @@ export function ProjectDetail() {
             getFieldSaveState={(field) => fieldSaveStates[field] ?? "idle"}
             onArchive={(archived) => archiveProject.mutate(archived)}
             archivePending={archiveProject.isPending}
+            aboveSecrets={
+              project?.id ? (
+                <>
+                  <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                    <span className="min-w-0 text-sm leading-snug text-muted-foreground sm:max-w-md">
+                      Choose which task events trigger alerts. Open the dialog to edit rules, channels, and recipients.
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-full shrink-0 sm:w-auto"
+                      onClick={() => setNotificationSettingsOpen(true)}
+                    >
+                      Configure notifications
+                    </Button>
+                  </div>
+                  <Dialog open={notificationSettingsOpen} onOpenChange={setNotificationSettingsOpen}>
+                    <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Task notifications</DialogTitle>
+                        <DialogDescription>
+                          Choose which task events trigger alerts for this project. Team members can still manage their own preferences in{" "}
+                          <span className="text-foreground/90">Account → Notifications</span>. In-app alerts are sent when a rule matches. Email is sent only when email is enabled here, company email delivery is configured, and the recipient has email notifications turned on.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <ProjectNotificationSettings
+                        project={project}
+                        issueStatuses={configStatuses}
+                        onSave={(data) => updateProjectField("notification_config", data)}
+                        saveState={fieldSaveStates.notification_config ?? "idle"}
+                        embeddedInModal
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </>
+              ) : undefined
+            }
           />
-          {project?.id && (
-            <>
-              <div className="border-t border-border pt-6">
-                <ProjectNotificationSettings
-                  project={project}
-                  issueStatuses={configStatuses}
-                  onSave={(data) => updateProjectField("notification_config", data)}
-                  saveState={fieldSaveStates.notification_config ?? "idle"}
-                />
-              </div>
-              <div className="border-t border-border pt-6">
-                <ProjectIssueStatusSettings
-                  projectId={project.id}
-                  statuses={configStatuses}
-                />
-              </div>
-            </>
-          )}
+        </div>
+      )}
+
+      {activeTab === "workflow" && project?.id && (
+        <div className="max-w-3xl space-y-6 pb-2">
+          <ProjectIssueStatusSettings projectId={project.id} statuses={configStatuses} />
         </div>
       )}
 
