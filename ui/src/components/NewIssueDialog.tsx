@@ -11,7 +11,6 @@ import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { assetsApi } from "../api/assets";
-import { goalsApi } from "../api/goals";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
@@ -50,7 +49,6 @@ import {
   Loader2,
   X,
   Check,
-  Target,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { extractProviderIdWithFallback } from "../lib/model-utils";
@@ -75,7 +73,6 @@ interface IssueDraft {
   assigneeId?: string;
   projectId: string;
   projectWorkspaceId?: string;
-  goalId?: string;
   assigneeModelOverride: string;
   assigneeThinkingEffort: string;
   assigneeChrome: boolean;
@@ -312,8 +309,6 @@ export function NewIssueDialog() {
   const [stagedFiles, setStagedFiles] = useState<StagedIssueFile[]>([]);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [projectValidationError, setProjectValidationError] = useState<string | null>(null);
-  const [goalId, setGoalId] = useState("");
-  const [goalValidationError, setGoalValidationError] = useState<string | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
 
@@ -358,11 +353,6 @@ export function NewIssueDialog() {
     enabled: !!effectiveCompanyId && newIssueOpen,
   });
 
-  const { data: goals } = useQuery({
-    queryKey: queryKeys.goals.list(effectiveCompanyId!),
-    queryFn: () => goalsApi.list(effectiveCompanyId!),
-    enabled: !!effectiveCompanyId && newIssueOpen,
-  });
   const { data: reusableExecutionWorkspaces } = useQuery({
     queryKey: queryKeys.executionWorkspaces.list(effectiveCompanyId!, {
       projectId,
@@ -543,7 +533,6 @@ export function NewIssueDialog() {
       assigneeValue,
       projectId,
       projectWorkspaceId,
-      goalId,
       assigneeModelOverride,
       assigneeThinkingEffort,
       assigneeChrome,
@@ -573,7 +562,6 @@ export function NewIssueDialog() {
     if (!newIssueOpen) return;
     setDialogCompanyId(selectedCompanyId);
     setProjectValidationError(null);
-    setGoalValidationError(null);
     executionWorkspaceDefaultProjectId.current = null;
 
     const draft = loadDraft();
@@ -587,7 +575,6 @@ export function NewIssueDialog() {
       const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
-      setGoalId(defaultProject?.goals?.[0]?.id ?? "");
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
@@ -610,7 +597,6 @@ export function NewIssueDialog() {
       );
       setProjectId(restoredProjectId);
       setProjectWorkspaceId(draft.projectWorkspaceId ?? defaultProjectWorkspaceIdForProject(restoredProject));
-      setGoalId(draft.goalId ?? restoredProject?.goals?.[0]?.id ?? "");
       setAssigneeModelOverride(draft.assigneeModelOverride ?? "");
       setAssigneeThinkingEffort(draft.assigneeThinkingEffort ?? "");
       setAssigneeChrome(draft.assigneeChrome ?? false);
@@ -628,7 +614,6 @@ export function NewIssueDialog() {
       setSelectedLabelIds([]);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
-      setGoalId(defaultProject?.goals?.[0]?.id ?? "");
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
@@ -675,8 +660,6 @@ export function NewIssueDialog() {
     setAssigneeValue("");
     setProjectId("");
     setProjectWorkspaceId("");
-    setGoalId("");
-    setGoalValidationError(null);
     setAssigneeOptionsOpen(false);
     setAssigneeModelOverride("");
     setAssigneeThinkingEffort("");
@@ -699,8 +682,6 @@ export function NewIssueDialog() {
     setAssigneeValue("");
     setProjectId("");
     setProjectWorkspaceId("");
-    setGoalId("");
-    setGoalValidationError(null);
     setAssigneeModelOverride("");
     setAssigneeThinkingEffort("");
     setAssigneeChrome(false);
@@ -717,18 +698,12 @@ export function NewIssueDialog() {
 
   function handleSubmit() {
     if (!effectiveCompanyId || createIssue.isPending) return;
+    if (!title.trim()) return;
     if (!projectId) {
       setProjectValidationError("Project is required.");
       return;
     }
-    if (!title.trim()) return;
-    const hasGoals = (goals ?? []).length > 0;
-    if (hasGoals && !goalId) {
-      setGoalValidationError("Goal is required.");
-      return;
-    }
     setProjectValidationError(null);
-    setGoalValidationError(null);
     const assigneeAdapterOverrides = buildAssigneeAdapterOverrides({
       adapterType: assigneeAdapterType,
       modelOverride: assigneeModelOverride,
@@ -762,7 +737,6 @@ export function NewIssueDialog() {
       ...(selectedLabelIds.length > 0 ? { labelIds: selectedLabelIds } : {}),
       ...(projectId ? { projectId } : {}),
       ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
-      ...(goalId ? { goalId } : {}),
       ...(assigneeAdapterOverrides ? { assigneeAdapterOverrides } : {}),
       ...(executionWorkspacePolicy?.enabled ? { executionWorkspacePreference: executionWorkspaceMode } : {}),
       ...(executionWorkspaceMode === "reuse_existing" && selectedExecutionWorkspaceId
@@ -926,21 +900,15 @@ export function NewIssueDialog() {
     [orderedProjects],
   );
 
-  const goalOptions = useMemo<InlineEntityOption[]>(
-    () =>
-      (goals ?? [])
-        .filter((g) => g.status !== "cancelled")
-        .map((g) => ({ id: g.id, label: g.title, searchText: g.description ?? "" })),
-    [goals],
-  );
-  const currentGoal = useMemo(() => (goals ?? []).find((g) => g.id === goalId), [goals, goalId]);
-  const goalMarkerClassName = cn("text-muted-foreground/90", goalValidationError && "text-destructive");
   const savedDraft = loadDraft();
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
   const canDiscardDraft = hasDraft || hasSavedDraft;
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
-  const canSubmit = canSubmitNewIssue({ title, projectId, isPending: createIssue.isPending });
+  const missingRequiredFields: string[] = [];
+  if (!title.trim()) missingRequiredFields.push("Task title");
+  if (!projectId) missingRequiredFields.push("Project");
+  const canSubmit = missingRequiredFields.length === 0 && !createIssue.isPending;
   const projectFieldLabel = formatRequiredFieldLabel("Project");
   const projectMarkerClassName = cn("text-muted-foreground/90", projectValidationError && "text-destructive");
   const stagedDocuments = stagedFiles.filter((file) => file.kind === "document");
@@ -968,10 +936,6 @@ export function NewIssueDialog() {
     setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(nextProject));
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(nextProject));
     setSelectedExecutionWorkspaceId("");
-    if (nextProject?.goals?.[0]?.id) {
-      setGoalId(nextProject.goals[0].id);
-      setGoalValidationError(null);
-    }
   }, [orderedProjects]);
 
   useEffect(() => {
@@ -1267,46 +1231,8 @@ export function NewIssueDialog() {
                   );
                 }}
               />
-              {goalOptions.length > 0 && (
-                <>
-                  <span>toward</span>
-                  <InlineEntitySelector
-                    value={goalId}
-                    options={goalOptions}
-                    placeholder="Goal"
-                    noneLabel="No goal"
-                    disablePortal
-                    includeNoneOption={false}
-                    searchPlaceholder="Search goals..."
-                    emptyMessage="No goals found."
-                    onChange={(value) => { setGoalId(value); if (value) setGoalValidationError(null); }}
-                    renderTriggerValue={(option) =>
-                      option && currentGoal ? (
-                        <>
-                          <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{option.label}</span>
-                          <span aria-hidden="true" className={goalMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Goal <span aria-hidden="true" className={goalMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
-                        </span>
-                      )
-                    }
-                    renderOption={(option) => (
-                      <>
-                        <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{option.label}</span>
-                      </>
-                    )}
-                  />
-                </>
-              )}
             </div>
           </div>
-          {goalValidationError && (
-            <p className="mt-1 text-xs text-destructive">{goalValidationError}</p>
-          )}
         </div>
 
         {currentProject && currentProjectSupportsExecutionWorkspace && (
@@ -1693,40 +1619,48 @@ export function NewIssueDialog() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border shrink-0">
+        <div className="flex flex-col gap-2 border-t border-border px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 shrink-0">
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground"
+            className="text-muted-foreground self-start sm:self-auto"
             onClick={discardDraft}
             disabled={createIssue.isPending || !canDiscardDraft}
           >
             Discard Draft
           </Button>
-          <div className="flex items-center gap-3">
-            <div className="min-h-5 text-right">
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+            <div className="min-h-5 min-w-0 text-left sm:max-w-88 sm:text-right">
               {createIssue.isPending ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Creating issue...
                 </span>
               ) : createIssue.isError ? (
-                <span className="text-xs text-destructive">{createIssueErrorMessage}</span>
+                <p className="text-xs leading-snug text-destructive">{createIssueErrorMessage}</p>
+              ) : !canSubmit ? (
+                <span className="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300">
+                  Required: {missingRequiredFields.join(", ")}
+                </span>
               ) : projectValidationError ? (
-                <span className="text-xs text-destructive">{projectValidationError}</span>
+                <p className="text-xs leading-snug text-destructive">{projectValidationError}</p>
               ) : null}
             </div>
             <Button
               size="sm"
-              className="min-w-[8.5rem] disabled:opacity-100"
+              className="min-w-34 shrink-0 select-none disabled:opacity-100"
               disabled={!canSubmit}
               onClick={handleSubmit}
               aria-busy={createIssue.isPending}
             >
-              <span className="inline-flex items-center justify-center gap-1.5">
-                {createIssue.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                <span>{createIssue.isPending ? "Creating..." : "Create Task"}</span>
-              </span>
+              {createIssue.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Task"
+              )}
             </Button>
           </div>
         </div>
