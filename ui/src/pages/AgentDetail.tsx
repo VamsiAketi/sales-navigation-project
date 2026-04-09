@@ -1156,7 +1156,7 @@ function AgentOverview({
 
       {/* Charts */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ChartCard title="Run Activity" subtitle="Last 14 days">
+        <ChartCard title="Run Aduit Log" subtitle="Last 14 days">
           <RunActivityChart runs={runs} />
         </ChartCard>
         <ChartCard title="Issues by Priority" subtitle="Last 14 days">

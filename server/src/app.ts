@@ -33,7 +33,7 @@ import { userNotificationPreferencesRoutes } from "./routes/user-notification-pr
 import { notificationRoutes } from "./routes/notifications.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
-import { applyUiBranding } from "./ui-branding.js";
+import { applyUiBranding, buildSiteWebManifest } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
 import { createPluginWorkerManager } from "./services/plugin-worker-manager.js";
@@ -414,6 +414,12 @@ export async function createApp(
   app.use(pluginUiStaticRoutes(db, {
     localPluginDir: opts.localPluginDir ?? DEFAULT_LOCAL_PLUGIN_DIR,
   }));
+  app.get("/site.webmanifest", (_req, res) => {
+    res
+      .status(200)
+      .type("application/manifest+json")
+      .send(JSON.stringify(buildSiteWebManifest(process.env)));
+  });
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   if (opts.uiMode === "static") {
