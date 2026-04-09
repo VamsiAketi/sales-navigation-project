@@ -35,11 +35,50 @@ import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Helpers ── */
 
+/** Fallback column order when `projectStatuses` is not passed (e.g. company-wide Issues page). */
 const statusOrder = ["in_progress", "todo", "backlog", "in_review", "blocked", "done", "cancelled"];
 const priorityOrder = ["critical", "high", "medium", "low"];
 
 function statusLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Active workflow columns in board order — matches `KanbanBoard` `activeColumns`. */
+function workflowStatusColumnOrder(projectStatuses: ProjectIssueStatus[] | undefined): string[] {
+  if (projectStatuses && projectStatuses.length > 0) {
+    return projectStatuses
+      .filter((s) => s.isActive)
+      .sort((a, b) => a.position - b.position)
+      .map((s) => s.value);
+  }
+  return statusOrder;
+}
+
+/** Sort two status values using workflow order; unknown values sort after configured ones. */
+function compareWorkflowStatus(a: string, b: string, columnOrder: string[]): number {
+  const inA = columnOrder.includes(a);
+  const inB = columnOrder.includes(b);
+  if (inA && inB) return columnOrder.indexOf(a) - columnOrder.indexOf(b);
+  if (inA) return -1;
+  if (inB) return 1;
+  return a.localeCompare(b);
+}
+
+function workflowStatusGroupLabel(value: string, projectStatuses: ProjectIssueStatus[] | undefined): string {
+  const row = projectStatuses?.find((s) => s.value === value);
+  return row?.name ?? statusLabel(value);
+}
+
+/** Group keys with items: workflow order first (same as board), then any other statuses lexically. */
+function orderedStatusGroupEntries(
+  groups: Record<string, Issue[]>,
+  columnOrder: string[],
+): { key: string; items: Issue[] }[] {
+  const keysWithItems = Object.keys(groups).filter((k) => (groups[k]?.length ?? 0) > 0);
+  const set = new Set(keysWithItems);
+  const primary = columnOrder.filter((s) => set.has(s));
+  const rest = keysWithItems.filter((s) => !columnOrder.includes(s)).sort((a, b) => a.localeCompare(b));
+  return [...primary, ...rest].map((key) => ({ key, items: groups[key]! }));
 }
 
 /* ── View state ── */
@@ -66,8 +105,8 @@ const defaultViewState: IssueViewState = {
   reporters: [],
   labels: [],
   projects: [],
-  sortField: "updated",
-  sortDir: "desc",
+  sortField: "created",
+  sortDir: "asc",
   groupBy: "none",
   viewMode: "board",
   collapsedGroups: [],
@@ -80,6 +119,13 @@ const quickFilterPresets = [
   { label: "Backlog", statuses: ["backlog"] },
   { label: "Done", statuses: ["done", "cancelled"] },
 ];
+
+/** Bump when defaults change so users pick up new `defaultViewState` instead of stale localStorage. */
+const ISSUE_VIEW_STATE_STORAGE_VERSION = 2;
+
+function viewStateLocalStorageKey(scopedKey: string): string {
+  return `${scopedKey}:v${ISSUE_VIEW_STATE_STORAGE_VERSION}`;
+}
 
 function getViewState(key: string): IssueViewState {
   try {
@@ -104,9 +150,18 @@ function toggleInArray(arr: string[], value: string): string[] {
   return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
 }
 
-function applyFilters(issues: Issue[], state: IssueViewState, currentUserId?: string | null): Issue[] {
+function applyFilters(
+  issues: Issue[],
+  state: IssueViewState,
+  currentUserId?: string | null,
+  fixedStatusFilter?: string[],
+): Issue[] {
   let result = issues;
-  if (state.statuses.length > 0) result = result.filter((i) => state.statuses.includes(i.status));
+  if (fixedStatusFilter && fixedStatusFilter.length > 0) {
+    result = result.filter((i) => fixedStatusFilter.includes(i.status));
+  } else if (state.statuses.length > 0) {
+    result = result.filter((i) => state.statuses.includes(i.status));
+  }
   if (state.priorities.length > 0) result = result.filter((i) => state.priorities.includes(i.priority));
   if (state.assignees.length > 0) {
     result = result.filter((issue) => {
@@ -134,13 +189,13 @@ function applyFilters(issues: Issue[], state: IssueViewState, currentUserId?: st
   return result;
 }
 
-function sortIssues(issues: Issue[], state: IssueViewState): Issue[] {
+function sortIssues(issues: Issue[], state: IssueViewState, statusColumnOrder: string[]): Issue[] {
   const sorted = [...issues];
   const dir = state.sortDir === "asc" ? 1 : -1;
   sorted.sort((a, b) => {
     switch (state.sortField) {
       case "status":
-        return dir * (statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status));
+        return dir * compareWorkflowStatus(a.status, b.status, statusColumnOrder);
       case "priority":
         return dir * (priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority));
       case "title":
@@ -198,6 +253,10 @@ interface IssuesListProps {
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
   projectStatuses?: ProjectIssueStatus[];
   forceListView?: boolean;
+  /** When set, only these issue statuses are shown; `viewState.statuses` is ignored for filtering. */
+  fixedStatusFilter?: string[];
+  /** Hide the Status filter popover (e.g. project Backlog tab). */
+  hideStatusFilter?: boolean;
 }
 
 /* ── Assignee filter strip component ─────────────────────────────────────────
@@ -409,6 +468,8 @@ export function IssuesList({
   onUpdateIssue,
   projectStatuses,
   forceListView = false,
+  fixedStatusFilter,
+  hideStatusFilter = false,
 }: IssuesListProps) {
   const { selectedCompanyId } = useCompany();
   const { openNewIssue } = useDialog();
@@ -439,12 +500,13 @@ export function IssuesList({
 
   // Scope the storage key per company so folding/view state is independent across companies.
   const scopedKey = selectedCompanyId ? `${viewStateKey}:${selectedCompanyId}` : viewStateKey;
+  const viewStateLsKey = viewStateLocalStorageKey(scopedKey);
 
   const [viewState, setViewState] = useState<IssueViewState>(() => {
     if (initialAssignees) {
       return { ...defaultViewState, assignees: initialAssignees, statuses: [] };
     }
-    return getViewState(scopedKey);
+    return getViewState(viewStateLsKey);
   });
   const [assigneePickerIssueId, setAssigneePickerIssueId] = useState<string | null>(null);
   const [assigneeSearch, setAssigneeSearch] = useState("");
@@ -466,24 +528,24 @@ export function IssuesList({
     return () => window.clearTimeout(timeoutId);
   }, [issueSearch]);
 
-  // Reload view state from localStorage when company changes (scopedKey changes).
-  const prevScopedKey = useRef(scopedKey);
+  // Reload view state from localStorage when company or storage key version changes.
+  const prevViewStateLsKey = useRef(viewStateLsKey);
   useEffect(() => {
-    if (prevScopedKey.current !== scopedKey) {
-      prevScopedKey.current = scopedKey;
+    if (prevViewStateLsKey.current !== viewStateLsKey) {
+      prevViewStateLsKey.current = viewStateLsKey;
       setViewState(initialAssignees
         ? { ...defaultViewState, assignees: initialAssignees, statuses: [] }
-        : getViewState(scopedKey));
+        : getViewState(viewStateLsKey));
     }
-  }, [scopedKey, initialAssignees]);
+  }, [viewStateLsKey, initialAssignees]);
 
   const updateView = useCallback((patch: Partial<IssueViewState>) => {
     setViewState((prev) => {
       const next = { ...prev, ...patch };
-      saveViewState(scopedKey, next);
+      saveViewState(viewStateLsKey, next);
       return next;
     });
-  }, [scopedKey]);
+  }, [viewStateLsKey]);
 
   const { data: searchedIssues = [] } = useQuery({
     queryKey: [
@@ -508,14 +570,20 @@ export function IssuesList({
     return agents.find((a) => a.id === id)?.name ?? null;
   }, [agents]);
 
+  const statusColumnOrder = useMemo(
+    () => workflowStatusColumnOrder(projectStatuses),
+    [projectStatuses],
+  );
+
   const filtered = useMemo(() => {
-    if (viewState.showHidden) {
-      return sortIssues(hiddenIssues, viewState);
+    const useHiddenBranch = viewState.showHidden && !(fixedStatusFilter && fixedStatusFilter.length > 0);
+    if (useHiddenBranch) {
+      return sortIssues(hiddenIssues, viewState, statusColumnOrder);
     }
     const sourceIssues = normalizedIssueSearch.length > 0 ? searchedIssues : issues;
-    const filteredByControls = applyFilters(sourceIssues, viewState, currentUserId);
-    return sortIssues(filteredByControls, viewState);
-  }, [issues, searchedIssues, hiddenIssues, viewState, normalizedIssueSearch, currentUserId]);
+    const filteredByControls = applyFilters(sourceIssues, viewState, currentUserId, fixedStatusFilter);
+    return sortIssues(filteredByControls, viewState, statusColumnOrder);
+  }, [issues, searchedIssues, hiddenIssues, viewState, normalizedIssueSearch, currentUserId, statusColumnOrder, fixedStatusFilter]);
 
   // Status options for the filter panel. When projectStatuses is provided (project page),
   // use those. Otherwise, show defaults + any custom status values found in the issues list.
@@ -550,7 +618,7 @@ export function IssuesList({
     if (!issue) return;
 
     const sourceForFilter = normalizedIssueSearch.length > 0 ? searchedIssues : issues;
-    const passesFilters = applyFilters(sourceForFilter, viewState, currentUserId).some(
+    const passesFilters = applyFilters(sourceForFilter, viewState, currentUserId, fixedStatusFilter).some(
       (i) => i.id === pending.issueId,
     );
 
@@ -595,6 +663,7 @@ export function IssuesList({
     viewState,
     currentUserId,
     forceListView,
+    fixedStatusFilter,
     pushToast,
     updateView,
   ]);
@@ -676,8 +745,14 @@ export function IssuesList({
     return [...humans, ...agentItems];
   }, [humanMembers, agents]);
 
-  const activeFilterCount = countActiveFilters(viewState);
-  const statusFilterCount = viewState.statuses.length + (viewState.showHidden ? 1 : 0);
+  const activeFilterCount = useMemo(() => {
+    let c = countActiveFilters(viewState);
+    if (hideStatusFilter && viewState.statuses.length > 0) c -= 1;
+    return c;
+  }, [viewState, hideStatusFilter]);
+  const statusFilterCount = hideStatusFilter
+    ? 0
+    : viewState.statuses.length + (viewState.showHidden ? 1 : 0);
   const priorityFilterCount = viewState.priorities.length;
   const reporterFilterCount = viewState.reporters.length;
   const labelFilterCount = viewState.labels.length;
@@ -689,9 +764,11 @@ export function IssuesList({
     }
     if (viewState.groupBy === "status") {
       const groups = groupBy(filtered, (i) => i.status);
-      return statusOrder
-        .filter((s) => groups[s]?.length)
-        .map((s) => ({ key: s, label: statusLabel(s), items: groups[s]! }));
+      return orderedStatusGroupEntries(groups, statusColumnOrder).map(({ key, items }) => ({
+        key,
+        label: workflowStatusGroupLabel(key, projectStatuses),
+        items,
+      }));
     }
     if (viewState.groupBy === "priority") {
       const groups = groupBy(filtered, (i) => i.priority);
@@ -714,11 +791,14 @@ export function IssuesList({
             : (agentName(key) ?? key.slice(0, 8)),
       items: groups[key]!,
     }));
-  }, [filtered, viewState.groupBy, agents, agentName, currentUserId, userLabel]);
+  }, [filtered, viewState.groupBy, agents, agentName, currentUserId, userLabel, statusColumnOrder, projectStatuses]);
 
   const newIssueDefaults = (groupKey?: string) => {
     const defaults: Record<string, string> = {};
     if (projectId) defaults.projectId = projectId;
+    if (fixedStatusFilter?.length === 1) {
+      defaults.status = fixedStatusFilter[0]!;
+    }
     if (groupKey) {
       if (viewState.groupBy === "status") defaults.status = groupKey;
       else if (viewState.groupBy === "priority") defaults.priority = groupKey;
@@ -790,6 +870,7 @@ export function IssuesList({
 
         <div className="flex items-center gap-1.5">
           {/* Top-level filter dropdowns */}
+          {!hideStatusFilter && (
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", statusFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
@@ -846,6 +927,7 @@ export function IssuesList({
               </div>
             </PopoverContent>
           </Popover>
+          )}
 
           <Popover>
             <PopoverTrigger asChild>

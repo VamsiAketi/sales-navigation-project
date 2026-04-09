@@ -35,7 +35,7 @@ import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slo
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "overview" | "list" | "configuration" | "workflow" | "budget";
+type ProjectBaseTab = "backlog" | "overview" | "list" | "configuration" | "workflow" | "budget";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -56,6 +56,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   const projectsIdx = segments.indexOf("projects");
   if (projectsIdx === -1 || segments[projectsIdx + 1] !== projectId) return null;
   const tab = segments[projectsIdx + 2];
+  if (tab === "backlog") return "backlog";
   if (tab === "overview") return "overview";
   if (tab === "configuration") return "configuration";
   if (tab === "workflow") return "workflow";
@@ -202,6 +203,65 @@ function ColorPicker({
 }
 
 /* ── List (issues) tab content ── */
+
+function ProjectBacklogList({ projectId, companyId, issueLinkState }: { projectId: string; companyId: string; issueLinkState?: unknown }) {
+  const queryClient = useQueryClient();
+  const projectStatuses = useProjectIssueStatuses(projectId);
+
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+    enabled: !!companyId,
+  });
+
+  const { data: liveRuns } = useQuery({
+    queryKey: queryKeys.liveRuns(companyId),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(companyId),
+    enabled: !!companyId,
+    refetchInterval: 5000,
+  });
+
+  const liveIssueIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const run of liveRuns ?? []) {
+      if (run.issueId) ids.add(run.issueId);
+    }
+    return ids;
+  }, [liveRuns]);
+
+  const { data: issues, isLoading, error } = useQuery({
+    queryKey: queryKeys.issues.listByProject(companyId, projectId),
+    queryFn: () => issuesApi.list(companyId, { projectId }),
+    enabled: !!companyId,
+  });
+
+  const updateIssue = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      issuesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
+    },
+  });
+
+  return (
+    <IssuesList
+      issues={issues ?? []}
+      isLoading={isLoading}
+      error={error as Error | null}
+      agents={agents}
+      liveIssueIds={liveIssueIds}
+      projectId={projectId}
+      viewStateKey={`paperclip:project-backlog:${projectId}`}
+      issueLinkState={issueLinkState}
+      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+      projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
+      forceListView
+      fixedStatusFilter={["backlog"]}
+      hideStatusFilter
+    />
+  );
+}
 
 function ProjectIssuesList({ projectId, companyId, issueLinkState }: { projectId: string; companyId: string; issueLinkState?: unknown }) {
   const queryClient = useQueryClient();
@@ -394,6 +454,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(activeTab)}`, { replace: true });
       return;
     }
+    if (activeTab === "backlog") {
+      navigate(`/projects/${canonicalProjectRef}/backlog`, { replace: true });
+      return;
+    }
     if (activeTab === "overview") {
       navigate(`/projects/${canonicalProjectRef}/overview`, { replace: true });
       return;
@@ -530,6 +594,9 @@ export function ProjectDetail() {
     if (project?.id) {
       try { cachedTab = localStorage.getItem(`paperclip:project-tab:${project.id}`); } catch {}
     }
+    if (cachedTab === "backlog") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/backlog`} replace />;
+    }
     if (cachedTab === "overview") {
       return <Navigate to={`/projects/${canonicalProjectRef}/overview`} replace />;
     }
@@ -561,7 +628,9 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(tab)}`);
       return;
     }
-    if (tab === "overview") {
+    if (tab === "backlog") {
+      navigate(`/projects/${canonicalProjectRef}/backlog`);
+    } else if (tab === "overview") {
       navigate(`/projects/${canonicalProjectRef}/overview`);
     } else if (tab === "budget") {
       navigate(`/projects/${canonicalProjectRef}/budget`);
@@ -634,6 +703,7 @@ export function ProjectDetail() {
       <Tabs value={activeTab ?? "list"} onValueChange={(value) => handleTabChange(value as ProjectTab)}>
         <PageTabBar
           items={[
+            { value: "backlog", label: "Backlog" },
             { value: "list", label: "Tasks" },
             { value: "overview", label: "Overview" },
             { value: "configuration", label: "Configuration" },
@@ -649,6 +719,14 @@ export function ProjectDetail() {
           onValueChange={(value) => handleTabChange(value as ProjectTab)}
         />
       </Tabs>
+
+      {activeTab === "backlog" && project?.id && resolvedCompanyId && (
+        <ProjectBacklogList
+          projectId={project.id}
+          companyId={resolvedCompanyId}
+          issueLinkState={createIssueDetailLocationState(project.name, `/projects/${canonicalProjectRef}/backlog`)}
+        />
+      )}
 
       {activeTab === "overview" && (
         <OverviewContent
