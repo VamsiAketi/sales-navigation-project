@@ -168,7 +168,11 @@ export function AuthPage() {
             {isResetMode
               ? "Set a new password for your account."
               : mode === "sign_in"
-                ? "Use your email and password to access this instance."
+                ? useEmailCode
+                  ? codeSent
+                    ? "Enter the verification code sent to your email to sign in."
+                    : "Use your email to receive a one-time verification code."
+                  : "Use your email and password to access this instance."
                 : "Create an account for this instance. Email confirmation is not required in v1."}
           </p>
           {loggedOut && (
