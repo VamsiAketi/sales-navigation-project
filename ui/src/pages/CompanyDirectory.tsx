@@ -467,7 +467,6 @@ export function CompanyDirectory() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
   const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
@@ -769,12 +768,6 @@ export function CompanyDirectory() {
     : "";
   const selectedHumanManagerIsAgent =
     !!selectedHumanManagerId && memberPrincipalTypeById.get(selectedHumanManagerId) === "agent";
-  const selectedHumanPermissionNames = useMemo(() => {
-    if (!selectedHumanMember) return [];
-    return selectedHumanMember.grants
-      .map((grant) => PERMISSION_UI[grant.permissionKey as PermissionKey]?.title ?? grant.permissionKey)
-      .sort((a, b) => a.localeCompare(b));
-  }, [selectedHumanMember]);
 
   function revertDraftsToServer(memberId: string) {
     const serverMember = memberById.get(memberId) ?? null;
@@ -1363,15 +1356,6 @@ export function CompanyDirectory() {
                       </div>
                       <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
                         <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="rounded-xl"
-                          onClick={() => setRoleDialogOpen(true)}
-                        >
-                          Role
-                        </Button>
                         {selectedHumanMember.status === "suspended" ? (
                           <Button
                             type="button"
@@ -1755,50 +1739,6 @@ export function CompanyDirectory() {
             >
               {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Role details dialog */}
-      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent className="max-w-md rounded-2xl border-border/60">
-          <DialogHeader>
-            <DialogTitle>Role details</DialogTitle>
-            <DialogDescription>
-              Review the selected human role and assigned permissions.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <div className="text-xs text-muted-foreground">Role</div>
-              <div className="mt-1 text-sm font-medium text-foreground">
-                {selectedHumanMember?.membershipRole?.trim() || "Member"}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Permissions</div>
-              {selectedHumanPermissionNames.length > 0 ? (
-                <ul className="mt-2 space-y-1">
-                  {selectedHumanPermissionNames.map((permissionName) => (
-                    <li
-                      key={permissionName}
-                      className="rounded-md border border-border/60 bg-muted/20 px-2.5 py-1.5 text-sm text-foreground"
-                    >
-                      {permissionName}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="mt-2 text-sm text-muted-foreground">No explicit permissions assigned.</div>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Close
-              </Button>
-            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
