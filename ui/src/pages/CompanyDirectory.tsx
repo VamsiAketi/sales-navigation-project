@@ -595,7 +595,6 @@ export function CompanyDirectory() {
       accessApi.createHumanInvite(selectedCompanyId!, {
         email: humanInviteEmail.trim(),
         name: humanInviteName.trim() || undefined,
-        role: humanInviteRole,
         grants: humanInvitePermissionKeys.map((permissionKey) => ({
           permissionKey,
           scope: null,
@@ -986,18 +985,21 @@ export function CompanyDirectory() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">Role</Label>
-                        <InlineEntitySelector
+                        <Label htmlFor="invite-role" className="text-xs text-muted-foreground">
+                          Role
+                        </Label>
+                        <select
+                          id="invite-role"
+                          className="h-11 w-full rounded-2xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                           value={humanInviteRole}
-                          options={INVITE_HUMAN_ROLE_OPTIONS.map((role) => ({ id: role, label: role }))}
-                          placeholder="Role"
-                          noneLabel="None"
-                          includeNoneOption={false}
-                          searchPlaceholder="Search roles..."
-                          emptyMessage="No roles found."
-                          onChange={setHumanInviteRole}
-                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
-                        />
+                          onChange={(e) => setHumanInviteRole(e.target.value)}
+                        >
+                          {INVITE_HUMAN_ROLE_OPTIONS.map((role) => (
+                            <option key={role} value={role}>
+                              {role}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                     {humanInviteCredentials && (
