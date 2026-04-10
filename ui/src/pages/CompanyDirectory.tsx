@@ -17,6 +17,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "../api/client";
 import { isPermissionDeniedError } from "../lib/permission-feedback";
 import {
+  pickFirstCreatedHumanMemberId,
+  pickFirstCreatedOwnerMemberId,
+} from "../lib/org-defaults";
+import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -683,6 +687,33 @@ export function CompanyDirectory() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
       });
+      try {
+        const members = await accessApi.listMembers(selectedCompanyId!);
+        const createdMember =
+          members.find(
+            (member) =>
+              member.principalType === "user" &&
+              member.principalId === created.userId &&
+              member.status === "active",
+          ) ?? null;
+        if (createdMember) {
+          const firstHumanMemberId = pickFirstCreatedHumanMemberId(members);
+          const firstOwnerMemberId = pickFirstCreatedOwnerMemberId(members);
+          const shouldBeOwner = firstHumanMemberId === createdMember.id;
+          const reportsToMembershipId = shouldBeOwner
+            ? null
+            : (firstOwnerMemberId ?? firstHumanMemberId);
+
+          await accessApi.updateMemberOrgConfig(selectedCompanyId!, createdMember.id, {
+            membershipRole: shouldBeOwner ? "owner" : "member",
+            reportsToMembershipId: reportsToMembershipId && reportsToMembershipId !== createdMember.id
+              ? reportsToMembershipId
+              : null,
+          });
+        }
+      } catch {
+        // Invite succeeded; keep UX resilient if default assignment fails.
+      }
       await invalidateMembers();
     },
     onError: (err) => {

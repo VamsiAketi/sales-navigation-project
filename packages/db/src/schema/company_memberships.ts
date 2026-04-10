@@ -1,4 +1,4 @@
-import { type AnyPgColumn, pgTable, uuid, text, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, pgTable, uuid, text, timestamp, uniqueIndex, index, integer } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
 export const companyMemberships = pgTable(
@@ -13,6 +13,7 @@ export const companyMemberships = pgTable(
     reportsToMembershipId: uuid("reports_to_membership_id").references(
       (): AnyPgColumn => companyMemberships.id,
     ),
+    orgSort: integer("org_sort").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -31,6 +32,11 @@ export const companyMemberships = pgTable(
     companyReportsToMembershipIdx: index("company_memberships_company_reports_to_membership_idx").on(
       table.companyId,
       table.reportsToMembershipId,
+    ),
+    companyReportsToMembershipOrgSortIdx: index("company_memberships_company_reports_to_membership_org_sort_idx").on(
+      table.companyId,
+      table.reportsToMembershipId,
+      table.orgSort,
     ),
   }),
 );

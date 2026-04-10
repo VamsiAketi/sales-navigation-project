@@ -14,6 +14,7 @@ import {
   type DragOverEvent,
 } from "@dnd-kit/core";
 import { agentsApi, type OrgNode } from "../api/agents";
+import { accessApi } from "../api/access";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -177,6 +178,54 @@ function moveNodeToParent(nodes: OrgNode[], nodeId: string, newParentId: string 
   return insert(withoutNode);
 }
 
+function reorderIds(ids: string[], draggedId: string, targetId: string): string[] {
+  if (draggedId === targetId) return ids;
+  const from = ids.indexOf(draggedId);
+  const to = ids.indexOf(targetId);
+  if (from < 0 || to < 0) return ids;
+  const next = ids.slice();
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved!);
+  return next;
+}
+
+function reorderChildrenForParent(
+  nodes: OrgNode[],
+  parentId: string | null,
+  draggedId: string,
+  targetId: string,
+): OrgNode[] {
+  if (parentId === null) {
+    const order = reorderIds(nodes.map((n) => n.id), draggedId, targetId);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    return order.map((id) => byId.get(id)!).filter(Boolean);
+  }
+
+  function walk(items: OrgNode[]): OrgNode[] {
+    return items.map((item) => {
+      if (item.id === parentId) {
+        const order = reorderIds(item.reports.map((r) => r.id), draggedId, targetId);
+        const byId = new Map(item.reports.map((r) => [r.id, r]));
+        return { ...item, reports: order.map((id) => byId.get(id)!).filter(Boolean) };
+      }
+      return { ...item, reports: walk(item.reports) };
+    });
+  }
+
+  return walk(nodes);
+}
+
+function childIdsForParent(nodes: OrgNode[], parentId: string | null): string[] {
+  if (parentId === null) return nodes.map((node) => node.id);
+  const stack = [...nodes];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node.id === parentId) return node.reports.map((child) => child.id);
+    stack.push(...node.reports);
+  }
+  return [];
+}
+
 // ── Status / adapter labels ─────────────────────────────────────────────
 
 const adapterLabels: Record<string, string> = {
@@ -320,7 +369,7 @@ function OrgCard({
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: node.id,
-    disabled: !isAgentNode,
+    disabled: false,
   });
   const { setNodeRef: setDropRef } = useDroppable({
     id: node.id,
@@ -347,14 +396,12 @@ function OrgCard({
             ? "border-primary ring-2 ring-primary/30 shadow-xl cursor-grab"
             : isInvalidTarget
               ? "opacity-50 cursor-not-allowed shadow-sm border-border/50"
-              : isAgentNode
-                ? "shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] hover:-translate-y-0.5 cursor-grab border-border/70 hover:border-border"
-                : "shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] hover:-translate-y-0.5 cursor-default border-border/70 hover:border-border",
+              : "shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] hover:-translate-y-0.5 cursor-grab border-border/70 hover:border-border",
       ].join(" ")}
       style={{ left: node.x, top: node.y, width: CARD_W, minHeight: CARD_H }}
       onClick={onNavigate}
-      {...(isAgentNode ? listeners : {})}
-      {...(isAgentNode ? attributes : {})}
+      {...listeners}
+      {...attributes}
     >
       <CardContent node={node} agent={agent} isAgentNode={isAgentNode} />
 
@@ -461,6 +508,10 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
     queryKey: queryKeys.agents.list(companyId),
     queryFn: () => agentsApi.list(companyId),
   });
+  const { data: members } = useQuery({
+    queryKey: queryKeys.access.members(companyId),
+    queryFn: () => accessApi.listMembers(companyId),
+  });
 
   const agentMap = useMemo(() => {
     const m = new Map<string, Agent>();
@@ -513,8 +564,57 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   const isExpanded = useCallback((id: string) => expandedSet.has(id), [expandedSet]);
 
   const reorgMutation = useMutation({
-    mutationFn: ({ agentId, reportsTo }: { agentId: string; reportsTo: string | null }) =>
-      agentsApi.update(agentId, { reportsTo }, companyId),
+    mutationFn: async ({
+      nodeId,
+      nodeType,
+      parentId,
+    }: {
+      nodeId: string;
+      nodeType: "agent" | "human";
+      parentId: string | null;
+    }) => {
+      const agentMembershipByAgentId = new Map(
+        (members ?? [])
+          .filter((member) => member.principalType === "agent")
+          .map((member) => [member.principalId, member.id]),
+      );
+      const parentNode = parentId ? (orgIndex.nodeById.get(parentId) ?? null) : null;
+      const parentMembershipId = !parentNode
+        ? null
+        : parentNode.nodeType === "human"
+          ? parentNode.id
+          : (agentMembershipByAgentId.get(parentNode.id) ?? null);
+
+      if (nodeType === "human") {
+        await accessApi.updateMemberOrgConfig(companyId, nodeId, {
+          reportsToMembershipId: parentMembershipId,
+        });
+        return;
+      }
+
+      const agentReportsTo = parentNode?.nodeType === "agent" ? parentNode.id : null;
+      const agentMembershipId = agentMembershipByAgentId.get(nodeId) ?? null;
+      await Promise.all([
+        agentsApi.update(nodeId, { reportsTo: agentReportsTo }, companyId),
+        agentMembershipId
+          ? accessApi.updateMemberOrgConfig(companyId, agentMembershipId, {
+              reportsToMembershipId: parentMembershipId,
+            })
+          : Promise.resolve(),
+      ]);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.org(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.access.members(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
+    },
+    onError: () => {
+      setLocalOrgTree(orgTree ?? null);
+    },
+  });
+  const childOrderMutation = useMutation({
+    mutationFn: ({ managerId, childIds }: { managerId: string | null; childIds: string[] }) =>
+      agentsApi.updateChildOrder(companyId, managerId, childIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.org(companyId) });
     },
@@ -554,15 +654,73 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
       if (!targetId) return;
 
       const newParentId = targetId === ROOT_DROP_ZONE_ID ? null : targetId;
+      const draggedParentId = orgIndex.parentById.get(draggedId) ?? null;
+      const targetParentId =
+        targetId === ROOT_DROP_ZONE_ID ? null : (orgIndex.parentById.get(targetId) ?? null);
+      const draggedNode = orgIndex.nodeById.get(draggedId);
 
       if (newParentId !== null && invalidTargets.has(newParentId)) return;
+
+      if (
+        targetId !== ROOT_DROP_ZONE_ID &&
+        draggedParentId === targetParentId &&
+        draggedId !== targetId
+      ) {
+        const reordered = reorderChildrenForParent(
+          effectiveTree,
+          draggedParentId,
+          draggedId,
+          targetId,
+        );
+        setLocalOrgTree(reordered);
+        const orderedChildIds = childIdsForParent(reordered, draggedParentId);
+        if (orderedChildIds.length > 0) {
+          childOrderMutation.mutate({
+            managerId: draggedParentId,
+            childIds: orderedChildIds,
+          });
+        }
+        return;
+      }
 
       const newTree = moveNodeToParent(effectiveTree, draggedId, newParentId);
       setLocalOrgTree(newTree);
 
-      reorgMutation.mutate({ agentId: draggedId, reportsTo: newParentId });
+      if (draggedNode) {
+        reorgMutation.mutate({
+          nodeId: draggedId,
+          nodeType: draggedNode.nodeType ?? "agent",
+          parentId: newParentId,
+        }, {
+          onSuccess: () => {
+            const newParentChildIds = childIdsForParent(newTree, newParentId);
+            if (newParentChildIds.length > 0) {
+              childOrderMutation.mutate({
+                managerId: newParentId,
+                childIds: newParentChildIds,
+              });
+            }
+            if (draggedParentId !== newParentId) {
+              const oldParentChildIds = childIdsForParent(newTree, draggedParentId);
+              if (oldParentChildIds.length > 0) {
+                childOrderMutation.mutate({
+                  managerId: draggedParentId,
+                  childIds: oldParentChildIds,
+                });
+              }
+            }
+          },
+        });
+      }
     },
-    [invalidTargets, effectiveTree, reorgMutation],
+    [
+      invalidTargets,
+      effectiveTree,
+      reorgMutation,
+      childOrderMutation,
+      orgIndex.parentById,
+      orgIndex.nodeById,
+    ],
   );
 
   const layout = useMemo(() => layoutForest(effectiveTree, isExpanded), [effectiveTree, isExpanded]);
