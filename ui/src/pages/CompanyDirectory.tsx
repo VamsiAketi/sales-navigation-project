@@ -935,11 +935,6 @@ export function CompanyDirectory() {
     }, [options, customOptions]);
     const isPreset = merged.includes(normalized);
     const selectValue = normalized === "" ? "" : isPreset ? normalized : CUSTOM_ROLE_VALUE;
-    const canAdd = (() => {
-      const next = normalizeRoleLabel(roleDraft);
-      return !!next && !merged.includes(next);
-    })();
-
     return (
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">{label}</div>
@@ -960,34 +955,6 @@ export function CompanyDirectory() {
           ))}
           <option value={CUSTOM_ROLE_VALUE}>Other…</option>
         </select>
-        {selectValue === CUSTOM_ROLE_VALUE && (
-          <div className="space-y-2">
-            <Input
-              className="h-10 rounded-xl"
-              value={roleDraft}
-              onChange={(e) => setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
-              placeholder="Custom role…"
-            />
-            {onAddCustomOption && (
-              <div className="flex items-center justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={!canAdd}
-                  onClick={() => {
-                    const next = normalizeRoleLabel(roleDraft);
-                    if (!next) return;
-                    onAddCustomOption(next);
-                    setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }));
-                  }}
-                >
-                  Add to role list
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     );
   }
