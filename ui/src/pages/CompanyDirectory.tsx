@@ -118,9 +118,9 @@ const PERMISSION_UI: Record<PermissionKey, { title: string; description: string 
 };
 
 const PERMISSION_CATEGORY_ACCENTS: Record<string, string> = {
-  team: "from-violet-500 to-fuchsia-500",
-  agents: "from-emerald-500 to-teal-400",
-  work: "from-sky-500 to-blue-500",
+  team: "from-muted-foreground/60 to-muted-foreground/30",
+  agents: "from-muted-foreground/60 to-muted-foreground/30",
+  work: "from-muted-foreground/60 to-muted-foreground/30",
 };
 
 const PERMISSION_CATEGORY_DEFS: {
@@ -344,11 +344,11 @@ function hashString(s: string): number {
 }
 
 const HUMAN_AVATAR_THEMES = [
-  "bg-gradient-to-br from-violet-400/40 via-fuchsia-400/30 to-violet-600/25 text-violet-950 ring-1 ring-violet-500/30 dark:from-violet-500/40 dark:via-fuchsia-500/25 dark:to-violet-700/30 dark:text-violet-50",
-  "bg-gradient-to-br from-sky-400/40 via-cyan-400/30 to-blue-600/25 text-sky-950 ring-1 ring-sky-500/30 dark:from-sky-500/40 dark:via-cyan-500/25 dark:to-blue-700/30 dark:text-sky-50",
-  "bg-gradient-to-br from-amber-400/40 via-orange-400/30 to-rose-500/25 text-amber-950 ring-1 ring-amber-500/30 dark:from-amber-500/40 dark:via-orange-500/25 dark:to-rose-600/30 dark:text-amber-50",
-  "bg-gradient-to-br from-emerald-400/40 via-teal-400/30 to-cyan-600/25 text-emerald-950 ring-1 ring-emerald-500/30 dark:from-emerald-500/40 dark:via-teal-500/25 dark:to-cyan-700/30 dark:text-emerald-50",
-  "bg-gradient-to-br from-rose-400/40 via-pink-400/30 to-fuchsia-600/25 text-rose-950 ring-1 ring-rose-500/30 dark:from-rose-500/40 dark:via-pink-500/25 dark:to-fuchsia-700/30 dark:text-rose-50",
+  "bg-muted text-foreground ring-1 ring-border",
+  "bg-muted text-foreground ring-1 ring-border",
+  "bg-muted text-foreground ring-1 ring-border",
+  "bg-muted text-foreground ring-1 ring-border",
+  "bg-muted text-foreground ring-1 ring-border",
 ] as const;
 
 function humanAvatarThemeClass(member: CompanyMember): string {
@@ -389,8 +389,8 @@ function DirectoryMemberAvatar({
 }) {
   if (member.principalType === "agent") {
     return (
-      <Avatar size={size} className={cn("ring-2 ring-emerald-400/40 dark:ring-emerald-500/35", className)}>
-        <AvatarFallback className="bg-gradient-to-br from-emerald-500/40 via-teal-400/30 to-cyan-500/25 text-emerald-950 dark:text-emerald-50">
+      <Avatar size={size} className={cn("ring-1 ring-border", className)}>
+        <AvatarFallback className="bg-muted text-foreground">
           {size === "xs" ? (
             <span className="text-[10px] font-bold">{memberAvatarInitials(member)}</span>
           ) : (
@@ -998,19 +998,11 @@ export function CompanyDirectory() {
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-violet-500/[0.08] via-background to-sky-500/[0.09] p-6 shadow-sm ring-1 ring-border/40 dark:from-violet-400/[0.12] dark:to-sky-400/[0.1]">
-        <div
-          className="pointer-events-none absolute -right-20 -top-28 size-80 rounded-full bg-gradient-to-br from-fuchsia-400/20 to-violet-500/10 blur-3xl dark:from-fuchsia-500/15 dark:to-violet-600/10"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute -bottom-24 -left-16 size-64 rounded-full bg-gradient-to-tr from-cyan-400/20 to-sky-500/10 blur-3xl dark:from-cyan-500/12 dark:to-sky-600/10"
-          aria-hidden
-        />
+      <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 shadow-sm">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/30 ring-2 ring-white/25 dark:ring-white/10">
-              <Users className="size-7 text-white" aria-hidden />
+            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted">
+              <Users className="size-7 text-muted-foreground" aria-hidden />
             </div>
             <div className="min-w-0">
               <h1 className="text-2xl font-bold tracking-tight text-foreground">Teams</h1>
@@ -1019,11 +1011,11 @@ export function CompanyDirectory() {
               </p>
               {!membersPermissionDenied && !membersLoading ? (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/25 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-950 dark:border-violet-400/20 dark:bg-violet-500/15 dark:text-violet-100">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
                     <UserRound className="size-3.5 opacity-90" aria-hidden />
                     {activeHumanMembers.length} humans
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-950 dark:border-emerald-400/20 dark:bg-emerald-500/15 dark:text-emerald-100">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
                     <Bot className="size-3.5 opacity-90" aria-hidden />
                     {activeAgentMembers.length} agents
                   </span>
@@ -1305,14 +1297,14 @@ export function CompanyDirectory() {
         ) : null}
         {!membersPermissionDenied && !membersError ? (
           <>
-        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border-2 border-primary/30 bg-muted/45 p-1.5 shadow-inner ring-1 ring-primary/15 sm:w-auto">
-          <TabsTrigger value="users" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-violet-500/12 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-violet-500/35">
-            <UserRound className="size-4 text-violet-600 opacity-80 dark:text-violet-300" aria-hidden />
+        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border border-border bg-muted/30 p-1.5 sm:w-auto">
+          <TabsTrigger value="users" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+            <UserRound className="size-4 text-muted-foreground opacity-90" aria-hidden />
             Humans{" "}
             <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeHumanMembers.length})`}</span>
           </TabsTrigger>
-          <TabsTrigger value="agents" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-emerald-500/12 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-emerald-500/35">
-            <Bot className="size-4 text-emerald-600 opacity-80 dark:text-emerald-300" aria-hidden />
+          <TabsTrigger value="agents" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+            <Bot className="size-4 text-muted-foreground opacity-90" aria-hidden />
             Agents{" "}
             <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeAgentMembers.length})`}</span>
           </TabsTrigger>
@@ -1320,8 +1312,8 @@ export function CompanyDirectory() {
 
         <TabsContent value="users" className="mt-4">
           <div className="grid gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card/95 shadow-md ring-1 ring-violet-500/15 dark:ring-violet-400/10">
-              <div className="border-b border-border/50 bg-gradient-to-r from-violet-500/12 via-transparent to-fuchsia-500/5 px-4 py-3">
+            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
+              <div className="border-b border-border/50 bg-muted/20 px-4 py-3">
                 <div className="text-sm font-semibold text-foreground">Humans</div>
                 <div className="text-xs text-muted-foreground">
                   {membersLoading ? "Loading…" : `${filteredHumanMembers.length} shown`}
@@ -1329,8 +1321,8 @@ export function CompanyDirectory() {
               </div>
               <div className="flex-1 space-y-1 overflow-y-auto p-2">
                 {!membersLoading && filteredHumanMembers.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-300/40 bg-violet-500/[0.04] px-4 py-10 text-center dark:border-violet-500/20">
-                    <UserRound className="size-9 text-violet-400/90 dark:text-violet-400/70" aria-hidden />
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
+                    <UserRound className="size-9 text-muted-foreground" aria-hidden />
                     <p className="text-sm text-muted-foreground">No matching humans.</p>
                   </div>
                 )}
@@ -1345,7 +1337,7 @@ export function CompanyDirectory() {
                       className={cn(
                         "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
                         selected
-                          ? "bg-gradient-to-r from-violet-500/14 via-primary/10 to-fuchsia-500/10 shadow-sm ring-1 ring-violet-400/35 dark:from-violet-500/20 dark:ring-violet-500/30"
+                          ? "bg-accent shadow-sm ring-1 ring-border"
                           : "hover:bg-muted/55",
                         isSuspended && "opacity-60",
                       )}
@@ -1362,7 +1354,7 @@ export function CompanyDirectory() {
                             )}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
-                          <div className="mt-1 text-[11px] font-medium text-violet-700/90 dark:text-violet-300/90">
+                          <div className="mt-1 text-[11px] font-medium text-muted-foreground">
                             {member.membershipRole ?? "member"}
                           </div>
                         </div>
@@ -1374,10 +1366,10 @@ export function CompanyDirectory() {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md ring-1 ring-border/35">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
               {selectedHumanMember ? (
                 <>
-                  <div className="border-b border-border/50 bg-gradient-to-br from-violet-500/[0.07] via-muted/25 to-transparent px-5 py-5">
+                  <div className="border-b border-border/50 bg-muted/20 px-5 py-5">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                       <DirectoryMemberAvatar member={selectedHumanMember} size="lg" className="shrink-0 shadow-md" />
                       <div className="min-w-0 flex-1">
@@ -1511,7 +1503,7 @@ export function CompanyDirectory() {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-sky-500/15 bg-gradient-to-br from-sky-500/[0.06] to-transparent px-4 py-3 ring-1 ring-border/40">
+                    <div className="rounded-2xl border border-border/50 bg-muted/20 px-4 py-3 ring-1 ring-border/30">
                       <div className="text-xs font-semibold text-foreground">Notes</div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         Assigning which agents a human manages is done by setting each agent’s “Reports to”.
@@ -1582,8 +1574,8 @@ export function CompanyDirectory() {
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 ring-1 ring-violet-400/20">
-                    <UserRound className="size-8 text-violet-500/70 dark:text-violet-400/70" aria-hidden />
+                  <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-muted">
+                    <UserRound className="size-8 text-muted-foreground" aria-hidden />
                   </div>
                   <p className="text-sm font-medium text-foreground">No human selected</p>
                   <p className="max-w-xs text-xs text-muted-foreground">Choose someone from the list to edit their role, reporting line, and access.</p>
@@ -1595,8 +1587,8 @@ export function CompanyDirectory() {
 
         <TabsContent value="agents" className="mt-4">
           <div className="grid gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card/95 shadow-md ring-1 ring-emerald-500/15 dark:ring-emerald-400/10">
-              <div className="border-b border-border/50 bg-gradient-to-r from-emerald-500/12 via-transparent to-teal-500/5 px-4 py-3">
+            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
+              <div className="border-b border-border/50 bg-muted/20 px-4 py-3">
                 <div className="text-sm font-semibold text-foreground">Agents</div>
                 <div className="text-xs text-muted-foreground">
                   {membersLoading ? "Loading…" : `${filteredAgentMembers.length} shown`}
@@ -1604,8 +1596,8 @@ export function CompanyDirectory() {
               </div>
               <div className="flex-1 space-y-1 overflow-y-auto p-2">
                 {!membersLoading && filteredAgentMembers.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-emerald-300/40 bg-emerald-500/[0.04] px-4 py-10 text-center dark:border-emerald-500/20">
-                    <Bot className="size-9 text-emerald-500/90 dark:text-emerald-400/70" aria-hidden />
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
+                    <Bot className="size-9 text-muted-foreground" aria-hidden />
                     <p className="text-sm text-muted-foreground">No matching agents.</p>
                   </div>
                 )}
@@ -1619,7 +1611,7 @@ export function CompanyDirectory() {
                       className={cn(
                         "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
                         selected
-                          ? "bg-gradient-to-r from-emerald-500/14 via-teal-500/10 to-cyan-500/10 shadow-sm ring-1 ring-emerald-400/35 dark:ring-emerald-500/30"
+                          ? "bg-accent shadow-sm ring-1 ring-border"
                           : "hover:bg-muted/55",
                       )}
                     >
@@ -1628,7 +1620,7 @@ export function CompanyDirectory() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</div>
                           <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
-                          <div className="mt-1 text-[11px] font-medium text-emerald-800/90 dark:text-emerald-300/90">
+                          <div className="mt-1 text-[11px] font-medium text-muted-foreground">
                             {member.membershipRole ?? "agent"}
                           </div>
                         </div>
@@ -1640,10 +1632,10 @@ export function CompanyDirectory() {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md ring-1 ring-border/35">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
               {selectedAgentMember ? (
                 <>
-                  <div className="border-b border-border/50 bg-gradient-to-br from-emerald-500/[0.07] via-muted/25 to-transparent px-5 py-5">
+                  <div className="border-b border-border/50 bg-muted/20 px-5 py-5">
                     <div className="flex flex-wrap items-start gap-4">
                       <DirectoryMemberAvatar member={selectedAgentMember} size="lg" className="shrink-0 shadow-md" />
                       <div className="min-w-0 flex-1">
@@ -1730,8 +1722,8 @@ export function CompanyDirectory() {
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/15 to-teal-500/10 ring-1 ring-emerald-400/20">
-                    <Bot className="size-8 text-emerald-500/70 dark:text-emerald-400/70" aria-hidden />
+                  <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-muted">
+                    <Bot className="size-8 text-muted-foreground" aria-hidden />
                   </div>
                   <p className="text-sm font-medium text-foreground">No agent selected</p>
                   <p className="max-w-xs text-xs text-muted-foreground">Pick an agent from the list to edit their role label and reporting line.</p>
