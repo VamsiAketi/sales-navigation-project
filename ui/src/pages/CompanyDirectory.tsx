@@ -998,7 +998,7 @@ export function CompanyDirectory() {
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-card p-6 shadow-sm">
+      <div className="relative overflow-hidden rounded-3xl border border-sidebar-border/80 bg-sidebar/55 p-6 shadow-sm">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
             <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted">
@@ -1297,7 +1297,7 @@ export function CompanyDirectory() {
         ) : null}
         {!membersPermissionDenied && !membersError ? (
           <>
-        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border border-sidebar-border bg-sidebar/70 p-1.5 sm:w-auto">
+        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border border-sidebar-border bg-sidebar/85 p-1.5 sm:w-auto">
           <TabsTrigger value="users" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
             <UserRound className="size-4 text-muted-foreground opacity-90" aria-hidden />
             Humans{" "}
@@ -1312,7 +1312,7 @@ export function CompanyDirectory() {
 
         <TabsContent value="users" className="mt-4">
           <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
+            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/45 shadow-sm">
               <div className="border-b border-sidebar-border/70 bg-sidebar/40 px-4 py-3">
                 <div className="text-sm font-semibold text-foreground">Humans</div>
                 <div className="text-xs text-muted-foreground">
@@ -1366,10 +1366,10 @@ export function CompanyDirectory() {
               </div>
             </div>
 
-            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
+            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/35 shadow-sm">
               {selectedHumanMember ? (
                 <>
-                  <div className="border-b border-border/50 bg-muted/20 px-5 py-5">
+                  <div className="border-b border-sidebar-border/70 bg-sidebar/45 px-5 py-5">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                       <DirectoryMemberAvatar member={selectedHumanMember} size="lg" className="shrink-0 shadow-md" />
                       <div className="min-w-0 flex-1">
@@ -1545,7 +1545,7 @@ export function CompanyDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sidebar-border/70 bg-sidebar/35 px-5 py-3">
                     <div className="text-xs text-muted-foreground">Autosave is on.</div>
                     <Button
                       type="button"
@@ -1587,7 +1587,7 @@ export function CompanyDirectory() {
 
         <TabsContent value="agents" className="mt-4">
           <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
+            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/45 shadow-sm">
               <div className="border-b border-sidebar-border/70 bg-sidebar/40 px-4 py-3">
                 <div className="text-sm font-semibold text-foreground">Agents</div>
                 <div className="text-xs text-muted-foreground">
@@ -1632,10 +1632,10 @@ export function CompanyDirectory() {
               </div>
             </div>
 
-            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm">
+            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/35 shadow-sm">
               {selectedAgentMember ? (
                 <>
-                  <div className="border-b border-border/50 bg-muted/20 px-5 py-5">
+                  <div className="border-b border-sidebar-border/70 bg-sidebar/45 px-5 py-5">
                     <div className="flex flex-wrap items-start gap-4">
                       <DirectoryMemberAvatar member={selectedAgentMember} size="lg" className="shrink-0 shadow-md" />
                       <div className="min-w-0 flex-1">
@@ -1699,7 +1699,7 @@ export function CompanyDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sidebar-border/70 bg-sidebar/35 px-5 py-3">
                     <div className="text-xs text-muted-foreground">Autosave is on.</div>
                     <Button
                       size="sm"
