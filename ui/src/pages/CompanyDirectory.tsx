@@ -84,6 +84,7 @@ const AGENT_ROLE_OPTIONS = [
 ] as const;
 
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
+const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
 const INVITE_HUMAN_ROLE_OPTIONS = HUMAN_ROLE_OPTIONS.filter((role) => role !== "Owner");
 const DEFAULT_INVITE_ROLE = "IT";
@@ -268,6 +269,38 @@ function writeCompanyRolePrefs(companyId: string, roles: { human: string[]; agen
   }
 }
 
+function readHumanRolePermissions(companyId: string) {
+  try {
+    const raw = window.localStorage.getItem(
+      `${COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX}:${companyId}`,
+    );
+    if (!raw) return {} as Record<string, PermissionKey[]>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const next: Record<string, PermissionKey[]> = {};
+    for (const [role, keys] of Object.entries(parsed)) {
+      if (!Array.isArray(keys)) continue;
+      const valid = keys.filter((k): k is PermissionKey =>
+        typeof k === "string" && (PERMISSION_KEYS as readonly string[]).includes(k),
+      );
+      if (valid.length > 0) next[role] = valid;
+    }
+    return next;
+  } catch {
+    return {} as Record<string, PermissionKey[]>;
+  }
+}
+
+function writeHumanRolePermissions(companyId: string, rolePermissions: Record<string, PermissionKey[]>) {
+  try {
+    window.localStorage.setItem(
+      `${COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX}:${companyId}`,
+      JSON.stringify(rolePermissions),
+    );
+  } catch {
+    // ignore storage failures (private mode, etc.)
+  }
+}
+
 function memberDisplayName(member: CompanyMember) {
   return member.principalType === "user"
     ? member.user?.name || member.user?.email || member.principalId
@@ -393,6 +426,8 @@ export function CompanyDirectory() {
   const [customAgentRoles, setCustomAgentRoles] = useState<string[]>([]);
   const [newHumanRole, setNewHumanRole] = useState("");
   const [newAgentRole, setNewAgentRole] = useState("");
+  const [selectedManageHumanRole, setSelectedManageHumanRole] = useState<string>(HUMAN_ROLE_OPTIONS[0] ?? "Owner");
+  const [humanRolePermissions, setHumanRolePermissions] = useState<Record<string, PermissionKey[]>>({});
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
@@ -433,12 +468,18 @@ export function CompanyDirectory() {
     const prefs = readCompanyRolePrefs(selectedCompanyId);
     setCustomHumanRoles(prefs.human);
     setCustomAgentRoles(prefs.agent);
+    setHumanRolePermissions(readHumanRolePermissions(selectedCompanyId));
   }, [selectedCompanyId]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
     writeCompanyRolePrefs(selectedCompanyId, { human: customHumanRoles, agent: customAgentRoles });
   }, [selectedCompanyId, customHumanRoles, customAgentRoles]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    writeHumanRolePermissions(selectedCompanyId, humanRolePermissions);
+  }, [selectedCompanyId, humanRolePermissions]);
 
   // Include both active + suspended users in the panel; only exclude deleted
   const activeHumanMembers = useMemo(
@@ -479,6 +520,28 @@ export function CompanyDirectory() {
       return name.includes(q) || agentRole.includes(q) || orgRole.includes(q);
     });
   }, [activeAgentMembers, search]);
+
+  const manageHumanRoleOptions = useMemo(
+    () => Array.from(new Set([...HUMAN_ROLE_OPTIONS, ...customHumanRoles])),
+    [customHumanRoles],
+  );
+
+  useEffect(() => {
+    if (manageHumanRoleOptions.length === 0) {
+      setSelectedManageHumanRole("");
+      return;
+    }
+    if (!selectedManageHumanRole || !manageHumanRoleOptions.includes(selectedManageHumanRole)) {
+      setSelectedManageHumanRole(manageHumanRoleOptions[0] ?? "");
+    }
+  }, [manageHumanRoleOptions, selectedManageHumanRole]);
+
+  const permissionsForRole = (role: string | null | undefined): PermissionKey[] => {
+    if (!role) return [];
+    const override = humanRolePermissions[role];
+    if (override && override.length > 0) return override;
+    return defaultPermissionsForRole(role);
+  };
 
   const selectedHumanMember =
     activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ??
@@ -624,7 +687,7 @@ export function CompanyDirectory() {
   });
 
   useEffect(() => {
-    setHumanInvitePermissionKeys(defaultPermissionsForRole(humanInviteRole));
+    setHumanInvitePermissionKeys(permissionsForRole(humanInviteRole));
   }, [humanInviteRole]);
 
   const humanSaveMutation = useMutation({
@@ -780,7 +843,7 @@ export function CompanyDirectory() {
     if (selectedHumanRoleDraft === currentRole) return;
     humanPermissionMutation.mutate({
       memberId: selectedHumanMember.id,
-      grants: defaultPermissionsForRole(selectedHumanRoleDraft).map((permissionKey) => ({
+      grants: permissionsForRole(selectedHumanRoleDraft).map((permissionKey) => ({
         permissionKey,
         scope: null,
       })),
@@ -1090,7 +1153,7 @@ export function CompanyDirectory() {
                 Manage roles
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl rounded-2xl border-border/60">
+            <DialogContent className="w-[min(96vw,80rem)] max-w-[80rem] rounded-2xl border-border/60">
               <DialogHeader>
                 <DialogTitle>Manage roles</DialogTitle>
                 <DialogDescription>
@@ -1105,47 +1168,120 @@ export function CompanyDirectory() {
                 </TabsList>
 
                 <TabsContent value="humans">
-                  <div className="space-y-3">
-                    <div className="text-sm font-medium text-foreground">Custom human roles</div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={newHumanRole}
-                        onChange={(e) => setNewHumanRole(e.target.value)}
-                        placeholder="Add a role (e.g. Sales Lead)"
-                      />
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedCompanyId) return;
-                          const next = normalizeRoleLabel(newHumanRole);
-                          if (!next) return;
-                          setNewHumanRole("");
-                          setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
-                        }}
-                        disabled={!normalizeRoleLabel(newHumanRole)}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    {customHumanRoles.length > 0 ? (
+                  <div className="grid gap-4 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
+                    <section className="space-y-3 rounded-2xl border border-border/60 bg-muted/15 p-4">
+                      <div className="text-sm font-medium text-foreground">Create role</div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={newHumanRole}
+                          onChange={(e) => setNewHumanRole(e.target.value)}
+                          placeholder="Add a role (e.g. Sales Lead)"
+                          className="h-10 rounded-lg border-border/60"
+                        />
+                        <Button
+                          type="button"
+                          className="rounded-full"
+                          onClick={() => {
+                            if (!selectedCompanyId) return;
+                            const next = normalizeRoleLabel(newHumanRole);
+                            if (!next) return;
+                            setNewHumanRole("");
+                            setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
+                            setSelectedManageHumanRole(next);
+                            setHumanRolePermissions((prev) => {
+                              if (prev[next]) return prev;
+                              return { ...prev, [next]: permissionsForRole(next) };
+                            });
+                          }}
+                          disabled={!normalizeRoleLabel(newHumanRole)}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="text-xs text-muted-foreground">Select role to manage</div>
+                        <InlineEntitySelector
+                          value={selectedManageHumanRole}
+                          options={manageHumanRoleOptions.map((role) => ({ id: role, label: role }))}
+                          placeholder="Select role"
+                          noneLabel="None"
+                          includeNoneOption={false}
+                          searchPlaceholder="Search roles..."
+                          emptyMessage="No roles found."
+                          onChange={setSelectedManageHumanRole}
+                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                        />
+                      </div>
                       <div className="flex flex-wrap gap-2">
-                        {customHumanRoles.map((role) => (
-                          <button
-                            key={role}
+                        {manageHumanRoleOptions.map((role) => {
+                          const selected = role === selectedManageHumanRole;
+                          const isSystemRole = (HUMAN_ROLE_OPTIONS as readonly string[]).includes(role);
+                          return (
+                            <button
+                              key={role}
+                              type="button"
+                              className={cn(
+                                "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                                selected
+                                  ? "border-primary/40 bg-primary/10 text-foreground"
+                                  : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                              )}
+                              onClick={() => setSelectedManageHumanRole(role)}
+                            >
+                              {role}
+                              {isSystemRole ? "" : " (custom)"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {selectedManageHumanRole &&
+                      !(HUMAN_ROLE_OPTIONS as readonly string[]).includes(selectedManageHumanRole) ? (
+                        <div className="pt-1">
+                          <Button
                             type="button"
-                            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-                            title="Remove"
-                            onClick={() => setCustomHumanRoles((prev) => prev.filter((r) => r !== role))}
+                            size="sm"
+                            variant="destructive"
+                            className="rounded-full"
+                            onClick={() => {
+                              const roleToRemove = selectedManageHumanRole;
+                              setCustomHumanRoles((prev) => prev.filter((r) => r !== roleToRemove));
+                              setHumanRolePermissions((prev) => {
+                                const next = { ...prev };
+                                delete next[roleToRemove];
+                                return next;
+                              });
+                              const fallback = manageHumanRoleOptions.find((r) => r !== roleToRemove) ?? "";
+                              setSelectedManageHumanRole(fallback);
+                            }}
                           >
-                            {role}
-                          </button>
-                        ))}
+                            Delete role
+                          </Button>
+                        </div>
+                      ) : null}
+                    </section>
+                    <section className="space-y-3 rounded-2xl border border-border/60 bg-muted/10 p-4">
+                      <div className="text-sm font-medium text-foreground">
+                        Role permissions{selectedManageHumanRole ? `: ${selectedManageHumanRole}` : ""}
                       </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">
-                        No custom roles yet.
+                      <div className="rounded-2xl border border-border/50 bg-background/60 p-4">
+                        <HumanPermissionsPanel
+                          idPrefix={`human-role-${selectedManageHumanRole || "none"}`}
+                          enabledKeys={permissionsForRole(selectedManageHumanRole)}
+                          onKeysChange={(keys) => {
+                            if (!selectedManageHumanRole) return;
+                            setHumanRolePermissions((prev) => ({
+                              ...prev,
+                              [selectedManageHumanRole]: keys,
+                            }));
+                          }}
+                          intro={
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              Configure permission defaults for this role. Selecting this role for a human uses this access profile.
+                            </p>
+                          }
+                        />
                       </div>
-                    )}
+                    </section>
                   </div>
                 </TabsContent>
 
