@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { InlineEntitySelector, type InlineEntityOption } from "@/components/InlineEntitySelector";
 import { ApiError } from "../api/client";
 import { isPermissionDeniedError } from "../lib/permission-feedback";
 import {
@@ -82,7 +83,6 @@ const AGENT_ROLE_OPTIONS = [
   "ResearchEngineer"
 ] as const;
 
-const CUSTOM_ROLE_VALUE = "__custom__";
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
 const INVITE_HUMAN_ROLE_OPTIONS = HUMAN_ROLE_OPTIONS.filter((role) => role !== "Owner");
@@ -887,28 +887,20 @@ export function CompanyDirectory() {
       }
       return base;
     }, [options, customOptions]);
-    const isPreset = merged.includes(normalized);
-    const selectValue = normalized === "" ? "" : isPreset ? normalized : CUSTOM_ROLE_VALUE;
+    const roleOptions: InlineEntityOption[] = merged.map((role) => ({ id: role, label: role }));
     return (
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">{label}</div>
-        <select
-          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
-          value={selectValue}
-          onChange={(e) => {
-            const next = e.target.value;
-            if (next === CUSTOM_ROLE_VALUE) return;
-            setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }));
-          }}
-        >
-          <option value="">None</option>
-          {merged.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-          <option value={CUSTOM_ROLE_VALUE}>Other…</option>
-        </select>
+        <InlineEntitySelector
+          value={normalized}
+          options={roleOptions}
+          placeholder="Role"
+          noneLabel="None"
+          searchPlaceholder="Search roles..."
+          emptyMessage="No roles found."
+          onChange={(next) => setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }))}
+          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+        />
       </div>
     );
   }
@@ -1402,11 +1394,22 @@ export function CompanyDirectory() {
                       />
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Reports to</div>
-                        <select
-                          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+                        <InlineEntitySelector
                           value={memberManagerDrafts[selectedHumanMember.id] ?? ""}
-                          onChange={(e) => {
-                            const next = e.target.value;
+                          options={activeHumanMembers
+                            .filter((candidate) =>
+                              candidate.id !== selectedHumanMember.id &&
+                              !invalidManagersForSelectedHuman.has(candidate.id),
+                            )
+                            .map((candidate) => ({
+                              id: candidate.id,
+                              label: memberDisplayName(candidate),
+                            }))}
+                          placeholder="Reports to"
+                          noneLabel="None"
+                          searchPlaceholder="Search humans..."
+                          emptyMessage="No humans found."
+                          onChange={(next) => {
                             setMemberSaveErrors((prev) => {
                               if (!prev[selectedHumanMember.id]) return prev;
                               const { [selectedHumanMember.id]: _drop, ...rest } = prev;
@@ -1414,22 +1417,8 @@ export function CompanyDirectory() {
                             });
                             setMemberManagerDrafts((prev) => ({ ...prev, [selectedHumanMember.id]: next }));
                           }}
-                        >
-                          <option value="">None</option>
-                          <optgroup label="Humans">
-                            {activeHumanMembers
-                              .filter((candidate) => candidate.id !== selectedHumanMember.id)
-                              .map((candidate) => (
-                                <option
-                                  key={candidate.id}
-                                  value={candidate.id}
-                                  disabled={invalidManagersForSelectedHuman.has(candidate.id)}
-                                >
-                                  {memberDisplayName(candidate)}
-                                </option>
-                              ))}
-                          </optgroup>
-                        </select>
+                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                        />
                         {memberSaveErrors[selectedHumanMember.id] && (
                           <div className="text-[11px] text-destructive">
                             {memberSaveErrors[selectedHumanMember.id]}
@@ -1597,11 +1586,22 @@ export function CompanyDirectory() {
                       />
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Reports to</div>
-                        <select
-                          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+                        <InlineEntitySelector
                           value={agentReportsDrafts[selectedAgentMember.id] ?? ""}
-                          onChange={(e) => {
-                            const next = e.target.value;
+                          options={activeAgentMembers
+                            .filter((candidate) =>
+                              candidate.id !== selectedAgentMember.id &&
+                              !invalidManagersForSelectedAgent.has(candidate.principalId),
+                            )
+                            .map((candidate) => ({
+                              id: candidate.principalId,
+                              label: memberDisplayName(candidate),
+                            }))}
+                          placeholder="Reports to"
+                          noneLabel="None"
+                          searchPlaceholder="Search agents..."
+                          emptyMessage="No agents found."
+                          onChange={(next) => {
                             setMemberSaveErrors((prev) => {
                               if (!prev[selectedAgentMember.id]) return prev;
                               const { [selectedAgentMember.id]: _drop, ...rest } = prev;
@@ -1609,22 +1609,8 @@ export function CompanyDirectory() {
                             });
                             setAgentReportsDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: next }));
                           }}
-                        >
-                          <option value="">None</option>
-                          <optgroup label="Agents">
-                            {activeAgentMembers
-                              .filter((candidate) => candidate.id !== selectedAgentMember.id)
-                              .map((candidate) => (
-                                <option
-                                  key={candidate.id}
-                                  value={candidate.principalId}
-                                  disabled={invalidManagersForSelectedAgent.has(candidate.principalId)}
-                                >
-                                  {memberDisplayName(candidate)}
-                                </option>
-                              ))}
-                          </optgroup>
-                        </select>
+                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                        />
                         {memberSaveErrors[selectedAgentMember.id] && (
                           <div className="text-[11px] text-destructive">
                             {memberSaveErrors[selectedAgentMember.id]}
