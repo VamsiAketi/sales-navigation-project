@@ -1356,15 +1356,6 @@ export function CompanyDirectory() {
                       </div>
                       <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
                         <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="rounded-xl"
-                          onClick={() => setRolesDialogOpen(true)}
-                        >
-                          Add role
-                        </Button>
                         {selectedHumanMember.status === "suspended" ? (
                           <Button
                             type="button"
