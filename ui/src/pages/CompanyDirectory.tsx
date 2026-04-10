@@ -998,7 +998,7 @@ export function CompanyDirectory() {
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-3xl border border-sidebar-border/80 bg-sidebar/55 p-6 shadow-sm">
+      <div className="relative overflow-hidden rounded-3xl border border-sidebar-border/80 bg-sidebar/55 px-6 pb-6 pt-8 shadow-sm">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
             <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted">
