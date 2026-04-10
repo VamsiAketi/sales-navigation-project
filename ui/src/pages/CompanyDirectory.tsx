@@ -500,7 +500,6 @@ export function CompanyDirectory() {
   const [customAgentRoles, setCustomAgentRoles] = useState<string[]>([]);
   const [humanRolePermissions, setHumanRolePermissions] = useState<Record<string, PermissionKey[]>>({});
   const [newHumanRole, setNewHumanRole] = useState("");
-  const [newAgentRole, setNewAgentRole] = useState("");
   const [selectedHumanRoleForManage, setSelectedHumanRoleForManage] = useState("");
   const [editingHumanRolePermissions, setEditingHumanRolePermissions] = useState<PermissionKey[]>([]);
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
@@ -1184,34 +1183,28 @@ export function CompanyDirectory() {
           <Dialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen}>
             <DialogTrigger asChild>
               <Button type="button" variant="secondary" className="rounded-xl border-border/60">
-                Manage roles
+                Manage Role
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-full max-w-4xl rounded-2xl border-border/60 p-6">
+            <DialogContent className="w-full max-w-6xl rounded-2xl border-border/60 p-6">
               <div className="pr-14">
                 <DialogHeader>
-                <DialogTitle>Manage roles</DialogTitle>
-                <DialogDescription>
-                  Add reusable roles for your org. These appear in human and agent role dropdowns.
-                </DialogDescription>
+                  <DialogTitle>Manage Role</DialogTitle>
+                  <DialogDescription>
+                    Create roles and assign existing system permissions.
+                  </DialogDescription>
                 </DialogHeader>
               </div>
 
               <div className="pt-4">
-                <Tabs defaultValue="humans" className="space-y-3">
-                <TabsList variant="line" className="px-0">
-                  <TabsTrigger value="humans">Humans</TabsTrigger>
-                  <TabsTrigger value="agents">Agents</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="humans">
-                  <div className="space-y-4">
+                <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
+                  <div className="space-y-3 rounded-2xl border border-border/50 bg-muted/10 p-4 ring-1 ring-border/30">
                     <div className="text-sm font-medium text-foreground">Create role</div>
                     <div className="flex items-center gap-2">
                       <Input
                         value={newHumanRole}
                         onChange={(e) => setNewHumanRole(e.target.value)}
-                        placeholder="Add a role (e.g. Sales Lead)"
+                        placeholder="Role name (e.g. Sales Lead)"
                       />
                       <Button
                         type="button"
@@ -1226,41 +1219,48 @@ export function CompanyDirectory() {
                         }}
                         disabled={!normalizeRoleLabel(newHumanRole)}
                       >
-                        Add role
+                        Add
                       </Button>
                     </div>
-                    {customHumanRoles.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {customHumanRoles.map((role) => (
-                          <button
-                            key={role}
-                            type="button"
-                            className={cn(
-                              "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                              selectedHumanRoleForManage === role
-                                ? "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
-                                : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                            )}
-                            title="Select role"
-                            onClick={() => {
-                              setSelectedHumanRoleForManage(role);
-                              setEditingHumanRolePermissions(humanRolePermissions[role] ?? []);
-                            }}
-                          >
-                            {role}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">
-                        No custom roles yet.
-                      </div>
-                    )}
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">Roles</div>
+                      {customHumanRoles.length > 0 ? (
+                        <div className="flex flex-col gap-1.5">
+                          {customHumanRoles.map((role) => (
+                            <button
+                              key={role}
+                              type="button"
+                              className={cn(
+                                "rounded-md border px-2.5 py-2 text-left text-sm transition-colors",
+                                selectedHumanRoleForManage === role
+                                  ? "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
+                                  : "border-border bg-background text-foreground hover:bg-accent/50",
+                              )}
+                              title="Select role"
+                              onClick={() => {
+                                setSelectedHumanRoleForManage(role);
+                                setEditingHumanRolePermissions(humanRolePermissions[role] ?? []);
+                              }}
+                            >
+                              {role}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">No custom roles yet.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-2xl border border-border/50 bg-muted/10 p-4 ring-1 ring-border/30">
                     {selectedHumanRoleForManage ? (
-                      <div className="space-y-3 rounded-2xl border border-border/50 bg-muted/10 p-4 ring-1 ring-border/30">
+                      <>
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-semibold text-foreground">
-                            Manage role: {selectedHumanRoleForManage}
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{selectedHumanRoleForManage}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Assign existing permissions only.
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Button
@@ -1290,7 +1290,7 @@ export function CompanyDirectory() {
                                 });
                               }}
                             >
-                              Remove role
+                              Remove
                             </Button>
                           </div>
                         </div>
@@ -1301,60 +1301,18 @@ export function CompanyDirectory() {
                           showPresets={false}
                           intro={
                             <p className="text-xs leading-relaxed text-muted-foreground">
-                              Configure what this role can access: team, agents, tasks/workflows, and company management.
+                              Team, agent, tasks/workflow, and company management permissions come from existing system keys.
                             </p>
                           }
                         />
-                      </div>
-                    ) : null}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="agents">
-                  <div className="space-y-3">
-                    <div className="text-sm font-medium text-foreground">Custom agent role labels</div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={newAgentRole}
-                        onChange={(e) => setNewAgentRole(e.target.value)}
-                        placeholder="Add a role label (e.g. SalesOpsAgent)"
-                      />
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedCompanyId) return;
-                          const next = normalizeRoleLabel(newAgentRole);
-                          if (!next) return;
-                          setNewAgentRole("");
-                          setCustomAgentRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
-                        }}
-                        disabled={!normalizeRoleLabel(newAgentRole)}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    {customAgentRoles.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {customAgentRoles.map((role) => (
-                          <button
-                            key={role}
-                            type="button"
-                            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-                            title="Remove"
-                            onClick={() => setCustomAgentRoles((prev) => prev.filter((r) => r !== role))}
-                          >
-                            {role}
-                          </button>
-                        ))}
-                      </div>
+                      </>
                     ) : (
-                      <div className="text-sm text-muted-foreground">
-                        No custom role labels yet.
+                      <div className="py-12 text-center text-sm text-muted-foreground">
+                        Select or create a role to assign permissions.
                       </div>
                     )}
                   </div>
-                </TabsContent>
-                </Tabs>
+                </div>
               </div>
             </DialogContent>
           </Dialog>
