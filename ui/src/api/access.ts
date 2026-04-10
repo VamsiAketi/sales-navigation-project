@@ -151,6 +151,7 @@ export const accessApi = {
     input: {
       email: string;
       name?: string;
+      role?: string;
       grants?: Array<{ permissionKey: PermissionKey; scope: Record<string, unknown> | null }>;
     },
   ) =>

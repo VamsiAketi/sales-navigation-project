@@ -2071,6 +2071,10 @@ export function accessRoutes(
         typeof req.body.name === "string" && req.body.name.trim().length > 0
           ? req.body.name.trim()
           : inviteEmail.split("@")[0] ?? "Invited User";
+      const inviteRole =
+        typeof req.body.role === "string" && req.body.role.trim().length > 0
+          ? req.body.role.trim()
+          : "member";
 
       const existingUser = await db
         .select({
@@ -2131,7 +2135,7 @@ export function accessRoutes(
         companyId,
         "user",
         createdAuthUser.userId,
-        "member",
+        inviteRole,
         "active"
       );
 
