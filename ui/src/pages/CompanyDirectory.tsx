@@ -1153,7 +1153,7 @@ export function CompanyDirectory() {
                 Manage roles
               </Button>
             </DialogTrigger>
-            <DialogContent className="h-[70vh] w-[70vw] max-h-[70vh] max-w-[70vw] overflow-hidden rounded-2xl border-border/60 p-0">
+            <DialogContent className="h-[88vh] w-[92vw] max-h-[88vh] max-w-[92vw] overflow-hidden rounded-2xl border-border/60 p-0">
               <DialogHeader className="shrink-0 px-6 pt-6">
                 <DialogTitle>Manage roles</DialogTitle>
                 <DialogDescription>
@@ -1167,7 +1167,7 @@ export function CompanyDirectory() {
                   <TabsTrigger value="agents">Agents</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="humans" className="mt-4 h-[calc(70vh-10rem)] min-h-0">
+                <TabsContent value="humans" className="mt-4 h-[calc(88vh-10rem)] min-h-0">
                   <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
                     <section className="space-y-3 overflow-y-auto rounded-2xl border border-border/60 bg-muted/15 p-4">
                       <div className="text-sm font-medium text-foreground">Create role</div>
