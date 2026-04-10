@@ -7,9 +7,34 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IssueRow } from "./IssueRow";
 
 vi.mock("@/lib/router", () => ({
-  Link: ({ children, className, ...props }: React.ComponentProps<"a">) => (
-    <a className={className} {...props}>{children}</a>
+  Link: ({
+    children,
+    className,
+    to,
+    state: navState,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    className?: string;
+    to?: string;
+    state?: unknown;
+  }) => (
+    <a
+      className={className}
+      href={to}
+      data-nav-state={navState != null ? JSON.stringify(navState) : undefined}
+      {...rest}
+    >
+      {children}
+    </a>
   ),
+  useLocation: () => ({
+    pathname: "/PAP/inbox/mine",
+    search: "",
+    hash: "",
+    state: null,
+    key: "default",
+  }),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link } from "@/lib/router";
+import { IssueLink } from "./IssueLink";
 import type { Issue } from "@paperclipai/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accessApi } from "../api/access";
@@ -1184,12 +1185,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
         {issue.parentId && (
           <PropertyRow label="Parent">
-            <Link
-              to={`/issues/${issue.ancestors?.[0]?.identifier ?? issue.parentId}`}
+            <IssueLink
+              issuePathId={issue.ancestors?.[0]?.identifier ?? issue.parentId}
               className="text-sm hover:underline"
             >
               {issue.ancestors?.[0]?.title ?? issue.parentId.slice(0, 8)}
-            </Link>
+            </IssueLink>
           </PropertyRow>
         )}
 

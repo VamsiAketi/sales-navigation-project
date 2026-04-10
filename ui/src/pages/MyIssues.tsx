@@ -1,4 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useLocation } from "@/lib/router";
+import { createIssueDetailPath, mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { issuesApi } from "../api/issues";
 import { useCompany } from "../context/CompanyContext";
@@ -15,6 +17,8 @@ import { ListTodo } from "lucide-react";
 export function MyIssues() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const location = useLocation();
+  const issueRowState = useMemo(() => mergeIssueModalLocationState(undefined, location), [location]);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "My Tasks" }]);
@@ -54,7 +58,8 @@ export function MyIssues() {
               key={issue.id}
               identifier={issue.identifier ?? issue.id.slice(0, 8)}
               title={issue.title}
-              to={`/issues/${issue.identifier ?? issue.id}`}
+              to={createIssueDetailPath(issue.identifier ?? issue.id)}
+              state={issueRowState}
               leading={
                 <StatusIcon status={issue.status} />
               }

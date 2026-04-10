@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "@/lib/router";
+import { useLocation, useNavigate } from "@/lib/router";
+import { mergeIssueModalLocationState } from "@/lib/issueDetailBreadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
@@ -36,6 +37,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
   const { selectedCompanyId } = useCompany();
   const { openNewIssue, openNewAgent } = useDialog();
   const { isMobile, setSidebarOpen } = useSidebar();
@@ -87,7 +89,12 @@ export function CommandPalette() {
 
   function go(path: string) {
     setOpen(false);
-    navigate(path);
+    const issueDetail = /^\/issues\/[^/]+$/.exec(path);
+    if (issueDetail) {
+      navigate(path, { state: mergeIssueModalLocationState(undefined, location) });
+    } else {
+      navigate(path);
+    }
   }
 
   const agentName = (id: string | null) => {
