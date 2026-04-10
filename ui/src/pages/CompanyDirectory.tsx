@@ -308,17 +308,50 @@ function normalizeRoleLabel(input: string) {
 function readCompanyRolePrefs(companyId: string) {
   try {
     const raw = window.localStorage.getItem(`${COMPANY_ROLE_STORAGE_PREFIX}:${companyId}`);
-    if (!raw) return { human: [] as string[], agent: [] as string[] };
-    const parsed = JSON.parse(raw) as { human?: unknown; agent?: unknown };
+    if (!raw) {
+      return {
+        human: [] as string[],
+        agent: [] as string[],
+        humanRolePermissions: {} as Record<string, PermissionKey[]>,
+      };
+    }
+    const parsed = JSON.parse(raw) as {
+      human?: unknown;
+      agent?: unknown;
+      humanRolePermissions?: unknown;
+    };
     const human = Array.isArray(parsed.human) ? parsed.human.filter((v): v is string => typeof v === "string") : [];
     const agent = Array.isArray(parsed.agent) ? parsed.agent.filter((v): v is string => typeof v === "string") : [];
-    return { human, agent };
+    const humanRolePermissionsRaw =
+      parsed.humanRolePermissions && typeof parsed.humanRolePermissions === "object"
+        ? (parsed.humanRolePermissions as Record<string, unknown>)
+        : {};
+    const humanRolePermissions: Record<string, PermissionKey[]> = {};
+    for (const [role, keys] of Object.entries(humanRolePermissionsRaw)) {
+      if (!Array.isArray(keys)) continue;
+      const permissionKeys = keys.filter((k): k is PermissionKey =>
+        typeof k === "string" && ALL_PERMISSION_KEYS.includes(k as PermissionKey),
+      );
+      humanRolePermissions[role] = permissionKeys;
+    }
+    return { human, agent, humanRolePermissions };
   } catch {
-    return { human: [] as string[], agent: [] as string[] };
+    return {
+      human: [] as string[],
+      agent: [] as string[],
+      humanRolePermissions: {} as Record<string, PermissionKey[]>,
+    };
   }
 }
 
-function writeCompanyRolePrefs(companyId: string, roles: { human: string[]; agent: string[] }) {
+function writeCompanyRolePrefs(
+  companyId: string,
+  roles: {
+    human: string[];
+    agent: string[];
+    humanRolePermissions: Record<string, PermissionKey[]>;
+  },
+) {
   try {
     window.localStorage.setItem(`${COMPANY_ROLE_STORAGE_PREFIX}:${companyId}`, JSON.stringify(roles));
   } catch {
@@ -461,8 +494,11 @@ export function CompanyDirectory() {
   const [memberSaveErrors, setMemberSaveErrors] = useState<Record<string, string>>({});
   const [customHumanRoles, setCustomHumanRoles] = useState<string[]>([]);
   const [customAgentRoles, setCustomAgentRoles] = useState<string[]>([]);
+  const [humanRolePermissions, setHumanRolePermissions] = useState<Record<string, PermissionKey[]>>({});
   const [newHumanRole, setNewHumanRole] = useState("");
   const [newAgentRole, setNewAgentRole] = useState("");
+  const [selectedHumanRoleForManage, setSelectedHumanRoleForManage] = useState("");
+  const [editingHumanRolePermissions, setEditingHumanRolePermissions] = useState<PermissionKey[]>([]);
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
@@ -502,12 +538,30 @@ export function CompanyDirectory() {
     const prefs = readCompanyRolePrefs(selectedCompanyId);
     setCustomHumanRoles(prefs.human);
     setCustomAgentRoles(prefs.agent);
+    setHumanRolePermissions(prefs.humanRolePermissions);
   }, [selectedCompanyId]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
-    writeCompanyRolePrefs(selectedCompanyId, { human: customHumanRoles, agent: customAgentRoles });
-  }, [selectedCompanyId, customHumanRoles, customAgentRoles]);
+    writeCompanyRolePrefs(selectedCompanyId, {
+      human: customHumanRoles,
+      agent: customAgentRoles,
+      humanRolePermissions,
+    });
+  }, [selectedCompanyId, customHumanRoles, customAgentRoles, humanRolePermissions]);
+
+  useEffect(() => {
+    if (customHumanRoles.length === 0) {
+      setSelectedHumanRoleForManage("");
+      setEditingHumanRolePermissions([]);
+      return;
+    }
+    if (!selectedHumanRoleForManage || !customHumanRoles.includes(selectedHumanRoleForManage)) {
+      const firstRole = customHumanRoles[0] ?? "";
+      setSelectedHumanRoleForManage(firstRole);
+      setEditingHumanRolePermissions(humanRolePermissions[firstRole] ?? []);
+    }
+  }, [customHumanRoles, selectedHumanRoleForManage, humanRolePermissions]);
 
   // Include both active + suspended users in the panel; only exclude deleted
   const activeHumanMembers = useMemo(
@@ -1144,8 +1198,8 @@ export function CompanyDirectory() {
                 </TabsList>
 
                 <TabsContent value="humans">
-                  <div className="space-y-3">
-                    <div className="text-sm font-medium text-foreground">Custom human roles</div>
+                  <div className="space-y-4">
+                    <div className="text-sm font-medium text-foreground">Create role</div>
                     <div className="flex items-center gap-2">
                       <Input
                         value={newHumanRole}
@@ -1160,10 +1214,12 @@ export function CompanyDirectory() {
                           if (!next) return;
                           setNewHumanRole("");
                           setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
+                          setSelectedHumanRoleForManage(next);
+                          setEditingHumanRolePermissions(humanRolePermissions[next] ?? []);
                         }}
                         disabled={!normalizeRoleLabel(newHumanRole)}
                       >
-                        Add
+                        Add role
                       </Button>
                     </div>
                     {customHumanRoles.length > 0 ? (
@@ -1172,9 +1228,17 @@ export function CompanyDirectory() {
                           <button
                             key={role}
                             type="button"
-                            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-                            title="Remove"
-                            onClick={() => setCustomHumanRoles((prev) => prev.filter((r) => r !== role))}
+                            className={cn(
+                              "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                              selectedHumanRoleForManage === role
+                                ? "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                            )}
+                            title="Select role"
+                            onClick={() => {
+                              setSelectedHumanRoleForManage(role);
+                              setEditingHumanRolePermissions(humanRolePermissions[role] ?? []);
+                            }}
                           >
                             {role}
                           </button>
@@ -1185,6 +1249,56 @@ export function CompanyDirectory() {
                         No custom roles yet.
                       </div>
                     )}
+                    {selectedHumanRoleForManage ? (
+                      <div className="space-y-3 rounded-2xl border border-border/50 bg-muted/10 p-4 ring-1 ring-border/30">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm font-semibold text-foreground">
+                            Manage role: {selectedHumanRoleForManage}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setHumanRolePermissions((prev) => ({
+                                  ...prev,
+                                  [selectedHumanRoleForManage]: editingHumanRolePermissions,
+                                }));
+                              }}
+                            >
+                              Save role
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => {
+                                const roleToDelete = selectedHumanRoleForManage;
+                                setCustomHumanRoles((prev) => prev.filter((r) => r !== roleToDelete));
+                                setHumanRolePermissions((prev) => {
+                                  const next = { ...prev };
+                                  delete next[roleToDelete];
+                                  return next;
+                                });
+                              }}
+                            >
+                              Remove role
+                            </Button>
+                          </div>
+                        </div>
+                        <HumanPermissionsPanel
+                          idPrefix={`manage-role-${selectedHumanRoleForManage}`}
+                          enabledKeys={editingHumanRolePermissions}
+                          onKeysChange={setEditingHumanRolePermissions}
+                          intro={
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              Configure what this role can access: team, agents, tasks/workflows, and company management.
+                            </p>
+                          }
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </TabsContent>
 
