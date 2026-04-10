@@ -155,26 +155,6 @@ const PERMISSION_CATEGORY_DEFS: {
   },
 ];
 
-const PERMISSION_PRESETS = {
-  Member: [] as const,
-  Manager: [
-    "agents:create",
-    "users:invite",
-    "tasks:assign",
-    "tasks:assign_scope",
-    "joins:approve",
-  ] as const,
-  Admin: [...PERMISSION_KEYS],
-} satisfies Record<string, readonly PermissionKey[]>;
-
-type PermissionPresetName = keyof typeof PERMISSION_PRESETS;
-
-const PERMISSION_PRESET_HINTS: Record<PermissionPresetName, string> = {
-  Member: "No optional access — baseline teammate.",
-  Manager: "Run day-to-day work and invites; cannot change others permissions.",
-  Admin: "Everything on, including who can manage roles and access.",
-};
-
 type HumanPermissionsPanelProps = {
   idPrefix: string;
   enabledKeys: PermissionKey[];
@@ -191,9 +171,6 @@ function HumanPermissionsPanel({
   intro,
 }: HumanPermissionsPanelProps) {
   const enabledSet = useMemo(() => new Set(enabledKeys), [enabledKeys]);
-  const enabledCount = enabledKeys.length;
-  const total = ALL_PERMISSION_KEYS.length;
-  const pct = total === 0 ? 0 : Math.round((enabledCount / total) * 100);
 
   const toggle = (key: PermissionKey, on: boolean) => {
     const next = new Set(enabledKeys);
@@ -204,51 +181,8 @@ function HumanPermissionsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-2xl border border-border/40 bg-muted/20 p-3 ring-1 ring-border/25 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          {intro}
-          <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Quick presets
-            </span>
-            {(Object.keys(PERMISSION_PRESETS) as PermissionPresetName[]).map((name) => (
-              <Button
-                key={name}
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={disabled}
-                title={PERMISSION_PRESET_HINTS[name]}
-                className="h-8 rounded-full px-4 text-xs font-medium shadow-xs"
-                onClick={() => onKeysChange([...PERMISSION_PRESETS[name]])}
-              >
-                {name}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-          <div
-            className="inline-flex min-w-[7.5rem] flex-col gap-0.5 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 to-violet-500/5 px-3 py-2 text-right shadow-xs ring-1 ring-primary/15"
-            title={`${enabledCount} of ${total} optional access rights are on`}
-          >
-            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Access enabled
-            </span>
-            <div className="flex items-baseline justify-end gap-1">
-              <span className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                {enabledCount}
-              </span>
-              <span className="text-sm font-medium text-muted-foreground">/ {total}</span>
-            </div>
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted sm:w-36">
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </div>
+      <div className="rounded-2xl border border-border/40 bg-muted/20 p-3 ring-1 ring-border/25">
+        <div className="min-w-0 space-y-1">{intro}</div>
       </div>
 
       <div className="space-y-5">
@@ -981,7 +915,7 @@ export function CompanyDirectory() {
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:max-w-md xl:max-w-xl">
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
-              <Button type="button" className="rounded-xl shadow-sm" variant="default">
+              <Button type="button" className="rounded-full shadow-sm" variant="default">
                 Invite Human
               </Button>
             </DialogTrigger>
@@ -1113,7 +1047,7 @@ export function CompanyDirectory() {
           </Dialog>
           <Dialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen}>
             <DialogTrigger asChild>
-              <Button type="button" variant="secondary" className="rounded-xl border-border/60">
+              <Button type="button" variant="secondary" className="rounded-full border-border/60">
                 Manage roles
               </Button>
             </DialogTrigger>
@@ -1349,7 +1283,7 @@ export function CompanyDirectory() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="rounded-xl"
+                            className="rounded-full"
                             disabled={
                               !selectedHumanMember ||
                               !selectedCompanyId ||
@@ -1368,7 +1302,7 @@ export function CompanyDirectory() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="rounded-xl"
+                            className="rounded-full"
                             disabled={
                               !selectedHumanMember ||
                               !selectedCompanyId ||
@@ -1387,7 +1321,7 @@ export function CompanyDirectory() {
                           type="button"
                           size="sm"
                           variant="destructive"
-                          className="rounded-xl"
+                          className="rounded-full"
                           disabled={
                             !selectedHumanMember ||
                             !selectedCompanyId ||
