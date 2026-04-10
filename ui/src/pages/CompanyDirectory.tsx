@@ -1186,24 +1186,25 @@ export function CompanyDirectory() {
                 Manage roles
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-full max-w-6xl rounded-2xl border-border/60 p-6">
-              <div className="pr-14">
+            <DialogContent className="w-full max-w-7xl rounded-2xl border-border/70 bg-card p-6 shadow-sm">
+              <div className="pr-14 border-b border-border/60 pb-4">
                 <DialogHeader>
-                <DialogTitle>Manage roles</DialogTitle>
-                <DialogDescription>
-                  Add reusable roles for your org. These appear in human and agent role dropdowns.
-                </DialogDescription>
+                  <DialogTitle>Manage roles</DialogTitle>
+                  <DialogDescription>
+                    Define role templates and assign existing system permissions.
+                  </DialogDescription>
                 </DialogHeader>
               </div>
 
-              <div className="pt-4">
-                  <div className="space-y-4">
-                    <div className="text-sm font-medium text-foreground">Create role</div>
+              <div className="pt-4 grid gap-4 lg:grid-cols-[20rem_1fr]">
+                  <div className="rounded-xl border border-border/60 bg-muted/10 p-4 space-y-4">
+                    <div className="text-sm font-semibold text-foreground">Role Library</div>
                     <div className="flex items-center gap-2">
                       <Input
                         value={newHumanRole}
                         onChange={(e) => setNewHumanRole(e.target.value)}
-                        placeholder="Add a role (e.g. Sales Lead)"
+                        placeholder="Create role (e.g. Sales Lead)"
+                        className="h-10"
                       />
                       <Button
                         type="button"
@@ -1222,16 +1223,16 @@ export function CompanyDirectory() {
                       </Button>
                     </div>
                     {customHumanRoles.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="space-y-1.5">
                         {customHumanRoles.map((role) => (
                           <button
                             key={role}
                             type="button"
                             className={cn(
-                              "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                              "w-full rounded-md border px-3 py-2 text-left text-sm transition-colors",
                               selectedHumanRoleForManage === role
-                                ? "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
-                                : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                                ? "border-sidebar-border bg-sidebar-accent/80 text-sidebar-accent-foreground shadow-xs"
+                                : "border-border bg-background text-foreground hover:bg-accent/50",
                             )}
                             title="Select role"
                             onClick={() => {
@@ -1244,15 +1245,19 @@ export function CompanyDirectory() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-sm text-muted-foreground">
+                      <div className="rounded-md border border-dashed border-border/70 bg-background/40 px-3 py-6 text-center text-sm text-muted-foreground">
                         No custom roles yet.
                       </div>
                     )}
-                    {selectedHumanRoleForManage ? (
-                      <div className="space-y-3 rounded-2xl border border-border/50 bg-muted/10 p-4 ring-1 ring-border/30">
+                  </div>
+                  {selectedHumanRoleForManage ? (
+                      <div className="space-y-3 rounded-xl border border-border/60 bg-muted/10 p-4">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-semibold text-foreground">
-                            Manage role: {selectedHumanRoleForManage}
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">
+                              Manage role: {selectedHumanRoleForManage}
+                            </div>
+                            <div className="text-xs text-muted-foreground">Grant or revoke existing permissions only.</div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Button
@@ -1293,13 +1298,16 @@ export function CompanyDirectory() {
                           showPresets={false}
                           intro={
                             <p className="text-xs leading-relaxed text-muted-foreground">
-                              Configure what this role can access: team, agents, tasks/workflows, and company management.
+                              Configure access for team, agents, tasks/workflow, and company management.
                             </p>
                           }
                         />
                       </div>
-                    ) : null}
-                  </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-border/70 bg-muted/10 px-4 py-16 text-center text-sm text-muted-foreground">
+                        Select a role to configure permissions.
+                      </div>
+                    )}
               </div>
             </DialogContent>
           </Dialog>
