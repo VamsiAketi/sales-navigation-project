@@ -86,9 +86,13 @@ const CUSTOM_ROLE_VALUE = "__custom__";
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
 const INVITE_HUMAN_ROLE_OPTIONS = HUMAN_ROLE_OPTIONS.filter((role) => role !== "Owner");
-const DEFAULT_INVITE_ROLE_PERMISSIONS: PermissionKey[] = ALL_PERMISSION_KEYS.filter(
-  (key) => key !== "users:invite",
-);
+const DEFAULT_INVITE_ROLE = "IT";
+
+function defaultPermissionsForRole(role: string | null | undefined): PermissionKey[] {
+  const normalized = (role ?? "").trim().toLowerCase();
+  if (normalized === "owner") return [...ALL_PERMISSION_KEYS];
+  return ALL_PERMISSION_KEYS.filter((key) => key !== "users:invite");
+}
 
 const PERMISSION_UI: Record<PermissionKey, { title: string; description: string }> = {
   "agents:create": {
@@ -395,7 +399,7 @@ export function CompanyDirectory() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
-  const [humanInviteRole, setHumanInviteRole] = useState<string>(INVITE_HUMAN_ROLE_OPTIONS[0] ?? "");
+  const [humanInviteRole, setHumanInviteRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
   const [humanInvitePermissionKeys, setHumanInvitePermissionKeys] = useState<PermissionKey[]>([]);
   const [humanInviteCredentials, setHumanInviteCredentials] = useState<{
@@ -606,8 +610,8 @@ export function CompanyDirectory() {
       });
       setHumanInviteName("");
       setHumanInviteEmail("");
-      setHumanInviteRole(INVITE_HUMAN_ROLE_OPTIONS[0] ?? "");
-      setHumanInvitePermissionKeys(DEFAULT_INVITE_ROLE_PERMISSIONS);
+      setHumanInviteRole(DEFAULT_INVITE_ROLE);
+      setHumanInvitePermissionKeys(defaultPermissionsForRole(DEFAULT_INVITE_ROLE));
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
       });
@@ -620,9 +624,7 @@ export function CompanyDirectory() {
   });
 
   useEffect(() => {
-    // For non-owner invite roles, enable all system permissions by default
-    // except "Invite teammates".
-    setHumanInvitePermissionKeys(DEFAULT_INVITE_ROLE_PERMISSIONS);
+    setHumanInvitePermissionKeys(defaultPermissionsForRole(humanInviteRole));
   }, [humanInviteRole]);
 
   const humanSaveMutation = useMutation({
@@ -700,6 +702,9 @@ export function CompanyDirectory() {
   const selectedHumanManagerId = selectedHumanMember
     ? (memberManagerDrafts[selectedHumanMember.id] ?? "").trim()
     : "";
+  const selectedHumanRoleDraft = selectedHumanMember
+    ? (memberRoleDrafts[selectedHumanMember.id] ?? "").trim()
+    : "";
   const selectedHumanManagerIsAgent =
     !!selectedHumanManagerId && memberPrincipalTypeById.get(selectedHumanManagerId) === "agent";
 
@@ -766,6 +771,21 @@ export function CompanyDirectory() {
     memberManagerDrafts[selectedHumanMember?.id ?? ""],
     selectedHumanManagerIsAgent,
   ]);
+
+  // Keep user permissions in sync with selected role on Teams page.
+  useEffect(() => {
+    if (!selectedCompanyId || !selectedHumanMember) return;
+    if (!selectedHumanRoleDraft) return;
+    const currentRole = (selectedHumanMember.membershipRole ?? "").trim();
+    if (selectedHumanRoleDraft === currentRole) return;
+    humanPermissionMutation.mutate({
+      memberId: selectedHumanMember.id,
+      grants: defaultPermissionsForRole(selectedHumanRoleDraft).map((permissionKey) => ({
+        permissionKey,
+        scope: null,
+      })),
+    });
+  }, [selectedCompanyId, selectedHumanMember?.id, selectedHumanRoleDraft]);
 
   // Autosave (debounced) for selected agent
   useEffect(() => {
