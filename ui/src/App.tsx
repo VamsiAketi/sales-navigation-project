@@ -55,6 +55,7 @@ import { NotFoundPage } from "./pages/NotFound";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { usePanel } from "./context/PanelContext";
+import { IssueModalOverlayProvider } from "./context/IssueModalOverlayContext";
 import { useDialog } from "./context/DialogContext";
 import { loadLastInboxTab } from "./lib/inbox";
 import { shouldRedirectCompanylessRouteToOnboarding } from "./lib/onboarding-route";
@@ -335,9 +336,10 @@ export function App() {
     !/^\/[^/]+\/issues\/[^/]+$/.test(state.backgroundLocation.pathname),
   );
   const backgroundLocation = state?.issueModal && hasBoardBackground ? state.backgroundLocation : null;
+  const issueModalOverlayActive = Boolean(backgroundLocation);
 
   return (
-    <>
+    <IssueModalOverlayProvider value={issueModalOverlayActive}>
       <Routes location={backgroundLocation ?? location}>
         <Route path="auth" element={<AuthPage />} />
         <Route path="reset-password/:token" element={<ResetPasswordPage />} />
@@ -401,7 +403,7 @@ export function App() {
         </Routes>
       ) : null}
       <OnboardingWizard />
-    </>
+    </IssueModalOverlayProvider>
   );
 }
 

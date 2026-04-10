@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { usePanel } from "../context/PanelContext";
+import { useIssueModalOverlay } from "../context/IssueModalOverlayContext";
 import { useCompany } from "../context/CompanyContext";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -7,8 +8,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export function PropertiesPanel() {
   const { panelContent, panelVisible, setPanelVisible } = usePanel();
   const { selectedCompany } = useCompany();
+  const issueModalOverlay = useIssueModalOverlay();
 
-  if (!panelContent) return null;
+  // Same `panelContent` is shown inside `IssueDetailModal`; hide layout panel so it does not sit on top of the dialog backdrop.
+  if (!panelContent || issueModalOverlay) return null;
 
   const logoAssetId = selectedCompany?.logoAssetId ?? null;
   const logoSrc = logoAssetId ? `/api/assets/${logoAssetId}/content` : null;
