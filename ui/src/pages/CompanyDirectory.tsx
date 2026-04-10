@@ -85,6 +85,10 @@ const AGENT_ROLE_OPTIONS = [
 const CUSTOM_ROLE_VALUE = "__custom__";
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
+const INVITE_HUMAN_ROLE_OPTIONS = HUMAN_ROLE_OPTIONS.filter((role) => role !== "Owner");
+const DEFAULT_INVITE_ROLE_PERMISSIONS: PermissionKey[] = ALL_PERMISSION_KEYS.filter(
+  (key) => key !== "users:invite",
+);
 
 const PERMISSION_UI: Record<PermissionKey, { title: string; description: string }> = {
   "agents:create": {
@@ -391,6 +395,7 @@ export function CompanyDirectory() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
+  const [humanInviteRole, setHumanInviteRole] = useState<string>(INVITE_HUMAN_ROLE_OPTIONS[0] ?? "");
   const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
   const [humanInvitePermissionKeys, setHumanInvitePermissionKeys] = useState<PermissionKey[]>([]);
   const [humanInviteCredentials, setHumanInviteCredentials] = useState<{
@@ -601,7 +606,8 @@ export function CompanyDirectory() {
       });
       setHumanInviteName("");
       setHumanInviteEmail("");
-      setHumanInvitePermissionKeys([]);
+      setHumanInviteRole(INVITE_HUMAN_ROLE_OPTIONS[0] ?? "");
+      setHumanInvitePermissionKeys(DEFAULT_INVITE_ROLE_PERMISSIONS);
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
       });
@@ -612,6 +618,12 @@ export function CompanyDirectory() {
       setHumanInviteError(err instanceof Error ? err.message : "Failed to create human invite");
     },
   });
+
+  useEffect(() => {
+    // For non-owner invite roles, enable all system permissions by default
+    // except "Invite teammates".
+    setHumanInvitePermissionKeys(DEFAULT_INVITE_ROLE_PERMISSIONS);
+  }, [humanInviteRole]);
 
   const humanSaveMutation = useMutation({
     mutationFn: (input: { memberId: string; membershipRole: string | null; reportsToMembershipId: string | null }) =>
@@ -960,6 +972,23 @@ export function CompanyDirectory() {
                           autoComplete="email"
                         />
                       </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="invite-role" className="text-xs text-muted-foreground">
+                          Role
+                        </Label>
+                        <select
+                          id="invite-role"
+                          className="h-11 w-full rounded-2xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+                          value={humanInviteRole}
+                          onChange={(e) => setHumanInviteRole(e.target.value)}
+                        >
+                          {INVITE_HUMAN_ROLE_OPTIONS.map((role) => (
+                            <option key={role} value={role}>
+                              {role}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     {humanInviteCredentials && (
                       <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
@@ -1009,7 +1038,7 @@ export function CompanyDirectory() {
                     )}
                   </section>
                   <section className="min-w-0 space-y-3">
-                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Initial access</h3>
+                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Role permissions</h3>
                     <div className="rounded-2xl border border-border/50 bg-muted/15 p-4 ring-1 ring-border/30">
                       <HumanPermissionsPanel
                         idPrefix="invite"
