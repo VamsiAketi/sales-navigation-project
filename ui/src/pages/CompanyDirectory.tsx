@@ -995,6 +995,7 @@ export function CompanyDirectory() {
                           searchPlaceholder="Search roles..."
                           emptyMessage="No roles found."
                           onChange={setHumanInviteRole}
+                          disablePortal
                           className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
                         />
                       </div>
