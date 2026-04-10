@@ -2135,6 +2135,34 @@ export function accessRoutes(
         "active"
       );
 
+      const ownerMembership = await db
+        .select({ id: companyMemberships.id })
+        .from(companyMemberships)
+        .where(
+          and(
+            eq(companyMemberships.companyId, companyId),
+            eq(companyMemberships.principalType, "user"),
+            eq(companyMemberships.status, "active"),
+            eq(companyMemberships.membershipRole, "owner")
+          )
+        )
+        .then((rows) => rows[0] ?? null);
+
+      if (ownerMembership && ownerMembership.id !== membership.id) {
+        await db
+          .update(companyMemberships)
+          .set({
+            reportsToMembershipId: ownerMembership.id,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(companyMemberships.id, membership.id),
+              isNull(companyMemberships.reportsToMembershipId)
+            )
+          );
+      }
+
       // Mark this user as requiring a password change on first login
       await db.insert(instanceUserRoles).values({
         userId: createdAuthUser.userId,
