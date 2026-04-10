@@ -1264,13 +1264,13 @@ export function CompanyDirectory() {
         ) : null}
         {!membersPermissionDenied && !membersError ? (
           <>
-        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border border-sidebar-border bg-sidebar/85 p-1.5 sm:w-auto">
-          <TabsTrigger value="users" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
+        <TabsList className="h-auto w-full justify-start gap-1 rounded-full border border-sidebar-border bg-sidebar/85 p-1.5 sm:w-auto">
+          <TabsTrigger value="users" className="gap-2 rounded-full px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
             <UserRound className="size-4 text-muted-foreground opacity-90" aria-hidden />
             Humans{" "}
             <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeHumanMembers.length})`}</span>
           </TabsTrigger>
-          <TabsTrigger value="agents" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
+          <TabsTrigger value="agents" className="gap-2 rounded-full px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
             <Bot className="size-4 text-muted-foreground opacity-90" aria-hidden />
             Agents{" "}
             <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeAgentMembers.length})`}</span>
