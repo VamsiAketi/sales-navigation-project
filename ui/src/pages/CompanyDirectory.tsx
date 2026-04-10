@@ -1183,16 +1183,19 @@ export function CompanyDirectory() {
                 Manage roles
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl rounded-2xl border-border/60">
-              <DialogHeader>
+            <DialogContent className="flex max-h-[min(92dvh,44rem)] w-full max-w-2xl flex-col gap-0 overflow-hidden rounded-2xl border-border/60 p-0">
+              <div className="shrink-0 px-6 pt-6 pr-14">
+                <DialogHeader>
                 <DialogTitle>Manage roles</DialogTitle>
                 <DialogDescription>
                   Add reusable roles for your org. These appear in human and agent role dropdowns.
                 </DialogDescription>
-              </DialogHeader>
+                </DialogHeader>
+              </div>
 
-              <Tabs defaultValue="humans">
-                <TabsList variant="line" className="px-0">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
+                <Tabs defaultValue="humans" className="space-y-3">
+                <TabsList variant="line" className="px-0 sticky top-0 z-10 bg-background">
                   <TabsTrigger value="humans">Humans</TabsTrigger>
                   <TabsTrigger value="agents">Agents</TabsTrigger>
                 </TabsList>
@@ -1346,7 +1349,8 @@ export function CompanyDirectory() {
                     )}
                   </div>
                 </TabsContent>
-              </Tabs>
+                </Tabs>
+              </div>
             </DialogContent>
           </Dialog>
 
