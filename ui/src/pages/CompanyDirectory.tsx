@@ -337,23 +337,11 @@ function memberSecondaryLine(member: CompanyMember) {
   return member.agent?.role ?? "agent";
 }
 
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return h === 0 ? 0 : Math.abs(h);
-}
-
-const HUMAN_AVATAR_THEMES = [
-  "bg-gradient-to-br from-violet-400/35 via-fuchsia-400/20 to-violet-600/25 text-violet-950 ring-1 ring-violet-500/25 dark:from-violet-500/35 dark:via-fuchsia-500/20 dark:to-violet-700/25 dark:text-violet-50",
-  "bg-gradient-to-br from-sky-400/35 via-cyan-400/20 to-blue-600/25 text-sky-950 ring-1 ring-sky-500/25 dark:from-sky-500/35 dark:via-cyan-500/20 dark:to-blue-700/25 dark:text-sky-50",
-  "bg-gradient-to-br from-amber-400/35 via-orange-400/20 to-rose-500/25 text-amber-950 ring-1 ring-amber-500/25 dark:from-amber-500/35 dark:via-orange-500/20 dark:to-rose-600/25 dark:text-amber-50",
-  "bg-gradient-to-br from-emerald-400/35 via-teal-400/20 to-cyan-600/25 text-emerald-950 ring-1 ring-emerald-500/25 dark:from-emerald-500/35 dark:via-teal-500/20 dark:to-cyan-700/25 dark:text-emerald-50",
-  "bg-gradient-to-br from-rose-400/35 via-pink-400/20 to-fuchsia-600/25 text-rose-950 ring-1 ring-rose-500/25 dark:from-rose-500/35 dark:via-pink-500/20 dark:to-fuchsia-700/25 dark:text-rose-50",
-] as const;
-
-function humanAvatarThemeClass(member: CompanyMember): string {
-  const id = member.user?.id ?? member.principalId;
-  return HUMAN_AVATAR_THEMES[hashString(id) % HUMAN_AVATAR_THEMES.length]!;
+function nameToAvatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  return `hsl(${hue}, 65%, 42%)`;
 }
 
 function memberAvatarInitials(member: CompanyMember): string {
@@ -404,10 +392,10 @@ function DirectoryMemberAvatar({
     <Avatar size={size} className={className}>
       <AvatarFallback
         className={cn(
-          "font-bold tracking-tight",
+          "font-bold tracking-tight text-white ring-1 ring-black/20",
           size === "xs" ? "text-[10px]" : size === "sm" ? "text-xs" : "text-sm",
-          humanAvatarThemeClass(member),
         )}
+        style={{ backgroundColor: nameToAvatarColor(memberDisplayName(member)) }}
       >
         {memberAvatarInitials(member)}
       </AvatarFallback>
@@ -964,7 +952,7 @@ export function CompanyDirectory() {
   }
 
   return (
-    <div className="space-y-6 [&_button]:rounded-full">
+    <div className="space-y-6">
       <div className="relative overflow-hidden rounded-3xl border border-sidebar-border/80 bg-sidebar/55 px-6 pb-6 pt-8 shadow-sm">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
