@@ -1153,23 +1153,23 @@ export function CompanyDirectory() {
                 Manage roles
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[min(96vw,80rem)] max-w-[80rem] rounded-2xl border-border/60">
-              <DialogHeader>
+            <DialogContent className="h-[70vh] w-[70vw] max-h-[70vh] max-w-[70vw] overflow-hidden rounded-2xl border-border/60 p-0">
+              <DialogHeader className="shrink-0 px-6 pt-6">
                 <DialogTitle>Manage roles</DialogTitle>
                 <DialogDescription>
                   Add reusable roles for your org. These appear in human and agent role dropdowns.
                 </DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="humans">
+              <Tabs defaultValue="humans" className="min-h-0 flex-1 px-6 pb-6">
                 <TabsList variant="line" className="px-0">
                   <TabsTrigger value="humans">Humans</TabsTrigger>
                   <TabsTrigger value="agents">Agents</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="humans">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
-                    <section className="space-y-3 rounded-2xl border border-border/60 bg-muted/15 p-4">
+                <TabsContent value="humans" className="mt-4 h-[calc(70vh-10rem)] min-h-0">
+                  <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
+                    <section className="space-y-3 overflow-y-auto rounded-2xl border border-border/60 bg-muted/15 p-4">
                       <div className="text-sm font-medium text-foreground">Create role</div>
                       <div className="flex items-center gap-2">
                         <Input
@@ -1259,7 +1259,7 @@ export function CompanyDirectory() {
                         </div>
                       ) : null}
                     </section>
-                    <section className="space-y-3 rounded-2xl border border-border/60 bg-muted/10 p-4">
+                    <section className="space-y-3 overflow-y-auto rounded-2xl border border-border/60 bg-muted/10 p-4">
                       <div className="text-sm font-medium text-foreground">
                         Role permissions{selectedManageHumanRole ? `: ${selectedManageHumanRole}` : ""}
                       </div>
