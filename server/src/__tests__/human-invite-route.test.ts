@@ -45,10 +45,20 @@ vi.mock("../services/index.js", () => ({
 }));
 
 function createDbStub(selectQueue: unknown[]) {
+  const nextRows = () => (selectQueue.shift() ?? []) as unknown[];
+  const buildWhereResult = () => ({
+    orderBy: vi.fn(async () => nextRows()),
+    then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(nextRows()).then(resolve),
+  });
   return {
     select: vi.fn(() => ({
       from: vi.fn(() => ({
-        where: vi.fn(async () => (selectQueue.shift() ?? []) as unknown[]),
+        where: vi.fn(() => buildWhereResult()),
+      })),
+    })),
+    update: vi.fn(() => ({
+      set: vi.fn(() => ({
+        where: vi.fn(async () => []),
       })),
     })),
     insert: vi.fn(() => ({
