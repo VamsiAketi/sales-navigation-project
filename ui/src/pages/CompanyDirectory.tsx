@@ -1270,7 +1270,7 @@ export function CompanyDirectory() {
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <DirectoryMemberAvatar member={member} size="sm" className="mt-0.5 shrink-0" />
+                        <DirectoryMemberAvatar member={member} size="sm" className="shrink-0 self-center" />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</span>
