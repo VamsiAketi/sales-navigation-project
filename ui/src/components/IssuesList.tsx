@@ -13,6 +13,7 @@ import {
   issueRowGroupKey,
   NEW_ISSUE_BADGE_DURATION_MS,
 } from "../lib/focus-created-issue";
+import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { groupBy } from "../lib/groupBy";
 import { formatDate, cn } from "../lib/utils";
@@ -25,10 +26,10 @@ import { IssueRow } from "./IssueRow";
 import { PageSkeleton } from "./PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { CircleDot, Plus, ArrowUpDown, Layers, Check, ChevronRight, List, Columns3, User, Search, ChevronDown, EyeOff, Eye } from "lucide-react";
+import { CircleDot, Plus, ArrowUpDown, Layers, Check, ChevronRight, List, Columns3, User, Search, ChevronDown, EyeOff, Eye, Tag } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { KanbanBoard, AssigneeAvatar, nameToInitials } from "./KanbanBoard";
 import { isBoardRetentionTerminalIssueStatus, type Issue, type ProjectIssueStatus } from "@paperclipai/shared";
@@ -101,6 +102,10 @@ function workflowStatusGroupLabel(value: string, projectStatuses: ProjectIssueSt
   const row = projectStatuses?.find((s) => s.value === value);
   return row?.name ?? statusLabel(value);
 }
+
+/** Fixed column widths for list header + row trailing cells (sm+). */
+const LIST_TRAILING_GRID =
+  "grid shrink-0 grid-cols-[124px_200px_180px_140px_120px] items-center gap-3";
 
 /** Group keys with items: workflow order first (same as board), then any other statuses lexically. */
 function orderedStatusGroupEntries(
@@ -554,6 +559,8 @@ export function IssuesList({
   });
   const [assigneePickerIssueId, setAssigneePickerIssueId] = useState<string | null>(null);
   const [assigneeSearch, setAssigneeSearch] = useState("");
+  const [labelPickerIssueId, setLabelPickerIssueId] = useState<string | null>(null);
+  const [labelSearch, setLabelSearch] = useState("");
   const [issueSearch, setIssueSearch] = useState(initialSearch ?? "");
   const [debouncedIssueSearch, setDebouncedIssueSearch] = useState(issueSearch);
   const normalizedIssueSearch = debouncedIssueSearch.trim();
@@ -794,6 +801,19 @@ export function IssuesList({
         .filter((m) => m.principalType === "user" && m.user)
         .map((m) => ({ id: m.user!.id, name: m.user!.name })),
     [companyMembers]
+  );
+
+  const reporterLabelForIssue = useCallback(
+    (issue: Issue): string => {
+      if (issue.createdByAgentId) return agentName(issue.createdByAgentId) ?? "Agent";
+      if (issue.createdByUserId) {
+        const member = humanMembers.find((m) => m.id === issue.createdByUserId);
+        if (member?.name) return member.name;
+        return userLabel(issue.createdByUserId) ?? "User";
+      }
+      return "—";
+    },
+    [agentName, humanMembers, userLabel],
   );
 
   // Build the ordered assignee strip: humans first, then agents
@@ -1255,15 +1275,20 @@ export function IssuesList({
 
       {!isLoading && filtered.length > 0 && (forceListView || viewState.viewMode === "list") && (
         <div className="hidden sm:flex items-center gap-2 border-b border-border bg-muted/30 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground select-none">
-          <span className="w-3.5 shrink-0" />
-          <span className="h-4 w-4 shrink-0" />
-          <span className="shrink-0">ID</span>
-          <span className="min-w-0 flex-1">Title</span>
-          <span className="ml-auto flex shrink-0 items-center gap-3">
-            <span className="hidden md:block">Labels</span>
-            <span className="w-[180px] px-2">Assignee</span>
-            <span>Created</span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="w-3.5 shrink-0" />
+            <span className="h-4 w-4 shrink-0" />
+            <span className="shrink-0 font-mono text-xs tabular-nums">ID</span>
+            <span className="inline-flex min-w-19 shrink-0" aria-hidden />
           </span>
+          <span className="min-w-0 flex-1">Title</span>
+          <div className={cn(LIST_TRAILING_GRID, "ml-auto")}>
+            <span className="shrink-0">Priority</span>
+            <span className="min-w-0 shrink-0 truncate">Labels</span>
+            <span className="shrink-0 px-2">Assignee</span>
+            <span className="min-w-0 shrink-0 truncate">Reported by</span>
+            <span className="shrink-0 text-right">Created</span>
+          </div>
         </div>
       )}
 
@@ -1355,168 +1380,377 @@ export function IssuesList({
                       <span className="shrink-0 font-mono text-xs text-muted-foreground">
                         {issue.identifier ?? issue.id.slice(0, 8)}
                       </span>
-                      {liveIssueIds?.has(issue.id) && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 sm:gap-1.5 sm:px-2">
-                          <span className="relative flex h-2 w-2">
-                            <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
-                            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+                      <span className="hidden min-w-19 shrink-0 items-center justify-start sm:inline-flex">
+                        {liveIssueIds?.has(issue.id) ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 sm:gap-1.5 sm:px-2">
+                            <span className="relative flex h-2 w-2">
+                              <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
+                              <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+                            </span>
+                            <span className="hidden text-[11px] font-medium text-blue-600 dark:text-blue-400 sm:inline">
+                              Live
+                            </span>
                           </span>
-                          <span className="hidden text-[11px] font-medium text-blue-600 dark:text-blue-400 sm:inline">
-                            Live
-                          </span>
-                        </span>
-                      )}
+                        ) : null}
+                      </span>
                     </>
                   )}
-                  mobileMeta={timeAgo(issue.updatedAt)}
-                  desktopTrailing={(
-                    <>
-                      {(issue.labels ?? []).length > 0 && (
-                        <span className="hidden items-center gap-1 overflow-hidden md:flex md:max-w-[240px]">
-                          {(issue.labels ?? []).slice(0, 3).map((label) => (
-                            <span
-                              key={label.id}
-                              className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
-                              style={{
-                                borderColor: label.color,
-                                color: pickTextColorForPillBg(label.color, 0.12),
-                                backgroundColor: `${label.color}1f`,
-                              }}
-                            >
-                              {label.name}
-                            </span>
-                          ))}
-                          {(issue.labels ?? []).length > 3 && (
-                            <span className="text-[10px] text-muted-foreground">
-                              +{(issue.labels ?? []).length - 3}
-                            </span>
-                          )}
+                  mobileMeta={(
+                    <span className="inline-flex max-w-full flex-wrap items-center gap-x-1">
+                      <span className="capitalize">{issue.priority.replace(/_/g, " ")}</span>
+                      <span className="text-muted-foreground/80" aria-hidden>
+                        ·
+                      </span>
+                      <span className="max-w-36 truncate">{reporterLabelForIssue(issue)}</span>
+                      <span className="text-muted-foreground/80" aria-hidden>
+                        ·
+                      </span>
+                      <span>{timeAgo(issue.updatedAt)}</span>
+                    </span>
+                  )}
+                  desktopTrailing={(() => {
+                    const issueLabelIds = issue.labelIds ?? issue.labels?.map((l) => l.id) ?? [];
+                    const issueLabels = issue.labels ?? [];
+                    const labelsOpen = labelPickerIssueId === issue.id;
+                    const assigneeOpen = assigneePickerIssueId === issue.id;
+                    const visibleLabels = (labels ?? []).filter((l) => {
+                      const q = labelSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return l.name.toLowerCase().includes(q);
+                    });
+                    const assigneeSearchQ = assigneeSearch.trim().toLowerCase();
+                    const humansForPicker = humanMembers.filter((m) => m.id !== currentUserId);
+                    const toggleIssueLabel = (labelId: string) => {
+                      const next = toggleIssueLabelSelection(issueLabelIds, labelId);
+                      onUpdateIssue(issue.id, { labelIds: next });
+                    };
+                    return (
+                      <div className={LIST_TRAILING_GRID}>
+                        <span
+                          className="flex min-w-0 items-center justify-start"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                        >
+                          <PriorityIcon
+                            priority={issue.priority}
+                            showLabel
+                            onChange={(p) => onUpdateIssue(issue.id, { priority: p })}
+                          />
                         </span>
-                      )}
-                      <Popover
-                        open={assigneePickerIssueId === issue.id}
-                        onOpenChange={(open) => {
-                          setAssigneePickerIssueId(open ? issue.id : null);
-                          if (!open) setAssigneeSearch("");
-                        }}
-                      >
-                        <PopoverTrigger asChild>
-                          <button
-                            className="flex w-[180px] shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-accent/50"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
+                        <div className="min-w-0 overflow-hidden">
+                          <Popover
+                            open={labelsOpen}
+                            onOpenChange={(open) => {
+                              if (!open) {
+                                setLabelPickerIssueId(null);
+                                setLabelSearch("");
+                              }
                             }}
                           >
-                            {issue.assigneeAgentId && agentName(issue.assigneeAgentId) ? (
-                              <Identity name={agentName(issue.assigneeAgentId)!} size="sm" />
-                            ) : issue.assigneeUserId ? (
-                              <span className="inline-flex items-center gap-1.5 text-xs">
-                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
-                                  <User className="h-3 w-3" />
-                                </span>
-                                {humanMembers.find((m) => m.id === issue.assigneeUserId)?.name
-                                  ?? userLabel(issue.assigneeUserId)
-                                  ?? "User"}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
-                                  <User className="h-3 w-3" />
-                                </span>
-                                Assignee
-                              </span>
-                            )}
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-56 p-1"
-                          align="end"
-                          onClick={(e) => e.stopPropagation()}
-                          onPointerDownOutside={() => setAssigneeSearch("")}
+                            <PopoverAnchor asChild>
+                              <button
+                                type="button"
+                                className={cn(
+                                  "w-full max-w-full min-w-0 text-left transition-colors",
+                                  labelsOpen
+                                    ? "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent/50"
+                                    : "inline-flex cursor-pointer items-center gap-1.5 rounded px-1 -mx-1 py-0.5 hover:bg-accent/50",
+                                )}
+                                aria-label={labelsOpen ? "Labels" : "Edit labels"}
+                                title="Labels"
+                                aria-expanded={labelsOpen}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (labelsOpen) {
+                                    setLabelPickerIssueId(null);
+                                    setLabelSearch("");
+                                  } else {
+                                    setLabelPickerIssueId(issue.id);
+                                    setAssigneePickerIssueId(null);
+                                    setLabelSearch("");
+                                  }
+                                }}
+                              >
+                                {issueLabels.length > 0 ? (
+                                  labelsOpen ? (
+                                    <>
+                                      <Tag className="h-3 w-3 shrink-0" />
+                                      <span className="min-w-0 truncate">
+                                        {issueLabels
+                                          .slice(0, 2)
+                                          .map((l) => l.name)
+                                          .join(", ")}
+                                        {issueLabels.length > 2 ? ` +${issueLabels.length - 2}` : ""}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="flex min-w-0 flex-wrap items-center gap-1">
+                                      {issueLabels.slice(0, 3).map((label) => (
+                                        <span
+                                          key={label.id}
+                                          className="inline-flex max-w-full shrink items-center truncate rounded-full border px-2 py-0.5 text-xs font-medium"
+                                          style={{
+                                            borderColor: label.color,
+                                            backgroundColor: `${label.color}22`,
+                                            color: pickTextColorForPillBg(label.color, 0.13),
+                                          }}
+                                        >
+                                          {label.name}
+                                        </span>
+                                      ))}
+                                      {issueLabels.length > 3 && (
+                                        <span className="shrink-0 text-xs text-muted-foreground">
+                                          +{issueLabels.length - 3}
+                                        </span>
+                                      )}
+                                    </span>
+                                  )
+                                ) : labelsOpen ? (
+                                  <>
+                                    <Tag className="h-3 w-3 shrink-0" />
+                                    <span>Labels</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Tag className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground">No labels</span>
+                                  </>
+                                )}
+                              </button>
+                            </PopoverAnchor>
+                            <PopoverContent
+                              className="w-64 p-1"
+                              align="start"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                className="mb-1 w-full border-b border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/50"
+                                placeholder="Search labels..."
+                                value={labelSearch}
+                                onChange={(e) => setLabelSearch(e.target.value)}
+                                aria-label="Search labels"
+                                autoFocus
+                              />
+                              <div className="max-h-44 space-y-0.5 overflow-y-auto overscroll-contain">
+                                {visibleLabels.length === 0 ? (
+                                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                    {(labels ?? []).length === 0
+                                      ? "No labels in this company yet."
+                                      : "No matching labels."}
+                                  </div>
+                                ) : (
+                                  visibleLabels.map((label) => {
+                                    const selected = issueLabelIds.includes(label.id);
+                                    return (
+                                      <button
+                                        key={label.id}
+                                        type="button"
+                                        className={cn(
+                                          "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
+                                          selected && "bg-accent",
+                                        )}
+                                        onClick={() => toggleIssueLabel(label.id)}
+                                      >
+                                        <span
+                                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                          style={{ backgroundColor: label.color }}
+                                        />
+                                        <span className="min-w-0 flex-1 truncate">{label.name}</span>
+                                        {selected ? <Check className="h-3 w-3 shrink-0" /> : null}
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        <Popover
+                          open={assigneeOpen}
+                          onOpenChange={(open) => {
+                            if (!open) {
+                              setAssigneePickerIssueId(null);
+                              setAssigneeSearch("");
+                            }
+                          }}
                         >
-                          <input
-                            className="mb-1 w-full border-b border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/50"
-                            placeholder="Search assignees..."
-                            value={assigneeSearch}
-                            onChange={(e) => setAssigneeSearch(e.target.value)}
-                            autoFocus
-                          />
-                          <div className="max-h-48 overflow-y-auto overscroll-contain">
+                          <PopoverAnchor asChild>
                             <button
+                              type="button"
                               className={cn(
-                                "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
-                                !issue.assigneeAgentId && !issue.assigneeUserId && "bg-accent",
+                                "flex w-full min-w-0 max-w-[180px] items-center gap-1 text-left text-xs transition-colors",
+                                assigneeOpen
+                                  ? "h-8 justify-between rounded-md border border-border bg-background px-2 py-1 hover:bg-accent/50"
+                                  : "justify-start rounded px-1 py-0.5 hover:bg-accent/50",
                               )}
+                              aria-label="Change assignee"
+                              title="Change assignee"
+                              aria-expanded={assigneeOpen}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                assignIssue(issue.id, null, null);
+                                if (assigneeOpen) {
+                                  setAssigneePickerIssueId(null);
+                                  setAssigneeSearch("");
+                                } else {
+                                  setAssigneePickerIssueId(issue.id);
+                                  setLabelPickerIssueId(null);
+                                  setAssigneeSearch("");
+                                }
                               }}
                             >
-                              No assignee
+                              <span className="min-w-0 flex-1 truncate">
+                                {issue.assigneeAgentId && agentName(issue.assigneeAgentId) ? (
+                                  <Identity name={agentName(issue.assigneeAgentId)!} size="sm" />
+                                ) : issue.assigneeUserId ? (
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
+                                      <User className="h-3 w-3" />
+                                    </span>
+                                    <span className="truncate">
+                                      {humanMembers.find((m) => m.id === issue.assigneeUserId)?.name
+                                        ?? userLabel(issue.assigneeUserId)
+                                        ?? "User"}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
+                                      <User className="h-3 w-3" />
+                                    </span>
+                                    Unassigned
+                                  </span>
+                                )}
+                              </span>
+                              {assigneeOpen ? (
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              ) : null}
                             </button>
-                            {currentUserId && (
+                          </PopoverAnchor>
+                          <PopoverContent
+                            className="w-56 p-1"
+                            align="end"
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDownOutside={() => setAssigneeSearch("")}
+                          >
+                            <input
+                              className="mb-1 w-full border-b border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/50"
+                              placeholder="Search assignees..."
+                              value={assigneeSearch}
+                              onChange={(e) => setAssigneeSearch(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="max-h-48 overflow-y-auto overscroll-contain">
                               <button
+                                type="button"
                                 className={cn(
-                                  "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
-                                  issue.assigneeUserId === currentUserId && "bg-accent",
+                                  "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
+                                  !issue.assigneeAgentId && !issue.assigneeUserId && "bg-accent",
                                 )}
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  assignIssue(issue.id, null, currentUserId);
+                                  assignIssue(issue.id, null, null);
                                 }}
                               >
-                                <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <span>Me</span>
+                                No assignee
                               </button>
-                            )}
-                            {(agents ?? [])
-                              .filter((agent) => {
-                                if (!assigneeSearch.trim()) return true;
-                                return agent.name
-                                  .toLowerCase()
-                                  .includes(assigneeSearch.toLowerCase());
-                              })
-                              .map((agent) => (
+                              {currentUserId && (
                                 <button
-                                  key={agent.id}
+                                  type="button"
                                   className={cn(
                                     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
-                                    issue.assigneeAgentId === agent.id && "bg-accent",
+                                    issue.assigneeUserId === currentUserId && "bg-accent",
                                   )}
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    assignIssue(issue.id, agent.id, null);
+                                    assignIssue(issue.id, null, currentUserId);
                                   }}
                                 >
-                                  <Identity name={agent.name} size="sm" className="min-w-0" />
+                                  <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                  <span>Me</span>
                                 </button>
-                              ))}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </>
-                  )}
-                  trailingMeta={viewState.showHidden ? (
-                    <span className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">{formatDate(issue.createdAt)}</span>
-                      <button
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-amber-600 transition-colors hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
-                        title="Unhide this task"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onUpdateIssue(issue.id, { hiddenAt: null });
-                        }}
-                      >
-                        <Eye className="h-3 w-3" />
-                        Unhide
-                      </button>
-                    </span>
-                  ) : formatDate(issue.createdAt)}
+                              )}
+                              {humansForPicker
+                                .filter((m) => {
+                                  if (!assigneeSearchQ) return true;
+                                  return m.name.toLowerCase().includes(assigneeSearchQ);
+                                })
+                                .map((m) => (
+                                  <button
+                                    type="button"
+                                    key={m.id}
+                                    className={cn(
+                                      "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
+                                      issue.assigneeUserId === m.id && "bg-accent",
+                                    )}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      assignIssue(issue.id, null, m.id);
+                                    }}
+                                  >
+                                    <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    <span className="truncate">{m.name}</span>
+                                  </button>
+                                ))}
+                              {(agents ?? [])
+                                .filter((agent) => {
+                                  if (!assigneeSearchQ) return true;
+                                  return agent.name.toLowerCase().includes(assigneeSearchQ);
+                                })
+                                .map((agent) => (
+                                  <button
+                                    type="button"
+                                    key={agent.id}
+                                    className={cn(
+                                      "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
+                                      issue.assigneeAgentId === agent.id && "bg-accent",
+                                    )}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      assignIssue(issue.id, agent.id, null);
+                                    }}
+                                  >
+                                    <Identity name={agent.name} size="sm" className="min-w-0" />
+                                  </button>
+                                ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                        <span
+                          className="min-w-0 truncate text-left text-xs text-muted-foreground"
+                          title={reporterLabelForIssue(issue)}
+                        >
+                          {reporterLabelForIssue(issue)}
+                        </span>
+                        <div className="flex min-w-0 flex-col items-end gap-1 text-right sm:flex-row sm:items-center sm:justify-end">
+                          <span className="text-xs text-muted-foreground">{formatDate(issue.createdAt)}</span>
+                          {viewState.showHidden ? (
+                            <button
+                              type="button"
+                              className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-amber-600 transition-colors hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                              title="Unhide this task"
+                              aria-label="Unhide this task"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onUpdateIssue(issue.id, { hiddenAt: null });
+                              }}
+                            >
+                              <Eye className="h-3 w-3" />
+                              Unhide
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   projectStatuses={projectStatuses}
                 />
               ))}
