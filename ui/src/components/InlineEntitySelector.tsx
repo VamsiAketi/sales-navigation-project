@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "../lib/utils";
 
@@ -127,9 +127,12 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
               isPointerDownRef.current = false;
             }}
           >
-            {renderTriggerValue
-              ? renderTriggerValue(currentOption)
-              : (currentOption?.label ?? <span className="text-muted-foreground">{placeholder}</span>)}
+            <span className="min-w-0 flex-1 truncate text-left">
+              {renderTriggerValue
+                ? renderTriggerValue(currentOption)
+                : (currentOption?.label ?? <span className="text-muted-foreground">{placeholder}</span>)}
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/80" aria-hidden="true" />
           </button>
         </PopoverTrigger>
         <PopoverContent
