@@ -344,11 +344,11 @@ function hashString(s: string): number {
 }
 
 const HUMAN_AVATAR_THEMES = [
-  "bg-muted text-foreground ring-1 ring-border",
-  "bg-muted text-foreground ring-1 ring-border",
-  "bg-muted text-foreground ring-1 ring-border",
-  "bg-muted text-foreground ring-1 ring-border",
-  "bg-muted text-foreground ring-1 ring-border",
+  "bg-gradient-to-br from-violet-400/35 via-fuchsia-400/20 to-violet-600/25 text-violet-950 ring-1 ring-violet-500/25 dark:from-violet-500/35 dark:via-fuchsia-500/20 dark:to-violet-700/25 dark:text-violet-50",
+  "bg-gradient-to-br from-sky-400/35 via-cyan-400/20 to-blue-600/25 text-sky-950 ring-1 ring-sky-500/25 dark:from-sky-500/35 dark:via-cyan-500/20 dark:to-blue-700/25 dark:text-sky-50",
+  "bg-gradient-to-br from-amber-400/35 via-orange-400/20 to-rose-500/25 text-amber-950 ring-1 ring-amber-500/25 dark:from-amber-500/35 dark:via-orange-500/20 dark:to-rose-600/25 dark:text-amber-50",
+  "bg-gradient-to-br from-emerald-400/35 via-teal-400/20 to-cyan-600/25 text-emerald-950 ring-1 ring-emerald-500/25 dark:from-emerald-500/35 dark:via-teal-500/20 dark:to-cyan-700/25 dark:text-emerald-50",
+  "bg-gradient-to-br from-rose-400/35 via-pink-400/20 to-fuchsia-600/25 text-rose-950 ring-1 ring-rose-500/25 dark:from-rose-500/35 dark:via-pink-500/20 dark:to-fuchsia-700/25 dark:text-rose-50",
 ] as const;
 
 function humanAvatarThemeClass(member: CompanyMember): string {
@@ -964,7 +964,7 @@ export function CompanyDirectory() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 [&_button]:rounded-full">
       <div className="relative overflow-hidden rounded-3xl border border-sidebar-border/80 bg-sidebar/55 px-6 pb-6 pt-8 shadow-sm">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
