@@ -964,7 +964,7 @@ export function CompanyDirectory() {
                         </Label>
                         <Input
                           id="invite-name"
-                          className="h-11 rounded-2xl border-border/60"
+                          className="h-10 w-full rounded-lg border-border/60"
                           type="text"
                           placeholder="Full name"
                           value={humanInviteName}
@@ -977,7 +977,7 @@ export function CompanyDirectory() {
                         </Label>
                         <Input
                           id="invite-email"
-                          className="h-11 rounded-2xl border-border/60"
+                          className="h-10 w-full rounded-lg border-border/60"
                           type="email"
                           placeholder="name@company.com"
                           value={humanInviteEmail}
@@ -1271,7 +1271,7 @@ export function CompanyDirectory() {
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <DirectoryMemberAvatar member={member} size="sm" className="mt-0.5 shrink-0" />
+                        <DirectoryMemberAvatar member={member} size="sm" className="shrink-0 self-center" />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</span>
