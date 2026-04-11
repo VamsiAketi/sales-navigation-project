@@ -1,11 +1,12 @@
 import { and, asc, eq, inArray, max } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { projectIssueStatuses, projects } from "@paperclipai/db";
+import { agents, companyMemberships, projectIssueStatuses, projects } from "@paperclipai/db";
 import {
   DEFAULT_PROJECT_ISSUE_STATUSES,
   isBoardPinnedHiddenProjectIssueStatusValue,
   isFixedNameProjectIssueStatusValue,
   isMandatoryProjectIssueStatusValue,
+  isProjectIssueStatusAllowedActors,
   type ProjectIssueStatus,
 } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
@@ -13,6 +14,8 @@ import { conflict, notFound, unprocessable } from "../errors.js";
 type StatusRow = typeof projectIssueStatuses.$inferSelect;
 
 function toProjectIssueStatus(row: StatusRow): ProjectIssueStatus {
+  const allowed = row.allowedActors ?? "human_and_agent";
+  const nextVals = (row.allowedNextStatusValues as string[] | null) ?? [];
   return {
     id: row.id,
     projectId: row.projectId,
@@ -24,9 +27,108 @@ function toProjectIssueStatus(row: StatusRow): ProjectIssueStatus {
     isActive: row.isActive,
     isHumanApproval: row.isHumanApproval,
     approverUserIds: (row.approverUserIds as string[]) ?? [],
+    allowedActors: isProjectIssueStatusAllowedActors(allowed) ? allowed : "human_and_agent",
+    defaultAssigneeUserId: row.defaultAssigneeUserId ?? null,
+    defaultAssigneeAgentId: row.defaultAssigneeAgentId ?? null,
+    allowedNextStatusValues: Array.isArray(nextVals) ? nextVals : [],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+async function assertAllowedNextStatusValuesForProject(
+  db: Db,
+  projectId: string,
+  selfValue: string,
+  allowed: string[],
+) {
+  if (allowed.length === 0) return;
+  const rows = await db
+    .select({ value: projectIssueStatuses.value })
+    .from(projectIssueStatuses)
+    .where(eq(projectIssueStatuses.projectId, projectId));
+  const valueSet = new Set(rows.map((r) => r.value));
+  for (const v of allowed) {
+    if (!valueSet.has(v)) {
+      throw unprocessable(`Allowed next status "${v}" is not a workflow stage in this project.`);
+    }
+    if (v === selfValue) {
+      throw unprocessable("Allowed next statuses cannot include this stage itself.");
+    }
+  }
+}
+
+function assertDefaultAssigneesMatchAllowedActors(
+  allowedActors: string,
+  defaultAssigneeUserId: string | null,
+  defaultAssigneeAgentId: string | null,
+) {
+  if (defaultAssigneeUserId && defaultAssigneeAgentId) {
+    throw unprocessable("Choose at most one default assignee for this status.");
+  }
+  if (allowedActors === "human_only" && defaultAssigneeAgentId) {
+    throw unprocessable("Human-only statuses cannot use a default AI assignee.");
+  }
+  if (allowedActors === "agent_only" && defaultAssigneeUserId) {
+    throw unprocessable("AI-only statuses cannot use a default human assignee.");
+  }
+}
+
+async function assertApproverUserIdsInCompany(db: Db, companyId: string, userIds: string[]) {
+  if (userIds.length === 0) return;
+  const unique = [...new Set(userIds)];
+  const rows = await db
+    .select({ principalId: companyMemberships.principalId })
+    .from(companyMemberships)
+    .where(
+      and(
+        eq(companyMemberships.companyId, companyId),
+        eq(companyMemberships.principalType, "user"),
+        eq(companyMemberships.status, "active"),
+        inArray(companyMemberships.principalId, unique),
+      ),
+    );
+  if (rows.length !== unique.length) {
+    throw unprocessable("Each approver must be an active member of this company.");
+  }
+}
+
+async function assertDefaultAssigneesInCompany(
+  db: Db,
+  companyId: string,
+  defaultAssigneeUserId: string | null | undefined,
+  defaultAssigneeAgentId: string | null | undefined,
+) {
+  if (defaultAssigneeUserId) {
+    const membership = await db
+      .select({ id: companyMemberships.id })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.companyId, companyId),
+          eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.principalId, defaultAssigneeUserId),
+          eq(companyMemberships.status, "active"),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+    if (!membership) {
+      throw unprocessable("Default human assignee must be an active member of this company.");
+    }
+  }
+  if (defaultAssigneeAgentId) {
+    const agent = await db
+      .select({ id: agents.id, companyId: agents.companyId, status: agents.status })
+      .from(agents)
+      .where(eq(agents.id, defaultAssigneeAgentId))
+      .then((rows) => rows[0] ?? null);
+    if (!agent || agent.companyId !== companyId) {
+      throw unprocessable("Default agent assignee must belong to this company.");
+    }
+    if (agent.status === "terminated" || agent.status === "pending_approval") {
+      throw unprocessable("Default agent assignee must be an active agent.");
+    }
+  }
 }
 
 export function projectIssueStatusService(db: Db) {
@@ -50,7 +152,18 @@ export function projectIssueStatusService(db: Db) {
   async function create(
     projectId: string,
     companyId: string,
-    data: { name: string; value: string; color: string; position?: number; isHumanApproval?: boolean; approverUserIds?: string[] },
+    data: {
+      name: string;
+      value: string;
+      color: string;
+      position?: number;
+      isHumanApproval?: boolean;
+      approverUserIds?: string[];
+      allowedActors?: string;
+      defaultAssigneeUserId?: string | null;
+      defaultAssigneeAgentId?: string | null;
+      allowedNextStatusValues?: string[];
+    },
   ): Promise<ProjectIssueStatus> {
     // Resolve position: use provided or max+1
     let position = data.position;
@@ -62,10 +175,44 @@ export function projectIssueStatusService(db: Db) {
       position = (maxResult[0]?.maxPos ?? -1) + 1;
     }
 
+    const isHumanApproval = data.isHumanApproval ?? false;
+    let allowedActors = data.allowedActors ?? "human_and_agent";
+    let defaultAssigneeUserId = data.defaultAssigneeUserId ?? null;
+    let defaultAssigneeAgentId = data.defaultAssigneeAgentId ?? null;
+    const approverUserIds = data.approverUserIds ?? [];
+
+    if (isHumanApproval) {
+      allowedActors = "human_only";
+      defaultAssigneeAgentId = null;
+      if (approverUserIds.length < 1) {
+        throw unprocessable("Human approval stages require at least one approver.");
+      }
+      await assertApproverUserIdsInCompany(db, companyId, approverUserIds);
+    }
+
+    assertDefaultAssigneesMatchAllowedActors(allowedActors, defaultAssigneeUserId, defaultAssigneeAgentId);
+    await assertDefaultAssigneesInCompany(db, companyId, defaultAssigneeUserId, defaultAssigneeAgentId);
+
+    const allowedNext = data.allowedNextStatusValues ?? [];
+    await assertAllowedNextStatusValuesForProject(db, projectId, data.value, allowedNext);
+
     try {
       const [row] = await db
         .insert(projectIssueStatuses)
-        .values({ projectId, companyId, name: data.name, value: data.value, color: data.color, position, isHumanApproval: data.isHumanApproval ?? false, approverUserIds: data.approverUserIds ?? [] })
+        .values({
+          projectId,
+          companyId,
+          name: data.name,
+          value: data.value,
+          color: data.color,
+          position,
+          isHumanApproval,
+          approverUserIds,
+          allowedActors,
+          defaultAssigneeUserId,
+          defaultAssigneeAgentId,
+          allowedNextStatusValues: allowedNext,
+        })
         .returning();
       return toProjectIssueStatus(row!);
     } catch (err: unknown) {
@@ -80,7 +227,18 @@ export function projectIssueStatusService(db: Db) {
   async function update(
     id: string,
     projectId: string,
-    data: { name?: string; color?: string; position?: number; isActive?: boolean; isHumanApproval?: boolean; approverUserIds?: string[] },
+    data: {
+      name?: string;
+      color?: string;
+      position?: number;
+      isActive?: boolean;
+      isHumanApproval?: boolean;
+      approverUserIds?: string[];
+      allowedActors?: string;
+      defaultAssigneeUserId?: string | null;
+      defaultAssigneeAgentId?: string | null;
+      allowedNextStatusValues?: string[];
+    },
   ): Promise<ProjectIssueStatus> {
     const existing = await getById(id);
     if (!existing || existing.projectId !== projectId) throw notFound("Status not found");
@@ -100,6 +258,35 @@ export function projectIssueStatusService(db: Db) {
       throw conflict("Backlog stays first in workflow order; use reorder to change other statuses.");
     }
 
+    let nextAllowedActors = data.allowedActors ?? existing.allowedActors ?? "human_and_agent";
+    let nextDefaultUser =
+      data.defaultAssigneeUserId !== undefined ? data.defaultAssigneeUserId : existing.defaultAssigneeUserId;
+    let nextDefaultAgent =
+      data.defaultAssigneeAgentId !== undefined ? data.defaultAssigneeAgentId : existing.defaultAssigneeAgentId;
+    const nextApprovers =
+      data.approverUserIds !== undefined ? data.approverUserIds : (existing.approverUserIds ?? []);
+
+    if (existing.isHumanApproval) {
+      if (data.allowedActors !== undefined && data.allowedActors !== "human_only") {
+        throw unprocessable("Human approval stages are always human-only for assignment.");
+      }
+      nextAllowedActors = "human_only";
+      nextDefaultAgent = null;
+      if (nextApprovers.length < 1) {
+        throw unprocessable("Human approval stages require at least one approver.");
+      }
+      if (data.approverUserIds !== undefined) {
+        await assertApproverUserIdsInCompany(db, existing.companyId, nextApprovers);
+      }
+    }
+
+    assertDefaultAssigneesMatchAllowedActors(nextAllowedActors, nextDefaultUser, nextDefaultAgent);
+    await assertDefaultAssigneesInCompany(db, existing.companyId, nextDefaultUser, nextDefaultAgent);
+
+    if (data.allowedNextStatusValues !== undefined) {
+      await assertAllowedNextStatusValuesForProject(db, projectId, existing.value, data.allowedNextStatusValues);
+    }
+
     const patch: Partial<StatusRow> = { updatedAt: new Date() };
     if (data.name !== undefined) patch.name = data.name;
     if (data.color !== undefined) patch.color = data.color;
@@ -107,6 +294,14 @@ export function projectIssueStatusService(db: Db) {
     if (data.isActive !== undefined) patch.isActive = data.isActive;
     if (data.isHumanApproval !== undefined) patch.isHumanApproval = data.isHumanApproval;
     if (data.approverUserIds !== undefined) patch.approverUserIds = data.approverUserIds;
+    if (data.allowedActors !== undefined) patch.allowedActors = data.allowedActors;
+    if (data.defaultAssigneeUserId !== undefined) patch.defaultAssigneeUserId = data.defaultAssigneeUserId;
+    if (data.defaultAssigneeAgentId !== undefined) patch.defaultAssigneeAgentId = data.defaultAssigneeAgentId;
+    if (existing.isHumanApproval) {
+      patch.allowedActors = "human_only";
+      patch.defaultAssigneeAgentId = null;
+    }
+    if (data.allowedNextStatusValues !== undefined) patch.allowedNextStatusValues = data.allowedNextStatusValues;
 
     if (isBoardPinnedHiddenProjectIssueStatusValue(existing.value)) {
       if (data.isActive === true) {

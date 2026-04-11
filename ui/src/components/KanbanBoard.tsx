@@ -22,7 +22,7 @@ import { PriorityIcon } from "./PriorityIcon";
 import { cn } from "../lib/utils";
 import { mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
-import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
+import { isProjectIssueWorkflowTransitionAllowed, type Issue, type ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Avatar helpers ─────────────────────────────────────────────────────────── */
 /** Derive a unique HSL background colour from a name string.
@@ -136,6 +136,16 @@ const boardStatuses = [
 
 function statusLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function columnAcceptsIssueDrop(
+  dragged: Issue,
+  columnStatus: string,
+  projectStatuses: ProjectIssueStatus[] | undefined,
+): boolean {
+  if (dragged.status === columnStatus) return true;
+  const fromMeta = projectStatuses?.find((s) => s.value === dragged.status);
+  return isProjectIssueWorkflowTransitionAllowed(dragged.status, columnStatus, fromMeta);
 }
 
 interface Agent {
@@ -382,6 +392,7 @@ const KanbanColumn = memo(function KanbanColumn({
   statusColorMap,
   highlightIssueId,
   newBadgeIssueId,
+  dropDisabled,
 }: {
   status: string;
   columnLabel?: string;
@@ -394,8 +405,9 @@ const KanbanColumn = memo(function KanbanColumn({
   statusColorMap?: Map<string, string>;
   highlightIssueId?: string | null;
   newBadgeIssueId?: string | null;
+  dropDisabled?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
+  const { setNodeRef, isOver } = useDroppable({ id: status, disabled: dropDisabled });
   // columnColor (from projectStatuses) always wins; then hardcoded map; then neutral fallback
   const accent = getAccent(status, columnColor);
   const dotColor = accent.dot;
@@ -559,6 +571,9 @@ export function KanbanBoard({
       if (!targetStatus) return;
 
       if (targetStatus !== issue.status) {
+        if (!columnAcceptsIssueDrop(issue, targetStatus, projectStatuses)) {
+          return;
+        }
         // Optimistically move the card now so it never flashes back in the
         // source column while the async onUpdateIssue round-trip completes.
         setOptimisticMoves((prev) => ({ ...prev, [issueId]: targetStatus! }));
@@ -577,7 +592,7 @@ export function KanbanBoard({
         onUpdateIssue(issueId, { kanbanPosition: computePosition(before, after) });
       }
     },
-    [issues, activeColumns, columnIssues, onUpdateIssue]
+    [issues, activeColumns, columnIssues, onUpdateIssue, projectStatuses]
   );
 
   const handleDragCancel = useCallback(() => setActiveId(null), []);
@@ -670,6 +685,8 @@ export function KanbanBoard({
       >
         {activeColumns.map((status) => {
           const ps = projectStatuses?.find((s) => s.value === status);
+          const dropDisabled =
+            activeIssue != null && !columnAcceptsIssueDrop(activeIssue, status, projectStatuses);
           return (
             <KanbanColumn
               key={status}
@@ -684,6 +701,7 @@ export function KanbanBoard({
               statusColorMap={statusColorMap}
               highlightIssueId={highlightIssueId}
               newBadgeIssueId={newBadgeIssueId}
+              dropDisabled={dropDisabled}
             />
           );
         })}

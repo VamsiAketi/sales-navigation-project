@@ -79,6 +79,10 @@ interface IssueDraft {
   executionWorkspaceMode?: string;
   selectedExecutionWorkspaceId?: string;
   useIsolatedExecutionWorkspace?: boolean;
+  /** YYYY-MM-DD */
+  targetStartDate?: string;
+  /** YYYY-MM-DD */
+  dueDate?: string;
 }
 
 type StagedIssueFile = {
@@ -317,6 +321,12 @@ export function NewIssueDialog() {
 
   const rawProjectStatuses = useProjectIssueStatuses(projectId || null);
   const activeProjectStatuses = rawProjectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
+  const newIssueStatusWorkflowMeta = useMemo(
+    () => rawProjectStatuses.find((s) => s.value === status),
+    [rawProjectStatuses, status],
+  );
+  const newIssueAssigneeAllowsUsers = newIssueStatusWorkflowMeta?.allowedActors !== "agent_only";
+  const newIssueAssigneeAllowsAgents = newIssueStatusWorkflowMeta?.allowedActors !== "human_only";
 
   // Popover states
   const [statusOpen, setStatusOpen] = useState(false);
@@ -324,6 +334,8 @@ export function NewIssueDialog() {
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelSearch, setLabelSearch] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [targetStartDate, setTargetStartDate] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [companyOpen, setCompanyOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
   const stageFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -538,6 +550,8 @@ export function NewIssueDialog() {
       assigneeChrome,
       executionWorkspaceMode,
       selectedExecutionWorkspaceId,
+      targetStartDate,
+      dueDate,
     });
   }, [
     title,
@@ -553,6 +567,8 @@ export function NewIssueDialog() {
     assigneeChrome,
     executionWorkspaceMode,
     selectedExecutionWorkspaceId,
+    targetStartDate,
+    dueDate,
     newIssueOpen,
     scheduleSave,
   ]);
@@ -581,6 +597,8 @@ export function NewIssueDialog() {
       setAssigneeChrome(false);
       setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProject));
       setSelectedExecutionWorkspaceId("");
+      setTargetStartDate("");
+      setDueDate("");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
     } else if (draft && draft.title.trim()) {
       const restoredProjectId = newIssueDefaults.projectId ?? draft.projectId;
@@ -605,6 +623,8 @@ export function NewIssueDialog() {
           ?? (draft.useIsolatedExecutionWorkspace ? "isolated_workspace" : defaultExecutionWorkspaceModeForProject(restoredProject)),
       );
       setSelectedExecutionWorkspaceId(draft.selectedExecutionWorkspaceId ?? "");
+      setTargetStartDate(draft.targetStartDate ?? "");
+      setDueDate(draft.dueDate ?? "");
       executionWorkspaceDefaultProjectId.current = restoredProjectId || null;
     } else {
       const defaultProjectId = newIssueDefaults.projectId ?? "";
@@ -620,6 +640,8 @@ export function NewIssueDialog() {
       setAssigneeChrome(false);
       setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProject));
       setSelectedExecutionWorkspaceId("");
+      setTargetStartDate("");
+      setDueDate("");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
     }
   }, [newIssueOpen, newIssueDefaults, orderedProjects]);
@@ -672,6 +694,8 @@ export function NewIssueDialog() {
     setIsFileDragOver(false);
     setProjectValidationError(null);
     setCompanyOpen(false);
+    setTargetStartDate("");
+    setDueDate("");
     executionWorkspaceDefaultProjectId.current = null;
   }
 
@@ -687,6 +711,8 @@ export function NewIssueDialog() {
     setAssigneeChrome(false);
     setExecutionWorkspaceMode("shared_workspace");
     setSelectedExecutionWorkspaceId("");
+    setTargetStartDate("");
+    setDueDate("");
     setProjectValidationError(null);
   }
 
@@ -743,6 +769,8 @@ export function NewIssueDialog() {
         ? { executionWorkspaceId: selectedExecutionWorkspaceId }
         : {}),
       ...(executionWorkspaceSettings ? { executionWorkspaceSettings } : {}),
+      ...(targetStartDate ? { targetStartAt: `${targetStartDate}T00:00:00.000Z` } : {}),
+      ...(dueDate ? { dueAt: `${dueDate}T00:00:00.000Z` } : {}),
     });
   }
 
@@ -871,24 +899,35 @@ export function NewIssueDialog() {
   const recentAssigneeIds = useMemo(() => getRecentAssigneeIds(), [newIssueOpen]);
   const assigneeOptions = useMemo<InlineEntityOption[]>(
     () => [
-      ...currentUserAssigneeOption(currentUserId),
-      ...(members ?? [])
-        .filter((m) => m.principalType === "user" && m.user && m.user.id !== currentUserId)
-        .map((m) => ({
-          id: assigneeValueFromSelection({ assigneeUserId: m.user!.id }),
-          label: m.user!.name,
-          searchText: `${m.user!.name} ${m.user!.email}`,
-        })),
-      ...sortAgentsByRecency(
-        (agents ?? []).filter((agent) => agent.status !== "terminated"),
-        recentAssigneeIds,
-      ).map((agent) => ({
-        id: assigneeValueFromSelection({ assigneeAgentId: agent.id }),
-        label: agent.name,
-        searchText: `${agent.name} ${agent.role} ${agent.title ?? ""}`,
-      })),
+      ...(newIssueAssigneeAllowsUsers ? currentUserAssigneeOption(currentUserId) : []),
+      ...(newIssueAssigneeAllowsUsers
+        ? (members ?? [])
+            .filter((m) => m.principalType === "user" && m.user && m.user.id !== currentUserId)
+            .map((m) => ({
+              id: assigneeValueFromSelection({ assigneeUserId: m.user!.id }),
+              label: m.user!.name,
+              searchText: `${m.user!.name} ${m.user!.email}`,
+            }))
+        : []),
+      ...(newIssueAssigneeAllowsAgents
+        ? sortAgentsByRecency(
+            (agents ?? []).filter((agent) => agent.status !== "terminated"),
+            recentAssigneeIds,
+          ).map((agent) => ({
+            id: assigneeValueFromSelection({ assigneeAgentId: agent.id }),
+            label: agent.name,
+            searchText: `${agent.name} ${agent.role} ${agent.title ?? ""}`,
+          }))
+        : []),
     ],
-    [agents, currentUserId, members, recentAssigneeIds],
+    [
+      agents,
+      currentUserId,
+      members,
+      recentAssigneeIds,
+      newIssueAssigneeAllowsUsers,
+      newIssueAssigneeAllowsAgents,
+    ],
   );
   const projectOptions = useMemo<InlineEntityOption[]>(
     () =>
@@ -1605,15 +1644,55 @@ export function NewIssueDialog() {
                 <MoreHorizontal className="h-3 w-3" />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-44 p-1" align="start">
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                Start date
-              </button>
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                Due date
-              </button>
+            <PopoverContent className="w-56 p-2 space-y-2" align="start">
+              <div>
+                <div className="mb-1 text-[11px] text-muted-foreground">Start date</div>
+                <div className="flex items-center gap-2 rounded-md border border-border bg-transparent px-2 py-1.5">
+                  <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    type="date"
+                    className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                    value={targetStartDate}
+                    onChange={(e) => setTargetStartDate(e.target.value)}
+                    disabled={createIssue.isPending}
+                    aria-label="Start date"
+                  />
+                  {targetStartDate ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+                      onClick={() => setTargetStartDate("")}
+                      disabled={createIssue.isPending}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-[11px] text-muted-foreground">Due date</div>
+                <div className="flex items-center gap-2 rounded-md border border-border bg-transparent px-2 py-1.5">
+                  <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    type="date"
+                    className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    disabled={createIssue.isPending}
+                    aria-label="Due date"
+                  />
+                  {dueDate ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+                      onClick={() => setDueDate("")}
+                      disabled={createIssue.isPending}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         </div>

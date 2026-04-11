@@ -3,7 +3,7 @@ import { cn } from "../lib/utils";
 import { issueStatusIcon, issueStatusIconDefault } from "../lib/status-colors";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import type { ProjectIssueStatus } from "@paperclipai/shared";
+import { projectIssueStatusRestrictedNextValues, type ProjectIssueStatus } from "@paperclipai/shared";
 
 const defaultStatuses = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled", "blocked"];
 
@@ -51,9 +51,25 @@ export function StatusIcon({ status, onChange, className, showLabel, projectStat
     </button>
   ) : circle;
 
+  const fromMeta = projectStatuses?.find((s) => s.value === status);
+  const restrictedNext = projectIssueStatusRestrictedNextValues(fromMeta);
+
   // Build the list to show in the dropdown
   const listItems: Array<{ value: string; name: string; color?: string; isTailwind: boolean }> = projectStatuses
-    ? projectStatuses.filter((s) => s.isActive).map((s) => ({ value: s.value, name: s.name, color: s.color, isTailwind: false }))
+    ? (() => {
+        if (restrictedNext) {
+          const byValue = new Map(projectStatuses.map((s) => [s.value, s]));
+          return restrictedNext.map((value) => {
+            const row = byValue.get(value);
+            return row
+              ? { value: row.value, name: row.name, color: row.color, isTailwind: false as const }
+              : { value, name: statusLabel(value), isTailwind: true as const };
+          });
+        }
+        return projectStatuses
+          .filter((s) => s.isActive)
+          .map((s) => ({ value: s.value, name: s.name, color: s.color, isTailwind: false as const }));
+      })()
     : defaultStatuses.map((s) => ({ value: s, name: statusLabel(s), isTailwind: true }));
 
   return (

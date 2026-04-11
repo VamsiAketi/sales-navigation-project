@@ -175,6 +175,16 @@ export function isBoardPinnedHiddenProjectIssueStatusValue(value: string): boole
   return BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUE_SET.has(value);
 }
 
+/** Who may be assigned / act on tasks while in this workflow status. */
+export const PROJECT_ISSUE_STATUS_ALLOWED_ACTORS = ["human_and_agent", "human_only", "agent_only"] as const;
+export type ProjectIssueStatusAllowedActors = (typeof PROJECT_ISSUE_STATUS_ALLOWED_ACTORS)[number];
+
+const PROJECT_ISSUE_STATUS_ALLOWED_ACTORS_SET = new Set<string>(PROJECT_ISSUE_STATUS_ALLOWED_ACTORS);
+
+export function isProjectIssueStatusAllowedActors(value: string): value is ProjectIssueStatusAllowedActors {
+  return PROJECT_ISSUE_STATUS_ALLOWED_ACTORS_SET.has(value);
+}
+
 export const INBOX_MINE_ISSUE_STATUSES = [
   "backlog",
   "todo",

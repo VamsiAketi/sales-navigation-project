@@ -19,6 +19,8 @@ export {
   isFixedNameProjectIssueStatusValue,
   BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUES,
   isBoardPinnedHiddenProjectIssueStatusValue,
+  PROJECT_ISSUE_STATUS_ALLOWED_ACTORS,
+  isProjectIssueStatusAllowedActors,
   INBOX_MINE_ISSUE_STATUSES,
   INBOX_MINE_ISSUE_STATUS_FILTER,
   ISSUE_PRIORITIES,
@@ -93,6 +95,7 @@ export {
   type MandatoryProjectIssueStatusValue,
   type FixedNameProjectIssueStatusValue,
   type BoardPinnedHiddenProjectIssueStatusValue,
+  type ProjectIssueStatusAllowedActors,
   type IssuePriority,
   type IssueOriginKind,
   type GoalLevel,
@@ -650,6 +653,11 @@ export {
   type ParsedProjectMention,
   type ParsedUserMention,
 } from "./project-mentions.js";
+
+export {
+  projectIssueStatusRestrictedNextValues,
+  isProjectIssueWorkflowTransitionAllowed,
+} from "./project-issue-workflow.js";
 
 export {
   extractRoutineVariableNames,

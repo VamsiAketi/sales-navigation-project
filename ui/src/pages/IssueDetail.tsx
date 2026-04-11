@@ -17,6 +17,7 @@ import { assigneeValueFromSelection, suggestedCommentAssigneeValue } from "../li
 import { queryKeys } from "../lib/queryKeys";
 import { readIssueDetailBreadcrumb, readIssueDetailBreadcrumbChain } from "../lib/issueDetailBreadcrumb";
 import { useProjectOrder } from "../hooks/useProjectOrder";
+import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { relativeTime, cn } from "../lib/utils";
 import { InlineEditor } from "../components/InlineEditor";
 import { CommentThread } from "../components/CommentThread";
@@ -300,6 +301,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     enabled: !!issueId,
   });
   const resolvedCompanyId = issue?.companyId ?? selectedCompanyId;
+  const projectIssueStatuses = useProjectIssueStatuses(issue?.projectId ?? null);
 
   const { data: comments } = useQuery({
     queryKey: queryKeys.issues.comments(issueId!),
@@ -805,6 +807,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           <StatusIcon
             status={issue.status}
             onChange={(status) => updateIssue.mutate({ status })}
+            projectStatuses={projectIssueStatuses.length > 0 ? projectIssueStatuses : undefined}
           />
           <PriorityIcon
             priority={issue.priority}
