@@ -55,6 +55,7 @@ import { NotFoundPage } from "./pages/NotFound";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { usePanel } from "./context/PanelContext";
+import { IssueModalOverlayProvider } from "./context/IssueModalOverlayContext";
 import { useDialog } from "./context/DialogContext";
 import { loadLastInboxTab } from "./lib/inbox";
 import { shouldRedirectCompanylessRouteToOnboarding } from "./lib/onboarding-route";
@@ -159,12 +160,16 @@ function boardRoutes() {
       <Route path="projects" element={<Projects />} />
       <Route path="projects/:projectId" element={<ProjectDetail />} />
       <Route path="projects/:projectId/overview" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/backlog" element={<ProjectDetail />} />
       <Route path="projects/:projectId/issues" element={<ProjectDetail />} />
       <Route path="projects/:projectId/issues/:filter" element={<ProjectDetail />} />
       <Route path="projects/:projectId/workspaces/:workspaceId" element={<ProjectWorkspaceDetail />} />
       <Route path="projects/:projectId/workspaces" element={<ProjectDetail />} />
       <Route path="projects/:projectId/configuration" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/workflow" element={<ProjectDetail />} />
       <Route path="projects/:projectId/budget" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/shelf" element={<LegacyProjectShelfRedirect />} />
+      <Route path="projects/:projectId/archive" element={<ProjectDetail />} />
       <Route path="issues" element={<Issues />} />
       <Route path="issues/all" element={<Navigate to="/issues" replace />} />
       <Route path="issues/active" element={<Navigate to="/issues" replace />} />
@@ -270,6 +275,12 @@ function CompanyRootRedirect() {
   return <Navigate to={`/${targetCompany.issuePrefix}/dashboard`} replace />;
 }
 
+/** Old project tab URL; forwards to `/projects/:id/archive`. */
+function LegacyProjectShelfRedirect() {
+  const { companyPrefix, projectId } = useParams<{ companyPrefix: string; projectId: string }>();
+  return <Navigate to={`/${companyPrefix}/projects/${projectId}/archive`} replace />;
+}
+
 function UnprefixedBoardRedirect() {
   const location = useLocation();
   const { companies, selectedCompany, loading } = useCompany();
@@ -325,9 +336,10 @@ export function App() {
     !/^\/[^/]+\/issues\/[^/]+$/.test(state.backgroundLocation.pathname),
   );
   const backgroundLocation = state?.issueModal && hasBoardBackground ? state.backgroundLocation : null;
+  const issueModalOverlayActive = Boolean(backgroundLocation);
 
   return (
-    <>
+    <IssueModalOverlayProvider value={issueModalOverlayActive}>
       <Routes location={backgroundLocation ?? location}>
         <Route path="auth" element={<AuthPage />} />
         <Route path="reset-password/:token" element={<ResetPasswordPage />} />
@@ -367,11 +379,16 @@ export function App() {
           <Route path="projects" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/overview" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/backlog" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/workspaces" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/workspaces/:workspaceId" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/workflow" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/budget" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/shelf" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/archive" element={<UnprefixedBoardRedirect />} />
           <Route path="execution-workspaces/:workspaceId" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>
@@ -386,7 +403,7 @@ export function App() {
         </Routes>
       ) : null}
       <OnboardingWizard />
-    </>
+    </IssueModalOverlayProvider>
   );
 }
 

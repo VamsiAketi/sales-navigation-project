@@ -26,14 +26,26 @@ import { PageTabBar } from "../components/PageTabBar";
 import { projectRouteRef, cn } from "../lib/utils";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { Tabs } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronDown } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "overview" | "list" | "configuration" | "budget";
+type ProjectBaseTab = "backlog" | "overview" | "list" | "configuration" | "workflow" | "budget" | "archive";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
+
+const PROJECT_STATUSES = [
+  { value: "backlog", label: "Backlog" },
+  { value: "planned", label: "Planned" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+] as const;
 
 function isProjectPluginTab(value: string | null): value is ProjectPluginTab {
   return typeof value === "string" && value.startsWith("plugin:");
@@ -44,9 +56,12 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   const projectsIdx = segments.indexOf("projects");
   if (projectsIdx === -1 || segments[projectsIdx + 1] !== projectId) return null;
   const tab = segments[projectsIdx + 2];
+  if (tab === "backlog") return "backlog";
   if (tab === "overview") return "overview";
   if (tab === "configuration") return "configuration";
+  if (tab === "workflow") return "workflow";
   if (tab === "budget") return "budget";
+  if (tab === "archive") return "archive";
   if (tab === "issues") return "list";
   return null;
 }
@@ -62,29 +77,68 @@ function OverviewContent({
   onUpdate: (data: Record<string, unknown>) => void;
   imageUploadHandler?: (file: File) => Promise<string>;
 }) {
-  return (
-    <div className="space-y-6">
-      <InlineEditor
-        value={project.description ?? ""}
-        onSave={(description) => onUpdate({ description })}
-        as="p"
-        className="text-sm text-muted-foreground"
-        placeholder="Add a description..."
-        multiline
-        imageUploadHandler={imageUploadHandler}
-      />
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+  return (
+    <div className="space-y-6 rounded-lg border border-border/70 bg-card p-4 sm:p-5">
+      <div className="space-y-2">
+        <span className="text-sm font-medium text-foreground">Description</span>
+        <div className="min-h-16 rounded-md border border-border bg-background p-3">
+          <InlineEditor
+            value={project.description ?? ""}
+            onSave={(description) => onUpdate({ description })}
+            as="p"
+            className="text-sm text-muted-foreground"
+            placeholder="Add a project description..."
+            multiline
+            imageUploadHandler={imageUploadHandler}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 border-t border-border/60 pt-4 text-sm sm:grid-cols-2">
         <div>
           <span className="text-muted-foreground">Status</span>
           <div className="mt-1">
-            <StatusBadge status={project.status} />
+            <Popover open={statusPickerOpen} onOpenChange={setStatusPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-2 px-2.5"
+                >
+                  <StatusBadge status={project.status} />
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-48 p-1">
+                {PROJECT_STATUSES.map((status) => {
+                  const isActive = status.value === project.status;
+                  return (
+                    <button
+                      key={status.value}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
+                        isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                      )}
+                      onClick={() => {
+                        onUpdate({ status: status.value });
+                        setStatusPickerOpen(false);
+                      }}
+                    >
+                      <span>{status.label}</span>
+                      {isActive ? <Check className="h-3.5 w-3.5" /> : null}
+                    </button>
+                  );
+                })}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
         {project.targetDate && (
           <div>
             <span className="text-muted-foreground">Target Date</span>
-            <p>{project.targetDate}</p>
+            <p className="mt-1">{project.targetDate}</p>
           </div>
         )}
       </div>
@@ -119,7 +173,7 @@ function ColorPicker({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="shrink-0 h-5 w-5 rounded-md cursor-pointer hover:ring-2 hover:ring-foreground/20 transition-[box-shadow]"
+        className="shrink-0 h-5 w-5 rounded-md cursor-pointer transition-shadow hover:ring-2 hover:ring-foreground/20"
         style={{ backgroundColor: currentColor }}
         aria-label="Change project color"
       />
@@ -151,7 +205,145 @@ function ColorPicker({
 
 /* ── List (issues) tab content ── */
 
-function ProjectIssuesList({ projectId, companyId, issueLinkState }: { projectId: string; companyId: string; issueLinkState?: unknown }) {
+function ProjectBacklogList({ projectId, companyId, issueLinkState }: { projectId: string; companyId: string; issueLinkState?: unknown }) {
+  const queryClient = useQueryClient();
+  const projectStatuses = useProjectIssueStatuses(projectId);
+
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+    enabled: !!companyId,
+  });
+
+  const { data: liveRuns } = useQuery({
+    queryKey: queryKeys.liveRuns(companyId),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(companyId),
+    enabled: !!companyId,
+    refetchInterval: 5000,
+  });
+
+  const liveIssueIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const run of liveRuns ?? []) {
+      if (run.issueId) ids.add(run.issueId);
+    }
+    return ids;
+  }, [liveRuns]);
+
+  const { data: issues, isLoading, error } = useQuery({
+    queryKey: queryKeys.issues.listByProject(companyId, projectId),
+    queryFn: () => issuesApi.list(companyId, { projectId }),
+    enabled: !!companyId,
+  });
+
+  const updateIssue = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      issuesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
+    },
+  });
+
+  return (
+    <IssuesList
+      issues={issues ?? []}
+      isLoading={isLoading}
+      error={error as Error | null}
+      agents={agents}
+      liveIssueIds={liveIssueIds}
+      projectId={projectId}
+      viewStateKey={`paperclip:project-backlog:${projectId}`}
+      issueLinkState={issueLinkState}
+      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+      projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
+      forceListView
+      fixedStatusFilter={["backlog"]}
+      hideStatusFilter
+    />
+  );
+}
+
+function ProjectArchiveList({
+  projectId,
+  companyId,
+  retentionDays,
+  issueLinkState,
+}: {
+  projectId: string;
+  companyId: string;
+  retentionDays: number;
+  issueLinkState?: unknown;
+}) {
+  const queryClient = useQueryClient();
+  const projectStatuses = useProjectIssueStatuses(projectId);
+
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(companyId),
+    queryFn: () => agentsApi.list(companyId),
+    enabled: !!companyId,
+  });
+
+  const { data: liveRuns } = useQuery({
+    queryKey: queryKeys.liveRuns(companyId),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(companyId),
+    enabled: !!companyId,
+    refetchInterval: 5000,
+  });
+
+  const liveIssueIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const run of liveRuns ?? []) {
+      if (run.issueId) ids.add(run.issueId);
+    }
+    return ids;
+  }, [liveRuns]);
+
+  const { data: issues, isLoading, error } = useQuery({
+    queryKey: queryKeys.issues.listByProject(companyId, projectId),
+    queryFn: () => issuesApi.list(companyId, { projectId }),
+    enabled: !!companyId,
+  });
+
+  const updateIssue = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      issuesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
+    },
+  });
+
+  return (
+    <IssuesList
+      issues={issues ?? []}
+      isLoading={isLoading}
+      error={error as Error | null}
+      agents={agents}
+      liveIssueIds={liveIssueIds}
+      projectId={projectId}
+      viewStateKey={`paperclip:project-archive:${projectId}`}
+      issueLinkState={issueLinkState}
+      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+      projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
+      forceListView
+      hideStatusFilter
+      pastBoardClosedRetentionDays={retentionDays}
+    />
+  );
+}
+
+function ProjectIssuesList({
+  projectId,
+  companyId,
+  issueLinkState,
+  boardClosedRetentionDays,
+}: {
+  projectId: string;
+  companyId: string;
+  issueLinkState?: unknown;
+  boardClosedRetentionDays: number;
+}) {
   const queryClient = useQueryClient();
   const projectStatuses = useProjectIssueStatuses(projectId);
 
@@ -203,6 +395,7 @@ function ProjectIssuesList({ projectId, companyId, issueLinkState }: { projectId
       issueLinkState={issueLinkState}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
       projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
+      boardClosedRetentionDays={boardClosedRetentionDays}
     />
   );
 }
@@ -223,6 +416,7 @@ export function ProjectDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const [fieldSaveStates, setFieldSaveStates] = useState<Partial<Record<ProjectConfigFieldKey, ProjectFieldSaveState>>>({});
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   const fieldSaveRequestIds = useRef<Partial<Record<ProjectConfigFieldKey, number>>>({});
   const fieldSaveTimers = useRef<Partial<Record<ProjectConfigFieldKey, ReturnType<typeof setTimeout>>>>({});
   const routeProjectRef = projectId ?? "";
@@ -341,6 +535,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(activeTab)}`, { replace: true });
       return;
     }
+    if (activeTab === "backlog") {
+      navigate(`/projects/${canonicalProjectRef}/backlog`, { replace: true });
+      return;
+    }
     if (activeTab === "overview") {
       navigate(`/projects/${canonicalProjectRef}/overview`, { replace: true });
       return;
@@ -349,8 +547,16 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/configuration`, { replace: true });
       return;
     }
+    if (activeTab === "workflow") {
+      navigate(`/projects/${canonicalProjectRef}/workflow`, { replace: true });
+      return;
+    }
     if (activeTab === "budget") {
       navigate(`/projects/${canonicalProjectRef}/budget`, { replace: true });
+      return;
+    }
+    if (activeTab === "archive") {
+      navigate(`/projects/${canonicalProjectRef}/archive`, { replace: true });
       return;
     }
     if (activeTab === "list") {
@@ -368,6 +574,10 @@ export function ProjectDetail() {
     closePanel();
     return () => closePanel();
   }, [closePanel]);
+
+  useEffect(() => {
+    if (activeTab !== "configuration") setNotificationSettingsOpen(false);
+  }, [activeTab]);
 
   useEffect(() => {
     return () => {
@@ -469,14 +679,23 @@ export function ProjectDetail() {
     if (project?.id) {
       try { cachedTab = localStorage.getItem(`paperclip:project-tab:${project.id}`); } catch {}
     }
+    if (cachedTab === "backlog") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/backlog`} replace />;
+    }
     if (cachedTab === "overview") {
       return <Navigate to={`/projects/${canonicalProjectRef}/overview`} replace />;
     }
     if (cachedTab === "configuration") {
       return <Navigate to={`/projects/${canonicalProjectRef}/configuration`} replace />;
     }
+    if (cachedTab === "workflow") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/workflow`} replace />;
+    }
     if (cachedTab === "budget") {
       return <Navigate to={`/projects/${canonicalProjectRef}/budget`} replace />;
+    }
+    if (cachedTab === "shelf" || cachedTab === "archive") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/archive`} replace />;
     }
     if (isProjectPluginTab(cachedTab)) {
       return <Navigate to={`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(cachedTab)}`} replace />;
@@ -497,12 +716,18 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(tab)}`);
       return;
     }
-    if (tab === "overview") {
+    if (tab === "backlog") {
+      navigate(`/projects/${canonicalProjectRef}/backlog`);
+    } else if (tab === "overview") {
       navigate(`/projects/${canonicalProjectRef}/overview`);
     } else if (tab === "budget") {
       navigate(`/projects/${canonicalProjectRef}/budget`);
     } else if (tab === "configuration") {
       navigate(`/projects/${canonicalProjectRef}/configuration`);
+    } else if (tab === "workflow") {
+      navigate(`/projects/${canonicalProjectRef}/workflow`);
+    } else if (tab === "archive") {
+      navigate(`/projects/${canonicalProjectRef}/archive`);
     } else {
       navigate(`/projects/${canonicalProjectRef}/issues`);
     }
@@ -510,19 +735,20 @@ export function ProjectDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3 pt-4">
+      <div className="flex items-center gap-3 pt-4">
         <div className="h-7 flex items-center">
           <ColorPicker
             currentColor={project.color ?? "#6366f1"}
             onSelect={(color) => updateProject.mutate({ color })}
           />
         </div>
-        <div className="min-w-0 space-y-2">
+        <div className="min-w-0 space-y-1.5">
           <InlineEditor
             value={project.name}
             onSave={(name) => updateProject.mutate({ name })}
             as="h2"
             className="text-xl font-bold"
+            showEditButton
           />
           {project.pauseReason === "budget" ? (
             <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-red-200">
@@ -567,20 +793,31 @@ export function ProjectDetail() {
       <Tabs value={activeTab ?? "list"} onValueChange={(value) => handleTabChange(value as ProjectTab)}>
         <PageTabBar
           items={[
+            { value: "backlog", label: "Backlog" },
             { value: "list", label: "Tasks" },
             { value: "overview", label: "Overview" },
             { value: "configuration", label: "Configuration" },
+            { value: "workflow", label: "Workflow" },
             { value: "budget", label: "Budget" },
             ...pluginTabItems.map((item) => ({
               value: item.value,
               label: item.label,
             })),
+            { value: "archive" as const, label: "Archive" },
           ]}
           align="start"
           value={activeTab ?? "list"}
           onValueChange={(value) => handleTabChange(value as ProjectTab)}
         />
       </Tabs>
+
+      {activeTab === "backlog" && project?.id && resolvedCompanyId && (
+        <ProjectBacklogList
+          projectId={project.id}
+          companyId={resolvedCompanyId}
+          issueLinkState={createIssueDetailLocationState(project.name, `/projects/${canonicalProjectRef}/backlog`)}
+        />
+      )}
 
       {activeTab === "overview" && (
         <OverviewContent
@@ -597,12 +834,22 @@ export function ProjectDetail() {
         <ProjectIssuesList
           projectId={project.id}
           companyId={resolvedCompanyId}
+          boardClosedRetentionDays={project.boardClosedRetentionDays}
           issueLinkState={createIssueDetailLocationState(project.name, `/projects/${canonicalProjectRef}/issues`)}
         />
       )}
 
+      {activeTab === "archive" && project?.id && resolvedCompanyId && (
+        <ProjectArchiveList
+          projectId={project.id}
+          companyId={resolvedCompanyId}
+          retentionDays={project.boardClosedRetentionDays}
+          issueLinkState={createIssueDetailLocationState(project.name, `/projects/${canonicalProjectRef}/archive`)}
+        />
+      )}
+
       {activeTab === "configuration" && (
-        <div className="max-w-4xl space-y-8">
+        <div className="max-w-3xl space-y-6 pb-2">
           <ProjectProperties
             project={project}
             onUpdate={(data) => updateProject.mutate(data)}
@@ -610,25 +857,51 @@ export function ProjectDetail() {
             getFieldSaveState={(field) => fieldSaveStates[field] ?? "idle"}
             onArchive={(archived) => archiveProject.mutate(archived)}
             archivePending={archiveProject.isPending}
+            aboveSecrets={
+              project?.id ? (
+                <>
+                  <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                    <span className="min-w-0 text-sm leading-snug text-muted-foreground sm:max-w-md">
+                      Choose which task events trigger alerts. Open the dialog to edit rules, channels, and recipients.
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-full shrink-0 sm:w-auto"
+                      onClick={() => setNotificationSettingsOpen(true)}
+                    >
+                      Configure notifications
+                    </Button>
+                  </div>
+                  <Dialog open={notificationSettingsOpen} onOpenChange={setNotificationSettingsOpen}>
+                    <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Task notifications</DialogTitle>
+                        <DialogDescription>
+                          Choose which task events trigger alerts for this project. Team members can still manage their own preferences in{" "}
+                          <span className="text-foreground/90">Account → Notifications</span>. In-app alerts are sent when a rule matches. Email is sent only when email is enabled here, company email delivery is configured, and the recipient has email notifications turned on.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <ProjectNotificationSettings
+                        project={project}
+                        issueStatuses={configStatuses}
+                        onSave={(data) => updateProjectField("notification_config", data)}
+                        saveState={fieldSaveStates.notification_config ?? "idle"}
+                        embeddedInModal
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </>
+              ) : undefined
+            }
           />
-          {project?.id && (
-            <>
-              <div className="border-t border-border pt-6">
-                <ProjectNotificationSettings
-                  project={project}
-                  issueStatuses={configStatuses}
-                  onSave={(data) => updateProjectField("notification_config", data)}
-                  saveState={fieldSaveStates.notification_config ?? "idle"}
-                />
-              </div>
-              <div className="border-t border-border pt-6">
-                <ProjectIssueStatusSettings
-                  projectId={project.id}
-                  statuses={configStatuses}
-                />
-              </div>
-            </>
-          )}
+        </div>
+      )}
+
+      {activeTab === "workflow" && project?.id && (
+        <div className="max-w-5xl space-y-6 pb-2">
+          <ProjectIssueStatusSettings projectId={project.id} statuses={configStatuses} />
         </div>
       )}
 

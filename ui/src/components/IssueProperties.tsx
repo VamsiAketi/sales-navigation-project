@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link } from "@/lib/router";
+import { IssueLink } from "./IssueLink";
 import type { Issue } from "@paperclipai/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accessApi } from "../api/access";
@@ -27,7 +28,7 @@ import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X, Target, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X, Target, AlertTriangle, ChevronDown, ChevronRight, Calendar } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
 /** Color swatches for label creation — excludes white and very light colors. */
@@ -209,6 +210,13 @@ function BreakablePath({ text }: { text: string }) {
     parts.push(segments[i]);
   }
   return <>{parts}</>;
+}
+
+function issuePlanningDateInputValue(value: Date | string | null | undefined): string {
+  if (value == null) return "";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
 }
 
 /** Displays a value with a copy-to-clipboard icon and "Copied!" feedback. */
@@ -443,6 +451,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     : null;
   const projectStatuses = useProjectIssueStatuses(issue.projectId ?? null);
   const activeProjectStatuses = projectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
+  const statusWorkflowMeta = useMemo(
+    () => projectStatuses.find((s) => s.value === issue.status),
+    [projectStatuses, issue.status],
+  );
+  const assigneePickerAllowsUsers = statusWorkflowMeta?.allowedActors !== "agent_only";
+  const assigneePickerAllowsAgents = statusWorkflowMeta?.allowedActors !== "human_only";
   const currentProjectExecutionWorkspacePolicy =
     experimentalSettings?.enableIsolatedWorkspaces === true
       ? currentProject?.executionWorkspacePolicy ?? null
@@ -774,7 +788,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         >
           No assignee
         </button>
-        {currentUserId && (
+        {assigneePickerAllowsUsers && currentUserId && (
           <button
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
@@ -798,7 +812,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             Assign to me
           </button>
         )}
-        {issue.createdByUserId && issue.createdByUserId !== currentUserId && (
+        {assigneePickerAllowsUsers && issue.createdByUserId && issue.createdByUserId !== currentUserId && (
           <button
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
@@ -822,7 +836,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             {creatorUserLabel ? `Assign to ${creatorUserLabel}` : "Assign to requester"}
           </button>
         )}
-        {(members ?? [])
+        {assigneePickerAllowsUsers && (members ?? [])
           .filter((m) => m.principalType === "user" && m.user && m.user.id !== currentUserId && m.user.id !== issue.createdByUserId)
           .filter((m) => {
             if (!assigneeSearch.trim()) return true;
@@ -854,7 +868,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               {m.user!.name}
             </button>
           ))}
-        {sortedAgents
+        {assigneePickerAllowsAgents && sortedAgents
           .filter((a) => {
             if (!assigneeSearch.trim()) return true;
             const q = assigneeSearch.toLowerCase();
@@ -890,6 +904,15 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
       {membersPermissionDenied ? (
         <div className="px-2 py-1 text-[11px] text-muted-foreground">
           You can reassign this issue, but full member directory access requires <code>users:manage_permissions</code>.
+        </div>
+      ) : null}
+      {issue.projectId && statusWorkflowMeta && (!assigneePickerAllowsUsers || !assigneePickerAllowsAgents) ? (
+        <div className="px-2 py-1 text-[11px] text-muted-foreground">
+          {assigneePickerAllowsUsers && !assigneePickerAllowsAgents
+            ? "This workflow status only allows AI agents to be assigned."
+            : !assigneePickerAllowsUsers && assigneePickerAllowsAgents
+              ? "This workflow status only allows humans to be assigned."
+              : "This workflow status limits who can be assigned."}
         </div>
       ) : null}
       {assigneeUpdateError ? (
@@ -986,7 +1009,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <StatusIcon
             status={issue.status}
             onChange={(status) => onUpdate({ status })}
-            projectStatuses={activeProjectStatuses.length > 0 ? activeProjectStatuses : undefined}
+            projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
             showLabel
           />
         </PropertyRow>
@@ -997,6 +1020,38 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             onChange={(priority) => onUpdate({ priority })}
             showLabel
           />
+        </PropertyRow>
+
+        <PropertyRow label="Start">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <input
+              type="date"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              value={issuePlanningDateInputValue(issue.targetStartAt)}
+              onChange={(e) => {
+                const v = e.target.value;
+                void onUpdate(v ? { targetStartAt: `${v}T00:00:00.000Z` } : { targetStartAt: null });
+              }}
+              aria-label="Planned start date"
+            />
+          </div>
+        </PropertyRow>
+
+        <PropertyRow label="Due">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <input
+              type="date"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              value={issuePlanningDateInputValue(issue.dueAt)}
+              onChange={(e) => {
+                const v = e.target.value;
+                void onUpdate(v ? { dueAt: `${v}T00:00:00.000Z` } : { dueAt: null });
+              }}
+              aria-label="Due date"
+            />
+          </div>
         </PropertyRow>
 
         <PropertyPicker
@@ -1220,12 +1275,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
         {issue.parentId && (
           <PropertyRow label="Parent">
-            <Link
-              to={`/issues/${issue.ancestors?.[0]?.identifier ?? issue.parentId}`}
+            <IssueLink
+              issuePathId={issue.ancestors?.[0]?.identifier ?? issue.parentId}
               className="text-sm hover:underline"
             >
               {issue.ancestors?.[0]?.title ?? issue.parentId.slice(0, 8)}
-            </Link>
+            </IssueLink>
           </PropertyRow>
         )}
 

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CompanySecret, Project } from "@paperclipai/shared";
+import { DEFAULT_BOARD_CLOSED_RETENTION_DAYS } from "@paperclipai/shared";
 import { StatusBadge } from "./StatusBadge";
 import { cn, formatDate } from "../lib/utils";
 import { goalsApi } from "../api/goals";
@@ -11,7 +12,6 @@ import { secretsApi } from "../api/secrets";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { statusBadge, statusBadgeDefault } from "../lib/status-colors";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -23,7 +23,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AlertCircle, Archive, ArchiveRestore, Check, ExternalLink, Github, Loader2, Plus, Trash2, X } from "lucide-react";
-import { ChoosePathButton } from "./PathInstructionsModal";
 import { DraftInput } from "./agent-config-primitives";
 import { InlineEditor } from "./InlineEditor";
 
@@ -179,6 +178,8 @@ interface ProjectPropertiesProps {
   getFieldSaveState?: (field: ProjectConfigFieldKey) => ProjectFieldSaveState;
   onArchive?: (archived: boolean) => void;
   archivePending?: boolean;
+  /** Rendered in a property row immediately above Secrets (e.g. task notification settings). */
+  aboveSecrets?: ReactNode;
 }
 
 export type ProjectFieldSaveState = "idle" | "saving" | "saved" | "error";
@@ -187,6 +188,7 @@ export type ProjectConfigFieldKey =
   | "description"
   | "status"
   | "goals"
+  | "board_closed_retention_days"
   | "env_config"
   | "notification_config"
   | "execution_workspace_enabled"
@@ -234,7 +236,7 @@ function FieldLabel({
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <SaveIndicator state={state} />
     </div>
   );
@@ -252,8 +254,13 @@ function PropertyRow({
   valueClassName?: string;
 }) {
   return (
-    <div className={cn("flex gap-3 py-1.5", alignStart ? "items-start" : "items-center")}>
-      <div className="shrink-0 w-20">{label}</div>
+    <div
+      className={cn(
+        "flex gap-4 px-5 py-3.5 sm:px-6",
+        alignStart ? "items-start" : "items-center",
+      )}
+    >
+      <div className="shrink-0 w-22 pt-0.5 sm:w-28">{label}</div>
       <div className={cn("min-w-0 flex-1", alignStart ? "pt-0.5" : "flex items-center gap-1.5", valueClassName)}>
         {children}
       </div>
@@ -362,7 +369,15 @@ function ArchiveDangerZone({
   );
 }
 
-export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSaveState, onArchive, archivePending }: ProjectPropertiesProps) {
+export function ProjectProperties({
+  project,
+  onUpdate,
+  onFieldUpdate,
+  getFieldSaveState,
+  onArchive,
+  archivePending,
+  aboveSecrets,
+}: ProjectPropertiesProps) {
   const { selectedCompanyId, selectedCompany } = useCompany();
   const companyPrefix = selectedCompany?.issuePrefix?.trim() ?? "";
   const companySettingsPath = companyPrefix ? `/${companyPrefix}/company/settings` : "/company/settings";
@@ -370,10 +385,16 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const [goalOpen, setGoalOpen] = useState(false);
   const [projectSecretsModalOpen, setProjectSecretsModalOpen] = useState(false);
   const [executionWorkspaceAdvancedOpen, setExecutionWorkspaceAdvancedOpen] = useState(false);
-  const [workspaceMode, setWorkspaceMode] = useState<"local" | "repo" | null>(null);
-  const [workspaceCwd, setWorkspaceCwd] = useState("");
+  const [workspaceMode, setWorkspaceMode] = useState<"repo" | null>(null);
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [boardRetentionDraft, setBoardRetentionDraft] = useState(() =>
+    String(project.boardClosedRetentionDays ?? DEFAULT_BOARD_CLOSED_RETENTION_DAYS),
+  );
+
+  useEffect(() => {
+    setBoardRetentionDraft(String(project.boardClosedRetentionDays ?? DEFAULT_BOARD_CLOSED_RETENTION_DAYS));
+  }, [project.boardClosedRetentionDays]);
 
   const commitField = (field: ProjectConfigFieldKey, data: Record<string, unknown>) => {
     if (onFieldUpdate) {
@@ -449,7 +470,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const createWorkspace = useMutation({
     mutationFn: (data: Record<string, unknown>) => projectsApi.createWorkspace(project.id, data),
     onSuccess: () => {
-      setWorkspaceCwd("");
       setWorkspaceRepoUrl("");
       setWorkspaceMode(null);
       setWorkspaceError(null);
@@ -460,7 +480,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const removeWorkspace = useMutation({
     mutationFn: (workspaceId: string) => projectsApi.removeWorkspace(project.id, workspaceId),
     onSuccess: () => {
-      setWorkspaceCwd("");
       setWorkspaceRepoUrl("");
       setWorkspaceMode(null);
       setWorkspaceError(null);
@@ -471,7 +490,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     mutationFn: ({ workspaceId, data }: { workspaceId: string; data: Record<string, unknown> }) =>
       projectsApi.updateWorkspace(project.id, workspaceId, data),
     onSuccess: () => {
-      setWorkspaceCwd("");
       setWorkspaceRepoUrl("");
       setWorkspaceMode(null);
       setWorkspaceError(null);
@@ -502,8 +520,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       },
     };
   };
-
-  const isAbsolutePath = (value: string) => value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
 
   const looksLikeRepoUrl = (value: string) => {
     try {
@@ -571,21 +587,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     createWorkspace.mutate(data);
   };
 
-  const submitLocalWorkspace = () => {
-    const cwd = workspaceCwd.trim();
-    if (!cwd) {
-      setWorkspaceError(null);
-      persistCodebase({ cwd: null });
-      return;
-    }
-    if (!isAbsolutePath(cwd)) {
-      setWorkspaceError("Local folder must be a full absolute path.");
-      return;
-    }
-    setWorkspaceError(null);
-    persistCodebase({ cwd });
-  };
-
   const submitRepoWorkspace = () => {
     const repoUrl = workspaceRepoUrl.trim();
     if (!repoUrl) {
@@ -599,16 +600,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
     }
     setWorkspaceError(null);
     persistCodebase({ repoUrl });
-  };
-
-  const clearLocalWorkspace = () => {
-    const confirmed = window.confirm(
-      codebase.repoUrl
-        ? "Clear local folder from this workspace?"
-        : "Delete this workspace local folder?",
-    );
-    if (!confirmed) return;
-    persistCodebase({ cwd: null });
   };
 
   const clearRepoWorkspace = () => {
@@ -691,15 +682,22 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   };
 
   return (
-    <div>
-      <div className="space-y-1 pb-4">
+    <div className="space-y-6">
+      <section className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
+        <header className="border-b border-border/60 bg-muted/20 px-5 py-4 sm:px-6">
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">Project settings</h2>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+            Core details, goals, notifications, and how agents receive secrets for this project.
+          </p>
+        </header>
+        <div className="divide-y divide-border/55">
         <PropertyRow label={<FieldLabel label="Name" state={fieldState("name")} />}>
           {onUpdate || onFieldUpdate ? (
             <DraftInput
               value={project.name}
               onCommit={(name) => commitField("name", { name })}
               immediate
-              className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm outline-none"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40"
               placeholder="Project name"
             />
           ) : (
@@ -712,14 +710,16 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
           valueClassName="space-y-0.5"
         >
           {onUpdate || onFieldUpdate ? (
-            <InlineEditor
-              value={project.description ?? ""}
-              onSave={(description) => commitField("description", { description })}
-              as="p"
-              className="text-sm text-muted-foreground"
-              placeholder="Add a description..."
-              multiline
-            />
+            <div className="rounded-md border border-border bg-background p-2.5">
+              <InlineEditor
+                value={project.description ?? ""}
+                onSave={(description) => commitField("description", { description })}
+                as="p"
+                className="text-sm text-muted-foreground"
+                placeholder="Add a description..."
+                multiline
+              />
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">
               {project.description?.trim() || "No description"}
@@ -737,7 +737,11 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
           )}
         </PropertyRow>
         {project.leadAgentId && (
-          <PropertyRow label="Lead">
+          <PropertyRow
+            label={
+              <span className="text-xs font-medium text-muted-foreground">Lead</span>
+            }
+          >
             <span className="text-sm font-mono">{project.leadAgentId.slice(0, 8)}</span>
           </PropertyRow>
         )}
@@ -814,19 +818,73 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             <span className="text-sm">{formatDate(project.targetDate)}</span>
           </PropertyRow>
         )}
+        <PropertyRow
+          label={<FieldLabel label="Board retention" state={fieldState("board_closed_retention_days")} />}
+          alignStart
+        >
+          <div className="space-y-1.5 max-w-lg">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                placeholder={String(DEFAULT_BOARD_CLOSED_RETENTION_DAYS)}
+                className="h-8 w-24 rounded border border-border bg-transparent px-2 py-1 text-sm tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={boardRetentionDraft}
+                onChange={(e) => setBoardRetentionDraft(e.target.value)}
+                onBlur={() => {
+                  const t = boardRetentionDraft.trim();
+                  if (t === "") {
+                    setBoardRetentionDraft(String(DEFAULT_BOARD_CLOSED_RETENTION_DAYS));
+                    if (project.boardClosedRetentionDays !== DEFAULT_BOARD_CLOSED_RETENTION_DAYS) {
+                      commitField("board_closed_retention_days", {
+                        boardClosedRetentionDays: DEFAULT_BOARD_CLOSED_RETENTION_DAYS,
+                      });
+                    }
+                    return;
+                  }
+                  const n = Number.parseInt(t, 10);
+                  if (!Number.isFinite(n) || n < 1 || n > 3650) {
+                    setBoardRetentionDraft(String(project.boardClosedRetentionDays));
+                    return;
+                  }
+                  if (n !== project.boardClosedRetentionDays) {
+                    commitField("board_closed_retention_days", { boardClosedRetentionDays: n });
+                  }
+                }}
+              />
+              <span className="text-xs text-muted-foreground">days (Done / Cancelled on board)</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Default {DEFAULT_BOARD_CLOSED_RETENTION_DAYS} days. Closed tasks stay on the board only for this many full
+              days after completion or cancellation (minimum 1). Older tasks appear on the{" "}
+              <span className="font-medium text-foreground/90">Archive</span> tab.
+            </p>
+          </div>
+        </PropertyRow>
+        {aboveSecrets != null ? (
+          <PropertyRow
+            label={<FieldLabel label="Notifications" state={fieldState("notification_config")} />}
+            alignStart
+            valueClassName="space-y-2"
+          >
+            {aboveSecrets}
+          </PropertyRow>
+        ) : null}
         <PropertyRow label={<FieldLabel label="Secrets" state="idle" />}>
-          <div className="flex w-full items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <span className="min-w-0 text-sm leading-snug text-muted-foreground sm:max-w-md">
               {project.envConfig && Object.keys(project.envConfig).length > 0
-                ? `${Object.keys(project.envConfig).length} mapping${
+                ? `${Object.keys(project.envConfig).length} env mapping${
                     Object.keys(project.envConfig).length === 1 ? "" : "s"
-                  } configured`
-                : "No mappings configured yet."}
+                  } configured for agents.`
+                : "Map environment variable names to company secrets for agent runtime."}
             </span>
             <Button
               type="button"
-              size="xs"
-              className="h-7 shrink-0"
+              variant="outline"
+              size="sm"
+              className="h-8 w-full shrink-0 sm:w-auto"
               onClick={() => setProjectSecretsModalOpen(true)}
               disabled={!(onUpdate || onFieldUpdate)}
             >
@@ -834,30 +892,35 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             </Button>
           </div>
         </PropertyRow>
-      </div>
+        </div>
+      </section>
 
-      <Separator className="my-4" />
-
-      <div className="space-y-1 py-4">
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Codebase</span>
+      <section className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
+        <header className="border-b border-border/60 bg-muted/20 px-5 py-3.5 sm:px-6">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold tracking-tight text-foreground">Codebase</h2>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted-foreground hover:text-foreground"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/80 text-[10px] font-medium text-muted-foreground hover:border-border hover:text-foreground"
                   aria-label="Codebase help"
                 >
                   ?
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top">
-                Repo identifies the source of truth. Local folder is the default place agents write code.
+              <TooltipContent side="top" className="max-w-xs text-xs">
+                Repo identifies the source of truth for this project&apos;s codebase.
               </TooltipContent>
             </Tooltip>
           </div>
-          <div className="space-y-2 rounded-md border border-border/70 p-3">
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Repository URL and GitHub credentials used when agents work in this codebase.
+          </p>
+        </header>
+        <div className="space-y-4 px-5 py-4 sm:px-6">
+        <div className="space-y-2">
+          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/5 p-4">
             <div className="space-y-1">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Repo</div>
               {codebase.repoUrl ? (
@@ -947,44 +1010,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
               )}
             </div>
 
-            <div className="space-y-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Local folder</div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 space-y-1">
-                  <div className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-                    {codebase.effectiveLocalFolder}
-                  </div>
-                  {codebase.origin === "managed_checkout" && (
-                    <div className="text-[11px] text-muted-foreground">Paperclip-managed folder.</div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    className="h-6 px-2"
-                    onClick={() => {
-                      setWorkspaceMode("local");
-                      setWorkspaceCwd(codebase.localFolder ?? "");
-                      setWorkspaceError(null);
-                    }}
-                  >
-                    {codebase.localFolder ? "Change local folder" : "Set local folder"}
-                  </Button>
-                  {codebase.localFolder ? (
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={clearLocalWorkspace}
-                      aria-label="Clear local folder"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
             {hasAdditionalLegacyWorkspaces && (
               <div className="text-[11px] text-muted-foreground">
                 Additional legacy workspace records exist on this project. Paperclip is using the primary workspace as the codebase view.
@@ -1037,42 +1062,6 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
               </div>
             ) : null}
           </div>
-          {workspaceMode === "local" && (
-            <div className="space-y-1.5 rounded-md border border-border p-2">
-              <div className="flex items-center gap-2">
-                <input
-                  className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
-                  value={workspaceCwd}
-                  onChange={(e) => setWorkspaceCwd(e.target.value)}
-                  placeholder="/absolute/path/to/workspace"
-                />
-                <ChoosePathButton />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="xs"
-                  className="h-6 px-2"
-                  disabled={(!workspaceCwd.trim() && !primaryCodebaseWorkspace) || createWorkspace.isPending || updateWorkspace.isPending}
-                  onClick={submitLocalWorkspace}
-                >
-                  Save
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="h-6 px-2"
-                  onClick={() => {
-                    setWorkspaceMode(null);
-                    setWorkspaceCwd("");
-                    setWorkspaceError(null);
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
           {workspaceMode === "repo" && (
             <div className="space-y-1.5 rounded-md border border-border p-2">
               <input
@@ -1119,30 +1108,28 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             <p className="text-xs text-destructive">Failed to update workspace.</p>
           )}
         </div>
+        </div>
 
         {isolatedWorkspacesEnabled ? (
-          <>
-            <Separator className="my-4" />
-
-            <div className="py-1.5 space-y-2">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span>Execution Workspaces</span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted-foreground hover:text-foreground"
-                      aria-label="Execution workspaces help"
-                    >
-                      ?
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    Project-owned defaults for isolated issue checkouts and execution workspace behavior.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <div className="space-y-3">
+          <div className="space-y-4 border-t border-border/55 px-5 py-5 sm:px-6">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold tracking-tight text-foreground">Execution workspaces</h3>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/80 text-[10px] font-medium text-muted-foreground hover:border-border hover:text-foreground"
+                    aria-label="Execution workspaces help"
+                  >
+                    ?
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  Project-owned defaults for isolated issue checkouts and execution workspace behavior.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2 text-sm font-medium">
@@ -1368,11 +1355,9 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                   </div>
                 ) : null}
               </div>
-            </div>
-          </>
+          </div>
         ) : null}
-
-      </div>
+      </section>
 
       {onUpdate || onFieldUpdate ? (
         <Dialog open={projectSecretsModalOpen} onOpenChange={setProjectSecretsModalOpen}>
@@ -1396,19 +1381,21 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       ) : null}
 
       {onArchive && (
-        <>
-          <Separator className="my-4" />
-          <div className="space-y-4 py-4">
-            <div className="text-xs font-medium text-destructive uppercase tracking-wide">
-              Danger Zone
-            </div>
+        <section className="overflow-hidden rounded-xl border border-destructive/25 bg-card shadow-xs">
+          <header className="border-b border-destructive/20 bg-destructive/5 px-5 py-3 sm:px-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-destructive">Danger zone</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Archiving hides this project from the sidebar and selectors.
+            </p>
+          </header>
+          <div className="px-5 py-4 sm:px-6">
             <ArchiveDangerZone
               project={project}
               onArchive={onArchive}
               archivePending={archivePending}
             />
           </div>
-        </>
+        </section>
       )}
     </div>
   );

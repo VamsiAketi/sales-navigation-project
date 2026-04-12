@@ -1,9 +1,8 @@
 import { useState } from "react";
 import type { Issue } from "@paperclipai/shared";
-import { Link } from "@/lib/router";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatusIcon } from "./StatusIcon";
-import { createIssueDetailPath } from "../lib/issueDetailBreadcrumb";
+import { IssueLink } from "./IssueLink";
 import { timeAgo } from "../lib/timeAgo";
 
 interface IssuesQuicklookProps {
@@ -34,12 +33,12 @@ export function IssuesQuicklook({ issue, children }: IssuesQuicklookProps) {
         <div className="space-y-2">
           <div className="flex items-start gap-2">
             <StatusIcon status={issue.status} className="mt-0.5 shrink-0" />
-            <Link
-              to={createIssueDetailPath(issue.identifier ?? issue.id)}
+            <IssueLink
+              issuePathId={issue.identifier ?? issue.id}
               className="text-sm font-medium leading-snug hover:underline line-clamp-2"
             >
               {issue.title}
-            </Link>
+            </IssueLink>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="font-mono">{issue.identifier ?? issue.id.slice(0, 8)}</span>

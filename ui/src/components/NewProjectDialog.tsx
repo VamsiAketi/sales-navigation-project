@@ -24,18 +24,10 @@ import {
   Calendar,
   Plus,
   X,
-  HelpCircle,
 } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { PROJECT_COLORS } from "@paperclipai/shared";
 import { cn } from "../lib/utils";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { StatusBadge } from "./StatusBadge";
-import { ChoosePathButton } from "./PathInstructionsModal";
 
 const projectStatuses = [
   { value: "backlog", label: "Backlog" },
@@ -55,7 +47,6 @@ export function NewProjectDialog() {
   const [goalIds, setGoalIds] = useState<string[]>([]);
   const [targetDate, setTargetDate] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const [workspaceLocalPath, setWorkspaceLocalPath] = useState("");
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [goalError, setGoalError] = useState<string | null>(null);
@@ -113,14 +104,11 @@ export function NewProjectDialog() {
     setGoalIds([]);
     setTargetDate("");
     setExpanded(false);
-    setWorkspaceLocalPath("");
     setWorkspaceRepoUrl("");
     setWorkspaceError(null);
     setGoalError(null);
     hasAutoSelectedGoalRef.current = false;
   }
-
-  const isAbsolutePath = (value: string) => value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
 
   const looksLikeRepoUrl = (value: string) => {
     try {
@@ -131,12 +119,6 @@ export function NewProjectDialog() {
     } catch {
       return false;
     }
-  };
-
-  const deriveWorkspaceNameFromPath = (value: string) => {
-    const normalized = value.trim().replace(/[\\/]+$/, "");
-    const segments = normalized.split(/[\\/]/).filter(Boolean);
-    return segments[segments.length - 1] ?? "Local folder";
   };
 
   const deriveWorkspaceNameFromRepo = (value: string) => {
@@ -152,17 +134,8 @@ export function NewProjectDialog() {
 
   async function handleSubmit() {
     if (!selectedCompanyId || !name.trim()) return;
-    if (goalIds.length === 0) {
-      setGoalError("Select a goal before creating this project.");
-      return;
-    }
-    const localPath = workspaceLocalPath.trim();
     const repoUrl = workspaceRepoUrl.trim();
 
-    if (localPath && !isAbsolutePath(localPath)) {
-      setWorkspaceError("Local folder must be a full absolute path.");
-      return;
-    }
     if (repoUrl && !looksLikeRepoUrl(repoUrl)) {
       setWorkspaceError("Repo must use a valid GitHub or GitHub Enterprise repo URL.");
       return;
@@ -176,18 +149,15 @@ export function NewProjectDialog() {
         name: name.trim(),
         description: description.trim() || undefined,
         status,
-        color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)],
         ...(goalIds.length > 0 ? { goalIds } : {}),
         ...(targetDate ? { targetDate } : {}),
       });
 
-      if (localPath || repoUrl) {
+      if (repoUrl) {
         const workspacePayload: Record<string, unknown> = {
-          name: localPath
-            ? deriveWorkspaceNameFromPath(localPath)
-            : deriveWorkspaceNameFromRepo(repoUrl),
-          ...(localPath ? { cwd: localPath } : {}),
-          ...(repoUrl ? { repoUrl } : {}),
+          name: deriveWorkspaceNameFromRepo(repoUrl),
+          cwd: "",
+          repoUrl,
         };
         await projectsApi.createWorkspace(created.id, workspacePayload);
       }
@@ -210,6 +180,10 @@ export function NewProjectDialog() {
 
   const selectedGoals = (goals ?? []).filter((g) => goalIds.includes(g.id));
   const availableGoals = (goals ?? []).filter((g) => !goalIds.includes(g.id));
+  const missingRequiredFields: string[] = [];
+  if (!selectedCompanyId) missingRequiredFields.push("Company selection");
+  if (!name.trim()) missingRequiredFields.push("Project name");
+  const submitDisabled = missingRequiredFields.length > 0 || createProject.isPending;
 
   useEffect(() => {
     if (!newProjectOpen) {
@@ -321,14 +295,6 @@ export function NewProjectDialog() {
             <div className="mb-1 flex items-center gap-1.5">
               <label className="block text-xs text-muted-foreground">Repo URL</label>
               <span className="text-xs text-muted-foreground/50">optional</span>
-              <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-3 w-3 text-muted-foreground/50 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-[240px] text-xs">
-                  Link a GitHub repository so agents can clone, read, and push code for this project.
-                </TooltipContent>
-              </Tooltip>
             </div>
             <input
               className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
@@ -336,29 +302,37 @@ export function NewProjectDialog() {
               onChange={(e) => { setWorkspaceRepoUrl(e.target.value); setWorkspaceError(null); }}
               placeholder="https://github.com/org/repo"
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              If you want this to be a software engineering project and maintain code on GitHub, link the repository here.
+            </p>
           </div>
 
           <div>
             <div className="mb-1 flex items-center gap-1.5">
-              <label className="block text-xs text-muted-foreground">Local folder</label>
+              <label htmlFor="project-target-date" className="block text-xs text-muted-foreground">
+                Target completion date
+              </label>
               <span className="text-xs text-muted-foreground/50">optional</span>
-              <Tooltip delayDuration={300}>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-3 w-3 text-muted-foreground/50 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-[240px] text-xs">
-                  Set an absolute path on this machine where local agents will read and write files for this project.
-                </TooltipContent>
-              </Tooltip>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-md border border-border bg-transparent px-2 py-1.5">
+              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
               <input
-                className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
-                value={workspaceLocalPath}
-                onChange={(e) => { setWorkspaceLocalPath(e.target.value); setWorkspaceError(null); }}
-                placeholder="/absolute/path/to/workspace"
+                id="project-target-date"
+                type="date"
+                className="w-full bg-transparent text-xs outline-none"
+                value={targetDate}
+                onChange={(e) => setTargetDate(e.target.value)}
+                aria-label="Target completion date"
               />
-              <ChoosePathButton />
+              {targetDate && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setTargetDate("")}
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
 
@@ -376,7 +350,7 @@ export function NewProjectDialog() {
                 <StatusBadge status={status} />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-40 p-1" align="start">
+            <PopoverContent className="z-220 w-40 p-1" align="start">
               {projectStatuses.map((s) => (
                 <button
                   key={s.value}
@@ -420,10 +394,19 @@ export function NewProjectDialog() {
                 disabled={selectedGoals.length > 0 && availableGoals.length === 0}
               >
                 {selectedGoals.length > 0 ? <Plus className="h-3 w-3 text-muted-foreground" /> : <Target className="h-3 w-3 text-muted-foreground" />}
-                {selectedGoals.length > 0 ? "+ Goal" : "Goal"}
+                {selectedGoals.length > 0 ? "Add goal" : "Goal"}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-56 p-1" align="start">
+            <PopoverContent className="z-220 w-56 p-1" align="start">
+              {selectedGoals.length === 0 && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent/50"
+                  onClick={() => setGoalOpen(false)}
+                >
+                  No goal
+                </button>
+              )}
               {availableGoals.map((g) => (
                 <button
                   key={g.id}
@@ -448,29 +431,22 @@ export function NewProjectDialog() {
             <span className="text-xs text-destructive">{goalError}</span>
           )}
 
-          {/* Target date */}
-          <div className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs">
-            <Calendar className="h-3 w-3 text-muted-foreground" />
-            <input
-              type="date"
-              className="bg-transparent outline-none text-xs w-24"
-              value={targetDate}
-              onChange={(e) => setTargetDate(e.target.value)}
-              placeholder="Target date"
-            />
-          </div>
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-2.5 border-t border-border">
           {createProject.isError ? (
             <p className="text-xs text-destructive">Failed to create project.</p>
+          ) : submitDisabled ? (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Complete required fields to continue: {missingRequiredFields.join(", ")}.
+            </p>
           ) : (
             <span />
           )}
           <Button
             size="sm"
-            disabled={!name.trim() || goalIds.length === 0 || createProject.isPending}
+            disabled={submitDisabled}
             onClick={handleSubmit}
           >
             {createProject.isPending ? "Creating…" : "Create project"}

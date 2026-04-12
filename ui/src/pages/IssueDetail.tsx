@@ -17,11 +17,13 @@ import { assigneeValueFromSelection, suggestedCommentAssigneeValue } from "../li
 import { queryKeys } from "../lib/queryKeys";
 import { readIssueDetailBreadcrumb, readIssueDetailBreadcrumbChain } from "../lib/issueDetailBreadcrumb";
 import { useProjectOrder } from "../hooks/useProjectOrder";
+import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { relativeTime, cn } from "../lib/utils";
 import { InlineEditor } from "../components/InlineEditor";
 import { CommentThread } from "../components/CommentThread";
 import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
 import { IssueProperties } from "../components/IssueProperties";
+import { IssueLink } from "../components/IssueLink";
 import { LiveRunWidget } from "../components/LiveRunWidget";
 import type { MentionOption } from "../components/MarkdownEditor";
 import { StatusIcon } from "../components/StatusIcon";
@@ -299,6 +301,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     enabled: !!issueId,
   });
   const resolvedCompanyId = issue?.companyId ?? selectedCompanyId;
+  const projectIssueStatuses = useProjectIssueStatuses(issue?.projectId ?? null);
 
   const { data: comments } = useQuery({
     queryKey: queryKeys.issues.comments(issueId!),
@@ -768,14 +771,14 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           {[...ancestors].reverse().map((ancestor, i) => (
             <span key={ancestor.id} className="flex items-center gap-1">
               {i > 0 && <ChevronRight className="h-3 w-3 shrink-0" />}
-              <Link
-                to={`/issues/${ancestor.identifier ?? ancestor.id}`}
-                state={location.state}
+              <IssueLink
+                issuePathId={ancestor.identifier ?? ancestor.id}
+                issueLinkState={location.state}
                 className="hover:text-foreground transition-colors truncate max-w-[200px]"
                 title={ancestor.title}
               >
                 {ancestor.title}
-              </Link>
+              </IssueLink>
             </span>
           ))}
           <ChevronRight className="h-3 w-3 shrink-0" />
@@ -795,6 +798,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           <StatusIcon
             status={issue.status}
             onChange={(status) => updateIssue.mutate({ status })}
+            projectStatuses={projectIssueStatuses.length > 0 ? projectIssueStatuses : undefined}
           />
           <PriorityIcon
             priority={issue.priority}
@@ -937,11 +941,13 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
               )}
             </PopoverContent>
             </Popover>
-            <Link to={sourceBreadcrumbs[0].href}>
-              <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs[0].label}`}>
-                <X className="h-4 w-4" />
-              </Button>
-            </Link>
+            {!fullWidth ? (
+              <Link to={sourceBreadcrumbs[0].href}>
+                <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs[0].label}`}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </Link>
+            ) : null}
           </div>
         </div>
 
@@ -1159,10 +1165,10 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           ) : (
             <div className="border border-border rounded-lg divide-y divide-border">
               {childIssues.map((child) => (
-                <Link
+                <IssueLink
                   key={child.id}
-                  to={`/issues/${child.identifier ?? child.id}`}
-                  state={location.state}
+                  issuePathId={child.identifier ?? child.id}
+                  issueLinkState={location.state}
                   className="flex items-center justify-between px-3 py-2 text-sm hover:bg-accent/20 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
@@ -1179,7 +1185,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
                       ? <Identity name={name} size="sm" />
                       : <span className="text-muted-foreground font-mono">{child.assigneeAgentId.slice(0, 8)}</span>;
                   })()}
-                </Link>
+                </IssueLink>
               ))}
             </div>
           )}

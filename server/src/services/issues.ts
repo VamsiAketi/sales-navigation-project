@@ -18,10 +18,17 @@ import {
   issueReadStates,
   issues,
   labels,
+  projectIssueStatuses,
   projectWorkspaces,
   projects,
 } from "@paperclipai/db";
-import { extractAgentMentionIds, extractProjectMentionIds, extractUserMentionIds } from "@paperclipai/shared";
+import {
+  extractAgentMentionIds,
+  extractProjectMentionIds,
+  extractUserMentionIds,
+  isBoardPinnedHiddenProjectIssueStatusValue,
+  isProjectIssueWorkflowTransitionAllowed,
+} from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
 import {
   defaultIssueExecutionWorkspaceSettingsForProject,
@@ -35,6 +42,58 @@ import { getDefaultCompanyGoal } from "./goals.js";
 
 const ALL_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"];
 const MAX_ISSUE_COMMENT_PAGE_LIMIT = 500;
+
+/** List-only stages (e.g. backlog) may have no assignee; every other stage requires one. */
+function assertAssigneeRequiredUnlessListOnlyStage(
+  status: string,
+  assigneeUserId: string | null | undefined,
+  assigneeAgentId: string | null | undefined,
+) {
+  if (isBoardPinnedHiddenProjectIssueStatusValue(status)) return;
+  if (assigneeUserId || assigneeAgentId) return;
+  throw unprocessable("An assignee is required when the task is not in Backlog.", {
+    field: "assignee",
+  });
+}
+
+/**
+ * After workflow assignee rules, the resolved assignee may be empty because the *target* stage clears an
+ * incompatible assignee (e.g. agent_only clears a human). Prefer a specific error over a generic
+ * “assignee required” in that case.
+ */
+async function assertAssigneeRequiredAfterWorkflowForUpdate(
+  db: Pick<Db, "select">,
+  companyId: string,
+  projectId: string | null,
+  nextStatus: string,
+  nextUser: string | null | undefined,
+  nextAgent: string | null | undefined,
+  existingUser: string | null | undefined,
+  existingAgent: string | null | undefined,
+  statusChanged: boolean,
+) {
+  if (isBoardPinnedHiddenProjectIssueStatusValue(nextStatus)) return;
+  if (nextUser || nextAgent) return;
+
+  if (projectId && statusChanged) {
+    const row = await fetchProjectIssueStatusRow(db, companyId, projectId, nextStatus);
+    const actors = row?.allowedActors ?? "human_and_agent";
+    if (actors === "agent_only" && existingUser && !existingAgent) {
+      throw unprocessable(
+        "This stage only allows AI assignees. The task is assigned to a person. Assign an AI agent before moving it here, or change this stage’s “Who can be assigned” setting in the project workflow.",
+        { field: "assigneeAgentId", code: "workflow_agent_only" },
+      );
+    }
+    if (actors === "human_only" && existingAgent && !existingUser) {
+      throw unprocessable(
+        "This stage only allows human assignees. The task is assigned to an AI agent. Assign a teammate before moving it here, or change this stage’s “Who can be assigned” setting in the project workflow.",
+        { field: "assigneeUserId", code: "workflow_human_only" },
+      );
+    }
+  }
+
+  assertAssigneeRequiredUnlessListOnlyStage(nextStatus, nextUser, nextAgent);
+}
 
 // Validation of status values for project-specific issues is handled at the route level,
 // where the project's custom statuses can be looked up. Here we only block obvious unknown
@@ -117,6 +176,114 @@ const TERMINAL_HEARTBEAT_RUN_STATUSES = new Set(["succeeded", "failed", "cancell
 
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, "\\$&");
+}
+
+async function fetchProjectIssueStatusRow(
+  db: Pick<Db, "select">,
+  companyId: string,
+  projectId: string,
+  statusValue: string,
+) {
+  return db
+    .select()
+    .from(projectIssueStatuses)
+    .where(
+      and(
+        eq(projectIssueStatuses.projectId, projectId),
+        eq(projectIssueStatuses.companyId, companyId),
+        eq(projectIssueStatuses.value, statusValue),
+      ),
+    )
+    .then((rows) => rows[0] ?? null);
+}
+
+async function assertIssueStatusTransitionAllowed(
+  db: Pick<Db, "select">,
+  companyId: string,
+  projectId: string | null,
+  fromStatus: string,
+  toStatus: string,
+) {
+  if (!projectId || fromStatus === toStatus) return;
+  if (
+    (fromStatus === "done" || fromStatus === "cancelled") &&
+    toStatus === "todo"
+  ) {
+    return;
+  }
+  const fromRow = await fetchProjectIssueStatusRow(db, companyId, projectId, fromStatus);
+  if (!fromRow) return;
+  const allowedNext = (fromRow.allowedNextStatusValues as string[] | null) ?? [];
+  if (
+    !isProjectIssueWorkflowTransitionAllowed(fromStatus, toStatus, {
+      allowedNextStatusValues: allowedNext,
+    })
+  ) {
+    throw unprocessable(
+      "This task cannot move to the selected stage for this project's workflow rules.",
+    );
+  }
+}
+
+async function applyProjectWorkflowAssigneeRules(
+  db: Pick<Db, "select">,
+  companyId: string,
+  projectId: string | null,
+  baseline: { status: string; assigneeUserId: string | null; assigneeAgentId: string | null },
+  patch: Partial<{ status: string; assigneeUserId: string | null; assigneeAgentId: string | null }>,
+  isCreate: boolean,
+): Promise<{ assigneeUserId: string | null; assigneeAgentId: string | null }> {
+  const nextStatus = patch.status ?? baseline.status;
+  let user = patch.assigneeUserId !== undefined ? patch.assigneeUserId : baseline.assigneeUserId;
+  let agent = patch.assigneeAgentId !== undefined ? patch.assigneeAgentId : baseline.assigneeAgentId;
+
+  if (!projectId) {
+    return { assigneeUserId: user, assigneeAgentId: agent };
+  }
+
+  const row = await fetchProjectIssueStatusRow(db, companyId, projectId, nextStatus);
+  if (!row) {
+    return { assigneeUserId: user, assigneeAgentId: agent };
+  }
+
+  const transitioning =
+    isCreate || (patch.status !== undefined && patch.status !== baseline.status);
+
+  const actors = row.allowedActors ?? "human_and_agent";
+  if (actors === "human_only") {
+    agent = null;
+  }
+  if (actors === "agent_only") {
+    user = null;
+  }
+
+  // Apply stage defaults only after actor rules, so incompatible assignees are cleared first
+  // (e.g. human → agent_only becomes empty, then fills from defaultAssigneeAgentId when set).
+  if (transitioning && !user && !agent) {
+    if (row.defaultAssigneeUserId && actors !== "agent_only") {
+      user = row.defaultAssigneeUserId;
+      agent = null;
+    } else if (row.defaultAssigneeAgentId && actors !== "human_only") {
+      agent = row.defaultAssigneeAgentId;
+      user = null;
+    } else if (row.isHumanApproval && actors !== "agent_only") {
+      const approverIds = (row.approverUserIds as string[] | null) ?? [];
+      const firstApprover = approverIds.find((id) => typeof id === "string" && id.length > 0);
+      if (firstApprover) {
+        user = firstApprover;
+        agent = null;
+      }
+    }
+  }
+
+  if (actors === "human_only" && agent) {
+    throw unprocessable("This workflow status only allows human assignees.");
+  }
+  if (actors === "agent_only" && user) {
+    throw unprocessable("This workflow status only allows AI agent assignees.");
+  }
+
+  return { assigneeUserId: user, assigneeAgentId: agent };
 }
 
 async function getProjectDefaultGoalId(
@@ -805,20 +972,11 @@ export function issueService(db: Db) {
       if (data.assigneeAgentId && data.assigneeUserId) {
         throw unprocessable("Issue can only have one assignee");
       }
-      if (data.assigneeAgentId) {
-        await assertAssignableAgent(companyId, data.assigneeAgentId);
-      }
-      if (data.assigneeUserId) {
-        await assertAssignableUser(companyId, data.assigneeUserId);
-      }
       if (data.projectWorkspaceId) {
         await assertValidProjectWorkspace(companyId, data.projectId, data.projectWorkspaceId);
       }
       if (data.executionWorkspaceId) {
         await assertValidExecutionWorkspace(companyId, data.projectId, data.executionWorkspaceId);
-      }
-      if (data.status === "in_progress" && !data.assigneeAgentId && !data.assigneeUserId) {
-        throw unprocessable("in_progress issues require an assignee");
       }
       return db.transaction(async (tx) => {
         const defaultCompanyGoal = await getDefaultCompanyGoal(tx, companyId);
@@ -916,6 +1074,36 @@ export function issueService(db: Db) {
           values.cancelledAt = new Date();
         }
 
+        const resolvedAssignees = await applyProjectWorkflowAssigneeRules(
+          tx,
+          companyId,
+          values.projectId ?? null,
+          { status: "__create__", assigneeUserId: null, assigneeAgentId: null },
+          {
+            status: values.status ?? "backlog",
+            assigneeUserId: values.assigneeUserId ?? null,
+            assigneeAgentId: values.assigneeAgentId ?? null,
+          },
+          true,
+        );
+        values.assigneeUserId = resolvedAssignees.assigneeUserId;
+        values.assigneeAgentId = resolvedAssignees.assigneeAgentId;
+
+        if (values.assigneeAgentId && values.assigneeUserId) {
+          throw unprocessable("Issue can only have one assignee");
+        }
+        if (values.assigneeAgentId) {
+          await assertAssignableAgent(companyId, values.assigneeAgentId);
+        }
+        if (values.assigneeUserId) {
+          await assertAssignableUser(companyId, values.assigneeUserId);
+        }
+        assertAssigneeRequiredUnlessListOnlyStage(
+          values.status ?? "backlog",
+          values.assigneeUserId,
+          values.assigneeAgentId,
+        );
+
         const [issue] = await tx.insert(issues).values(values).returning();
         await promoteGoalToActiveIfPlanned(tx, companyId, values.goalId);
         if (inputLabelIds) {
@@ -942,8 +1130,38 @@ export function issueService(db: Db) {
         delete issueData.executionWorkspaceSettings;
       }
 
+      const mergedUserPreview =
+        issueData.assigneeUserId !== undefined ? issueData.assigneeUserId : existing.assigneeUserId;
+      const mergedAgentPreview =
+        issueData.assigneeAgentId !== undefined ? issueData.assigneeAgentId : existing.assigneeAgentId;
+      const resolvedAssignees = await applyProjectWorkflowAssigneeRules(
+        db,
+        existing.companyId,
+        existing.projectId,
+        {
+          status: existing.status,
+          assigneeUserId: existing.assigneeUserId,
+          assigneeAgentId: existing.assigneeAgentId,
+        },
+        issueData,
+        false,
+      );
+      if (resolvedAssignees.assigneeUserId !== mergedUserPreview) {
+        issueData.assigneeUserId = resolvedAssignees.assigneeUserId;
+      }
+      if (resolvedAssignees.assigneeAgentId !== mergedAgentPreview) {
+        issueData.assigneeAgentId = resolvedAssignees.assigneeAgentId;
+      }
+
       if (issueData.status) {
         assertTransition(existing.status, issueData.status, !!existing.projectId);
+        await assertIssueStatusTransitionAllowed(
+          db,
+          existing.companyId,
+          existing.projectId,
+          existing.status,
+          issueData.status,
+        );
       }
 
       const patch: Partial<typeof issues.$inferInsert> = {
@@ -959,9 +1177,21 @@ export function issueService(db: Db) {
       if (nextAssigneeAgentId && nextAssigneeUserId) {
         throw unprocessable("Issue can only have one assignee");
       }
-      if (patch.status === "in_progress" && !nextAssigneeAgentId && !nextAssigneeUserId) {
-        throw unprocessable("in_progress issues require an assignee");
-      }
+      const nextStatusForAssignee =
+        issueData.status !== undefined ? issueData.status : existing.status;
+      const statusChangedForAssignee =
+        issueData.status !== undefined && issueData.status !== existing.status;
+      await assertAssigneeRequiredAfterWorkflowForUpdate(
+        db,
+        existing.companyId,
+        existing.projectId,
+        nextStatusForAssignee,
+        nextAssigneeUserId,
+        nextAssigneeAgentId,
+        existing.assigneeUserId,
+        existing.assigneeAgentId,
+        statusChangedForAssignee,
+      );
       if (issueData.assigneeAgentId) {
         await assertAssignableAgent(existing.companyId, issueData.assigneeAgentId);
       }
@@ -1071,13 +1301,39 @@ export function issueService(db: Db) {
       }),
 
     checkout: async (id: string, agentId: string, expectedStatuses: string[], checkoutRunId: string | null) => {
-      const issueCompany = await db
-        .select({ companyId: issues.companyId })
+      const issueHead = await db
+        .select({
+          companyId: issues.companyId,
+          projectId: issues.projectId,
+          status: issues.status,
+        })
         .from(issues)
         .where(eq(issues.id, id))
         .then((rows) => rows[0] ?? null);
-      if (!issueCompany) throw notFound("Issue not found");
-      await assertAssignableAgent(issueCompany.companyId, agentId);
+      if (!issueHead) throw notFound("Issue not found");
+
+      if (issueHead.projectId) {
+        const inProgressCfg = await fetchProjectIssueStatusRow(
+          db,
+          issueHead.companyId,
+          issueHead.projectId,
+          "in_progress",
+        );
+        if (inProgressCfg?.allowedActors === "human_only") {
+          throw unprocessable(
+            "This project's In Progress stage is configured for human assignees only; agents cannot check out tasks.",
+          );
+        }
+        await assertIssueStatusTransitionAllowed(
+          db,
+          issueHead.companyId,
+          issueHead.projectId,
+          issueHead.status,
+          "in_progress",
+        );
+      }
+
+      await assertAssignableAgent(issueHead.companyId, agentId);
 
       const now = new Date();
       const sameRunAssigneeCondition = checkoutRunId

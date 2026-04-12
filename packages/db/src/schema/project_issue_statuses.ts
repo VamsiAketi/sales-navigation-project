@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, integer, boolean, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { agents } from "./agents.js";
 import { companies } from "./companies.js";
 import { projects } from "./projects.js";
 
@@ -15,6 +16,14 @@ export const projectIssueStatuses = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     isHumanApproval: boolean("is_human_approval").notNull().default(false),
     approverUserIds: jsonb("approver_user_ids").$type<string[]>().notNull().default([]),
+    /** Who may work the task in this stage: human, agent, or both. */
+    allowedActors: text("allowed_actors").notNull().default("human_and_agent"),
+    defaultAssigneeUserId: text("default_assignee_user_id"),
+    defaultAssigneeAgentId: uuid("default_assignee_agent_id").references(() => agents.id, {
+      onDelete: "set null",
+    }),
+    /** When non-empty, issues may only leave this status for listed `value` keys. Empty = no restriction. */
+    allowedNextStatusValues: jsonb("allowed_next_status_values").$type<string[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

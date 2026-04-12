@@ -56,6 +56,9 @@ export const issues = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+    /** Planned start (calendar scheduling); distinct from startedAt (workflow). */
+    targetStartAt: timestamp("target_start_at", { withTimezone: true }),
+    dueAt: timestamp("due_at", { withTimezone: true }),
     kanbanPosition: real("kanban_position"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

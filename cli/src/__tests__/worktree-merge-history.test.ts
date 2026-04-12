@@ -33,6 +33,8 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
     completedAt: null,
     cancelledAt: null,
     hiddenAt: null,
+    targetStartAt: null,
+    dueAt: null,
     createdAt: new Date("2026-03-20T00:00:00.000Z"),
     updatedAt: new Date("2026-03-20T00:00:00.000Z"),
     ...overrides,

@@ -1,3 +1,5 @@
+import type { Location } from "react-router-dom";
+
 type IssueDetailBreadcrumb = {
   label: string;
   href: string;
@@ -43,6 +45,22 @@ export function createIssueDetailLocationState(
   return {
     issueDetailBreadcrumb: { label, href },
     ...(source ? { issueSource: source } : {}),
+  };
+}
+
+/** Merge with router state so issue detail opens in the same modal overlay as the board (`App` `IssueDetailModal`). */
+export function mergeIssueModalLocationState(
+  issueLinkState: unknown,
+  backgroundLocation: Location,
+): Record<string, unknown> {
+  const base =
+    typeof issueLinkState === "object" && issueLinkState !== null
+      ? { ...(issueLinkState as Record<string, unknown>) }
+      : {};
+  return {
+    ...base,
+    issueModal: true,
+    backgroundLocation,
   };
 }
 

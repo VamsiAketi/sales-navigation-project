@@ -11,10 +11,10 @@ import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { assetsApi } from "../api/assets";
-import { goalsApi } from "../api/goals";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
+import { isBoardPinnedHiddenProjectIssueStatusValue } from "@paperclipai/shared";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { useToast } from "../context/ToastContext";
 import {
@@ -50,7 +50,6 @@ import {
   Loader2,
   X,
   Check,
-  Target,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { extractProviderIdWithFallback } from "../lib/model-utils";
@@ -75,13 +74,16 @@ interface IssueDraft {
   assigneeId?: string;
   projectId: string;
   projectWorkspaceId?: string;
-  goalId?: string;
   assigneeModelOverride: string;
   assigneeThinkingEffort: string;
   assigneeChrome: boolean;
   executionWorkspaceMode?: string;
   selectedExecutionWorkspaceId?: string;
   useIsolatedExecutionWorkspace?: boolean;
+  /** YYYY-MM-DD */
+  targetStartDate?: string;
+  /** YYYY-MM-DD */
+  dueDate?: string;
 }
 
 type StagedIssueFile = {
@@ -274,29 +276,6 @@ function defaultExecutionWorkspaceModeForProject(project: { executionWorkspacePo
   return "shared_workspace";
 }
 
-function defaultGoalIdForProject(
-  project:
-    | { goals?: Array<{ id: string }>; goalIds?: string[]; goalId?: string | null }
-    | null
-    | undefined,
-) {
-  return project?.goals?.[0]?.id ?? project?.goalIds?.[0] ?? project?.goalId ?? "";
-}
-
-function projectGoalIdSetFromProject(
-  project:
-    | { goals?: Array<{ id: string }>; goalIds?: string[]; goalId?: string | null }
-    | null
-    | undefined,
-) {
-  const ids = [
-    ...(project?.goalId ? [project.goalId] : []),
-    ...(project?.goalIds ?? []),
-    ...((project?.goals ?? []).map((goal) => goal.id)),
-  ].filter(Boolean);
-  return new Set(ids);
-}
-
 function issueExecutionWorkspaceModeForExistingWorkspace(mode: string | null | undefined) {
   if (mode === "isolated_workspace" || mode === "operator_branch" || mode === "shared_workspace") {
     return mode;
@@ -307,8 +286,19 @@ function issueExecutionWorkspaceModeForExistingWorkspace(mode: string | null | u
   return "shared_workspace";
 }
 
-export function canSubmitNewIssue(input: { title: string; projectId: string; isPending: boolean }) {
-  return Boolean(input.title.trim()) && Boolean(input.projectId) && !input.isPending;
+export function canSubmitNewIssue(input: {
+  title: string;
+  projectId: string;
+  isPending: boolean;
+  /** When omitted, treated as backlog (assignee optional). */
+  status?: string;
+  /** Required when status is not a list-only stage such as backlog. */
+  hasAssignee?: boolean;
+}) {
+  if (!input.title.trim() || !input.projectId || input.isPending) return false;
+  const status = input.status ?? "backlog";
+  if (!isBoardPinnedHiddenProjectIssueStatusValue(status) && !input.hasAssignee) return false;
+  return true;
 }
 
 export function NewIssueDialog() {
@@ -335,8 +325,6 @@ export function NewIssueDialog() {
   const [stagedFiles, setStagedFiles] = useState<StagedIssueFile[]>([]);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [projectValidationError, setProjectValidationError] = useState<string | null>(null);
-  const [goalId, setGoalId] = useState("");
-  const [goalValidationError, setGoalValidationError] = useState<string | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
 
@@ -344,7 +332,17 @@ export function NewIssueDialog() {
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
 
   const rawProjectStatuses = useProjectIssueStatuses(projectId || null);
-  const activeProjectStatuses = rawProjectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
+  /** All workflow stages (including list-only e.g. backlog) — used for new-task status chip and picker. */
+  const sortedProjectStatuses = useMemo(
+    () => [...rawProjectStatuses].sort((a, b) => a.position - b.position),
+    [rawProjectStatuses],
+  );
+  const newIssueStatusWorkflowMeta = useMemo(
+    () => rawProjectStatuses.find((s) => s.value === status),
+    [rawProjectStatuses, status],
+  );
+  const newIssueAssigneeAllowsUsers = newIssueStatusWorkflowMeta?.allowedActors !== "agent_only";
+  const newIssueAssigneeAllowsAgents = newIssueStatusWorkflowMeta?.allowedActors !== "human_only";
 
   // Popover states
   const [statusOpen, setStatusOpen] = useState(false);
@@ -352,6 +350,8 @@ export function NewIssueDialog() {
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelSearch, setLabelSearch] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [targetStartDate, setTargetStartDate] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [companyOpen, setCompanyOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
   const stageFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -381,11 +381,6 @@ export function NewIssueDialog() {
     enabled: !!effectiveCompanyId && newIssueOpen,
   });
 
-  const { data: goals } = useQuery({
-    queryKey: queryKeys.goals.list(effectiveCompanyId!),
-    queryFn: () => goalsApi.list(effectiveCompanyId!),
-    enabled: !!effectiveCompanyId && newIssueOpen,
-  });
   const { data: reusableExecutionWorkspaces } = useQuery({
     queryKey: queryKeys.executionWorkspaces.list(effectiveCompanyId!, {
       projectId,
@@ -566,12 +561,13 @@ export function NewIssueDialog() {
       assigneeValue,
       projectId,
       projectWorkspaceId,
-      goalId,
       assigneeModelOverride,
       assigneeThinkingEffort,
       assigneeChrome,
       executionWorkspaceMode,
       selectedExecutionWorkspaceId,
+      targetStartDate,
+      dueDate,
     });
   }, [
     title,
@@ -587,6 +583,8 @@ export function NewIssueDialog() {
     assigneeChrome,
     executionWorkspaceMode,
     selectedExecutionWorkspaceId,
+    targetStartDate,
+    dueDate,
     newIssueOpen,
     scheduleSave,
   ]);
@@ -596,7 +594,6 @@ export function NewIssueDialog() {
     if (!newIssueOpen) return;
     setDialogCompanyId(selectedCompanyId);
     setProjectValidationError(null);
-    setGoalValidationError(null);
     executionWorkspaceDefaultProjectId.current = null;
 
     const draft = loadDraft();
@@ -610,20 +607,21 @@ export function NewIssueDialog() {
       const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
-      setGoalId(defaultGoalIdForProject(defaultProject));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
       setAssigneeChrome(false);
       setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProject));
       setSelectedExecutionWorkspaceId("");
+      setTargetStartDate("");
+      setDueDate("");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
     } else if (draft && draft.title.trim()) {
       const restoredProjectId = newIssueDefaults.projectId ?? draft.projectId;
       const restoredProject = orderedProjects.find((project) => project.id === restoredProjectId);
       setTitle(draft.title);
       setDescription(draft.description);
-      setStatus(draft.status || "backlog");
+      setStatus(newIssueDefaults.status ?? (draft.status || "backlog"));
       setPriority(draft.priority);
       setSelectedLabelIds(Array.isArray(draft.labelIds) ? draft.labelIds : []);
       setAssigneeValue(
@@ -633,7 +631,6 @@ export function NewIssueDialog() {
       );
       setProjectId(restoredProjectId);
       setProjectWorkspaceId(draft.projectWorkspaceId ?? defaultProjectWorkspaceIdForProject(restoredProject));
-      setGoalId(draft.goalId ?? defaultGoalIdForProject(restoredProject));
       setAssigneeModelOverride(draft.assigneeModelOverride ?? "");
       setAssigneeThinkingEffort(draft.assigneeThinkingEffort ?? "");
       setAssigneeChrome(draft.assigneeChrome ?? false);
@@ -642,6 +639,8 @@ export function NewIssueDialog() {
           ?? (draft.useIsolatedExecutionWorkspace ? "isolated_workspace" : defaultExecutionWorkspaceModeForProject(restoredProject)),
       );
       setSelectedExecutionWorkspaceId(draft.selectedExecutionWorkspaceId ?? "");
+      setTargetStartDate(draft.targetStartDate ?? "");
+      setDueDate(draft.dueDate ?? "");
       executionWorkspaceDefaultProjectId.current = restoredProjectId || null;
     } else {
       const defaultProjectId = newIssueDefaults.projectId ?? "";
@@ -651,13 +650,14 @@ export function NewIssueDialog() {
       setSelectedLabelIds([]);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
-      setGoalId(defaultGoalIdForProject(defaultProject));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
       setAssigneeChrome(false);
       setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProject));
       setSelectedExecutionWorkspaceId("");
+      setTargetStartDate("");
+      setDueDate("");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
     }
   }, [newIssueOpen, newIssueDefaults, orderedProjects]);
@@ -698,8 +698,6 @@ export function NewIssueDialog() {
     setAssigneeValue("");
     setProjectId("");
     setProjectWorkspaceId("");
-    setGoalId("");
-    setGoalValidationError(null);
     setAssigneeOptionsOpen(false);
     setAssigneeModelOverride("");
     setAssigneeThinkingEffort("");
@@ -712,6 +710,8 @@ export function NewIssueDialog() {
     setIsFileDragOver(false);
     setProjectValidationError(null);
     setCompanyOpen(false);
+    setTargetStartDate("");
+    setDueDate("");
     executionWorkspaceDefaultProjectId.current = null;
   }
 
@@ -722,13 +722,13 @@ export function NewIssueDialog() {
     setAssigneeValue("");
     setProjectId("");
     setProjectWorkspaceId("");
-    setGoalId("");
-    setGoalValidationError(null);
     setAssigneeModelOverride("");
     setAssigneeThinkingEffort("");
     setAssigneeChrome(false);
     setExecutionWorkspaceMode("shared_workspace");
     setSelectedExecutionWorkspaceId("");
+    setTargetStartDate("");
+    setDueDate("");
     setProjectValidationError(null);
   }
 
@@ -740,18 +740,12 @@ export function NewIssueDialog() {
 
   function handleSubmit() {
     if (!effectiveCompanyId || createIssue.isPending) return;
+    if (!title.trim()) return;
     if (!projectId) {
       setProjectValidationError("Project is required.");
       return;
     }
-    if (!title.trim()) return;
-    const hasGoals = projectGoals.length > 0;
-    if (hasGoals && !goalId) {
-      setGoalValidationError("Goal is required.");
-      return;
-    }
     setProjectValidationError(null);
-    setGoalValidationError(null);
     const assigneeAdapterOverrides = buildAssigneeAdapterOverrides({
       adapterType: assigneeAdapterType,
       modelOverride: assigneeModelOverride,
@@ -785,13 +779,14 @@ export function NewIssueDialog() {
       ...(selectedLabelIds.length > 0 ? { labelIds: selectedLabelIds } : {}),
       ...(projectId ? { projectId } : {}),
       ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
-      ...(goalId ? { goalId } : {}),
       ...(assigneeAdapterOverrides ? { assigneeAdapterOverrides } : {}),
       ...(executionWorkspacePolicy?.enabled ? { executionWorkspacePreference: executionWorkspaceMode } : {}),
       ...(executionWorkspaceMode === "reuse_existing" && selectedExecutionWorkspaceId
         ? { executionWorkspaceId: selectedExecutionWorkspaceId }
         : {}),
       ...(executionWorkspaceSettings ? { executionWorkspaceSettings } : {}),
+      ...(targetStartDate ? { targetStartAt: `${targetStartDate}T00:00:00.000Z` } : {}),
+      ...(dueDate ? { dueAt: `${dueDate}T00:00:00.000Z` } : {}),
     });
   }
 
@@ -866,12 +861,14 @@ export function NewIssueDialog() {
   }
 
   const hasDraft = title.trim().length > 0 || description.trim().length > 0 || stagedFiles.length > 0 || selectedLabelIds.length > 0;
-  const currentStatus = activeProjectStatuses.length > 0
-    ? (activeProjectStatuses.find((s) => s.value === status) ?? activeProjectStatuses[0])
-    : (statuses.find((s) => s.value === status) ?? statuses[1]!);
-  const currentStatusLabel = activeProjectStatuses.length > 0
-    ? (currentStatus as typeof activeProjectStatuses[number]).name
-    : (currentStatus as typeof statuses[number]).label;
+  const currentStatus =
+    sortedProjectStatuses.length > 0
+      ? (sortedProjectStatuses.find((s) => s.value === status) ?? sortedProjectStatuses[0]!)
+      : (statuses.find((s) => s.value === status) ?? statuses[1]!);
+  const currentStatusLabel =
+    sortedProjectStatuses.length > 0
+      ? (currentStatus as (typeof sortedProjectStatuses)[number]).name
+      : (currentStatus as (typeof statuses)[number]).label;
   const currentPriority = priorities.find((p) => p.value === priority);
   const selectedLabels = useMemo(
     () => selectedLabelIds
@@ -920,24 +917,35 @@ export function NewIssueDialog() {
   const recentAssigneeIds = useMemo(() => getRecentAssigneeIds(), [newIssueOpen]);
   const assigneeOptions = useMemo<InlineEntityOption[]>(
     () => [
-      ...currentUserAssigneeOption(currentUserId),
-      ...(members ?? [])
-        .filter((m) => m.principalType === "user" && m.user && m.user.id !== currentUserId)
-        .map((m) => ({
-          id: assigneeValueFromSelection({ assigneeUserId: m.user!.id }),
-          label: m.user!.name,
-          searchText: `${m.user!.name} ${m.user!.email}`,
-        })),
-      ...sortAgentsByRecency(
-        (agents ?? []).filter((agent) => agent.status !== "terminated"),
-        recentAssigneeIds,
-      ).map((agent) => ({
-        id: assigneeValueFromSelection({ assigneeAgentId: agent.id }),
-        label: agent.name,
-        searchText: `${agent.name} ${agent.role} ${agent.title ?? ""}`,
-      })),
+      ...(newIssueAssigneeAllowsUsers ? currentUserAssigneeOption(currentUserId) : []),
+      ...(newIssueAssigneeAllowsUsers
+        ? (members ?? [])
+            .filter((m) => m.principalType === "user" && m.user && m.user.id !== currentUserId)
+            .map((m) => ({
+              id: assigneeValueFromSelection({ assigneeUserId: m.user!.id }),
+              label: m.user!.name,
+              searchText: `${m.user!.name} ${m.user!.email}`,
+            }))
+        : []),
+      ...(newIssueAssigneeAllowsAgents
+        ? sortAgentsByRecency(
+            (agents ?? []).filter((agent) => agent.status !== "terminated"),
+            recentAssigneeIds,
+          ).map((agent) => ({
+            id: assigneeValueFromSelection({ assigneeAgentId: agent.id }),
+            label: agent.name,
+            searchText: `${agent.name} ${agent.role} ${agent.title ?? ""}`,
+          }))
+        : []),
     ],
-    [agents, currentUserId, members, recentAssigneeIds],
+    [
+      agents,
+      currentUserId,
+      members,
+      recentAssigneeIds,
+      newIssueAssigneeAllowsUsers,
+      newIssueAssigneeAllowsAgents,
+    ],
   );
   const projectOptions = useMemo<InlineEntityOption[]>(
     () =>
@@ -949,36 +957,18 @@ export function NewIssueDialog() {
     [orderedProjects],
   );
 
-  const projectGoalIds = useMemo(() => projectGoalIdSetFromProject(currentProject), [currentProject]);
-  const projectGoals = useMemo(
-    () => {
-      if (!currentProject || projectGoalIds.size === 0) return [];
-      const byId = new Map((goals ?? []).map((goal) => [goal.id, goal]));
-      const merged = Array.from(projectGoalIds)
-        .map((goalId) => byId.get(goalId) ?? currentProject.goals?.find((goal) => goal.id === goalId))
-        .filter((goal): goal is NonNullable<typeof goals>[number] => Boolean(goal))
-        .filter((goal) => goal.status !== "cancelled" && goal.status !== "achieved");
-      return merged;
-    },
-    [currentProject, goals, projectGoalIds],
-  );
-  const goalOptions = useMemo<InlineEntityOption[]>(
-    () =>
-      projectGoals.map((goal) => ({
-        id: goal.id,
-        label: goal.title,
-        searchText: goal.description ?? "",
-      })),
-    [projectGoals],
-  );
-  const currentGoal = useMemo(() => projectGoals.find((goal) => goal.id === goalId), [projectGoals, goalId]);
-  const goalMarkerClassName = cn("text-muted-foreground/90", goalValidationError && "text-destructive");
   const savedDraft = loadDraft();
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
   const canDiscardDraft = hasDraft || hasSavedDraft;
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
-  const canSubmit = canSubmitNewIssue({ title, projectId, isPending: createIssue.isPending });
+  const hasAssignee = Boolean(selectedAssigneeAgentId || selectedAssigneeUserId);
+  const assigneeRequired = !isBoardPinnedHiddenProjectIssueStatusValue(status);
+  const missingRequiredFields: string[] = [];
+  if (!title.trim()) missingRequiredFields.push("Task title");
+  if (!projectId) missingRequiredFields.push("Project");
+  if (assigneeRequired && !hasAssignee) missingRequiredFields.push("Assignee");
+  const canSubmit = missingRequiredFields.length === 0 && !createIssue.isPending;
   const projectFieldLabel = formatRequiredFieldLabel("Project");
   const projectMarkerClassName = cn("text-muted-foreground/90", projectValidationError && "text-destructive");
   const stagedDocuments = stagedFiles.filter((file) => file.kind === "document");
@@ -1006,8 +996,6 @@ export function NewIssueDialog() {
     setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(nextProject));
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(nextProject));
     setSelectedExecutionWorkspaceId("");
-    setGoalId(defaultGoalIdForProject(nextProject));
-    setGoalValidationError(null);
   }, [orderedProjects]);
 
   useEffect(() => {
@@ -1021,22 +1009,6 @@ export function NewIssueDialog() {
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(project));
     setSelectedExecutionWorkspaceId("");
   }, [newIssueOpen, orderedProjects, projectId]);
-  useEffect(() => {
-    if (!newIssueOpen) return;
-    if (!projectId) {
-      if (goalId) setGoalId("");
-      setGoalValidationError(null);
-      return;
-    }
-    if (projectGoals.length === 0) {
-      if (goalId) setGoalId("");
-      setGoalValidationError(null);
-      return;
-    }
-    if (goalId && projectGoalIds.has(goalId)) return;
-    setGoalId(projectGoals[0]?.id ?? "");
-    setGoalValidationError(null);
-  }, [newIssueOpen, projectId, projectGoals, projectGoalIds, goalId]);
   const modelOverrideOptions = useMemo<InlineEntityOption[]>(
     () => {
       return [...(assigneeAdapterModels ?? [])]
@@ -1319,46 +1291,8 @@ export function NewIssueDialog() {
                   );
                 }}
               />
-              {goalOptions.length > 0 && (
-                <>
-                  <span>toward</span>
-                  <InlineEntitySelector
-                    value={goalId}
-                    options={goalOptions}
-                    placeholder="Goal"
-                    noneLabel="No goal"
-                    disablePortal
-                    includeNoneOption={false}
-                    searchPlaceholder="Search goals..."
-                    emptyMessage="No goals found."
-                    onChange={(value) => { setGoalId(value); if (value) setGoalValidationError(null); }}
-                    renderTriggerValue={(option) =>
-                      option && currentGoal ? (
-                        <>
-                          <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{option.label}</span>
-                          <span aria-hidden="true" className={goalMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Goal <span aria-hidden="true" className={goalMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
-                        </span>
-                      )
-                    }
-                    renderOption={(option) => (
-                      <>
-                        <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{option.label}</span>
-                      </>
-                    )}
-                  />
-                </>
-              )}
             </div>
           </div>
-          {goalValidationError && (
-            <p className="mt-1 text-xs text-destructive">{goalValidationError}</p>
-          )}
         </div>
 
         {currentProject && currentProjectSupportsExecutionWorkspace && (
@@ -1579,20 +1513,20 @@ export function NewIssueDialog() {
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
               <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
-                {activeProjectStatuses.length > 0 ? (
+                {sortedProjectStatuses.length > 0 ? (
                   <span
                     className="inline-flex h-3 w-3 rounded-full border-2 shrink-0"
-                    style={{ borderColor: (currentStatus as typeof activeProjectStatuses[number]).color }}
+                    style={{ borderColor: (currentStatus as (typeof sortedProjectStatuses)[number]).color }}
                   />
                 ) : (
-                  <CircleDot className={cn("h-3 w-3", (currentStatus as typeof statuses[number]).color)} />
+                  <CircleDot className={cn("h-3 w-3", (currentStatus as (typeof statuses)[number]).color)} />
                 )}
                 {currentStatusLabel}
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-36 p-1" align="start">
-              {activeProjectStatuses.length > 0
-                ? activeProjectStatuses.map((s) => (
+              {sortedProjectStatuses.length > 0
+                ? sortedProjectStatuses.map((s) => (
                     <button
                       key={s.value}
                       className={cn(
@@ -1731,54 +1665,102 @@ export function NewIssueDialog() {
                 <MoreHorizontal className="h-3 w-3" />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-44 p-1" align="start">
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                Start date
-              </button>
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                Due date
-              </button>
+            <PopoverContent className="w-56 p-2 space-y-2" align="start">
+              <div>
+                <div className="mb-1 text-[11px] text-muted-foreground">Start date</div>
+                <div className="flex items-center gap-2 rounded-md border border-border bg-transparent px-2 py-1.5">
+                  <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    type="date"
+                    className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                    value={targetStartDate}
+                    onChange={(e) => setTargetStartDate(e.target.value)}
+                    disabled={createIssue.isPending}
+                    aria-label="Start date"
+                  />
+                  {targetStartDate ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+                      onClick={() => setTargetStartDate("")}
+                      disabled={createIssue.isPending}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-[11px] text-muted-foreground">Due date</div>
+                <div className="flex items-center gap-2 rounded-md border border-border bg-transparent px-2 py-1.5">
+                  <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    type="date"
+                    className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    disabled={createIssue.isPending}
+                    aria-label="Due date"
+                  />
+                  {dueDate ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+                      onClick={() => setDueDate("")}
+                      disabled={createIssue.isPending}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border shrink-0">
+        <div className="flex flex-col gap-2 border-t border-border px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 shrink-0">
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground"
+            className="text-muted-foreground self-start sm:self-auto"
             onClick={discardDraft}
             disabled={createIssue.isPending || !canDiscardDraft}
           >
             Discard Draft
           </Button>
-          <div className="flex items-center gap-3">
-            <div className="min-h-5 text-right">
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+            <div className="min-h-5 min-w-0 text-left sm:max-w-88 sm:text-right">
               {createIssue.isPending ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Creating issue...
                 </span>
               ) : createIssue.isError ? (
-                <span className="text-xs text-destructive">{createIssueErrorMessage}</span>
+                <p className="text-xs leading-snug text-destructive">{createIssueErrorMessage}</p>
+              ) : !canSubmit ? (
+                <span className="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300">
+                  Required: {missingRequiredFields.join(", ")}
+                </span>
               ) : projectValidationError ? (
-                <span className="text-xs text-destructive">{projectValidationError}</span>
+                <p className="text-xs leading-snug text-destructive">{projectValidationError}</p>
               ) : null}
             </div>
             <Button
               size="sm"
-              className="min-w-[8.5rem] disabled:opacity-100"
+              className="min-w-34 shrink-0 select-none disabled:opacity-100"
               disabled={!canSubmit}
               onClick={handleSubmit}
               aria-busy={createIssue.isPending}
             >
-              <span className="inline-flex items-center justify-center gap-1.5">
-                {createIssue.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                <span>{createIssue.isPending ? "Creating..." : "Create Task"}</span>
-              </span>
+              {createIssue.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Task"
+              )}
             </Button>
           </div>
         </div>

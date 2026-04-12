@@ -133,6 +133,9 @@ export interface Issue {
   completedAt: Date | null;
   cancelledAt: Date | null;
   hiddenAt: Date | null;
+  /** Planned start date for scheduling (not workflow startedAt). */
+  targetStartAt: Date | null;
+  dueAt: Date | null;
   kanbanPosition?: number | null;
   labelIds?: string[];
   labels?: IssueLabel[];

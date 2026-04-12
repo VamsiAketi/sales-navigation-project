@@ -28,6 +28,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { buildRoutineTriggerPatch } from "../lib/routine-trigger-patch";
 import { timeAgo } from "../lib/timeAgo";
 import { EmptyState } from "../components/EmptyState";
+import { IssueLink } from "../components/IssueLink";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "../components/InlineEntitySelector";
@@ -1048,9 +1049,12 @@ export function RoutineDetail() {
                       <span className="text-muted-foreground truncate">{run.trigger.label ?? run.trigger.kind}</span>
                     )}
                     {run.linkedIssue && (
-                      <Link to={`/issues/${run.linkedIssue.identifier ?? run.linkedIssue.id}`} className="text-muted-foreground hover:underline truncate">
+                      <IssueLink
+                        issuePathId={run.linkedIssue.identifier ?? run.linkedIssue.id}
+                        className="text-muted-foreground hover:underline truncate"
+                      >
                         {run.linkedIssue.identifier ?? run.linkedIssue.id.slice(0, 8)}
-                      </Link>
+                      </IssueLink>
                     )}
                   </div>
                   <span className="text-xs text-muted-foreground shrink-0 ml-2">{timeAgo(run.triggeredAt)}</span>

@@ -9,6 +9,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { cn, relativeTime } from "../lib/utils";
 import { ExternalLink } from "lucide-react";
 import { Identity } from "./Identity";
+import { IssueLink } from "./IssueLink";
 import { RunTranscriptView } from "./transcript/RunTranscriptView";
 import { useLiveRunTranscripts } from "./transcript/useLiveRunTranscripts";
 
@@ -125,8 +126,8 @@ function AgentRunCard({
 
         {run.issueId && (
           <div className="mt-3 rounded-lg border border-border/60 bg-background/60 px-2.5 py-2 text-xs">
-            <Link
-              to={`/issues/${issue?.identifier ?? run.issueId}`}
+            <IssueLink
+              issuePathId={issue?.identifier ?? run.issueId}
               className={cn(
                 "line-clamp-2 hover:underline",
                 isActive ? "text-cyan-700 dark:text-cyan-300" : "text-muted-foreground hover:text-foreground",
@@ -135,7 +136,7 @@ function AgentRunCard({
             >
               {issue?.identifier ?? run.issueId.slice(0, 8)}
               {issue?.title ? ` - ${issue.title}` : ""}
-            </Link>
+            </IssueLink>
           </div>
         )}
       </div>

@@ -24,6 +24,11 @@ export const projects = pgTable(
     issuePrefix: text("issue_prefix"),
     /** Per-project counter; incremented atomically on each new issue in this project. */
     issueCounter: integer("issue_counter").notNull().default(0),
+    /**
+     * Done/Cancelled tasks stay on the board only if closed within this many full days
+     * (uses completed_at / cancelled_at). Older tasks appear under the project Archive tab. Minimum 1; default 7.
+     */
+    boardClosedRetentionDays: integer("board_closed_retention_days").notNull().default(7),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -1,4 +1,6 @@
-import { Link } from "@/lib/router";
+import { useMemo } from "react";
+import { Link, useLocation } from "@/lib/router";
+import { mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { Identity } from "./Identity";
 import { timeAgo } from "../lib/timeAgo";
 import { cn } from "../lib/utils";
@@ -285,6 +287,7 @@ export function ActivityRow({
   entityTitleMap,
   className,
 }: ActivityRowProps) {
+  const location = useLocation();
   const verb = formatVerb(event.action, event.details, agentMap, userNameMap, labelNameMap);
   const details = event.details as Record<string, unknown> | null;
 
@@ -305,6 +308,11 @@ export function ActivityRow({
   const link = isHeartbeatEvent && heartbeatAgentId
     ? `/agents/${heartbeatAgentId}/runs/${event.entityId}`
     : entityLink(event.entityType, event.entityId, name);
+
+  const linkState = useMemo(() => {
+    if (!link || !/^\/issues\/[^/]+$/.test(link)) return undefined;
+    return mergeIssueModalLocationState(undefined, location);
+  }, [link, location]);
 
   const actor = event.actorType === "agent" ? agentMap.get(event.actorId) : null;
   const actorName = actor?.name ??
@@ -341,7 +349,7 @@ export function ActivityRow({
 
   if (link) {
     return (
-      <Link to={link} className={cn(classes, "no-underline text-inherit block")}>
+      <Link to={link} state={linkState} className={cn(classes, "no-underline text-inherit block")}>
         {inner}
       </Link>
     );

@@ -20,8 +20,9 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { cn } from "../lib/utils";
+import { mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
-import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
+import { isProjectIssueWorkflowTransitionAllowed, type Issue, type ProjectIssueStatus } from "@paperclipai/shared";
 
 /* ── Avatar helpers ─────────────────────────────────────────────────────────── */
 /** Derive a unique HSL background colour from a name string.
@@ -31,7 +32,7 @@ function nameToColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
   const hue = hash % 360;
-  return `hsl(${hue}, 65%, 42%)`;
+  return `hsl(${hue}, 48%, 44%)`;
 }
 
 export function nameToInitials(name: string): string {
@@ -54,7 +55,7 @@ export function AssigneeAvatar({
   size?: "sm" | "md";
   active?: boolean;
 }) {
-  const bgColor = isAgent ? "#7c3aed" : nameToColor(name);
+  const bgColor = isAgent ? "#4f46e5" : nameToColor(name);
   const dim     = size === "md" ? "h-7 w-7 text-[11px]" : "h-6 w-6 text-[10px]";
   const ring    = active ? "ring-2 ring-white ring-offset-1 ring-offset-background" : "";
   return (
@@ -69,12 +70,12 @@ export function AssigneeAvatar({
       {/* AI Agent indicator badge — only shown for agents */}
       {isAgent && (
         <span
-          className={`absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full border-2 border-background bg-yellow-400 shadow-sm shadow-yellow-300
+          className={`absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full border-2 border-background bg-primary/90 shadow-sm
             ${size === "md" ? "h-3.5 w-3.5" : "h-3 w-3"}`}
           title="AI Agent"
         >
           {/* Bot icon */}
-          <svg viewBox="0 0 12 12" className={`fill-gray-900 ${size === "md" ? "h-2 w-2" : "h-1.5 w-1.5"}`}>
+          <svg viewBox="0 0 12 12" className={`fill-primary-foreground ${size === "md" ? "h-2 w-2" : "h-1.5 w-1.5"}`}>
             {/* head */}
             <rect x="2" y="3.5" width="8" height="5.5" rx="1.5" />
             {/* antenna */}
@@ -102,8 +103,8 @@ function buildAccent(hex: string): Accent {
   const [r, g, b] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
   return {
     dot:        hex.startsWith("#") ? hex : `#${hex}`,
-    colBg:      `rgba(${r},${g},${b},0.07)`,
-    cardBorder: `rgba(${r},${g},${b},0.38)`,
+    colBg:      `rgba(${r},${g},${b},0.025)`,
+    cardBorder: `rgba(${r},${g},${b},0.16)`,
   };
 }
 
@@ -137,6 +138,16 @@ function statusLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function columnAcceptsIssueDrop(
+  dragged: Issue,
+  columnStatus: string,
+  projectStatuses: ProjectIssueStatus[] | undefined,
+): boolean {
+  if (dragged.status === columnStatus) return true;
+  const fromMeta = projectStatuses?.find((s) => s.value === dragged.status);
+  return isProjectIssueWorkflowTransitionAllowed(dragged.status, columnStatus, fromMeta);
+}
+
 interface Agent {
   id: string;
   name: string;
@@ -160,11 +171,6 @@ interface KanbanBoardProps {
   /** Show a "New" pill for this issue (longer than highlight ring). */
   newBadgeIssueId?: string | null;
 }
-
-type IssueModalLinkState = {
-  issueModal?: boolean;
-  backgroundLocation?: unknown;
-};
 
 function getSortKey(issue: Issue): number {
   if (issue.kanbanPosition !== null && issue.kanbanPosition !== undefined) {
@@ -215,25 +221,23 @@ const KanbanCardContent = memo(function KanbanCardContent({
   return (
     <>
       {/* Top row: ticket ID badge + AI active pill */}
-      <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <span
-          className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-mono font-extrabold shrink-0 tracking-tight"
+          className="inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold tracking-wide text-muted-foreground"
           style={{
-            backgroundColor: accentDot,
-            color: "#ffffff",
-            textShadow: "0 1px 2px rgba(0,0,0,0.35)",
-            boxShadow: `0 0 0 2px ${accentDot}40, 0 1px 3px rgba(0,0,0,0.15)`,
+            borderColor: `${accentDot}70`,
+            backgroundColor: `${accentDot}14`,
           }}
         >
           {issue.identifier ?? issue.id.slice(0, 8)}
         </span>
         {isLive && (
-          <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide bg-blue-500/10 text-blue-500 border border-blue-500/20 shrink-0">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
             </span>
-            AI active
+            Active
           </span>
         )}
         {showNewBadge ? (
@@ -244,19 +248,21 @@ const KanbanCardContent = memo(function KanbanCardContent({
       </div>
 
       {/* Title */}
-      <p className="text-sm font-semibold leading-snug line-clamp-2 mb-3 text-foreground">{issue.title}</p>
+      <p className="mb-3 line-clamp-2 wrap-anywhere text-[15px] font-medium leading-snug text-foreground">
+        {issue.title}
+      </p>
 
       {/* Labels — use label.color as text so it's theme-independent */}
       {(issue.labels ?? []).length > 0 && (
-        <div className="flex flex-wrap items-center gap-1 mb-3">
+        <div className="mb-3 flex flex-wrap items-center gap-1">
           {(issue.labels ?? []).slice(0, 2).map((label) => (
             <span
               key={label.id}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide border"
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
               style={{
-                borderColor: `${label.color}70`,
+                borderColor: `${label.color}55`,
                 color: label.color,
-                backgroundColor: `${label.color}20`,
+                backgroundColor: `${label.color}14`,
               }}
             >
               <span
@@ -267,7 +273,7 @@ const KanbanCardContent = memo(function KanbanCardContent({
             </span>
           ))}
           {(issue.labels ?? []).length > 2 && (
-            <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-muted/60 text-muted-foreground border border-border/40">
+            <span className="inline-flex items-center rounded-full border border-border/50 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               +{(issue.labels ?? []).length - 2}
             </span>
           )}
@@ -275,10 +281,7 @@ const KanbanCardContent = memo(function KanbanCardContent({
       )}
 
       {/* Footer: priority + assignee avatar */}
-      <div
-        className="flex items-center justify-between gap-2 pt-2 mt-1"
-        style={{ borderTop: `1px solid ${accentDot}22` }}
-      >
+      <div className="mt-1 flex items-center justify-between gap-2 border-t border-border/60 pt-1.5">
         <PriorityIcon priority={issue.priority} />
         {agentName ? (
           <AssigneeAvatar name={agentName} isAgent />
@@ -316,7 +319,6 @@ function KanbanCard({
   isLive,
   isOverlay,
   issueLinkState,
-  modalLinkState,
   statusColorMap,
   highlight,
   showNewBadge,
@@ -327,7 +329,6 @@ function KanbanCard({
   isLive: boolean;
   isOverlay?: boolean;
   issueLinkState?: unknown;
-  modalLinkState?: IssueModalLinkState;
   statusColorMap?: Map<string, string>;
   highlight?: boolean;
   showNewBadge?: boolean;
@@ -350,20 +351,19 @@ function KanbanCard({
       ref={setNodeRef}
       style={{
         ...style,
-        borderColor: accent.cardBorder,
-        background: `linear-gradient(145deg, ${accent.dot}08 0%, transparent 55%)`,
+        background: "hsl(var(--card))",
       }}
       {...attributes}
       {...listeners}
       className={cn(
-        "kanban-card group rounded-2xl border-2 bg-card p-3 cursor-grab active:cursor-grabbing shadow-sm hover:-translate-y-0.5 hover:shadow-md transition-all duration-150 dark:bg-card/80",
+        "kanban-card group rounded-md border border-border/60 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_20px_rgba(15,23,42,0.04)] transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_2px_6px_rgba(15,23,42,0.10),0_12px_28px_rgba(15,23,42,0.08)] cursor-grab active:cursor-grabbing dark:border-border/50 dark:bg-card",
         highlight &&
-          "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-md z-[2] motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]",
+          "z-2 ring-2 ring-primary ring-offset-2 ring-offset-background shadow-md motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]",
       )}
     >
       <Link
         to={`/issues/${issue.identifier ?? issue.id}`}
-        state={modalLinkState ? { ...(issueLinkState as Record<string, unknown> | undefined), ...modalLinkState } : issueLinkState}
+        state={issueLinkState}
         className="block no-underline text-inherit"
       >
         <KanbanCardContent
@@ -389,10 +389,10 @@ const KanbanColumn = memo(function KanbanColumn({
   memberMap,
   liveIssueIds,
   issueLinkState,
-  modalLinkState,
   statusColorMap,
   highlightIssueId,
   newBadgeIssueId,
+  dropDisabled,
 }: {
   status: string;
   columnLabel?: string;
@@ -402,33 +402,29 @@ const KanbanColumn = memo(function KanbanColumn({
   memberMap: Map<string, string>;
   liveIssueIds?: Set<string>;
   issueLinkState?: unknown;
-  modalLinkState?: IssueModalLinkState;
   statusColorMap?: Map<string, string>;
   highlightIssueId?: string | null;
   newBadgeIssueId?: string | null;
+  dropDisabled?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
+  const { setNodeRef, isOver } = useDroppable({ id: status, disabled: dropDisabled });
   // columnColor (from projectStatuses) always wins; then hardcoded map; then neutral fallback
   const accent = getAccent(status, columnColor);
   const dotColor = accent.dot;
 
   return (
     <div
-      className="min-w-[272px] w-[272px] shrink-0 rounded-b-2xl flex flex-col"
-      style={{
-        border: `2px solid ${dotColor}45`,
-        borderTop: "none",
-        boxShadow: `0 0 0 1px ${dotColor}18, 0 4px 16px ${dotColor}12`,
-      }}
+      className="flex w-[252px] min-w-[252px] shrink-0 flex-col rounded-lg border border-border/70 bg-card/80"
+      style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}
     >
       {/* Drop zone / card list */}
       <div
         ref={setNodeRef}
-        className={`kanban-col-${status} flex-1 min-h-[4rem] overflow-x-hidden rounded-b-2xl px-2 pt-2 pb-3 space-y-2 transition-colors duration-150 ${
+        className={`kanban-col-${status} flex-1 min-h-16 space-y-2 overflow-x-hidden rounded-b-lg bg-muted/30 px-2 pb-2.5 pt-2 transition-colors duration-150 dark:bg-muted/20 ${
           isOver ? "bg-accent/30" : ""
         }`}
         style={{
-          backgroundColor: isOver ? undefined : accent.colBg,
+          backgroundColor: isOver ? undefined : undefined,
         }}
       >
         {issues.map((issue) => (
@@ -443,7 +439,6 @@ const KanbanColumn = memo(function KanbanColumn({
             }
             isLive={liveIssueIds?.has(issue.id) ?? false}
             issueLinkState={issueLinkState}
-            modalLinkState={modalLinkState}
             statusColorMap={statusColorMap}
             highlight={highlightIssueId === issue.id}
             showNewBadge={newBadgeIssueId === issue.id}
@@ -468,10 +463,10 @@ export function KanbanBoard({
 }: KanbanBoardProps) {
   const location = useLocation();
   const [activeId, setActiveId] = useState<string | null>(null);
-  const modalLinkState = useMemo<IssueModalLinkState>(() => ({
-    issueModal: true,
-    backgroundLocation: location,
-  }), [location]);
+  const cardLinkState = useMemo(
+    () => mergeIssueModalLocationState(issueLinkState, location),
+    [issueLinkState, location],
+  );
 
   // optimisticMoves: issueId → targetStatus applied immediately on drop so the
   // card never flashes back into the source column while the network request
@@ -576,6 +571,9 @@ export function KanbanBoard({
       if (!targetStatus) return;
 
       if (targetStatus !== issue.status) {
+        if (!columnAcceptsIssueDrop(issue, targetStatus, projectStatuses)) {
+          return;
+        }
         // Optimistically move the card now so it never flashes back in the
         // source column while the async onUpdateIssue round-trip completes.
         setOptimisticMoves((prev) => ({ ...prev, [issueId]: targetStatus! }));
@@ -594,7 +592,7 @@ export function KanbanBoard({
         onUpdateIssue(issueId, { kanbanPosition: computePosition(before, after) });
       }
     },
-    [issues, activeColumns, columnIssues, onUpdateIssue]
+    [issues, activeColumns, columnIssues, onUpdateIssue, projectStatuses]
   );
 
   const handleDragCancel = useCallback(() => setActiveId(null), []);
@@ -624,10 +622,10 @@ export function KanbanBoard({
           Lives outside the overflow-x-auto card container so sticky top-0 works
           against the page scroll. bg-background ensures no bleed between the two
           sibling divs. JS scroll-sync keeps columns aligned horizontally.       */}
-      <div className="sticky top-[52px] z-50 -mx-2 mb-0 bg-background overflow-hidden" style={{ willChange: 'transform' }}>
+      <div className="sticky top-[52px] z-50 -mx-2 mb-0 overflow-hidden bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80" style={{ willChange: "transform" }}>
         <div
           ref={headerScrollRef}
-          className="flex gap-4 overflow-x-hidden px-2"
+          className="flex gap-4 overflow-x-hidden px-2 pb-1"
         >
           {activeColumns.map((status) => {
             const ps = projectStatuses?.find((s) => s.value === status);
@@ -636,42 +634,36 @@ export function KanbanBoard({
             return (
               <div
                 key={status}
-                className="min-w-[272px] w-[272px] shrink-0 rounded-t-2xl"
+                className="w-[252px] min-w-[252px] shrink-0 rounded-t-lg border border-border/70 border-b-0 bg-card/80"
                 style={{
-                  border: `2px solid ${dotColor}45`,
-                  borderBottom: "none",
+                  boxShadow: `0 1px 3px ${dotColor}10`,
                 }}
               >
                 <div
-                  className="h-1 w-full rounded-t-2xl"
+                  className="h-0.5 w-full rounded-t-lg"
                   style={{ backgroundColor: dotColor }}
                 />
                 <div
-                  className="flex items-center gap-2 border-b bg-card/95 px-3 py-2.5 backdrop-blur-md"
+                  className="flex items-center gap-2 border-b px-2.5 py-2"
                   style={{
-                    borderBottomColor: `${dotColor}40`,
-                    backgroundImage: `linear-gradient(135deg, ${dotColor}20 0%, ${dotColor}0a 100%)`,
+                    borderBottomColor: "hsl(var(--border))",
+                    backgroundColor: "hsl(var(--card))",
                   }}
                 >
                   <span
-                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest shrink-0"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground"
                     style={{
-                      backgroundColor: dotColor,
-                      color: "#ffffff",
-                      textShadow: "0 1px 2px rgba(0,0,0,0.25)",
-                      boxShadow: `0 2px 6px ${dotColor}50`,
+                      boxShadow: `inset 0 0 0 1px ${dotColor}26`,
                     }}
                   >
-                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" />
+                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: dotColor, boxShadow: `0 0 0 1px ${dotColor}40` }} />
                     {ps?.name ?? statusLabel(status)}
                   </span>
                   <span className="flex-1" />
                   <span
-                    className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
+                    className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border bg-muted/50 px-1.5 text-[10px] font-bold tabular-nums text-foreground"
                     style={{
-                      backgroundColor: `${dotColor}22`,
-                      color: dotColor,
-                      border: `1.5px solid ${dotColor}55`,
+                      boxShadow: `inset 0 0 0 1px ${dotColor}22`,
                     }}
                   >
                     {(columnIssues[status] ?? []).length}
@@ -688,11 +680,13 @@ export function KanbanBoard({
           so no card can ever paint on top of the sticky status row              */}
       <div
         ref={cardsScrollRef}
-        className="-mx-2 relative z-0 flex min-h-[calc(100dvh-16rem)] items-stretch gap-4 overflow-x-auto px-2 pb-4"
+        className="-mx-2 relative z-0 flex min-h-[calc(100dvh-16rem)] items-stretch gap-4 overflow-x-auto overscroll-x-none px-2 pb-4 [scrollbar-width:thin] [scrollbar-color:hsl(var(--border))_transparent] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border"
         onScroll={onCardsScroll}
       >
         {activeColumns.map((status) => {
           const ps = projectStatuses?.find((s) => s.value === status);
+          const dropDisabled =
+            activeIssue != null && !columnAcceptsIssueDrop(activeIssue, status, projectStatuses);
           return (
             <KanbanColumn
               key={status}
@@ -703,11 +697,11 @@ export function KanbanBoard({
               agentMap={agentMap}
               memberMap={memberMap}
               liveIssueIds={liveIssueIds}
-              issueLinkState={issueLinkState}
-              modalLinkState={modalLinkState}
+              issueLinkState={cardLinkState}
               statusColorMap={statusColorMap}
               highlightIssueId={highlightIssueId}
               newBadgeIssueId={newBadgeIssueId}
+              dropDisabled={dropDisabled}
             />
           );
         })}
@@ -724,8 +718,7 @@ export function KanbanBoard({
                 : (memberMap.get(activeIssue.assigneeUserId ?? "") ?? null)
             }
             isLive={liveIssueIds?.has(activeIssue.id) ?? false}
-            issueLinkState={issueLinkState}
-            modalLinkState={modalLinkState}
+            issueLinkState={cardLinkState}
             statusColorMap={statusColorMap}
             showNewBadge={newBadgeIssueId === activeIssue.id}
             isOverlay

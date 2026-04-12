@@ -35,6 +35,59 @@ export const issueStatusText: Record<string, string> = {
 
 export const issueStatusTextDefault = "text-muted-foreground";
 
+/**
+ * Jira-style status lozenges: light tinted background + strong label color.
+ * Used by StatusIcon selector (dropdown + trigger).
+ */
+export const issueStatusJiraLozenge: Record<string, string> = {
+  backlog: "bg-slate-200/90 text-slate-800 dark:bg-slate-700/85 dark:text-slate-100",
+  todo: "bg-sky-200/95 text-sky-950 dark:bg-sky-950/55 dark:text-sky-100",
+  in_progress: "bg-amber-200/95 text-amber-950 dark:bg-amber-950/45 dark:text-amber-100",
+  in_review: "bg-violet-200/95 text-violet-950 dark:bg-violet-950/50 dark:text-violet-100",
+  done: "bg-emerald-200/95 text-emerald-950 dark:bg-emerald-950/45 dark:text-emerald-100",
+  cancelled: "bg-slate-200/85 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  blocked: "bg-red-200/95 text-red-950 dark:bg-red-950/45 dark:text-red-100",
+};
+
+export const issueStatusJiraLozengeDefault =
+  "bg-slate-200/90 text-slate-800 dark:bg-slate-700/80 dark:text-slate-100";
+
+function normalizeHexColor(input: string): string | null {
+  let h = input.trim();
+  if (!h.startsWith("#")) h = `#${h}`;
+  if (/^#[0-9A-Fa-f]{6}$/.test(h)) return h;
+  if (/^#[0-9A-Fa-f]{3}$/.test(h)) {
+    return `#${h[1]!}${h[1]!}${h[2]!}${h[2]!}${h[3]!}${h[3]!}`;
+  }
+  return null;
+}
+
+/**
+ * Background + foreground for a custom project status color (hex), tuned per theme.
+ */
+export function issueJiraLozengeColorsFromHex(
+  hex: string,
+  theme: "light" | "dark",
+): { backgroundColor: string; color: string } | null {
+  const n = normalizeHexColor(hex);
+  if (!n) {
+    return null;
+  }
+  const r = Number.parseInt(n.slice(1, 3), 16);
+  const g = Number.parseInt(n.slice(3, 5), 16);
+  const b = Number.parseInt(n.slice(5, 7), 16);
+  if (theme === "dark") {
+    return {
+      backgroundColor: `rgba(${r}, ${g}, ${b}, 0.32)`,
+      color: `rgb(${Math.min(255, Math.round(r * 0.55 + 255 * 0.45))}, ${Math.min(255, Math.round(g * 0.55 + 255 * 0.45))}, ${Math.min(255, Math.round(b * 0.55 + 255 * 0.45))})`,
+    };
+  }
+  return {
+    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.34)`,
+    color: `rgb(${Math.max(0, Math.round(r * 0.42))}, ${Math.max(0, Math.round(g * 0.42))}, ${Math.max(0, Math.round(b * 0.42))})`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Badge colors — used by StatusBadge for all entity types
 // ---------------------------------------------------------------------------
