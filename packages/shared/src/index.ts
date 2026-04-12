@@ -9,7 +9,18 @@ export {
   AGENT_ROLE_LABELS,
   AGENT_ICON_NAMES,
   ISSUE_STATUSES,
+  BOARD_RETENTION_TERMINAL_ISSUE_STATUSES,
+  isBoardRetentionTerminalIssueStatus,
+  DEFAULT_BOARD_CLOSED_RETENTION_DAYS,
   DEFAULT_PROJECT_ISSUE_STATUSES,
+  MANDATORY_PROJECT_ISSUE_STATUS_VALUES,
+  isMandatoryProjectIssueStatusValue,
+  FIXED_NAME_PROJECT_ISSUE_STATUS_VALUES,
+  isFixedNameProjectIssueStatusValue,
+  BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUES,
+  isBoardPinnedHiddenProjectIssueStatusValue,
+  PROJECT_ISSUE_STATUS_ALLOWED_ACTORS,
+  isProjectIssueStatusAllowedActors,
   INBOX_MINE_ISSUE_STATUSES,
   INBOX_MINE_ISSUE_STATUS_FILTER,
   ISSUE_PRIORITIES,
@@ -80,6 +91,11 @@ export {
   type AgentRole,
   type AgentIconName,
   type IssueStatus,
+  type BoardRetentionTerminalIssueStatus,
+  type MandatoryProjectIssueStatusValue,
+  type FixedNameProjectIssueStatusValue,
+  type BoardPinnedHiddenProjectIssueStatusValue,
+  type ProjectIssueStatusAllowedActors,
   type IssuePriority,
   type IssueOriginKind,
   type GoalLevel,
@@ -637,6 +653,11 @@ export {
   type ParsedProjectMention,
   type ParsedUserMention,
 } from "./project-mentions.js";
+
+export {
+  projectIssueStatusRestrictedNextValues,
+  isProjectIssueWorkflowTransitionAllowed,
+} from "./project-issue-workflow.js";
 
 export {
   extractRoutineVariableNames,

@@ -3,6 +3,7 @@ import {
   armIssueDetailInboxQuickArchive,
   createIssueDetailLocationState,
   createIssueDetailPath,
+  mergeIssueModalLocationState,
   readIssueDetailBreadcrumb,
   shouldArmIssueDetailInboxQuickArchive,
 } from "./issueDetailBreadcrumb";
@@ -52,5 +53,20 @@ describe("issueDetailBreadcrumb", () => {
 
     expect(shouldArmIssueDetailInboxQuickArchive(state)).toBe(false);
     expect(shouldArmIssueDetailInboxQuickArchive(armIssueDetailInboxQuickArchive(state))).toBe(true);
+  });
+
+  it("mergeIssueModalLocationState preserves breadcrumb state and sets modal flags", () => {
+    const bg = {
+      pathname: "/PAP/issues",
+      search: "",
+      hash: "",
+      state: null,
+      key: "k",
+    };
+    const base = createIssueDetailLocationState("Issues", "/PAP/issues", "issues");
+    const merged = mergeIssueModalLocationState(base, bg as never);
+    expect(merged.issueModal).toBe(true);
+    expect(merged.backgroundLocation).toBe(bg);
+    expect(merged.issueDetailBreadcrumb).toEqual({ label: "Issues", href: "/PAP/issues" });
   });
 });

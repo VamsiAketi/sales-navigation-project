@@ -160,6 +160,8 @@ describe("optimistic issue comments", () => {
         completedAt: null,
         cancelledAt: null,
         hiddenAt: null,
+        targetStartAt: null,
+        dueAt: null,
         createdAt: new Date("2026-03-28T14:00:00.000Z"),
         updatedAt: new Date("2026-03-28T14:00:00.000Z"),
       },

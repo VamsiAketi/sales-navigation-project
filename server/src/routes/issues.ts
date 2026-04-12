@@ -16,6 +16,7 @@ import {
   updateIssueWorkProductSchema,
   upsertIssueDocumentSchema,
   updateIssueSchema,
+  type CreateIssue,
 } from "@paperclipai/shared";
 import type { StorageService } from "../storage/types.js";
 import { validate } from "../middleware/validate.js";
@@ -42,6 +43,20 @@ import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.
 import { queueIssueAssignmentWakeup } from "../services/issue-assignment-wakeup.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
+
+function parseIssuePlanningInstant(value: string | null | undefined): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const normalized =
+    trimmed.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T00:00:00.000Z` : trimmed;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) {
+    throw unprocessable("Invalid planning date.", { field: "date" });
+  }
+  return d;
+}
 
 export function issueRoutes(db: Db, storage: StorageService) {
   const router = Router();
@@ -811,8 +826,12 @@ export function issueRoutes(db: Db, storage: StorageService) {
     }
 
     const actor = getActorInfo(req);
+    const rawBody = req.body as CreateIssue;
+    const { targetStartAt: targetStartRaw, dueAt: dueAtRaw, ...createBody } = rawBody;
     const issue = await svc.create(companyId, {
-      ...req.body,
+      ...createBody,
+      ...(targetStartRaw !== undefined ? { targetStartAt: parseIssuePlanningInstant(targetStartRaw) } : {}),
+      ...(dueAtRaw !== undefined ? { dueAt: parseIssuePlanningInstant(dueAtRaw) } : {}),
       createdByAgentId: actor.agentId,
       createdByUserId: actor.actorType === "user" ? actor.actorId : null,
     });
@@ -894,9 +913,22 @@ export function issueRoutes(db: Db, storage: StorageService) {
         ? await resolveUserNameById(actor.actorId)
         : actorLabel(actor.actorType, actor.actorId);
     const isClosed = existing.status === "done" || existing.status === "cancelled";
-    const { comment: commentBody, reopen: reopenRequested, hiddenAt: hiddenAtRaw, ...updateFields } = req.body;
+    const {
+      comment: commentBody,
+      reopen: reopenRequested,
+      hiddenAt: hiddenAtRaw,
+      targetStartAt: targetStartRaw,
+      dueAt: dueAtRaw,
+      ...updateFields
+    } = req.body;
     if (hiddenAtRaw !== undefined) {
       updateFields.hiddenAt = hiddenAtRaw ? new Date(hiddenAtRaw) : null;
+    }
+    if (targetStartRaw !== undefined) {
+      updateFields.targetStartAt = parseIssuePlanningInstant(targetStartRaw);
+    }
+    if (dueAtRaw !== undefined) {
+      updateFields.dueAt = parseIssuePlanningInstant(dueAtRaw);
     }
     if (commentBody && reopenRequested === true && isClosed && updateFields.status === undefined) {
       updateFields.status = "todo";
@@ -1092,17 +1124,19 @@ export function issueRoutes(db: Db, storage: StorageService) {
       });
     }
 
-    const assigneeChanged = assigneeWillChange;
     const statusChangedFromBacklog =
       existing.status === "backlog" &&
       issue.status !== "backlog" &&
       req.body.status !== undefined;
 
+    /** After update(), including workflow default assignees not present in the request body. */
+    const assigneeAgentIdChangedResolved = issue.assigneeAgentId !== existing.assigneeAgentId;
+
     // Merge all wakeups from this update into one enqueue per agent to avoid duplicate runs.
     void (async () => {
       const wakeups = new Map<string, Parameters<typeof heartbeat.wakeup>[1]>();
 
-      if (assigneeChanged && issue.assigneeAgentId && issue.status !== "backlog") {
+      if (assigneeAgentIdChangedResolved && issue.assigneeAgentId && issue.status !== "backlog") {
         wakeups.set(issue.assigneeAgentId, {
           source: "assignment",
           triggerDetail: "system",
@@ -1114,7 +1148,11 @@ export function issueRoutes(db: Db, storage: StorageService) {
         });
       }
 
-      if (!assigneeChanged && statusChangedFromBacklog && issue.assigneeAgentId) {
+      if (
+        !assigneeAgentIdChangedResolved &&
+        statusChangedFromBacklog &&
+        issue.assigneeAgentId
+      ) {
         wakeups.set(issue.assigneeAgentId, {
           source: "automation",
           triggerDetail: "system",

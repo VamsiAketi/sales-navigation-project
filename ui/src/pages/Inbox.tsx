@@ -21,6 +21,7 @@ import {
   armIssueDetailInboxQuickArchive,
   createIssueDetailLocationState,
   createIssueDetailPath,
+  mergeIssueModalLocationState,
 } from "../lib/issueDetailBreadcrumb";
 import { hasBlockingShortcutDialog, isKeyboardShortcutTextInputTarget } from "../lib/keyboardShortcuts";
 import { EmptyState } from "../components/EmptyState";
@@ -820,6 +821,8 @@ export function Inbox() {
       ),
     [location.pathname, location.search, location.hash],
   );
+  const locationRef = useRef(location);
+  locationRef.current = location;
 
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
@@ -1497,8 +1500,9 @@ export function Inbox() {
           const item = st.workItems[st.selectedIndex];
           if (item.kind === "issue") {
             const pathId = item.issue.identifier ?? item.issue.id;
-            const detailState = armIssueDetailInboxQuickArchive(issueLinkState);
-            act.navigate(createIssueDetailPath(pathId, detailState), { state: detailState });
+            const baseState = armIssueDetailInboxQuickArchive(issueLinkState);
+            const navigationState = mergeIssueModalLocationState(baseState, locationRef.current);
+            act.navigate(createIssueDetailPath(pathId, navigationState), { state: navigationState });
           } else if (item.kind === "approval") {
             act.navigate(`/approvals/${item.approval.id}`);
           } else if (item.kind === "failed_run") {

@@ -119,6 +119,19 @@ export const ISSUE_STATUSES = [
 ] as const;
 export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 
+/** Issue statuses considered "closed" for board retention (Done and Cancelled). */
+export const BOARD_RETENTION_TERMINAL_ISSUE_STATUSES = ["done", "cancelled"] as const;
+export type BoardRetentionTerminalIssueStatus = (typeof BOARD_RETENTION_TERMINAL_ISSUE_STATUSES)[number];
+
+const BOARD_RETENTION_TERMINAL_ISSUE_STATUS_SET = new Set<string>(BOARD_RETENTION_TERMINAL_ISSUE_STATUSES);
+
+export function isBoardRetentionTerminalIssueStatus(status: string): boolean {
+  return BOARD_RETENTION_TERMINAL_ISSUE_STATUS_SET.has(status);
+}
+
+/** Default days Done/Cancelled issues stay on the project board before moving to Archive. */
+export const DEFAULT_BOARD_CLOSED_RETENTION_DAYS = 7;
+
 export const DEFAULT_PROJECT_ISSUE_STATUSES = [
   { name: "Backlog",     value: "backlog",     color: "#6b7280", position: 0 },
   { name: "Todo",        value: "todo",        color: "#3b82f6", position: 1 },
@@ -128,6 +141,50 @@ export const DEFAULT_PROJECT_ISSUE_STATUSES = [
   { name: "Done",        value: "done",        color: "#22c55e", position: 5 },
   { name: "Cancelled",   value: "cancelled",   color: "#6b7280", position: 6 },
 ] as const;
+
+/** Workflow `value` keys every project must keep; these rows cannot be deleted. */
+export const MANDATORY_PROJECT_ISSUE_STATUS_VALUES = ["backlog", "todo", "done", "cancelled"] as const;
+export type MandatoryProjectIssueStatusValue = (typeof MANDATORY_PROJECT_ISSUE_STATUS_VALUES)[number];
+
+const MANDATORY_PROJECT_ISSUE_STATUS_VALUE_SET = new Set<string>(MANDATORY_PROJECT_ISSUE_STATUS_VALUES);
+
+export function isMandatoryProjectIssueStatusValue(value: string): boolean {
+  return MANDATORY_PROJECT_ISSUE_STATUS_VALUE_SET.has(value);
+}
+
+/** Workflow values whose display names are fixed (Backlog and Done). */
+export const FIXED_NAME_PROJECT_ISSUE_STATUS_VALUES = ["backlog", "done"] as const;
+export type FixedNameProjectIssueStatusValue = (typeof FIXED_NAME_PROJECT_ISSUE_STATUS_VALUES)[number];
+
+const FIXED_NAME_PROJECT_ISSUE_STATUS_VALUE_SET = new Set<string>(FIXED_NAME_PROJECT_ISSUE_STATUS_VALUES);
+
+export function isFixedNameProjectIssueStatusValue(value: string): boolean {
+  return FIXED_NAME_PROJECT_ISSUE_STATUS_VALUE_SET.has(value);
+}
+
+/** Status values that stay first in workflow order, are never on the board (`isActive` false), and cannot be reordered. */
+export const BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUES = ["backlog"] as const;
+export type BoardPinnedHiddenProjectIssueStatusValue =
+  (typeof BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUES)[number];
+
+const BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUE_SET = new Set<string>(
+  BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUES,
+);
+
+export function isBoardPinnedHiddenProjectIssueStatusValue(value: string): boolean {
+  return BOARD_PINNED_HIDDEN_PROJECT_ISSUE_STATUS_VALUE_SET.has(value);
+}
+
+/** Who may be assigned / act on tasks while in this workflow status. */
+export const PROJECT_ISSUE_STATUS_ALLOWED_ACTORS = ["human_and_agent", "human_only", "agent_only"] as const;
+export type ProjectIssueStatusAllowedActors = (typeof PROJECT_ISSUE_STATUS_ALLOWED_ACTORS)[number];
+
+const PROJECT_ISSUE_STATUS_ALLOWED_ACTORS_SET = new Set<string>(PROJECT_ISSUE_STATUS_ALLOWED_ACTORS);
+
+export function isProjectIssueStatusAllowedActors(value: string): value is ProjectIssueStatusAllowedActors {
+  return PROJECT_ISSUE_STATUS_ALLOWED_ACTORS_SET.has(value);
+}
+
 export const INBOX_MINE_ISSUE_STATUSES = [
   "backlog",
   "todo",

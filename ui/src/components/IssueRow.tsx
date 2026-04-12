@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
+import { useMemo } from "react";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
-import { Link } from "@/lib/router";
-import { createIssueDetailPath } from "../lib/issueDetailBreadcrumb";
+import { Link, useLocation } from "@/lib/router";
+import { createIssueDetailPath, mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { cn } from "../lib/utils";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import { StatusIcon } from "./StatusIcon";
@@ -45,8 +46,13 @@ export function IssueRow({
   showNewBadge = false,
   projectStatuses,
 }: IssueRowProps) {
+  const location = useLocation();
   const issuePathId = issue.identifier ?? issue.id;
   const issueHref = createIssueDetailPath(issuePathId, issueLinkState);
+  const rowLinkState = useMemo(
+    () => mergeIssueModalLocationState(issueLinkState, location),
+    [issueLinkState, location],
+  );
   const identifier = issue.identifier ?? issue.id.slice(0, 8);
   const showUnreadSlot = unreadState !== null;
   const showUnreadDot = unreadState === "visible" || unreadState === "fading";
@@ -56,7 +62,7 @@ export function IssueRow({
       id={`issue-surface-${issue.id}`}
       data-inbox-issue-link
       to={issueHref}
-      state={issueLinkState}
+      state={rowLinkState}
       className={cn(
         "flex items-start gap-2 border-b border-border py-2.5 pl-2 pr-3 text-sm no-underline text-inherit transition-colors hover:bg-accent/50 last:border-b-0 sm:items-center sm:py-2 sm:pl-1",
         selected && "bg-accent hover:bg-transparent",

@@ -37,6 +37,18 @@ export const issueAssigneeAdapterOverridesSchema = z
   })
   .strict();
 
+/** YYYY-MM-DD or full ISO-8601; empty string treated as omitted. */
+const issuePlanningInstantSchema = z.preprocess(
+  (v) => (v === "" ? undefined : v),
+  z
+    .union([
+      z.string().datetime(),
+      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD or ISO-8601 datetime"),
+    ])
+    .nullable()
+    .optional(),
+);
+
 export const createIssueSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   projectWorkspaceId: z.string().uuid().optional().nullable(),
@@ -62,6 +74,8 @@ export const createIssueSchema = z.object({
   ]).optional().nullable(),
   executionWorkspaceSettings: issueExecutionWorkspaceSettingsSchema.optional().nullable(),
   labelIds: z.array(z.string().uuid()).optional(),
+  targetStartAt: issuePlanningInstantSchema,
+  dueAt: issuePlanningInstantSchema,
 });
 
 export type CreateIssue = z.infer<typeof createIssueSchema>;

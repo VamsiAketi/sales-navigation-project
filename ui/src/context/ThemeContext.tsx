@@ -87,3 +87,8 @@ export function useTheme() {
   }
   return context;
 }
+
+/** For components that must render outside ThemeProvider (defaults to light). */
+export function useOptionalTheme(): Theme {
+  return useContext(ThemeContext)?.theme ?? "light";
+}

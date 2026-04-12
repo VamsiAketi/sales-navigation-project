@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
+import { createIssueDetailPath, mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
+import { IssueLink } from "../components/IssueLink";
 import { StatusBadge } from "../components/StatusBadge";
 import { Identity } from "../components/Identity";
 import { approvalLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer } from "../components/ApprovalPayload";
@@ -21,6 +23,7 @@ export function ApprovalDetail() {
   const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [commentBody, setCommentBody] = useState("");
@@ -191,7 +194,15 @@ export function ApprovalDetail() {
               size="sm"
               variant="outline"
               className="border-green-400 dark:border-green-600/50 text-green-800 dark:text-green-100 hover:bg-green-100 dark:hover:bg-green-900/30"
-              onClick={() => navigate(resolvedCta.to)}
+              onClick={() => {
+                if (primaryLinkedIssue) {
+                  navigate(createIssueDetailPath(primaryLinkedIssue.identifier ?? primaryLinkedIssue.id), {
+                    state: mergeIssueModalLocationState(undefined, location),
+                  });
+                } else {
+                  navigate(resolvedCta.to);
+                }
+              }}
             >
               {resolvedCta.label}
             </Button>
@@ -243,16 +254,16 @@ export function ApprovalDetail() {
             <p className="text-xs text-muted-foreground mb-1.5">Linked Issues</p>
             <div className="space-y-1.5">
               {linkedIssues.map((issue) => (
-                <Link
+                <IssueLink
                   key={issue.id}
-                  to={`/issues/${issue.identifier ?? issue.id}`}
+                  issuePathId={issue.identifier ?? issue.id}
                   className="block text-xs rounded border border-border/70 px-2 py-1.5 hover:bg-accent/20"
                 >
                   <span className="font-mono text-muted-foreground mr-2">
                     {issue.identifier ?? issue.id.slice(0, 8)}
                   </span>
                   <span>{issue.title}</span>
-                </Link>
+                </IssueLink>
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">

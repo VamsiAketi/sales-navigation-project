@@ -1,4 +1,4 @@
-import type { PauseReason, ProjectStatus } from "../constants.js";
+import type { PauseReason, ProjectIssueStatusAllowedActors, ProjectStatus } from "../constants.js";
 import type {
   ProjectExecutionWorkspacePolicy,
   ProjectWorkspaceRuntimeConfig,
@@ -62,6 +62,11 @@ export interface ProjectIssueStatus {
   isActive: boolean;
   isHumanApproval: boolean;
   approverUserIds: string[];
+  allowedActors: ProjectIssueStatusAllowedActors;
+  defaultAssigneeUserId: string | null;
+  defaultAssigneeAgentId: string | null;
+  /** Status `value` keys allowed as the next stage; empty = any transition allowed by global rules. */
+  allowedNextStatusValues: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -109,6 +114,11 @@ export interface Project {
   notificationConfig?: ProjectNotificationConfig | null;
   /** Short uppercase key used as the prefix for issue identifiers in this project (e.g. "AIH"). */
   issuePrefix?: string | null;
+  /**
+   * Done/Cancelled tasks remain on the board only for this many full days after close.
+   * Older closed tasks are listed under the project Archive tab. Minimum 1; default 7.
+   */
+  boardClosedRetentionDays: number;
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;

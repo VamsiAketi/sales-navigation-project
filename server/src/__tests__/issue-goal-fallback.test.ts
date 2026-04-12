@@ -5,14 +5,14 @@ import {
 } from "../services/issue-goal-fallback.ts";
 
 describe("issue goal fallback", () => {
-  it("assigns the company goal when creating an issue without project or goal", () => {
+  it("does not auto-link a goal when creating an issue without an explicit goalId", () => {
     expect(
       resolveIssueGoalId({
         projectId: null,
         goalId: null,
         defaultGoalId: "goal-1",
       }),
-    ).toBe("goal-1");
+    ).toBeNull();
   });
 
   it("keeps an explicit goal when creating an issue", () => {
@@ -26,7 +26,7 @@ describe("issue goal fallback", () => {
     ).toBe("goal-2");
   });
 
-  it("inherits the project goal when creating a project-linked issue", () => {
+  it("does not inherit the project goal when creating a project-linked issue without explicit goalId", () => {
     expect(
       resolveIssueGoalId({
         projectId: "project-1",
@@ -34,7 +34,7 @@ describe("issue goal fallback", () => {
         projectGoalId: "goal-2",
         defaultGoalId: "goal-1",
       }),
-    ).toBe("goal-2");
+    ).toBeNull();
   });
 
   it("does not force a company goal when the project has no goal", () => {

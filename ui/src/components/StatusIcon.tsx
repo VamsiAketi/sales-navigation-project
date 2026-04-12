@@ -1,14 +1,65 @@
 import { useState } from "react";
 import { cn } from "../lib/utils";
-import { issueStatusIcon, issueStatusIconDefault } from "../lib/status-colors";
+import {
+  issueStatusJiraLozenge,
+  issueStatusJiraLozengeDefault,
+  issueJiraLozengeColorsFromHex,
+} from "../lib/status-colors";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import type { ProjectIssueStatus } from "@paperclipai/shared";
+import { projectIssueStatusRestrictedNextValues, type ProjectIssueStatus } from "@paperclipai/shared";
+import { useOptionalTheme } from "../context/ThemeContext";
 
 const defaultStatuses = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled", "blocked"];
 
 export function statusLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+type LozengeMode = "pill" | "menuRow";
+
+function JiraStatusLozenge({
+  statusValue,
+  displayName,
+  hexColor,
+  theme,
+  className,
+  mode = "pill",
+}: {
+  statusValue: string;
+  displayName: string;
+  hexColor?: string | null;
+  theme: "light" | "dark";
+  className?: string;
+  mode?: LozengeMode;
+}) {
+  const label = displayName.toUpperCase();
+  const textStyle = "text-[10px] font-bold uppercase tracking-wide";
+  const shape =
+    mode === "menuRow"
+      ? "block w-full min-w-0 truncate rounded-sm px-2.5 py-2 text-left"
+      : "inline-flex max-w-full min-w-0 truncate rounded px-2 py-0.5";
+
+  if (hexColor) {
+    const style = issueJiraLozengeColorsFromHex(hexColor, theme);
+    if (style) {
+      return (
+        <span
+          className={cn(shape, textStyle, className)}
+          style={{ backgroundColor: style.backgroundColor, color: style.color }}
+        >
+          {label}
+        </span>
+      );
+    }
+  }
+
+  const builtInClass = issueStatusJiraLozenge[statusValue] ?? issueStatusJiraLozengeDefault;
+
+  return (
+    <span className={cn(shape, textStyle, builtInClass, className)}>
+      {label}
+    </span>
+  );
 }
 
 interface StatusIconProps {
@@ -22,63 +73,116 @@ interface StatusIconProps {
 
 export function StatusIcon({ status, onChange, className, showLabel, projectStatuses }: StatusIconProps) {
   const [open, setOpen] = useState(false);
+  const theme = useOptionalTheme();
 
-  // Resolve color: custom hex from project statuses, else Tailwind class from map
   const customStatus = projectStatuses?.find((s) => s.value === status);
-  const tailwindClass = issueStatusIcon[status] ?? issueStatusIconDefault;
+  const label = customStatus?.name ?? statusLabel(status);
 
-  const circle = customStatus ? (
-    <span
-      className={cn("inline-flex h-4 w-4 rounded-full border-2 shrink-0", onChange && !showLabel && "cursor-pointer", className)}
-      style={{ borderColor: customStatus.color }}
-    />
-  ) : (
-    <span
-      className={cn("inline-flex h-4 w-4 rounded-full border-2 shrink-0", tailwindClass, onChange && !showLabel && "cursor-pointer", className)}
+  const lozenge = (
+    <JiraStatusLozenge
+      statusValue={status}
+      displayName={label}
+      hexColor={customStatus?.color ?? null}
+      theme={theme}
+      className={className}
+      mode="pill"
     />
   );
 
-  const label = customStatus?.name ?? statusLabel(status);
-
   if (!onChange) {
-    return showLabel ? <span className="inline-flex items-center gap-1.5">{circle}<span className="text-sm">{label}</span></span> : circle;
+    return showLabel ? <span className="inline-flex min-w-0 max-w-full items-center">{lozenge}</span> : lozenge;
   }
 
-  const trigger = showLabel ? (
-    <button className="inline-flex items-center gap-1.5 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 py-0.5 transition-colors">
-      {circle}
-      <span className="text-sm">{label}</span>
-    </button>
-  ) : circle;
+  /** No extra border/shadow around the lozenge — the pill already reads as the control. */
+  const triggerBase =
+    "rounded-md px-1 py-0.5 outline-none transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=open]:bg-accent/40 data-[state=open]:ring-2 data-[state=open]:ring-primary/25";
 
-  // Build the list to show in the dropdown
+  const trigger = showLabel ? (
+    <button type="button" className={cn("inline-flex min-w-0 max-w-full cursor-pointer items-center", triggerBase)}>
+      {lozenge}
+    </button>
+  ) : (
+    <button
+      type="button"
+      className={cn(
+        "inline-flex min-w-0 max-w-[min(100%,11rem)] cursor-pointer items-center",
+        triggerBase,
+        className,
+      )}
+    >
+      <JiraStatusLozenge
+        statusValue={status}
+        displayName={label}
+        hexColor={customStatus?.color ?? null}
+        theme={theme}
+        mode="pill"
+      />
+    </button>
+  );
+
+  const fromMeta = projectStatuses?.find((s) => s.value === status);
+  const restrictedNext = projectIssueStatusRestrictedNextValues(fromMeta);
+
   const listItems: Array<{ value: string; name: string; color?: string; isTailwind: boolean }> = projectStatuses
-    ? projectStatuses.filter((s) => s.isActive).map((s) => ({ value: s.value, name: s.name, color: s.color, isTailwind: false }))
+    ? (() => {
+        if (restrictedNext) {
+          const byValue = new Map(projectStatuses.map((s) => [s.value, s]));
+          return restrictedNext.map((value) => {
+            const row = byValue.get(value);
+            return row
+              ? { value: row.value, name: row.name, color: row.color, isTailwind: false as const }
+              : { value, name: statusLabel(value), isTailwind: true as const };
+          });
+        }
+        return projectStatuses
+          .filter((s) => s.isActive)
+          .map((s) => ({ value: s.value, name: s.name, color: s.color, isTailwind: false as const }));
+      })()
     : defaultStatuses.map((s) => ({ value: s, name: statusLabel(s), isTailwind: true }));
+
+  const selectableItems = listItems.filter((s) => s.value !== status);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className="w-44 p-1" align="start">
-        {listItems.map((s) => (
-          <Button
-            key={s.value}
-            variant="ghost"
-            size="sm"
-            className={cn("w-full justify-start gap-2 text-xs", s.value === status && "bg-accent")}
-            onClick={() => { onChange(s.value); setOpen(false); }}
-          >
-            {s.isTailwind ? (
-              <span className={cn("inline-flex h-4 w-4 rounded-full border-2 shrink-0", issueStatusIcon[s.value] ?? issueStatusIconDefault)} />
-            ) : (
-              <span
-                className="inline-flex h-4 w-4 rounded-full border-2 shrink-0"
-                style={{ borderColor: s.color }}
-              />
-            )}
-            {s.name}
-          </Button>
-        ))}
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className="w-64 p-1 shadow-md"
+      >
+        {selectableItems.length === 0 ? (
+          <p className="px-3 py-3 text-center text-xs leading-snug text-muted-foreground">
+            No other statuses to switch to.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-0.5" role="listbox" aria-label="Change status">
+            {selectableItems.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                role="option"
+                aria-selected={false}
+                className={cn(
+                  "w-full rounded-md border border-transparent p-0.5 text-left outline-none transition-[background-color,border-color,box-shadow]",
+                  "hover:border-primary/25 hover:bg-primary/8 dark:hover:bg-primary/15",
+                  "focus-visible:border-primary/40 focus-visible:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                )}
+                onClick={() => {
+                  onChange(s.value);
+                  setOpen(false);
+                }}
+              >
+                <JiraStatusLozenge
+                  statusValue={s.value}
+                  displayName={s.name}
+                  hexColor={!s.isTailwind ? s.color : undefined}
+                  theme={theme}
+                  mode="menuRow"
+                />
+              </button>
+            ))}
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

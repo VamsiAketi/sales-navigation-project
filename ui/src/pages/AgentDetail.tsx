@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { useParams, useNavigate, Link, Navigate, useBeforeUnload } from "@/lib/router";
+import { useParams, useNavigate, Link, Navigate, useBeforeUnload, useLocation } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   agentsApi,
@@ -22,6 +22,7 @@ import { useToast } from "../context/ToastContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
+import { createIssueDetailPath, mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { AgentConfigForm } from "../components/AgentConfigForm";
 import { PageTabBar } from "../components/PageTabBar";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
@@ -33,6 +34,7 @@ import { agentStatusDot, agentStatusDotDefault } from "../lib/status-colors";
 import { MarkdownBody } from "../components/MarkdownBody";
 import { CopyText } from "../components/CopyText";
 import { EntityRow } from "../components/EntityRow";
+import { IssueLink } from "../components/IssueLink";
 import { Identity } from "../components/Identity";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { RunButton, PauseResumeButton } from "../components/AgentActionButtons";
@@ -1149,6 +1151,8 @@ function AgentOverview({
   agentId: string;
   agentRouteId: string;
 }) {
+  const location = useLocation();
+  const issueNavigateState = useMemo(() => mergeIssueModalLocationState(undefined, location), [location]);
   return (
     <div className="space-y-8">
       {/* Latest Run */}
@@ -1190,7 +1194,8 @@ function AgentOverview({
                 key={issue.id}
                 identifier={issue.identifier ?? issue.id.slice(0, 8)}
                 title={issue.title}
-                to={`/issues/${issue.identifier ?? issue.id}`}
+                to={createIssueDetailPath(issue.identifier ?? issue.id)}
+                state={issueNavigateState}
                 trailing={<StatusBadge status={issue.status} />}
               />
             ))}
@@ -3238,9 +3243,9 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
           <span className="text-xs font-medium text-muted-foreground">Issues Touched ({touchedIssues.length})</span>
           <div className="border border-border rounded-lg divide-y divide-border">
             {touchedIssues.map((issue) => (
-              <Link
+              <IssueLink
                 key={issue.issueId}
-                to={`/issues/${issue.identifier ?? issue.issueId}`}
+                issuePathId={issue.identifier ?? issue.issueId}
                 className="flex items-center justify-between w-full px-3 py-2 text-xs hover:bg-accent/20 transition-colors text-left no-underline text-inherit"
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -3248,7 +3253,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                   <span className="truncate">{issue.title}</span>
                 </div>
                 <span className="font-mono text-muted-foreground shrink-0 ml-2">{issue.identifier ?? issue.issueId.slice(0, 8)}</span>
-              </Link>
+              </IssueLink>
             ))}
           </div>
         </div>
