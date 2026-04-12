@@ -8,6 +8,7 @@ import { companiesApi } from "../api/companies";
 import { healthApi } from "../api/health";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
+import { accessApi } from "../api/access";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
@@ -38,6 +39,7 @@ import {
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
+import { pickFirstCreatedAgentId, pickFirstCreatedOwnerMemberId } from "../lib/org-defaults";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
 // import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon"; // commented out: adapter type UI removed
 import {
@@ -567,9 +569,13 @@ export function OnboardingWizard() {
       // Create agent if not already created
       let agentId = createdAgentId;
       if (!agentId) {
+        const existingAgents = await agentsApi.list(companyId);
+        const firstAgentId = pickFirstCreatedAgentId(existingAgents);
+        const creatingFirstAgent = existingAgents.length === 0;
         const agent = await agentsApi.create(companyId, {
           name: agentName.trim(),
           role: "ceo",
+          ...(firstAgentId ? { reportsTo: firstAgentId } : {}),
           adapterType,
           adapterConfig: buildAdapterConfig(),
           runtimeConfig: {
@@ -582,6 +588,24 @@ export function OnboardingWizard() {
             }
           }
         });
+        try {
+          const members = await accessApi.listMembers(companyId);
+          const createdAgentMember =
+            members.find(
+              (member) =>
+                member.principalType === "agent" &&
+                member.principalId === agent.id &&
+                member.status === "active",
+            ) ?? null;
+          const firstOwnerMemberId = pickFirstCreatedOwnerMemberId(members);
+          if (creatingFirstAgent && createdAgentMember && firstOwnerMemberId) {
+            await accessApi.updateMemberOrgConfig(companyId, createdAgentMember.id, {
+              reportsToMembershipId: firstOwnerMemberId,
+            });
+          }
+        } catch {
+          // Onboarding should proceed even if best-effort org defaults fail.
+        }
         agentId = agent.id;
         setCreatedAgentId(agentId);
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });

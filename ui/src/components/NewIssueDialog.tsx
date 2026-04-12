@@ -274,6 +274,29 @@ function defaultExecutionWorkspaceModeForProject(project: { executionWorkspacePo
   return "shared_workspace";
 }
 
+function defaultGoalIdForProject(
+  project:
+    | { goals?: Array<{ id: string }>; goalIds?: string[]; goalId?: string | null }
+    | null
+    | undefined,
+) {
+  return project?.goals?.[0]?.id ?? project?.goalIds?.[0] ?? project?.goalId ?? "";
+}
+
+function projectGoalIdSetFromProject(
+  project:
+    | { goals?: Array<{ id: string }>; goalIds?: string[]; goalId?: string | null }
+    | null
+    | undefined,
+) {
+  const ids = [
+    ...(project?.goalId ? [project.goalId] : []),
+    ...(project?.goalIds ?? []),
+    ...((project?.goals ?? []).map((goal) => goal.id)),
+  ].filter(Boolean);
+  return new Set(ids);
+}
+
 function issueExecutionWorkspaceModeForExistingWorkspace(mode: string | null | undefined) {
   if (mode === "isolated_workspace" || mode === "operator_branch" || mode === "shared_workspace") {
     return mode;
@@ -587,7 +610,7 @@ export function NewIssueDialog() {
       const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
-      setGoalId(defaultProject?.goals?.[0]?.id ?? "");
+      setGoalId(defaultGoalIdForProject(defaultProject));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
@@ -610,7 +633,7 @@ export function NewIssueDialog() {
       );
       setProjectId(restoredProjectId);
       setProjectWorkspaceId(draft.projectWorkspaceId ?? defaultProjectWorkspaceIdForProject(restoredProject));
-      setGoalId(draft.goalId ?? restoredProject?.goals?.[0]?.id ?? "");
+      setGoalId(draft.goalId ?? defaultGoalIdForProject(restoredProject));
       setAssigneeModelOverride(draft.assigneeModelOverride ?? "");
       setAssigneeThinkingEffort(draft.assigneeThinkingEffort ?? "");
       setAssigneeChrome(draft.assigneeChrome ?? false);
@@ -628,7 +651,7 @@ export function NewIssueDialog() {
       setSelectedLabelIds([]);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
-      setGoalId(defaultProject?.goals?.[0]?.id ?? "");
+      setGoalId(defaultGoalIdForProject(defaultProject));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
@@ -722,7 +745,7 @@ export function NewIssueDialog() {
       return;
     }
     if (!title.trim()) return;
-    const hasGoals = (goals ?? []).length > 0;
+    const hasGoals = projectGoals.length > 0;
     if (hasGoals && !goalId) {
       setGoalValidationError("Goal is required.");
       return;
@@ -926,14 +949,29 @@ export function NewIssueDialog() {
     [orderedProjects],
   );
 
+  const projectGoalIds = useMemo(() => projectGoalIdSetFromProject(currentProject), [currentProject]);
+  const projectGoals = useMemo(
+    () => {
+      if (!currentProject || projectGoalIds.size === 0) return [];
+      const byId = new Map((goals ?? []).map((goal) => [goal.id, goal]));
+      const merged = Array.from(projectGoalIds)
+        .map((goalId) => byId.get(goalId) ?? currentProject.goals?.find((goal) => goal.id === goalId))
+        .filter((goal): goal is NonNullable<typeof goals>[number] => Boolean(goal))
+        .filter((goal) => goal.status !== "cancelled" && goal.status !== "achieved");
+      return merged;
+    },
+    [currentProject, goals, projectGoalIds],
+  );
   const goalOptions = useMemo<InlineEntityOption[]>(
     () =>
-      (goals ?? [])
-        .filter((g) => g.status !== "cancelled")
-        .map((g) => ({ id: g.id, label: g.title, searchText: g.description ?? "" })),
-    [goals],
+      projectGoals.map((goal) => ({
+        id: goal.id,
+        label: goal.title,
+        searchText: goal.description ?? "",
+      })),
+    [projectGoals],
   );
-  const currentGoal = useMemo(() => (goals ?? []).find((g) => g.id === goalId), [goals, goalId]);
+  const currentGoal = useMemo(() => projectGoals.find((goal) => goal.id === goalId), [projectGoals, goalId]);
   const goalMarkerClassName = cn("text-muted-foreground/90", goalValidationError && "text-destructive");
   const savedDraft = loadDraft();
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
@@ -968,10 +1006,8 @@ export function NewIssueDialog() {
     setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(nextProject));
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(nextProject));
     setSelectedExecutionWorkspaceId("");
-    if (nextProject?.goals?.[0]?.id) {
-      setGoalId(nextProject.goals[0].id);
-      setGoalValidationError(null);
-    }
+    setGoalId(defaultGoalIdForProject(nextProject));
+    setGoalValidationError(null);
   }, [orderedProjects]);
 
   useEffect(() => {
@@ -985,6 +1021,22 @@ export function NewIssueDialog() {
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(project));
     setSelectedExecutionWorkspaceId("");
   }, [newIssueOpen, orderedProjects, projectId]);
+  useEffect(() => {
+    if (!newIssueOpen) return;
+    if (!projectId) {
+      if (goalId) setGoalId("");
+      setGoalValidationError(null);
+      return;
+    }
+    if (projectGoals.length === 0) {
+      if (goalId) setGoalId("");
+      setGoalValidationError(null);
+      return;
+    }
+    if (goalId && projectGoalIds.has(goalId)) return;
+    setGoalId(projectGoals[0]?.id ?? "");
+    setGoalValidationError(null);
+  }, [newIssueOpen, projectId, projectGoals, projectGoalIds, goalId]);
   const modelOverrideOptions = useMemo<InlineEntityOption[]>(
     () => {
       return [...(assigneeAdapterModels ?? [])]

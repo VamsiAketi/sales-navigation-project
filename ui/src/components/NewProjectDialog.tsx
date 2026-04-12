@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
@@ -58,10 +58,12 @@ export function NewProjectDialog() {
   const [workspaceLocalPath, setWorkspaceLocalPath] = useState("");
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [goalError, setGoalError] = useState<string | null>(null);
 
   const [statusOpen, setStatusOpen] = useState(false);
   const [goalOpen, setGoalOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
+  const hasAutoSelectedGoalRef = useRef(false);
 
   const { data: goals } = useQuery({
     queryKey: queryKeys.goals.list(selectedCompanyId!),
@@ -114,6 +116,8 @@ export function NewProjectDialog() {
     setWorkspaceLocalPath("");
     setWorkspaceRepoUrl("");
     setWorkspaceError(null);
+    setGoalError(null);
+    hasAutoSelectedGoalRef.current = false;
   }
 
   const isAbsolutePath = (value: string) => value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
@@ -148,6 +152,10 @@ export function NewProjectDialog() {
 
   async function handleSubmit() {
     if (!selectedCompanyId || !name.trim()) return;
+    if (goalIds.length === 0) {
+      setGoalError("Select a goal before creating this project.");
+      return;
+    }
     const localPath = workspaceLocalPath.trim();
     const repoUrl = workspaceRepoUrl.trim();
 
@@ -161,6 +169,7 @@ export function NewProjectDialog() {
     }
 
     setWorkspaceError(null);
+    setGoalError(null);
 
     try {
       const created = await createProject.mutateAsync({
@@ -201,6 +210,31 @@ export function NewProjectDialog() {
 
   const selectedGoals = (goals ?? []).filter((g) => goalIds.includes(g.id));
   const availableGoals = (goals ?? []).filter((g) => !goalIds.includes(g.id));
+
+  useEffect(() => {
+    if (!newProjectOpen) {
+      hasAutoSelectedGoalRef.current = false;
+      return;
+    }
+    if (hasAutoSelectedGoalRef.current) return;
+    if (goalIds.length > 0) return;
+    if (!goals || goals.length === 0) return;
+
+    const firstCreatedGoal = goals
+      .slice()
+      .sort((a, b) => {
+        const aMs = new Date(a.createdAt as unknown as string).getTime();
+        const bMs = new Date(b.createdAt as unknown as string).getTime();
+        const safeAMs = Number.isFinite(aMs) ? aMs : Number.MAX_SAFE_INTEGER;
+        const safeBMs = Number.isFinite(bMs) ? bMs : Number.MAX_SAFE_INTEGER;
+        return safeAMs - safeBMs;
+      })[0];
+
+    if (firstCreatedGoal) {
+      setGoalIds([firstCreatedGoal.id]);
+      hasAutoSelectedGoalRef.current = true;
+    }
+  }, [newProjectOpen, goals, goalIds.length]);
 
   return (
     <Dialog
@@ -367,7 +401,10 @@ export function NewProjectDialog() {
               <span className="max-w-[160px] truncate">{goal.title}</span>
               <button
                 className="text-muted-foreground hover:text-foreground"
-                onClick={() => setGoalIds((prev) => prev.filter((id) => id !== goal.id))}
+                onClick={() => {
+                  setGoalIds((prev) => prev.filter((id) => id !== goal.id));
+                  setGoalError(null);
+                }}
                 aria-label={`Remove goal ${goal.title}`}
                 type="button"
               >
@@ -387,20 +424,13 @@ export function NewProjectDialog() {
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-56 p-1" align="start">
-              {selectedGoals.length === 0 && (
-                <button
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground"
-                  onClick={() => setGoalOpen(false)}
-                >
-                  No goal
-                </button>
-              )}
               {availableGoals.map((g) => (
                 <button
                   key={g.id}
                   className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 truncate"
                   onClick={() => {
                     setGoalIds((prev) => [...prev, g.id]);
+                    setGoalError(null);
                     setGoalOpen(false);
                   }}
                 >
@@ -414,6 +444,9 @@ export function NewProjectDialog() {
               )}
             </PopoverContent>
           </Popover>
+          {goalError && (
+            <span className="text-xs text-destructive">{goalError}</span>
+          )}
 
           {/* Target date */}
           <div className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs">
@@ -437,7 +470,7 @@ export function NewProjectDialog() {
           )}
           <Button
             size="sm"
-            disabled={!name.trim() || createProject.isPending}
+            disabled={!name.trim() || goalIds.length === 0 || createProject.isPending}
             onClick={handleSubmit}
           >
             {createProject.isPending ? "Creating…" : "Create project"}
