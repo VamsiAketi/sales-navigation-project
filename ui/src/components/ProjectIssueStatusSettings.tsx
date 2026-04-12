@@ -643,6 +643,14 @@ function ApproverPicker({
 
 const WORKFLOW_COLUMN_WIDTH_CLASS = "w-[min(268px,calc(100vw-3rem))] shrink-0";
 
+/** Scrollable body inside each workflow column: visible thin scrollbar, touch momentum, vertical scroll chaining at edges. */
+const WORKFLOW_COLUMN_SCROLL_CLASS =
+  "overflow-y-auto overscroll-x-contain overscroll-y-auto [-webkit-overflow-scrolling:touch] [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:hsl(var(--border)/0.85)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border";
+
+/** Horizontal strip under task statuses: easier to see/drag scroll position. */
+const WORKFLOW_STRIP_SCROLL_CLASS =
+  "[scrollbar-width:thin] [scrollbar-color:hsl(var(--border)/0.85)_transparent] [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-track]:mx-1 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border";
+
 /** Trackpad / wheel sideways movement should scroll the strip, not get trapped by the column’s vertical scroller. */
 function handleWorkflowColumnWheelCapture(e: React.WheelEvent<HTMLDivElement>) {
   const el = e.target;
@@ -731,53 +739,7 @@ function StatusRow({
             </div>
           ) : null}
           <div className="border-b border-border/60 bg-muted/30 dark:bg-muted/15">
-            <div className="flex items-center justify-between gap-2 border-b border-border/40 px-3 py-2 dark:border-border/25">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  {...attributes}
-                  {...listeners}
-                  className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
-                  aria-label="Drag to reorder columns"
-                >
-                  <GripVertical className="h-4 w-4" />
-                </button>
-                <div
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/35 bg-amber-500/10 dark:bg-amber-500/15"
-                  title="Human approval"
-                >
-                  <UserCheck className="h-4 w-4 text-amber-800 dark:text-amber-300" />
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-0.5">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                  onClick={() => onToggleActive(status.id, !status.isActive)}
-                  title={status.isActive ? "Hide from Board" : "Show on Board"}
-                >
-                  {status.isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 opacity-60" />}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                  disabled={deleteDisabled}
-                  onClick={() => onDelete(status.id)}
-                  title={
-                    deleteDisabled
-                      ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
-                      : "Delete status"
-                  }
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            <div className="px-3 pb-2.5 pt-2">
+            <div className="px-3 pb-2 pt-2.5">
               <Label htmlFor={`wf-human-name-${status.id}`} className="sr-only">
                 Stage display name
               </Label>
@@ -798,8 +760,52 @@ function StatusRow({
                 className={cn(WORKFLOW_STATUS_NAME_INPUT_CLASS, nameLocked && "cursor-not-allowed bg-muted/50 text-muted-foreground")}
               />
             </div>
+            <div className="flex flex-wrap items-center gap-0.5 border-t border-border/40 px-3 py-2 dark:border-border/25">
+              <button
+                type="button"
+                {...attributes}
+                {...listeners}
+                className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
+                aria-label="Drag to reorder columns"
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+              <div
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/35 bg-amber-500/10 dark:bg-amber-500/15"
+                title="Human approval"
+              >
+                <UserCheck className="h-4 w-4 text-amber-800 dark:text-amber-300" />
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                onClick={() => onToggleActive(status.id, !status.isActive)}
+                title={status.isActive ? "Hide from Board" : "Show on Board"}
+              >
+                {status.isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 opacity-60" />}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                disabled={deleteDisabled}
+                onClick={() => onDelete(status.id)}
+                title={
+                  deleteDisabled
+                    ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
+                    : "Delete status"
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-          <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-3 py-4">
+          <CardContent
+            className={cn("min-h-0 flex-1 space-y-5 px-3 py-4", WORKFLOW_COLUMN_SCROLL_CLASS)}
+          >
             <p className="text-xs leading-relaxed text-muted-foreground">
               Configure who may approve and, if needed, which stages tasks may enter after this step.
             </p>
@@ -865,54 +871,7 @@ function StatusRow({
           </div>
         ) : null}
         <div className="border-b border-border/60 bg-muted/30 dark:bg-muted/15">
-          <div className="flex items-center justify-between gap-2 border-b border-border/40 px-3 py-2 dark:border-border/25">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <button
-                type="button"
-                {...attributes}
-                {...listeners}
-                className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
-                aria-label="Drag to reorder columns"
-              >
-                <GripVertical className="h-4 w-4" />
-              </button>
-              <ColorSwatchPicker
-                value={localColor}
-                onChange={(color) => {
-                  setLocalColor(color);
-                  onColorChange(status.id, color);
-                }}
-              />
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                onClick={() => onToggleActive(status.id, !status.isActive)}
-                title={status.isActive ? "Hide from Board" : "Show on Board"}
-              >
-                {status.isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 opacity-60" />}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                disabled={deleteDisabled}
-                onClick={() => onDelete(status.id)}
-                title={
-                  deleteDisabled
-                    ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
-                    : "Delete status"
-                }
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          <div className="px-3 pb-2.5 pt-2">
+          <div className="px-3 pb-2 pt-2.5">
             <Label htmlFor={`wf-col-name-${status.id}`} className="sr-only">
               Stage display name
             </Label>
@@ -933,8 +892,51 @@ function StatusRow({
               className={cn(WORKFLOW_STATUS_NAME_INPUT_CLASS, nameLocked && "cursor-not-allowed bg-muted/50 text-muted-foreground")}
             />
           </div>
+          <div className="flex flex-wrap items-center gap-0.5 border-t border-border/40 px-3 py-2 dark:border-border/25">
+            <button
+              type="button"
+              {...attributes}
+              {...listeners}
+              className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
+              aria-label="Drag to reorder columns"
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+            <ColorSwatchPicker
+              value={localColor}
+              onChange={(color) => {
+                setLocalColor(color);
+                onColorChange(status.id, color);
+              }}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+              onClick={() => onToggleActive(status.id, !status.isActive)}
+              title={status.isActive ? "Hide from Board" : "Show on Board"}
+            >
+              {status.isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 opacity-60" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-9 w-9 text-muted-foreground hover:text-destructive"
+              disabled={deleteDisabled}
+              onClick={() => onDelete(status.id)}
+              title={
+                deleteDisabled
+                  ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
+                  : "Delete status"
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-        <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-3 py-4">
+        <CardContent className={cn("min-h-0 flex-1 space-y-5 px-3 py-4", WORKFLOW_COLUMN_SCROLL_CLASS)}>
           <p className="text-xs leading-relaxed text-muted-foreground">
             Choose allowed next stages and who may own tasks in this stage.
           </p>
@@ -1009,51 +1011,7 @@ function BacklogWorkflowStatusRow({
       )}
     >
       <div className="border-b border-border/60 bg-muted/40 dark:bg-muted/25">
-        <div className="flex items-center justify-between gap-2 border-b border-border/40 px-3 py-2 sm:px-4 dark:border-border/25">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <div
-              className="flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground"
-              title="Backlog stays first and is not shown on the board"
-            >
-              <Pin className="h-4 w-4" aria-hidden />
-            </div>
-            <ColorSwatchPicker
-              value={localColor}
-              onChange={(color) => {
-                setLocalColor(color);
-                onColorChange(status.id, color);
-              }}
-            />
-          </div>
-          <div className="flex shrink-0 items-center gap-0.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="h-9 w-9 text-muted-foreground"
-              disabled
-              title="Backlog is always hidden from the board"
-            >
-              <EyeOff className="h-4 w-4 opacity-60" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="h-9 w-9 text-muted-foreground hover:text-destructive"
-              disabled={deleteDisabled}
-              onClick={() => onDelete(status.id)}
-              title={
-                deleteDisabled
-                  ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
-                  : "Delete status"
-              }
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        <div className="px-3 pb-2.5 pt-2 sm:px-4">
+        <div className="px-3 pb-2 pt-2.5 sm:px-4">
           <Label htmlFor={`wf-backlog-name-${status.id}`} className="sr-only">
             Stage display name
           </Label>
@@ -1078,8 +1036,48 @@ function BacklogWorkflowStatusRow({
             )}
           />
         </div>
+        <div className="flex flex-wrap items-center gap-0.5 border-t border-border/40 px-3 py-2 sm:px-4 dark:border-border/25">
+          <div
+            className="flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground"
+            title="Backlog stays first and is not shown on the board"
+          >
+            <Pin className="h-4 w-4" aria-hidden />
+          </div>
+          <ColorSwatchPicker
+            value={localColor}
+            onChange={(color) => {
+              setLocalColor(color);
+              onColorChange(status.id, color);
+            }}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="h-9 w-9 text-muted-foreground"
+            disabled
+            title="Backlog is always hidden from the board"
+          >
+            <EyeOff className="h-4 w-4 opacity-60" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="h-9 w-9 text-muted-foreground hover:text-destructive"
+            disabled={deleteDisabled}
+            onClick={() => onDelete(status.id)}
+            title={
+              deleteDisabled
+                ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
+                : "Delete status"
+            }
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
-      <CardContent className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-y-contain px-4 py-5 sm:px-5">
+      <CardContent className={cn("min-h-0 flex-1 space-y-6 px-4 py-5 sm:px-5", WORKFLOW_COLUMN_SCROLL_CLASS)}>
         <p className="text-sm leading-relaxed text-muted-foreground">
           Choose allowed next stages and who may own tasks while they are in backlog.
         </p>
@@ -1444,7 +1442,10 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div
           data-workflow-strip-scroll
-          className="flex min-h-0 items-stretch gap-3 overflow-x-auto rounded-xl border border-border/50 bg-muted/15 p-3 pb-2 dark:bg-muted/10 [-webkit-overflow-scrolling:touch]"
+          className={cn(
+            "flex min-h-0 items-stretch gap-3 overflow-x-auto rounded-xl border border-border/50 bg-muted/15 p-3 pb-2 dark:bg-muted/10 [-webkit-overflow-scrolling:touch]",
+            WORKFLOW_STRIP_SCROLL_CLASS,
+          )}
           role="list"
           aria-label="Workflow columns"
         >
