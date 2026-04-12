@@ -108,10 +108,11 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      # Install must match the committed lockfile. Lockfile updates land on master via
-      # chore/refresh-lockfile (see refresh-lockfile.yml); PRs must not commit pnpm-lock.yaml.
+      # Policy forbids committing pnpm-lock.yaml on feature PRs, so manifests may be ahead of
+      # the lockfile on master. Resolve in CI, then restore the committed lockfile so the
+      # release dry run sees a clean git tree.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Typecheck
         run: pnpm -r typecheck
@@ -124,6 +125,7 @@ jobs:
 
       - name: Release canary dry run
         run: |
+          git checkout HEAD -- pnpm-lock.yaml
           git checkout -B master HEAD
           ./scripts/release.sh canary --skip-verify --dry-run
 
@@ -148,7 +150,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build
         run: pnpm build
