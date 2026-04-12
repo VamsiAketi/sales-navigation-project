@@ -900,7 +900,7 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "workflow" && project?.id && (
-        <div className="max-w-3xl space-y-6 pb-2">
+        <div className="max-w-5xl space-y-6 pb-2">
           <ProjectIssueStatusSettings projectId={project.id} statuses={configStatuses} />
         </div>
       )}

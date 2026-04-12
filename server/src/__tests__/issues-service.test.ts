@@ -9,11 +9,14 @@ import {
   agents,
   applyPendingMigrations,
   companies,
+  companyMemberships,
   createDb,
   ensurePostgresDatabase,
   issueComments,
   issues,
   labels,
+  projectIssueStatuses,
+  projects,
 } from "@paperclipai/db";
 import { issueService } from "../services/issues.ts";
 
@@ -101,6 +104,9 @@ describe("issueService.list participantAgentId", () => {
     await db.delete(issueComments);
     await db.delete(activityLog);
     await db.delete(issues);
+    await db.delete(projectIssueStatuses);
+    await db.delete(projects);
+    await db.delete(companyMemberships);
     await db.delete(agents);
     await db.delete(companies);
   });
@@ -306,7 +312,7 @@ describe("issueService.list participantAgentId", () => {
 
     const created = await svc.create(companyId, {
       title: "Issue with labels",
-      status: "todo",
+      status: "backlog",
       priority: "medium",
       labelIds: [backend.id, urgent.id],
     });
@@ -317,5 +323,85 @@ describe("issueService.list participantAgentId", () => {
     expect(fetched).not.toBeNull();
     expect(fetched!.labelIds.sort()).toEqual([backend.id, urgent.id].sort());
     expect((fetched!.labels ?? []).map((entry) => entry.id).sort()).toEqual([backend.id, urgent.id].sort());
+  });
+
+  it("assigns stage default AI when moving a human-assigned task to an agent_only column", async () => {
+    const companyId = randomUUID();
+    const userId = randomUUID();
+    const agentId = randomUUID();
+    const projectId = randomUUID();
+    const issueId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    await db.insert(companyMemberships).values({
+      companyId,
+      principalType: "user",
+      principalId: userId,
+      status: "active",
+    });
+
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "DefaultBot",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    await db.insert(projects).values({
+      id: projectId,
+      companyId,
+      name: "Proj",
+    });
+
+    await db.insert(projectIssueStatuses).values([
+      {
+        projectId,
+        companyId,
+        name: "Todo",
+        value: "todo",
+        color: "#6b7280",
+        position: 0,
+        allowedActors: "human_and_agent",
+        allowedNextStatusValues: [],
+      },
+      {
+        projectId,
+        companyId,
+        name: "In progress",
+        value: "in_progress",
+        color: "#2563eb",
+        position: 1,
+        allowedActors: "agent_only",
+        defaultAssigneeAgentId: agentId,
+        allowedNextStatusValues: [],
+      },
+    ]);
+
+    await db.insert(issues).values({
+      id: issueId,
+      companyId,
+      projectId,
+      title: "Task",
+      status: "todo",
+      priority: "medium",
+      assigneeUserId: userId,
+    });
+
+    const updated = await svc.update(issueId, { status: "in_progress" });
+    expect(updated).not.toBeNull();
+    expect(updated!.assigneeUserId).toBeNull();
+    expect(updated!.assigneeAgentId).toBe(agentId);
+    expect(updated!.status).toBe("in_progress");
   });
 });

@@ -26,6 +26,7 @@ import {
   extractAgentMentionIds,
   extractProjectMentionIds,
   extractUserMentionIds,
+  isBoardPinnedHiddenProjectIssueStatusValue,
   isProjectIssueWorkflowTransitionAllowed,
 } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
@@ -41,6 +42,58 @@ import { getDefaultCompanyGoal } from "./goals.js";
 
 const ALL_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"];
 const MAX_ISSUE_COMMENT_PAGE_LIMIT = 500;
+
+/** List-only stages (e.g. backlog) may have no assignee; every other stage requires one. */
+function assertAssigneeRequiredUnlessListOnlyStage(
+  status: string,
+  assigneeUserId: string | null | undefined,
+  assigneeAgentId: string | null | undefined,
+) {
+  if (isBoardPinnedHiddenProjectIssueStatusValue(status)) return;
+  if (assigneeUserId || assigneeAgentId) return;
+  throw unprocessable("An assignee is required when the task is not in Backlog.", {
+    field: "assignee",
+  });
+}
+
+/**
+ * After workflow assignee rules, the resolved assignee may be empty because the *target* stage clears an
+ * incompatible assignee (e.g. agent_only clears a human). Prefer a specific error over a generic
+ * “assignee required” in that case.
+ */
+async function assertAssigneeRequiredAfterWorkflowForUpdate(
+  db: Pick<Db, "select">,
+  companyId: string,
+  projectId: string | null,
+  nextStatus: string,
+  nextUser: string | null | undefined,
+  nextAgent: string | null | undefined,
+  existingUser: string | null | undefined,
+  existingAgent: string | null | undefined,
+  statusChanged: boolean,
+) {
+  if (isBoardPinnedHiddenProjectIssueStatusValue(nextStatus)) return;
+  if (nextUser || nextAgent) return;
+
+  if (projectId && statusChanged) {
+    const row = await fetchProjectIssueStatusRow(db, companyId, projectId, nextStatus);
+    const actors = row?.allowedActors ?? "human_and_agent";
+    if (actors === "agent_only" && existingUser && !existingAgent) {
+      throw unprocessable(
+        "This stage only allows AI assignees. The task is assigned to a person. Assign an AI agent before moving it here, or change this stage’s “Who can be assigned” setting in the project workflow.",
+        { field: "assigneeAgentId", code: "workflow_agent_only" },
+      );
+    }
+    if (actors === "human_only" && existingAgent && !existingUser) {
+      throw unprocessable(
+        "This stage only allows human assignees. The task is assigned to an AI agent. Assign a teammate before moving it here, or change this stage’s “Who can be assigned” setting in the project workflow.",
+        { field: "assigneeUserId", code: "workflow_human_only" },
+      );
+    }
+  }
+
+  assertAssigneeRequiredUnlessListOnlyStage(nextStatus, nextUser, nextAgent);
+}
 
 // Validation of status values for project-specific issues is handled at the route level,
 // where the project's custom statuses can be looked up. Here we only block obvious unknown
@@ -196,22 +249,24 @@ async function applyProjectWorkflowAssigneeRules(
   const transitioning =
     isCreate || (patch.status !== undefined && patch.status !== baseline.status);
 
-  if (transitioning) {
-    if (row.defaultAssigneeUserId) {
-      user = row.defaultAssigneeUserId;
-      agent = null;
-    } else if (row.defaultAssigneeAgentId) {
-      agent = row.defaultAssigneeAgentId;
-      user = null;
-    }
-  }
-
   const actors = row.allowedActors ?? "human_and_agent";
   if (actors === "human_only") {
     agent = null;
   }
   if (actors === "agent_only") {
     user = null;
+  }
+
+  // Apply stage defaults only after actor rules, so incompatible assignees are cleared first
+  // (e.g. human → agent_only becomes empty, then fills from defaultAssigneeAgentId when set).
+  if (transitioning && !user && !agent) {
+    if (row.defaultAssigneeUserId && actors !== "agent_only") {
+      user = row.defaultAssigneeUserId;
+      agent = null;
+    } else if (row.defaultAssigneeAgentId && actors !== "human_only") {
+      agent = row.defaultAssigneeAgentId;
+      user = null;
+    }
   }
 
   if (actors === "human_only" && agent) {
@@ -1015,9 +1070,11 @@ export function issueService(db: Db) {
         if (values.assigneeUserId) {
           await assertAssignableUser(companyId, values.assigneeUserId);
         }
-        if (values.status === "in_progress" && !values.assigneeAgentId && !values.assigneeUserId) {
-          throw unprocessable("in_progress issues require an assignee");
-        }
+        assertAssigneeRequiredUnlessListOnlyStage(
+          values.status ?? "backlog",
+          values.assigneeUserId,
+          values.assigneeAgentId,
+        );
 
         const [issue] = await tx.insert(issues).values(values).returning();
         if (inputLabelIds) {
@@ -1091,9 +1148,21 @@ export function issueService(db: Db) {
       if (nextAssigneeAgentId && nextAssigneeUserId) {
         throw unprocessable("Issue can only have one assignee");
       }
-      if (patch.status === "in_progress" && !nextAssigneeAgentId && !nextAssigneeUserId) {
-        throw unprocessable("in_progress issues require an assignee");
-      }
+      const nextStatusForAssignee =
+        issueData.status !== undefined ? issueData.status : existing.status;
+      const statusChangedForAssignee =
+        issueData.status !== undefined && issueData.status !== existing.status;
+      await assertAssigneeRequiredAfterWorkflowForUpdate(
+        db,
+        existing.companyId,
+        existing.projectId,
+        nextStatusForAssignee,
+        nextAssigneeUserId,
+        nextAssigneeAgentId,
+        existing.assigneeUserId,
+        existing.assigneeAgentId,
+        statusChangedForAssignee,
+      );
       if (issueData.assigneeAgentId) {
         await assertAssignableAgent(existing.companyId, issueData.assigneeAgentId);
       }

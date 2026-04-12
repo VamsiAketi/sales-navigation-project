@@ -14,6 +14,7 @@ import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
+import { isBoardPinnedHiddenProjectIssueStatusValue } from "@paperclipai/shared";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { useToast } from "../context/ToastContext";
 import {
@@ -285,8 +286,19 @@ function issueExecutionWorkspaceModeForExistingWorkspace(mode: string | null | u
   return "shared_workspace";
 }
 
-export function canSubmitNewIssue(input: { title: string; projectId: string; isPending: boolean }) {
-  return Boolean(input.title.trim()) && Boolean(input.projectId) && !input.isPending;
+export function canSubmitNewIssue(input: {
+  title: string;
+  projectId: string;
+  isPending: boolean;
+  /** When omitted, treated as backlog (assignee optional). */
+  status?: string;
+  /** Required when status is not a list-only stage such as backlog. */
+  hasAssignee?: boolean;
+}) {
+  if (!input.title.trim() || !input.projectId || input.isPending) return false;
+  const status = input.status ?? "backlog";
+  if (!isBoardPinnedHiddenProjectIssueStatusValue(status) && !input.hasAssignee) return false;
+  return true;
 }
 
 export function NewIssueDialog() {
@@ -320,7 +332,11 @@ export function NewIssueDialog() {
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
 
   const rawProjectStatuses = useProjectIssueStatuses(projectId || null);
-  const activeProjectStatuses = rawProjectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
+  /** All workflow stages (including list-only e.g. backlog) — used for new-task status chip and picker. */
+  const sortedProjectStatuses = useMemo(
+    () => [...rawProjectStatuses].sort((a, b) => a.position - b.position),
+    [rawProjectStatuses],
+  );
   const newIssueStatusWorkflowMeta = useMemo(
     () => rawProjectStatuses.find((s) => s.value === status),
     [rawProjectStatuses, status],
@@ -605,7 +621,7 @@ export function NewIssueDialog() {
       const restoredProject = orderedProjects.find((project) => project.id === restoredProjectId);
       setTitle(draft.title);
       setDescription(draft.description);
-      setStatus(draft.status || "backlog");
+      setStatus(newIssueDefaults.status ?? (draft.status || "backlog"));
       setPriority(draft.priority);
       setSelectedLabelIds(Array.isArray(draft.labelIds) ? draft.labelIds : []);
       setAssigneeValue(
@@ -845,12 +861,14 @@ export function NewIssueDialog() {
   }
 
   const hasDraft = title.trim().length > 0 || description.trim().length > 0 || stagedFiles.length > 0 || selectedLabelIds.length > 0;
-  const currentStatus = activeProjectStatuses.length > 0
-    ? (activeProjectStatuses.find((s) => s.value === status) ?? activeProjectStatuses[0])
-    : (statuses.find((s) => s.value === status) ?? statuses[1]!);
-  const currentStatusLabel = activeProjectStatuses.length > 0
-    ? (currentStatus as typeof activeProjectStatuses[number]).name
-    : (currentStatus as typeof statuses[number]).label;
+  const currentStatus =
+    sortedProjectStatuses.length > 0
+      ? (sortedProjectStatuses.find((s) => s.value === status) ?? sortedProjectStatuses[0]!)
+      : (statuses.find((s) => s.value === status) ?? statuses[1]!);
+  const currentStatusLabel =
+    sortedProjectStatuses.length > 0
+      ? (currentStatus as (typeof sortedProjectStatuses)[number]).name
+      : (currentStatus as (typeof statuses)[number]).label;
   const currentPriority = priorities.find((p) => p.value === priority);
   const selectedLabels = useMemo(
     () => selectedLabelIds
@@ -944,9 +962,12 @@ export function NewIssueDialog() {
   const canDiscardDraft = hasDraft || hasSavedDraft;
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
+  const hasAssignee = Boolean(selectedAssigneeAgentId || selectedAssigneeUserId);
+  const assigneeRequired = !isBoardPinnedHiddenProjectIssueStatusValue(status);
   const missingRequiredFields: string[] = [];
   if (!title.trim()) missingRequiredFields.push("Task title");
   if (!projectId) missingRequiredFields.push("Project");
+  if (assigneeRequired && !hasAssignee) missingRequiredFields.push("Assignee");
   const canSubmit = missingRequiredFields.length === 0 && !createIssue.isPending;
   const projectFieldLabel = formatRequiredFieldLabel("Project");
   const projectMarkerClassName = cn("text-muted-foreground/90", projectValidationError && "text-destructive");
@@ -1492,20 +1513,20 @@ export function NewIssueDialog() {
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
               <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
-                {activeProjectStatuses.length > 0 ? (
+                {sortedProjectStatuses.length > 0 ? (
                   <span
                     className="inline-flex h-3 w-3 rounded-full border-2 shrink-0"
-                    style={{ borderColor: (currentStatus as typeof activeProjectStatuses[number]).color }}
+                    style={{ borderColor: (currentStatus as (typeof sortedProjectStatuses)[number]).color }}
                   />
                 ) : (
-                  <CircleDot className={cn("h-3 w-3", (currentStatus as typeof statuses[number]).color)} />
+                  <CircleDot className={cn("h-3 w-3", (currentStatus as (typeof statuses)[number]).color)} />
                 )}
                 {currentStatusLabel}
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-36 p-1" align="start">
-              {activeProjectStatuses.length > 0
-                ? activeProjectStatuses.map((s) => (
+              {sortedProjectStatuses.length > 0
+                ? sortedProjectStatuses.map((s) => (
                     <button
                       key={s.value}
                       className={cn(
