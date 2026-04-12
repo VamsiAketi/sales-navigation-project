@@ -3,10 +3,13 @@ import type { IncomingHttpHeaders } from "node:http";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { toNodeHandler } from "better-auth/node";
+import { emailOTP } from "better-auth/plugins";
+import { passkey } from "@better-auth/passkey";
 import type { Db } from "@paperclipai/db";
 import {
   authAccounts,
   authSessions,
+  authPasskeys,
   authUsers,
   authVerifications,
 } from "@paperclipai/db";
@@ -74,6 +77,17 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
 
   const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? baseUrl;
   const isHttpOnly = publicUrl ? publicUrl.startsWith("http://") : false;
+  let passkeyOrigin: string | undefined;
+  let passkeyRpId: string | undefined;
+  if (publicUrl) {
+    try {
+      const parsed = new URL(publicUrl);
+      passkeyOrigin = parsed.origin;
+      passkeyRpId = parsed.hostname;
+    } catch {
+      logger.warn({ publicUrl }, "Better Auth: invalid public URL for passkey origin/rpID");
+    }
+  }
 
   const authConfig = {
     baseURL: baseUrl,
@@ -86,6 +100,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         session: authSessions,
         account: authAccounts,
         verification: authVerifications,
+        passkey: authPasskeys,
       },
     }),
     emailAndPassword: {
@@ -105,7 +120,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         });
         const delivery = await sendSystemEmail({
           toEmail: email,
-          subject: "Reset your Paperclip password",
+          subject: "Reset your AI-Harness password",
           textBody,
           htmlBody,
         });
@@ -139,6 +154,51 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         );
       },
     },
+    plugins: [
+      emailOTP({
+        expiresIn: 10 * 60,
+        async sendVerificationOTP(input: { email: string; otp: string; type: string }) {
+          const email = input.email.trim().toLowerCase();
+          const textBody = [
+            "Your AI-Harness sign-in code:",
+            "",
+            input.otp,
+            "",
+            "This code expires in 10 minutes.",
+            "If you did not request this code, you can ignore this email.",
+          ].join("\n");
+          const htmlBody = [
+            "<p>Your AI-Harness sign-in code:</p>",
+            `<p style="font-size: 24px; font-weight: 700; letter-spacing: 0.08em;">${input.otp}</p>`,
+            "<p>This code expires in 10 minutes.</p>",
+            "<p>If you did not request this code, you can ignore this email.</p>",
+          ].join("");
+          const delivery = await sendSystemEmail({
+            toEmail: email,
+            subject: "Your AI-Harness sign-in code",
+            textBody,
+            htmlBody,
+          });
+          if (delivery.status === "failed") {
+            logger.error({ email, reason: delivery.message, type: input.type }, "Better Auth: failed to send sign-in OTP");
+            return;
+          }
+          if (delivery.status === "skipped") {
+            logger.warn(
+              { email, reason: delivery.message, type: input.type, otp: input.otp },
+              "Better Auth: SMTP not configured; sign-in OTP email not delivered",
+            );
+            return;
+          }
+          logger.info({ email, type: input.type }, "Better Auth: sign-in OTP email sent");
+        },
+      }),
+      passkey({
+        ...(passkeyOrigin ? { origin: passkeyOrigin } : {}),
+        ...(passkeyRpId ? { rpID: passkeyRpId } : {}),
+        rpName: "AI-Harness",
+      }),
+    ],
     ...(isHttpOnly ? { advanced: { useSecureCookies: false } } : {}),
   };
 

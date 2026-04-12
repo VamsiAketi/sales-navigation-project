@@ -4,6 +4,67 @@ import { useParams, useNavigate } from "@/lib/router";
 import { authApi } from "../api/auth";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Eye, EyeOff } from "lucide-react";
+import { cn } from "../lib/utils";
+
+type PasswordStrength = "weak" | "fair" | "good" | "strong";
+
+function evaluatePasswordStrength(password: string) {
+  const checks = [
+    { label: "At least 8 characters", passed: password.length >= 8 },
+    { label: "Uppercase letter", passed: /[A-Z]/.test(password) },
+    { label: "Lowercase letter", passed: /[a-z]/.test(password) },
+    { label: "Number", passed: /[0-9]/.test(password) },
+    { label: "Special character (!@#$%…)", passed: /[^A-Za-z0-9]/.test(password) },
+  ];
+  const score = checks.filter((c) => c.passed).length;
+  const level: PasswordStrength =
+    score <= 1 ? "weak" : score === 2 ? "fair" : score === 3 ? "good" : "strong";
+  const label =
+    level === "weak" ? "Weak" : level === "fair" ? "Fair" : level === "good" ? "Good" : "Strong";
+  return { level, score, label, checks };
+}
+
+const strengthBarColor: Record<PasswordStrength, string> = {
+  weak: "bg-destructive",
+  fair: "bg-orange-400",
+  good: "bg-yellow-400",
+  strong: "bg-green-500",
+};
+
+const strengthLabelColor: Record<PasswordStrength, string> = {
+  weak: "text-destructive",
+  fair: "text-orange-400",
+  good: "text-yellow-500",
+  strong: "text-green-500",
+};
+
+function PasswordStrengthMeter({ password }: { password: string }) {
+  if (!password) return null;
+  const { level, score, label, checks } = evaluatePasswordStrength(password);
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div
+            key={i}
+            className={cn(
+              "h-1 flex-1 rounded-full transition-all duration-200",
+              i <= score ? strengthBarColor[level] : "bg-border",
+            )}
+          />
+        ))}
+      </div>
+      <p className={cn("text-xs font-medium", strengthLabelColor[level])}>{label}</p>
+      <ul className="space-y-0.5">
+        {checks.map((c) => (
+          <li key={c.label} className={cn("text-xs", c.passed ? "text-muted-foreground" : "text-destructive/80")}>
+            {c.passed ? "✓" : "✗"} {c.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function ResetPasswordPage() {
   const { token } = useParams<{ token: string }>();
@@ -15,6 +76,7 @@ export function ResetPasswordPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const strength = evaluatePasswordStrength(password);
 
   const resetMutation = useMutation({
     mutationFn: async () => {
@@ -31,13 +93,13 @@ export function ResetPasswordPage() {
     },
   });
 
-  const canSubmit = password.length >= 8 && password === confirmPassword;
+  const canSubmit = strength.score >= 3 && password === confirmPassword;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (resetMutation.isPending) return;
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (strength.score < 3) {
+      setError("Password is too weak. Please meet at least 3 of the 5 requirements.");
       return;
     }
     if (password !== confirmPassword) {
@@ -60,7 +122,7 @@ export function ResetPasswordPage() {
 
           <h1 className="text-xl font-semibold">Set a new password</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Choose a new password for your account. It must be at least 8 characters.
+            Choose a strong new password for your account.
           </p>
 
           {success ? (
@@ -102,6 +164,7 @@ export function ResetPasswordPage() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                <PasswordStrengthMeter password={password} />
               </div>
 
               <div>

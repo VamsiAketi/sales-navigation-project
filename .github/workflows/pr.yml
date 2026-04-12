@@ -108,8 +108,11 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # Policy forbids committing pnpm-lock.yaml on feature PRs, so manifests may be ahead of
+      # the lockfile on master. Resolve in CI, then restore the committed lockfile so the
+      # release dry run sees a clean git tree.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Typecheck
         run: pnpm -r typecheck
@@ -122,8 +125,8 @@ jobs:
 
       - name: Release canary dry run
         run: |
+          git checkout HEAD -- pnpm-lock.yaml
           git checkout -B master HEAD
-          git checkout -- pnpm-lock.yaml
           ./scripts/release.sh canary --skip-verify --dry-run
 
   e2e:
@@ -147,7 +150,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build
         run: pnpm build
