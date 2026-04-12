@@ -98,6 +98,20 @@ function issueModeForExistingWorkspace(mode: string | null | undefined) {
   return "shared_workspace";
 }
 
+function projectGoalIdSetFromProject(
+  project:
+    | { goals?: Array<{ id: string }>; goalIds?: string[]; goalId?: string | null }
+    | null
+    | undefined,
+) {
+  const ids = [
+    ...(project?.goalId ? [project.goalId] : []),
+    ...(project?.goalIds ?? []),
+    ...((project?.goals ?? []).map((goal) => goal.id)),
+  ].filter(Boolean);
+  return new Set(ids);
+}
+
 function shouldPresentExistingWorkspaceSelection(issue: Issue) {
   const persistedMode =
     issue.currentExecutionWorkspace?.mode
@@ -490,6 +504,27 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     const project = projects?.find((p) => p.id === id) ?? null;
     return project ? projectUrl(project) : `/projects/${id}`;
   };
+  const scopedProjectGoals = useMemo(() => {
+    if (!issue.projectId || !currentProject) return [];
+    const scopedIds = projectGoalIdSetFromProject(currentProject);
+    if (scopedIds.size === 0) return [];
+    const byId = new Map((goals ?? []).map((goal) => [goal.id, goal]));
+    return Array.from(scopedIds)
+      .map((goalId) => byId.get(goalId) ?? currentProject.goals?.find((goal) => goal.id === goalId))
+      .filter((goal): goal is NonNullable<typeof goals>[number] => Boolean(goal))
+      .filter((goal) => goal.status !== "cancelled");
+  }, [issue.projectId, currentProject, goals]);
+  const goalCandidates = useMemo(
+    () => (issue.projectId ? scopedProjectGoals : (goals ?? []).filter((goal) => goal.status !== "cancelled")),
+    [issue.projectId, scopedProjectGoals, goals],
+  );
+  const currentGoal = useMemo(
+    () =>
+      (goals ?? []).find((goal) => goal.id === issue.goalId)
+      ?? goalCandidates.find((goal) => goal.id === issue.goalId)
+      ?? null,
+    [goals, goalCandidates, issue.goalId],
+  );
 
   const recentAssigneeIds = useMemo(() => getRecentAssigneeIds(), [assigneeOpen]);
   const sortedAgents = useMemo(
@@ -1072,7 +1107,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           {projectContent}
         </PropertyPicker>
 
-        {(goals ?? []).length > 0 && (
+        {(goalCandidates.length > 0 || Boolean(issue.goalId)) && (
           <>
             {!issue.goalId && (
               <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 dark:border-amber-500/30 dark:bg-amber-950/40 mb-1">
@@ -1087,15 +1122,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               onOpenChange={(open) => { setGoalOpen(open); if (!open) setGoalSearch(""); }}
               triggerContent={
                 issue.goalId
-                  ? (() => {
-                      const goal = (goals ?? []).find((g) => g.id === issue.goalId);
-                      return (
-                        <>
-                          <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          <span className="text-sm truncate">{goal?.title ?? issue.goalId.slice(0, 8)}</span>
-                        </>
-                      );
-                    })()
+                  ? (
+                    <>
+                      <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="text-sm truncate">{currentGoal?.title ?? issue.goalId.slice(0, 8)}</span>
+                    </>
+                    )
                   : (
                     <>
                       <Target className="h-3.5 w-3.5 text-amber-500" />
@@ -1122,29 +1154,33 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                 autoFocus={!inline}
               />
               <div className="max-h-48 overflow-y-auto overscroll-contain space-y-0.5">
-                {(goals ?? [])
-                  .filter((g) => g.status !== "cancelled")
-                  .filter((g) => !goalSearch.trim() || g.title.toLowerCase().includes(goalSearch.toLowerCase()))
-                  .map((g) => (
+                {goalCandidates
+                  .filter((goal) => !goalSearch.trim() || goal.title.toLowerCase().includes(goalSearch.toLowerCase()))
+                  .map((goal) => (
                     <button
-                      key={g.id}
+                      key={goal.id}
                       className={cn(
                         "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                        issue.goalId === g.id && "bg-accent",
+                        issue.goalId === goal.id && "bg-accent",
                       )}
                       onClick={async () => {
-                        await onUpdate({ goalId: g.id });
+                        await onUpdate({ goalId: goal.id });
                         setGoalOpen(false);
                       }}
                     >
                       <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate flex-1 text-left">{g.title}</span>
-                      {g.status !== "active" && (
-                        <span className="text-[10px] text-muted-foreground capitalize shrink-0">{g.status}</span>
+                      <span className="truncate flex-1 text-left">{goal.title}</span>
+                      {goal.status !== "active" && (
+                        <span className="text-[10px] text-muted-foreground capitalize shrink-0">{goal.status}</span>
                       )}
-                      {issue.goalId === g.id && <Check className="h-3 w-3 shrink-0" />}
+                      {issue.goalId === goal.id && <Check className="h-3 w-3 shrink-0" />}
                     </button>
                   ))}
+                {goalCandidates.length === 0 && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    No goals linked to this project.
+                  </div>
+                )}
               </div>
             </PropertyPicker>
           </>

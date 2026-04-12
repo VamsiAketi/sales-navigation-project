@@ -458,15 +458,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
         agentIcon: agent.icon,
       });
     }
-    for (const project of orderedProjects) {
-      options.push({
-        id: `project:${project.id}`,
-        name: project.name,
-        kind: "project",
-        projectId: project.id,
-        projectColor: project.color,
-      });
-    }
     for (const member of members ?? []) {
       if (member.principalType === "user" && member.user) {
         options.push({
@@ -478,7 +469,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
       }
     }
     return options;
-  }, [agents, orderedProjects, members, currentUserId]);
+  }, [agents, members, currentUserId]);
 
   const childIssues = useMemo(() => {
     if (!allIssues || !issue) return [];

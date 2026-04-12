@@ -434,7 +434,9 @@ export function ProjectProperties({
         title: allGoals?.find((g) => g.id === id)?.title ?? id.slice(0, 8),
       }));
 
-  const availableGoals = (allGoals ?? []).filter((g) => !linkedGoalIds.includes(g.id));
+  const availableGoals = (allGoals ?? []).filter(
+    (goal) => !linkedGoalIds.includes(goal.id) && goal.status !== "achieved" && goal.status !== "cancelled",
+  );
   const workspaces = project.workspaces ?? [];
   const codebase = project.codebase;
   const primaryCodebaseWorkspace = project.primaryWorkspace ?? null;

@@ -14,8 +14,13 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { InlineEntitySelector, type InlineEntityOption } from "@/components/InlineEntitySelector";
 import { ApiError } from "../api/client";
 import { isPermissionDeniedError } from "../lib/permission-feedback";
+import {
+  pickFirstCreatedHumanMemberId,
+  pickFirstCreatedOwnerMemberId,
+} from "../lib/org-defaults";
 import {
   Dialog,
   DialogClose,
@@ -82,9 +87,17 @@ const AGENT_ROLE_OPTIONS = [
   "ResearchEngineer"
 ] as const;
 
-const CUSTOM_ROLE_VALUE = "__custom__";
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
+const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
+const INVITE_HUMAN_ROLE_OPTIONS = HUMAN_ROLE_OPTIONS.filter((role) => role !== "Owner");
+const DEFAULT_INVITE_ROLE = "IT";
+
+function defaultPermissionsForRole(role: string | null | undefined): PermissionKey[] {
+  const normalized = (role ?? "").trim().toLowerCase();
+  if (normalized === "owner") return [...ALL_PERMISSION_KEYS];
+  return ALL_PERMISSION_KEYS.filter((key) => key !== "users:invite");
+}
 
 const PERMISSION_UI: Record<PermissionKey, { title: string; description: string }> = {
   "agents:create": {
@@ -118,9 +131,9 @@ const PERMISSION_UI: Record<PermissionKey, { title: string; description: string 
 };
 
 const PERMISSION_CATEGORY_ACCENTS: Record<string, string> = {
-  team: "from-violet-500 to-fuchsia-500",
-  agents: "from-emerald-500 to-teal-400",
-  work: "from-sky-500 to-blue-500",
+  team: "from-muted-foreground/60 to-muted-foreground/30",
+  agents: "from-muted-foreground/60 to-muted-foreground/30",
+  work: "from-muted-foreground/60 to-muted-foreground/30",
 };
 
 const PERMISSION_CATEGORY_DEFS: {
@@ -155,26 +168,6 @@ const PERMISSION_CATEGORY_DEFS: {
   },
 ];
 
-const PERMISSION_PRESETS = {
-  Member: [] as const,
-  Manager: [
-    "agents:create",
-    "users:invite",
-    "tasks:assign",
-    "tasks:assign_scope",
-    "joins:approve",
-  ] as const,
-  Admin: [...PERMISSION_KEYS],
-} satisfies Record<string, readonly PermissionKey[]>;
-
-type PermissionPresetName = keyof typeof PERMISSION_PRESETS;
-
-const PERMISSION_PRESET_HINTS: Record<PermissionPresetName, string> = {
-  Member: "No optional access — baseline teammate.",
-  Manager: "Run day-to-day work and invites; cannot change others permissions.",
-  Admin: "Everything on, including who can manage roles and access.",
-};
-
 type HumanPermissionsPanelProps = {
   idPrefix: string;
   enabledKeys: PermissionKey[];
@@ -191,9 +184,6 @@ function HumanPermissionsPanel({
   intro,
 }: HumanPermissionsPanelProps) {
   const enabledSet = useMemo(() => new Set(enabledKeys), [enabledKeys]);
-  const enabledCount = enabledKeys.length;
-  const total = ALL_PERMISSION_KEYS.length;
-  const pct = total === 0 ? 0 : Math.round((enabledCount / total) * 100);
 
   const toggle = (key: PermissionKey, on: boolean) => {
     const next = new Set(enabledKeys);
@@ -204,51 +194,8 @@ function HumanPermissionsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-2xl border border-border/40 bg-muted/20 p-3 ring-1 ring-border/25 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          {intro}
-          <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Quick presets
-            </span>
-            {(Object.keys(PERMISSION_PRESETS) as PermissionPresetName[]).map((name) => (
-              <Button
-                key={name}
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={disabled}
-                title={PERMISSION_PRESET_HINTS[name]}
-                className="h-8 rounded-full px-4 text-xs font-medium shadow-xs"
-                onClick={() => onKeysChange([...PERMISSION_PRESETS[name]])}
-              >
-                {name}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-          <div
-            className="inline-flex min-w-[7.5rem] flex-col gap-0.5 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 to-violet-500/5 px-3 py-2 text-right shadow-xs ring-1 ring-primary/15"
-            title={`${enabledCount} of ${total} optional access rights are on`}
-          >
-            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Access enabled
-            </span>
-            <div className="flex items-baseline justify-end gap-1">
-              <span className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                {enabledCount}
-              </span>
-              <span className="text-sm font-medium text-muted-foreground">/ {total}</span>
-            </div>
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted sm:w-36">
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </div>
+      <div className="rounded-2xl border border-border/40 bg-muted/20 p-3 ring-1 ring-border/25">
+        <div className="min-w-0 space-y-1">{intro}</div>
       </div>
 
       <div className="space-y-5">
@@ -326,6 +273,38 @@ function writeCompanyRolePrefs(companyId: string, roles: { human: string[]; agen
   }
 }
 
+function readHumanRolePermissions(companyId: string) {
+  try {
+    const raw = window.localStorage.getItem(
+      `${COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX}:${companyId}`,
+    );
+    if (!raw) return {} as Record<string, PermissionKey[]>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const next: Record<string, PermissionKey[]> = {};
+    for (const [role, keys] of Object.entries(parsed)) {
+      if (!Array.isArray(keys)) continue;
+      const valid = keys.filter((k): k is PermissionKey =>
+        typeof k === "string" && (PERMISSION_KEYS as readonly string[]).includes(k),
+      );
+      if (valid.length > 0) next[role] = valid;
+    }
+    return next;
+  } catch {
+    return {} as Record<string, PermissionKey[]>;
+  }
+}
+
+function writeHumanRolePermissions(companyId: string, rolePermissions: Record<string, PermissionKey[]>) {
+  try {
+    window.localStorage.setItem(
+      `${COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX}:${companyId}`,
+      JSON.stringify(rolePermissions),
+    );
+  } catch {
+    // ignore storage failures (private mode, etc.)
+  }
+}
+
 function memberDisplayName(member: CompanyMember) {
   return member.principalType === "user"
     ? member.user?.name || member.user?.email || member.principalId
@@ -337,23 +316,11 @@ function memberSecondaryLine(member: CompanyMember) {
   return member.agent?.role ?? "agent";
 }
 
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return h === 0 ? 0 : Math.abs(h);
-}
-
-const HUMAN_AVATAR_THEMES = [
-  "bg-gradient-to-br from-violet-400/40 via-fuchsia-400/30 to-violet-600/25 text-violet-950 ring-1 ring-violet-500/30 dark:from-violet-500/40 dark:via-fuchsia-500/25 dark:to-violet-700/30 dark:text-violet-50",
-  "bg-gradient-to-br from-sky-400/40 via-cyan-400/30 to-blue-600/25 text-sky-950 ring-1 ring-sky-500/30 dark:from-sky-500/40 dark:via-cyan-500/25 dark:to-blue-700/30 dark:text-sky-50",
-  "bg-gradient-to-br from-amber-400/40 via-orange-400/30 to-rose-500/25 text-amber-950 ring-1 ring-amber-500/30 dark:from-amber-500/40 dark:via-orange-500/25 dark:to-rose-600/30 dark:text-amber-50",
-  "bg-gradient-to-br from-emerald-400/40 via-teal-400/30 to-cyan-600/25 text-emerald-950 ring-1 ring-emerald-500/30 dark:from-emerald-500/40 dark:via-teal-500/25 dark:to-cyan-700/30 dark:text-emerald-50",
-  "bg-gradient-to-br from-rose-400/40 via-pink-400/30 to-fuchsia-600/25 text-rose-950 ring-1 ring-rose-500/30 dark:from-rose-500/40 dark:via-pink-500/25 dark:to-fuchsia-700/30 dark:text-rose-50",
-] as const;
-
-function humanAvatarThemeClass(member: CompanyMember): string {
-  const id = member.user?.id ?? member.principalId;
-  return HUMAN_AVATAR_THEMES[hashString(id) % HUMAN_AVATAR_THEMES.length]!;
+function nameToAvatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  return `hsl(${hue}, 65%, 42%)`;
 }
 
 function memberAvatarInitials(member: CompanyMember): string {
@@ -389,8 +356,8 @@ function DirectoryMemberAvatar({
 }) {
   if (member.principalType === "agent") {
     return (
-      <Avatar size={size} className={cn("ring-2 ring-emerald-400/40 dark:ring-emerald-500/35", className)}>
-        <AvatarFallback className="bg-gradient-to-br from-emerald-500/40 via-teal-400/30 to-cyan-500/25 text-emerald-950 dark:text-emerald-50">
+      <Avatar size={size} className={cn("ring-1 ring-border", className)}>
+        <AvatarFallback className="bg-muted text-foreground">
           {size === "xs" ? (
             <span className="text-[10px] font-bold">{memberAvatarInitials(member)}</span>
           ) : (
@@ -404,10 +371,10 @@ function DirectoryMemberAvatar({
     <Avatar size={size} className={className}>
       <AvatarFallback
         className={cn(
-          "font-bold tracking-tight",
+          "font-bold tracking-tight text-white ring-1 ring-black/20",
           size === "xs" ? "text-[10px]" : size === "sm" ? "text-xs" : "text-sm",
-          humanAvatarThemeClass(member),
         )}
+        style={{ backgroundColor: nameToAvatarColor(memberDisplayName(member)) }}
       >
         {memberAvatarInitials(member)}
       </AvatarFallback>
@@ -463,12 +430,15 @@ export function CompanyDirectory() {
   const [customAgentRoles, setCustomAgentRoles] = useState<string[]>([]);
   const [newHumanRole, setNewHumanRole] = useState("");
   const [newAgentRole, setNewAgentRole] = useState("");
+  const [selectedManageHumanRole, setSelectedManageHumanRole] = useState<string>(HUMAN_ROLE_OPTIONS[0] ?? "Owner");
+  const [humanRolePermissions, setHumanRolePermissions] = useState<Record<string, PermissionKey[]>>({});
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
+  const [humanInviteRole, setHumanInviteRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
   const [humanInvitePermissionKeys, setHumanInvitePermissionKeys] = useState<PermissionKey[]>([]);
   const [humanInviteCredentials, setHumanInviteCredentials] = useState<{
@@ -502,12 +472,18 @@ export function CompanyDirectory() {
     const prefs = readCompanyRolePrefs(selectedCompanyId);
     setCustomHumanRoles(prefs.human);
     setCustomAgentRoles(prefs.agent);
+    setHumanRolePermissions(readHumanRolePermissions(selectedCompanyId));
   }, [selectedCompanyId]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
     writeCompanyRolePrefs(selectedCompanyId, { human: customHumanRoles, agent: customAgentRoles });
   }, [selectedCompanyId, customHumanRoles, customAgentRoles]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    writeHumanRolePermissions(selectedCompanyId, humanRolePermissions);
+  }, [selectedCompanyId, humanRolePermissions]);
 
   // Include both active + suspended users in the panel; only exclude deleted
   const activeHumanMembers = useMemo(
@@ -548,6 +524,28 @@ export function CompanyDirectory() {
       return name.includes(q) || agentRole.includes(q) || orgRole.includes(q);
     });
   }, [activeAgentMembers, search]);
+
+  const manageHumanRoleOptions = useMemo(
+    () => Array.from(new Set([...HUMAN_ROLE_OPTIONS, ...customHumanRoles])),
+    [customHumanRoles],
+  );
+
+  useEffect(() => {
+    if (manageHumanRoleOptions.length === 0) {
+      setSelectedManageHumanRole("");
+      return;
+    }
+    if (!selectedManageHumanRole || !manageHumanRoleOptions.includes(selectedManageHumanRole)) {
+      setSelectedManageHumanRole(manageHumanRoleOptions[0] ?? "");
+    }
+  }, [manageHumanRoleOptions, selectedManageHumanRole]);
+
+  const permissionsForRole = (role: string | null | undefined): PermissionKey[] => {
+    if (!role) return [];
+    const override = humanRolePermissions[role];
+    if (override && override.length > 0) return override;
+    return defaultPermissionsForRole(role);
+  };
 
   const selectedHumanMember =
     activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ??
@@ -679,10 +677,38 @@ export function CompanyDirectory() {
       });
       setHumanInviteName("");
       setHumanInviteEmail("");
-      setHumanInvitePermissionKeys([]);
+      setHumanInviteRole(DEFAULT_INVITE_ROLE);
+      setHumanInvitePermissionKeys(defaultPermissionsForRole(DEFAULT_INVITE_ROLE));
       await queryClient.invalidateQueries({
         queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
       });
+      try {
+        const members = await accessApi.listMembers(selectedCompanyId!);
+        const createdMember =
+          members.find(
+            (member) =>
+              member.principalType === "user" &&
+              member.principalId === created.userId &&
+              member.status === "active",
+          ) ?? null;
+        if (createdMember) {
+          const firstHumanMemberId = pickFirstCreatedHumanMemberId(members);
+          const firstOwnerMemberId = pickFirstCreatedOwnerMemberId(members);
+          const shouldBeOwner = firstHumanMemberId === createdMember.id;
+          const reportsToMembershipId = shouldBeOwner
+            ? null
+            : (firstOwnerMemberId ?? firstHumanMemberId);
+
+          await accessApi.updateMemberOrgConfig(selectedCompanyId!, createdMember.id, {
+            membershipRole: shouldBeOwner ? "owner" : "member",
+            reportsToMembershipId: reportsToMembershipId && reportsToMembershipId !== createdMember.id
+              ? reportsToMembershipId
+              : null,
+          });
+        }
+      } catch {
+        // Invite succeeded; keep UX resilient if default assignment fails.
+      }
       await invalidateMembers();
     },
     onError: (err) => {
@@ -690,6 +716,10 @@ export function CompanyDirectory() {
       setHumanInviteError(err instanceof Error ? err.message : "Failed to create human invite");
     },
   });
+
+  useEffect(() => {
+    setHumanInvitePermissionKeys(permissionsForRole(humanInviteRole));
+  }, [humanInviteRole]);
 
   const humanSaveMutation = useMutation({
     mutationFn: (input: { memberId: string; membershipRole: string | null; reportsToMembershipId: string | null }) =>
@@ -766,6 +796,9 @@ export function CompanyDirectory() {
   const selectedHumanManagerId = selectedHumanMember
     ? (memberManagerDrafts[selectedHumanMember.id] ?? "").trim()
     : "";
+  const selectedHumanRoleDraft = selectedHumanMember
+    ? (memberRoleDrafts[selectedHumanMember.id] ?? "").trim()
+    : "";
   const selectedHumanManagerIsAgent =
     !!selectedHumanManagerId && memberPrincipalTypeById.get(selectedHumanManagerId) === "agent";
 
@@ -832,6 +865,21 @@ export function CompanyDirectory() {
     memberManagerDrafts[selectedHumanMember?.id ?? ""],
     selectedHumanManagerIsAgent,
   ]);
+
+  // Keep user permissions in sync with selected role on Teams page.
+  useEffect(() => {
+    if (!selectedCompanyId || !selectedHumanMember) return;
+    if (!selectedHumanRoleDraft) return;
+    const currentRole = (selectedHumanMember.membershipRole ?? "").trim();
+    if (selectedHumanRoleDraft === currentRole) return;
+    humanPermissionMutation.mutate({
+      memberId: selectedHumanMember.id,
+      grants: permissionsForRole(selectedHumanRoleDraft).map((permissionKey) => ({
+        permissionKey,
+        scope: null,
+      })),
+    });
+  }, [selectedCompanyId, selectedHumanMember?.id, selectedHumanRoleDraft]);
 
   // Autosave (debounced) for selected agent
   useEffect(() => {
@@ -933,61 +981,20 @@ export function CompanyDirectory() {
       }
       return base;
     }, [options, customOptions]);
-    const isPreset = merged.includes(normalized);
-    const selectValue = normalized === "" ? "" : isPreset ? normalized : CUSTOM_ROLE_VALUE;
-    const canAdd = (() => {
-      const next = normalizeRoleLabel(roleDraft);
-      return !!next && !merged.includes(next);
-    })();
-
+    const roleOptions: InlineEntityOption[] = merged.map((role) => ({ id: role, label: role }));
     return (
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">{label}</div>
-        <select
-          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
-          value={selectValue}
-          onChange={(e) => {
-            const next = e.target.value;
-            if (next === CUSTOM_ROLE_VALUE) return;
-            setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }));
-          }}
-        >
-          <option value="">None</option>
-          {merged.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-          <option value={CUSTOM_ROLE_VALUE}>Other…</option>
-        </select>
-        {selectValue === CUSTOM_ROLE_VALUE && (
-          <div className="space-y-2">
-            <Input
-              className="h-10 rounded-xl"
-              value={roleDraft}
-              onChange={(e) => setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: e.target.value }))}
-              placeholder="Custom role…"
-            />
-            {onAddCustomOption && (
-              <div className="flex items-center justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={!canAdd}
-                  onClick={() => {
-                    const next = normalizeRoleLabel(roleDraft);
-                    if (!next) return;
-                    onAddCustomOption(next);
-                    setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }));
-                  }}
-                >
-                  Add to role list
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+        <InlineEntitySelector
+          value={normalized}
+          options={roleOptions}
+          placeholder="Role"
+          noneLabel="None"
+          searchPlaceholder="Search roles..."
+          emptyMessage="No roles found."
+          onChange={(next) => setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }))}
+          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+        />
       </div>
     );
   }
@@ -998,19 +1005,11 @@ export function CompanyDirectory() {
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-3xl border border-border/50 bg-gradient-to-br from-violet-500/[0.08] via-background to-sky-500/[0.09] p-6 shadow-sm ring-1 ring-border/40 dark:from-violet-400/[0.12] dark:to-sky-400/[0.1]">
-        <div
-          className="pointer-events-none absolute -right-20 -top-28 size-80 rounded-full bg-gradient-to-br from-fuchsia-400/20 to-violet-500/10 blur-3xl dark:from-fuchsia-500/15 dark:to-violet-600/10"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute -bottom-24 -left-16 size-64 rounded-full bg-gradient-to-tr from-cyan-400/20 to-sky-500/10 blur-3xl dark:from-cyan-500/12 dark:to-sky-600/10"
-          aria-hidden
-        />
+      <div className="relative overflow-hidden rounded-3xl border border-sidebar-border/80 bg-sidebar/55 px-6 pb-6 pt-8 shadow-sm">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/30 ring-2 ring-white/25 dark:ring-white/10">
-              <Users className="size-7 text-white" aria-hidden />
+            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted">
+              <Users className="size-7 text-muted-foreground" aria-hidden />
             </div>
             <div className="min-w-0">
               <h1 className="text-2xl font-bold tracking-tight text-foreground">Teams</h1>
@@ -1019,11 +1018,11 @@ export function CompanyDirectory() {
               </p>
               {!membersPermissionDenied && !membersLoading ? (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/25 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-950 dark:border-violet-400/20 dark:bg-violet-500/15 dark:text-violet-100">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
                     <UserRound className="size-3.5 opacity-90" aria-hidden />
                     {activeHumanMembers.length} humans
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-950 dark:border-emerald-400/20 dark:bg-emerald-500/15 dark:text-emerald-100">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
                     <Bot className="size-3.5 opacity-90" aria-hidden />
                     {activeAgentMembers.length} agents
                   </span>
@@ -1034,7 +1033,7 @@ export function CompanyDirectory() {
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:max-w-md xl:max-w-xl">
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
-              <Button type="button" className="rounded-xl shadow-sm" variant="default">
+              <Button type="button" className="rounded-full shadow-sm" variant="default">
                 Invite Human
               </Button>
             </DialogTrigger>
@@ -1077,6 +1076,21 @@ export function CompanyDirectory() {
                           value={humanInviteEmail}
                           onChange={(e) => setHumanInviteEmail(e.target.value)}
                           autoComplete="email"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Role</Label>
+                        <InlineEntitySelector
+                          value={humanInviteRole}
+                          options={INVITE_HUMAN_ROLE_OPTIONS.map((role) => ({ id: role, label: role }))}
+                          placeholder="Role"
+                          noneLabel="None"
+                          includeNoneOption={false}
+                          searchPlaceholder="Search roles..."
+                          emptyMessage="No roles found."
+                          onChange={setHumanInviteRole}
+                          disablePortal
+                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
                         />
                       </div>
                     </div>
@@ -1128,7 +1142,7 @@ export function CompanyDirectory() {
                     )}
                   </section>
                   <section className="min-w-0 space-y-3">
-                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Initial access</h3>
+                    <h3 className="text-sm font-semibold tracking-tight text-foreground">Role permissions</h3>
                     <div className="rounded-2xl border border-border/50 bg-muted/15 p-4 ring-1 ring-border/30">
                       <HumanPermissionsPanel
                         idPrefix="invite"
@@ -1164,72 +1178,181 @@ export function CompanyDirectory() {
               </div>
             </DialogContent>
           </Dialog>
-          <Dialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" variant="secondary" className="rounded-xl border-border/60">
-                Manage roles
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl rounded-2xl border-border/60">
-              <DialogHeader>
-                <DialogTitle>Manage roles</DialogTitle>
-                <DialogDescription>
-                  Add reusable roles for your org. These appear in human and agent role dropdowns.
-                </DialogDescription>
-              </DialogHeader>
+          <Button
+            type="button"
+            variant="secondary"
+            className="rounded-full border-border/60"
+            onClick={() => setRolesDialogOpen(true)}
+          >
+            Manage roles
+          </Button>
 
-              <Tabs defaultValue="humans">
+          <div className="w-full min-w-0 sm:max-w-xs sm:flex-1 lg:max-w-sm">
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, email, role…"
+              className="h-10 rounded-2xl border-border/60 bg-background/80 shadow-inner"
+            />
+          </div>
+          </div>
+        </div>
+      </div>
+
+      {rolesDialogOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="absolute inset-0"
+            onClick={() => setRolesDialogOpen(false)}
+            aria-hidden
+          />
+          <div className="relative z-[81] flex h-[88vh] w-[92vw] max-h-[88vh] max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl">
+            <div className="shrink-0 border-b border-border/60 px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <h2 className="text-lg font-semibold text-foreground">Manage roles</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Add reusable roles for your org. These appear in human and agent role dropdowns.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => setRolesDialogOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 px-6 pb-6 pt-4">
+              <Tabs defaultValue="humans" className="min-h-0 h-full">
                 <TabsList variant="line" className="px-0">
                   <TabsTrigger value="humans">Humans</TabsTrigger>
                   <TabsTrigger value="agents">Agents</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="humans">
-                  <div className="space-y-3">
-                    <div className="text-sm font-medium text-foreground">Custom human roles</div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={newHumanRole}
-                        onChange={(e) => setNewHumanRole(e.target.value)}
-                        placeholder="Add a role (e.g. Sales Lead)"
-                      />
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedCompanyId) return;
-                          const next = normalizeRoleLabel(newHumanRole);
-                          if (!next) return;
-                          setNewHumanRole("");
-                          setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
-                        }}
-                        disabled={!normalizeRoleLabel(newHumanRole)}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    {customHumanRoles.length > 0 ? (
+                <TabsContent value="humans" className="mt-4 h-[calc(88vh-12rem)] min-h-0">
+                  <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
+                    <section className="space-y-3 overflow-y-auto rounded-2xl border border-border/60 bg-muted/15 p-4">
+                      <div className="text-sm font-medium text-foreground">Create role</div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={newHumanRole}
+                          onChange={(e) => setNewHumanRole(e.target.value)}
+                          placeholder="Add a role (e.g. Sales Lead)"
+                          className="h-10 rounded-lg border-border/60"
+                        />
+                        <Button
+                          type="button"
+                          className="rounded-full"
+                          onClick={() => {
+                            if (!selectedCompanyId) return;
+                            const next = normalizeRoleLabel(newHumanRole);
+                            if (!next) return;
+                            setNewHumanRole("");
+                            setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
+                            setSelectedManageHumanRole(next);
+                            setHumanRolePermissions((prev) => {
+                              if (prev[next]) return prev;
+                              return { ...prev, [next]: permissionsForRole(next) };
+                            });
+                          }}
+                          disabled={!normalizeRoleLabel(newHumanRole)}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="text-xs text-muted-foreground">Select role to manage</div>
+                        <InlineEntitySelector
+                          value={selectedManageHumanRole}
+                          options={manageHumanRoleOptions.map((role) => ({ id: role, label: role }))}
+                          placeholder="Select role"
+                          noneLabel="None"
+                          includeNoneOption={false}
+                          searchPlaceholder="Search roles..."
+                          emptyMessage="No roles found."
+                          onChange={setSelectedManageHumanRole}
+                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                        />
+                      </div>
                       <div className="flex flex-wrap gap-2">
-                        {customHumanRoles.map((role) => (
-                          <button
-                            key={role}
+                        {manageHumanRoleOptions.map((role) => {
+                          const selected = role === selectedManageHumanRole;
+                          const isSystemRole = (HUMAN_ROLE_OPTIONS as readonly string[]).includes(role);
+                          return (
+                            <button
+                              key={role}
+                              type="button"
+                              className={cn(
+                                "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                                selected
+                                  ? "border-primary/40 bg-primary/10 text-foreground"
+                                  : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                              )}
+                              onClick={() => setSelectedManageHumanRole(role)}
+                            >
+                              {role}
+                              {isSystemRole ? "" : " (custom)"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {selectedManageHumanRole &&
+                      !(HUMAN_ROLE_OPTIONS as readonly string[]).includes(selectedManageHumanRole) ? (
+                        <div className="pt-1">
+                          <Button
                             type="button"
-                            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-                            title="Remove"
-                            onClick={() => setCustomHumanRoles((prev) => prev.filter((r) => r !== role))}
+                            size="sm"
+                            variant="destructive"
+                            className="rounded-full"
+                            onClick={() => {
+                              const roleToRemove = selectedManageHumanRole;
+                              setCustomHumanRoles((prev) => prev.filter((r) => r !== roleToRemove));
+                              setHumanRolePermissions((prev) => {
+                                const next = { ...prev };
+                                delete next[roleToRemove];
+                                return next;
+                              });
+                              const fallback = manageHumanRoleOptions.find((r) => r !== roleToRemove) ?? "";
+                              setSelectedManageHumanRole(fallback);
+                            }}
                           >
-                            {role}
-                          </button>
-                        ))}
+                            Delete role
+                          </Button>
+                        </div>
+                      ) : null}
+                    </section>
+                    <section className="space-y-3 overflow-y-auto rounded-2xl border border-border/60 bg-muted/10 p-4">
+                      <div className="text-sm font-medium text-foreground">
+                        Role permissions{selectedManageHumanRole ? `: ${selectedManageHumanRole}` : ""}
                       </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">
-                        No custom roles yet.
+                      <div className="rounded-2xl border border-border/50 bg-background/60 p-4">
+                        <HumanPermissionsPanel
+                          idPrefix={`human-role-${selectedManageHumanRole || "none"}`}
+                          enabledKeys={permissionsForRole(selectedManageHumanRole)}
+                          onKeysChange={(keys) => {
+                            if (!selectedManageHumanRole) return;
+                            setHumanRolePermissions((prev) => ({
+                              ...prev,
+                              [selectedManageHumanRole]: keys,
+                            }));
+                          }}
+                          intro={
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              Configure permission defaults for this role. Selecting this role for a human uses this access profile.
+                            </p>
+                          }
+                        />
                       </div>
-                    )}
+                    </section>
                   </div>
                 </TabsContent>
 
-                <TabsContent value="agents">
+                <TabsContent value="agents" className="mt-4 overflow-y-auto">
                   <div className="space-y-3">
                     <div className="text-sm font-medium text-foreground">Custom agent role labels</div>
                     <div className="flex items-center gap-2">
@@ -1258,7 +1381,7 @@ export function CompanyDirectory() {
                           <button
                             key={role}
                             type="button"
-                            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+                            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
                             title="Remove"
                             onClick={() => setCustomAgentRoles((prev) => prev.filter((r) => r !== role))}
                           >
@@ -1267,27 +1390,15 @@ export function CompanyDirectory() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-sm text-muted-foreground">
-                        No custom role labels yet.
-                      </div>
+                      <div className="text-sm text-muted-foreground">No custom role labels yet.</div>
                     )}
                   </div>
                 </TabsContent>
               </Tabs>
-            </DialogContent>
-          </Dialog>
-
-          <div className="w-full min-w-0 sm:max-w-xs sm:flex-1 lg:max-w-sm">
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email, role…"
-              className="h-10 rounded-2xl border-border/60 bg-background/80 shadow-inner"
-            />
-          </div>
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "agents")} className="gap-4">
         {membersPermissionDenied ? (
@@ -1305,23 +1416,23 @@ export function CompanyDirectory() {
         ) : null}
         {!membersPermissionDenied && !membersError ? (
           <>
-        <TabsList className="h-auto w-full justify-start gap-1 rounded-2xl border-2 border-primary/30 bg-muted/45 p-1.5 shadow-inner ring-1 ring-primary/15 sm:w-auto">
-          <TabsTrigger value="users" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-violet-500/12 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-violet-500/35">
-            <UserRound className="size-4 text-violet-600 opacity-80 dark:text-violet-300" aria-hidden />
+        <TabsList className="h-auto w-full justify-start gap-1 rounded-full border border-sidebar-border bg-sidebar/85 p-1.5 sm:w-auto">
+          <TabsTrigger value="users" className="gap-2 rounded-full px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
+            <UserRound className="size-4 text-muted-foreground opacity-90" aria-hidden />
             Humans{" "}
             <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeHumanMembers.length})`}</span>
           </TabsTrigger>
-          <TabsTrigger value="agents" className="gap-2 rounded-xl px-4 py-2 font-medium data-[state=active]:bg-emerald-500/12 data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-emerald-500/35">
-            <Bot className="size-4 text-emerald-600 opacity-80 dark:text-emerald-300" aria-hidden />
+          <TabsTrigger value="agents" className="gap-2 rounded-full px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
+            <Bot className="size-4 text-muted-foreground opacity-90" aria-hidden />
             Agents{" "}
             <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeAgentMembers.length})`}</span>
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-4">
-          <div className="grid gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card/95 shadow-md ring-1 ring-violet-500/15 dark:ring-violet-400/10">
-              <div className="border-b border-border/50 bg-gradient-to-r from-violet-500/12 via-transparent to-fuchsia-500/5 px-4 py-3">
+          <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
+            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/45 shadow-sm">
+              <div className="border-b border-sidebar-border/70 bg-sidebar/40 px-4 py-3">
                 <div className="text-sm font-semibold text-foreground">Humans</div>
                 <div className="text-xs text-muted-foreground">
                   {membersLoading ? "Loading…" : `${filteredHumanMembers.length} shown`}
@@ -1329,8 +1440,8 @@ export function CompanyDirectory() {
               </div>
               <div className="flex-1 space-y-1 overflow-y-auto p-2">
                 {!membersLoading && filteredHumanMembers.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-300/40 bg-violet-500/[0.04] px-4 py-10 text-center dark:border-violet-500/20">
-                    <UserRound className="size-9 text-violet-400/90 dark:text-violet-400/70" aria-hidden />
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
+                    <UserRound className="size-9 text-muted-foreground" aria-hidden />
                     <p className="text-sm text-muted-foreground">No matching humans.</p>
                   </div>
                 )}
@@ -1345,13 +1456,13 @@ export function CompanyDirectory() {
                       className={cn(
                         "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
                         selected
-                          ? "bg-gradient-to-r from-violet-500/14 via-primary/10 to-fuchsia-500/10 shadow-sm ring-1 ring-violet-400/35 dark:from-violet-500/20 dark:ring-violet-500/30"
+                          ? "bg-sidebar-accent/70 text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border"
                           : "hover:bg-muted/55",
                         isSuspended && "opacity-60",
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <DirectoryMemberAvatar member={member} size="sm" className="mt-0.5 shrink-0" />
+                        <DirectoryMemberAvatar member={member} size="sm" className="shrink-0 self-center" />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</span>
@@ -1362,7 +1473,7 @@ export function CompanyDirectory() {
                             )}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
-                          <div className="mt-1 text-[11px] font-medium text-violet-700/90 dark:text-violet-300/90">
+                          <div className="mt-1 text-[11px] font-medium text-muted-foreground">
                             {member.membershipRole ?? "member"}
                           </div>
                         </div>
@@ -1374,10 +1485,10 @@ export function CompanyDirectory() {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md ring-1 ring-border/35">
+            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/35 shadow-sm">
               {selectedHumanMember ? (
                 <>
-                  <div className="border-b border-border/50 bg-gradient-to-br from-violet-500/[0.07] via-muted/25 to-transparent px-5 py-5">
+                  <div className="border-b border-sidebar-border/70 bg-sidebar/45 px-5 py-5">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                       <DirectoryMemberAvatar member={selectedHumanMember} size="lg" className="shrink-0 shadow-md" />
                       <div className="min-w-0 flex-1">
@@ -1402,7 +1513,7 @@ export function CompanyDirectory() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="rounded-xl"
+                            className="rounded-full"
                             disabled={
                               !selectedHumanMember ||
                               !selectedCompanyId ||
@@ -1421,7 +1532,7 @@ export function CompanyDirectory() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="rounded-xl"
+                            className="rounded-full"
                             disabled={
                               !selectedHumanMember ||
                               !selectedCompanyId ||
@@ -1440,7 +1551,7 @@ export function CompanyDirectory() {
                           type="button"
                           size="sm"
                           variant="destructive"
-                          className="rounded-xl"
+                          className="rounded-full"
                           disabled={
                             !selectedHumanMember ||
                             !selectedCompanyId ||
@@ -1472,11 +1583,22 @@ export function CompanyDirectory() {
                       />
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Reports to</div>
-                        <select
-                          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+                        <InlineEntitySelector
                           value={memberManagerDrafts[selectedHumanMember.id] ?? ""}
-                          onChange={(e) => {
-                            const next = e.target.value;
+                          options={activeHumanMembers
+                            .filter((candidate) =>
+                              candidate.id !== selectedHumanMember.id &&
+                              !invalidManagersForSelectedHuman.has(candidate.id),
+                            )
+                            .map((candidate) => ({
+                              id: candidate.id,
+                              label: memberDisplayName(candidate),
+                            }))}
+                          placeholder="Reports to"
+                          noneLabel="None"
+                          searchPlaceholder="Search humans..."
+                          emptyMessage="No humans found."
+                          onChange={(next) => {
                             setMemberSaveErrors((prev) => {
                               if (!prev[selectedHumanMember.id]) return prev;
                               const { [selectedHumanMember.id]: _drop, ...rest } = prev;
@@ -1484,22 +1606,8 @@ export function CompanyDirectory() {
                             });
                             setMemberManagerDrafts((prev) => ({ ...prev, [selectedHumanMember.id]: next }));
                           }}
-                        >
-                          <option value="">None</option>
-                          <optgroup label="Humans">
-                            {activeHumanMembers
-                              .filter((candidate) => candidate.id !== selectedHumanMember.id)
-                              .map((candidate) => (
-                                <option
-                                  key={candidate.id}
-                                  value={candidate.id}
-                                  disabled={invalidManagersForSelectedHuman.has(candidate.id)}
-                                >
-                                  {memberDisplayName(candidate)}
-                                </option>
-                              ))}
-                          </optgroup>
-                        </select>
+                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                        />
                         {memberSaveErrors[selectedHumanMember.id] && (
                           <div className="text-[11px] text-destructive">
                             {memberSaveErrors[selectedHumanMember.id]}
@@ -1511,7 +1619,7 @@ export function CompanyDirectory() {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-sky-500/15 bg-gradient-to-br from-sky-500/[0.06] to-transparent px-4 py-3 ring-1 ring-border/40">
+                    <div className="rounded-2xl border border-border/50 bg-muted/20 px-4 py-3 ring-1 ring-border/30">
                       <div className="text-xs font-semibold text-foreground">Notes</div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         Assigning which agents a human manages is done by setting each agent’s “Reports to”.
@@ -1553,7 +1661,7 @@ export function CompanyDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sidebar-border/70 bg-sidebar/35 px-5 py-3">
                     <div className="text-xs text-muted-foreground">Autosave is on.</div>
                     <Button
                       type="button"
@@ -1582,8 +1690,8 @@ export function CompanyDirectory() {
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 ring-1 ring-violet-400/20">
-                    <UserRound className="size-8 text-violet-500/70 dark:text-violet-400/70" aria-hidden />
+                  <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-muted">
+                    <UserRound className="size-8 text-muted-foreground" aria-hidden />
                   </div>
                   <p className="text-sm font-medium text-foreground">No human selected</p>
                   <p className="max-w-xs text-xs text-muted-foreground">Choose someone from the list to edit their role, reporting line, and access.</p>
@@ -1594,9 +1702,9 @@ export function CompanyDirectory() {
         </TabsContent>
 
         <TabsContent value="agents" className="mt-4">
-          <div className="grid gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex max-h-[min(32rem,72vh)] flex-col overflow-hidden rounded-2xl border border-border/50 bg-card/95 shadow-md ring-1 ring-emerald-500/15 dark:ring-emerald-400/10">
-              <div className="border-b border-border/50 bg-gradient-to-r from-emerald-500/12 via-transparent to-teal-500/5 px-4 py-3">
+          <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
+            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/45 shadow-sm">
+              <div className="border-b border-sidebar-border/70 bg-sidebar/40 px-4 py-3">
                 <div className="text-sm font-semibold text-foreground">Agents</div>
                 <div className="text-xs text-muted-foreground">
                   {membersLoading ? "Loading…" : `${filteredAgentMembers.length} shown`}
@@ -1604,8 +1712,8 @@ export function CompanyDirectory() {
               </div>
               <div className="flex-1 space-y-1 overflow-y-auto p-2">
                 {!membersLoading && filteredAgentMembers.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-emerald-300/40 bg-emerald-500/[0.04] px-4 py-10 text-center dark:border-emerald-500/20">
-                    <Bot className="size-9 text-emerald-500/90 dark:text-emerald-400/70" aria-hidden />
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
+                    <Bot className="size-9 text-muted-foreground" aria-hidden />
                     <p className="text-sm text-muted-foreground">No matching agents.</p>
                   </div>
                 )}
@@ -1619,7 +1727,7 @@ export function CompanyDirectory() {
                       className={cn(
                         "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
                         selected
-                          ? "bg-gradient-to-r from-emerald-500/14 via-teal-500/10 to-cyan-500/10 shadow-sm ring-1 ring-emerald-400/35 dark:ring-emerald-500/30"
+                          ? "bg-sidebar-accent/70 text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border"
                           : "hover:bg-muted/55",
                       )}
                     >
@@ -1628,7 +1736,7 @@ export function CompanyDirectory() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</div>
                           <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
-                          <div className="mt-1 text-[11px] font-medium text-emerald-800/90 dark:text-emerald-300/90">
+                          <div className="mt-1 text-[11px] font-medium text-muted-foreground">
                             {member.membershipRole ?? "agent"}
                           </div>
                         </div>
@@ -1640,10 +1748,10 @@ export function CompanyDirectory() {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md ring-1 ring-border/35">
+            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/35 shadow-sm">
               {selectedAgentMember ? (
                 <>
-                  <div className="border-b border-border/50 bg-gradient-to-br from-emerald-500/[0.07] via-muted/25 to-transparent px-5 py-5">
+                  <div className="border-b border-sidebar-border/70 bg-sidebar/45 px-5 py-5">
                     <div className="flex flex-wrap items-start gap-4">
                       <DirectoryMemberAvatar member={selectedAgentMember} size="lg" className="shrink-0 shadow-md" />
                       <div className="min-w-0 flex-1">
@@ -1667,11 +1775,22 @@ export function CompanyDirectory() {
                       />
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Reports to</div>
-                        <select
-                          className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+                        <InlineEntitySelector
                           value={agentReportsDrafts[selectedAgentMember.id] ?? ""}
-                          onChange={(e) => {
-                            const next = e.target.value;
+                          options={activeAgentMembers
+                            .filter((candidate) =>
+                              candidate.id !== selectedAgentMember.id &&
+                              !invalidManagersForSelectedAgent.has(candidate.principalId),
+                            )
+                            .map((candidate) => ({
+                              id: candidate.principalId,
+                              label: memberDisplayName(candidate),
+                            }))}
+                          placeholder="Reports to"
+                          noneLabel="None"
+                          searchPlaceholder="Search agents..."
+                          emptyMessage="No agents found."
+                          onChange={(next) => {
                             setMemberSaveErrors((prev) => {
                               if (!prev[selectedAgentMember.id]) return prev;
                               const { [selectedAgentMember.id]: _drop, ...rest } = prev;
@@ -1679,22 +1798,8 @@ export function CompanyDirectory() {
                             });
                             setAgentReportsDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: next }));
                           }}
-                        >
-                          <option value="">None</option>
-                          <optgroup label="Agents">
-                            {activeAgentMembers
-                              .filter((candidate) => candidate.id !== selectedAgentMember.id)
-                              .map((candidate) => (
-                                <option
-                                  key={candidate.id}
-                                  value={candidate.principalId}
-                                  disabled={invalidManagersForSelectedAgent.has(candidate.principalId)}
-                                >
-                                  {memberDisplayName(candidate)}
-                                </option>
-                              ))}
-                          </optgroup>
-                        </select>
+                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                        />
                         {memberSaveErrors[selectedAgentMember.id] && (
                           <div className="text-[11px] text-destructive">
                             {memberSaveErrors[selectedAgentMember.id]}
@@ -1707,7 +1812,7 @@ export function CompanyDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-muted/20 px-5 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sidebar-border/70 bg-sidebar/35 px-5 py-3">
                     <div className="text-xs text-muted-foreground">Autosave is on.</div>
                     <Button
                       size="sm"
@@ -1730,8 +1835,8 @@ export function CompanyDirectory() {
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/15 to-teal-500/10 ring-1 ring-emerald-400/20">
-                    <Bot className="size-8 text-emerald-500/70 dark:text-emerald-400/70" aria-hidden />
+                  <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-muted">
+                    <Bot className="size-8 text-muted-foreground" aria-hidden />
                   </div>
                   <p className="text-sm font-medium text-foreground">No agent selected</p>
                   <p className="max-w-xs text-xs text-muted-foreground">Pick an agent from the list to edit their role label and reporting line.</p>

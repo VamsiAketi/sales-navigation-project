@@ -4,6 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import {
   activityLog,
   agents,
@@ -12,6 +13,7 @@ import {
   companyMemberships,
   createDb,
   ensurePostgresDatabase,
+  goals,
   issueComments,
   issues,
   labels,
@@ -106,6 +108,7 @@ describe("issueService.list participantAgentId", () => {
     await db.delete(issues);
     await db.delete(projectIssueStatuses);
     await db.delete(projects);
+    await db.delete(goals);
     await db.delete(companyMemberships);
     await db.delete(agents);
     await db.delete(companies);
@@ -403,5 +406,76 @@ describe("issueService.list participantAgentId", () => {
     expect(updated!.assigneeUserId).toBeNull();
     expect(updated!.assigneeAgentId).toBe(agentId);
     expect(updated!.status).toBe("in_progress");
+  });
+
+  it("promotes planned goal to active when creating a task linked to it", async () => {
+    const companyId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    const [goal] = await db
+      .insert(goals)
+      .values({
+        companyId,
+        title: "Launch integration",
+        level: "company",
+        status: "planned",
+      })
+      .returning();
+
+    await svc.create(companyId, {
+      title: "Implement first task",
+      status: "backlog",
+      priority: "medium",
+      goalId: goal.id,
+    });
+
+    const persistedGoal = await db
+      .select()
+      .from(goals)
+      .where(eq(goals.id, goal.id))
+      .then((rows) => rows[0] ?? null);
+    expect(persistedGoal?.status).toBe("active");
+  });
+
+  it("promotes planned goal to active when re-linking a task to it", async () => {
+    const companyId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    const [plannedGoal] = await db
+      .insert(goals)
+      .values({
+        companyId,
+        title: "Q2 expansion",
+        level: "company",
+        status: "planned",
+      })
+      .returning();
+
+    const created = await svc.create(companyId, {
+      title: "Scope task",
+      status: "backlog",
+      priority: "medium",
+    });
+
+    await svc.update(created.id, { goalId: plannedGoal.id });
+
+    const persistedGoal = await db
+      .select()
+      .from(goals)
+      .where(eq(goals.id, plannedGoal.id))
+      .then((rows) => rows[0] ?? null);
+    expect(persistedGoal?.status).toBe("active");
   });
 });

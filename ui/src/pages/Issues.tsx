@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useCallback } from "react";
 import { useLocation, useSearchParams } from "@/lib/router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Issue } from "@paperclipai/shared";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
@@ -50,6 +50,28 @@ export function Issues() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+
+  const projectStatusQueries = useQueries({
+    queries: (projects ?? []).map((project) => ({
+      queryKey: queryKeys.projects.issueStatuses(project.id),
+      queryFn: () => projectsApi.listIssueStatuses(project.id, selectedCompanyId!),
+      enabled: !!selectedCompanyId,
+      staleTime: 60_000,
+    })),
+  });
+
+  const globalProjectStatuses = useMemo(() => {
+    const byValue = new Map<string, ProjectIssueStatus>();
+    for (const query of projectStatusQueries) {
+      for (const status of query.data ?? []) {
+        if (!status.isActive) continue;
+        if (!byValue.has(status.value)) {
+          byValue.set(status.value, status);
+        }
+      }
+    }
+    return Array.from(byValue.values());
+  }, [projectStatusQueries]);
 
   const { data: liveRuns } = useQuery({
     queryKey: queryKeys.liveRuns(selectedCompanyId!),
@@ -140,6 +162,7 @@ export function Issues() {
       onSearchChange={handleSearchChange}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
       searchFilters={participantAgentId ? { participantAgentId } : undefined}
+      filterStatusOptions={globalProjectStatuses}
     />
   );
 }

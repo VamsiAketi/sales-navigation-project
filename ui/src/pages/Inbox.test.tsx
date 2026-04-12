@@ -158,7 +158,7 @@ describe("InboxIssueMetaLeading", () => {
       root.render(<InboxIssueMetaLeading issue={createIssue()} isLive />);
     });
 
-    const statusIcon = container.querySelector('span[class*="border-blue-600"]');
+    const statusIcon = container.querySelector('span[class*="bg-sky-200"]');
     const liveBadge = container.querySelector('span[class*="px-1.5"][class*="bg-blue-500/10"]');
     const liveBadgeLabel = Array.from(container.querySelectorAll("span")).find(
       (node) => node.textContent === "Live" && node.className.includes("text-"),

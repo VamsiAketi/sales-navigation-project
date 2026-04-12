@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
@@ -49,10 +49,12 @@ export function NewProjectDialog() {
   const [expanded, setExpanded] = useState(false);
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [goalError, setGoalError] = useState<string | null>(null);
 
   const [statusOpen, setStatusOpen] = useState(false);
   const [goalOpen, setGoalOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
+  const hasAutoSelectedGoalRef = useRef(false);
 
   const { data: goals } = useQuery({
     queryKey: queryKeys.goals.list(selectedCompanyId!),
@@ -104,6 +106,8 @@ export function NewProjectDialog() {
     setExpanded(false);
     setWorkspaceRepoUrl("");
     setWorkspaceError(null);
+    setGoalError(null);
+    hasAutoSelectedGoalRef.current = false;
   }
 
   const looksLikeRepoUrl = (value: string) => {
@@ -138,6 +142,7 @@ export function NewProjectDialog() {
     }
 
     setWorkspaceError(null);
+    setGoalError(null);
 
     try {
       const created = await createProject.mutateAsync({
@@ -179,6 +184,31 @@ export function NewProjectDialog() {
   if (!selectedCompanyId) missingRequiredFields.push("Company selection");
   if (!name.trim()) missingRequiredFields.push("Project name");
   const submitDisabled = missingRequiredFields.length > 0 || createProject.isPending;
+
+  useEffect(() => {
+    if (!newProjectOpen) {
+      hasAutoSelectedGoalRef.current = false;
+      return;
+    }
+    if (hasAutoSelectedGoalRef.current) return;
+    if (goalIds.length > 0) return;
+    if (!goals || goals.length === 0) return;
+
+    const firstCreatedGoal = goals
+      .slice()
+      .sort((a, b) => {
+        const aMs = new Date(a.createdAt as unknown as string).getTime();
+        const bMs = new Date(b.createdAt as unknown as string).getTime();
+        const safeAMs = Number.isFinite(aMs) ? aMs : Number.MAX_SAFE_INTEGER;
+        const safeBMs = Number.isFinite(bMs) ? bMs : Number.MAX_SAFE_INTEGER;
+        return safeAMs - safeBMs;
+      })[0];
+
+    if (firstCreatedGoal) {
+      setGoalIds([firstCreatedGoal.id]);
+      hasAutoSelectedGoalRef.current = true;
+    }
+  }, [newProjectOpen, goals, goalIds.length]);
 
   return (
     <Dialog
@@ -345,7 +375,10 @@ export function NewProjectDialog() {
               <span className="max-w-[160px] truncate">{goal.title}</span>
               <button
                 className="text-muted-foreground hover:text-foreground"
-                onClick={() => setGoalIds((prev) => prev.filter((id) => id !== goal.id))}
+                onClick={() => {
+                  setGoalIds((prev) => prev.filter((id) => id !== goal.id));
+                  setGoalError(null);
+                }}
                 aria-label={`Remove goal ${goal.title}`}
                 type="button"
               >
@@ -367,7 +400,8 @@ export function NewProjectDialog() {
             <PopoverContent className="z-220 w-56 p-1" align="start">
               {selectedGoals.length === 0 && (
                 <button
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground"
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent/50"
                   onClick={() => setGoalOpen(false)}
                 >
                   No goal
@@ -379,6 +413,7 @@ export function NewProjectDialog() {
                   className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 truncate"
                   onClick={() => {
                     setGoalIds((prev) => [...prev, g.id]);
+                    setGoalError(null);
                     setGoalOpen(false);
                   }}
                 >
@@ -392,6 +427,9 @@ export function NewProjectDialog() {
               )}
             </PopoverContent>
           </Popover>
+          {goalError && (
+            <span className="text-xs text-destructive">{goalError}</span>
+          )}
 
         </div>
 

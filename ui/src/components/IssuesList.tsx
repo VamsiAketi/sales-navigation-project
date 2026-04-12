@@ -280,6 +280,7 @@ interface IssuesListProps {
   projects?: ProjectOption[];
   liveIssueIds?: Set<string>;
   projectId?: string;
+  filterStatusOptions?: ProjectIssueStatus[];
   viewStateKey: string;
   issueLinkState?: unknown;
   initialAssignees?: string[];
@@ -506,6 +507,7 @@ export function IssuesList({
   projects,
   liveIssueIds,
   projectId,
+  filterStatusOptions,
   viewStateKey,
   issueLinkState,
   initialAssignees,
@@ -670,6 +672,13 @@ export function IssuesList({
     const baseValues = new Set(statusOrder);
     const seen = new Set<string>();
     const custom: typeof base = [];
+    for (const status of filterStatusOptions ?? []) {
+      if (!status.isActive) continue;
+      if (!baseValues.has(status.value) && !seen.has(status.value)) {
+        seen.add(status.value);
+        custom.push({ value: status.value, name: status.name, color: status.color });
+      }
+    }
     for (const issue of issues) {
       if (!baseValues.has(issue.status) && !seen.has(issue.status)) {
         seen.add(issue.status);
@@ -677,7 +686,7 @@ export function IssuesList({
       }
     }
     return custom.length > 0 ? [...base, ...custom] : base;
-  }, [projectStatuses, issues]);
+  }, [projectStatuses, filterStatusOptions, issues]);
 
   useEffect(() => {
     focusHandledRef.current = null;
@@ -987,30 +996,162 @@ export function IssuesList({
                       </button>
                     );
                   })}
+                  <button
+                    className={cn(
+                      "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors",
+                      viewState.showHidden
+                        ? "border-amber-400/50 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                        : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                    )}
+                    onClick={() => updateView({ showHidden: !viewState.showHidden, statuses: [] })}
+                  >
+                    <EyeOff className="h-3 w-3" />
+                    Hidden
+                  </button>
                 </div>
-                <button
-                  className={cn(
-                    "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors",
-                    viewState.showHidden
-                      ? "border-amber-400/50 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                      : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
-                  )}
-                  onClick={() => updateView({ showHidden: !viewState.showHidden, statuses: [] })}
-                >
-                  <EyeOff className="h-3 w-3" />
-                  Hidden
-                </button>
-                <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
-                  {effectiveStatusOptions.map((s) => (
-                    <label key={s.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
-                      <Checkbox
-                        checked={viewState.statuses.includes(s.value)}
-                        onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s.value) })}
-                      />
-                      <StatusIcon status={s.value} projectStatuses={projectStatuses} />
-                      <span>{s.name}</span>
-                    </label>
-                  ))}
+
+                <div className="grid grid-cols-1 gap-x-4 gap-y-3 border-t border-border pt-3 sm:grid-cols-2">
+                  {/* Status */}
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Status</span>
+                    <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                      {effectiveStatusOptions.map((s) => (
+                        <label key={s.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50">
+                          <Checkbox
+                            checked={viewState.statuses.includes(s.value)}
+                            onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s.value) })}
+                          />
+                          <StatusIcon status={s.value} projectStatuses={projectStatuses ?? filterStatusOptions} />
+                          <span>{s.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Priority + Assignee stacked in right column */}
+                  <div className="space-y-3">
+                    {/* Priority */}
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Priority</span>
+                      <div className="space-y-0.5">
+                        {priorityOrder.map((p) => (
+                          <label key={p} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.priorities.includes(p)}
+                              onCheckedChange={() => updateView({ priorities: toggleInArray(viewState.priorities, p) })}
+                            />
+                            <PriorityIcon priority={p} />
+                            <span className="text-sm">{statusLabel(p)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Assignee */}
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Assignee</span>
+                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                        <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                          <Checkbox
+                            checked={viewState.assignees.includes("__unassigned")}
+                            onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, "__unassigned") })}
+                          />
+                          <span className="text-sm">No assignee</span>
+                        </label>
+                        {currentUserId && (
+                          <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.assignees.includes("__me")}
+                              onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, "__me") })}
+                            />
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-sm">Me</span>
+                          </label>
+                        )}
+                        {(agents ?? []).map((agent) => (
+                          <label key={agent.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.assignees.includes(agent.id)}
+                              onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, agent.id) })}
+                            />
+                            <span className="text-sm">{agent.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Reporter */}
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">Reporter</span>
+                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                        {currentUserId && (
+                          <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.reporters.includes("__me")}
+                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, "__me") })}
+                            />
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-sm">Me</span>
+                          </label>
+                        )}
+                        {humanMembers
+                          .filter((m) => m.id !== currentUserId)
+                          .map((member) => (
+                          <label key={member.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.reporters.includes(member.id)}
+                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, member.id) })}
+                            />
+                            <span className="text-sm">{member.name}</span>
+                          </label>
+                        ))}
+                        {(agents ?? []).map((agent) => (
+                          <label key={agent.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                            <Checkbox
+                              checked={viewState.reporters.includes(agent.id)}
+                              onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, agent.id) })}
+                            />
+                            <span className="text-sm">{agent.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {labels && labels.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Labels</span>
+                        <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                          {labels.map((label) => (
+                            <label key={label.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                              <Checkbox
+                                checked={viewState.labels.includes(label.id)}
+                                onCheckedChange={() => updateView({ labels: toggleInArray(viewState.labels, label.id) })}
+                              />
+                              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: label.color }} />
+                              <span className="text-sm">{label.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {projects && projects.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Project</span>
+                        <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                          {projects.map((project) => (
+                            <label key={project.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
+                              <Checkbox
+                                checked={viewState.projects.includes(project.id)}
+                                onCheckedChange={() => updateView({ projects: toggleInArray(viewState.projects, project.id) })}
+                              />
+                              <span className="text-sm">{project.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </PopoverContent>
