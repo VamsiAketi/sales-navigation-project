@@ -1124,17 +1124,19 @@ export function issueRoutes(db: Db, storage: StorageService) {
       });
     }
 
-    const assigneeChanged = assigneeWillChange;
     const statusChangedFromBacklog =
       existing.status === "backlog" &&
       issue.status !== "backlog" &&
       req.body.status !== undefined;
 
+    /** After update(), including workflow default assignees not present in the request body. */
+    const assigneeAgentIdChangedResolved = issue.assigneeAgentId !== existing.assigneeAgentId;
+
     // Merge all wakeups from this update into one enqueue per agent to avoid duplicate runs.
     void (async () => {
       const wakeups = new Map<string, Parameters<typeof heartbeat.wakeup>[1]>();
 
-      if (assigneeChanged && issue.assigneeAgentId && issue.status !== "backlog") {
+      if (assigneeAgentIdChangedResolved && issue.assigneeAgentId && issue.status !== "backlog") {
         wakeups.set(issue.assigneeAgentId, {
           source: "assignment",
           triggerDetail: "system",
@@ -1146,7 +1148,11 @@ export function issueRoutes(db: Db, storage: StorageService) {
         });
       }
 
-      if (!assigneeChanged && statusChangedFromBacklog && issue.assigneeAgentId) {
+      if (
+        !assigneeAgentIdChangedResolved &&
+        statusChangedFromBacklog &&
+        issue.assigneeAgentId
+      ) {
         wakeups.set(issue.assigneeAgentId, {
           source: "automation",
           triggerDetail: "system",

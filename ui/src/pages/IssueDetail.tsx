@@ -950,11 +950,13 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
               )}
             </PopoverContent>
             </Popover>
-            <Link to={sourceBreadcrumbs[0].href}>
-              <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs[0].label}`}>
-                <X className="h-4 w-4" />
-              </Button>
-            </Link>
+            {!fullWidth ? (
+              <Link to={sourceBreadcrumbs[0].href}>
+                <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs[0].label}`}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </Link>
+            ) : null}
           </div>
         </div>
 

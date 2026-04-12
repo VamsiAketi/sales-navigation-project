@@ -10,7 +10,7 @@ import {
 import {
   SortableContext,
   useSortable,
-  verticalListSortingStrategy,
+  horizontalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -24,7 +24,6 @@ import {
   X,
   Pin,
   Lock,
-  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,12 +33,13 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -57,13 +57,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { projectsApi } from "../api/projects";
-import { ProjectWorkflowMap } from "./ProjectWorkflowMap";
 import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
 import { useToast } from "../context/ToastContext";
 import { cn } from "@/lib/utils";
+import {
+  issueStatusJiraLozenge,
+  issueStatusJiraLozengeDefault,
+  issueJiraLozengeColorsFromHex,
+} from "../lib/status-colors";
+import { useOptionalTheme } from "../context/ThemeContext";
 import {
   isBoardPinnedHiddenProjectIssueStatusValue,
   isFixedNameProjectIssueStatusValue,
@@ -81,85 +86,50 @@ const ALLOWED_ACTOR_LABELS: Record<(typeof PROJECT_ISSUE_STATUS_ALLOWED_ACTORS)[
 };
 
 const SELECT_NONE = "__none__";
+const COMBINED_USER_PREFIX = "u:";
+const COMBINED_AGENT_PREFIX = "a:";
 
-function transitionSummaryLine(status: ProjectIssueStatus, allStatuses: ProjectIssueStatus[]): string | null {
-  const others = allStatuses.filter((s) => s.value !== status.value);
-  if (others.length === 0) return null;
-  const selected = status.allowedNextStatusValues ?? [];
-  if (selected.length === 0) return "Any next stage";
-  if (selected.length === 1) {
-    const s = allStatuses.find((x) => x.value === selected[0]);
-    return `Next: ${s?.name ?? selected[0]}`;
-  }
-  return `Next: ${selected.length} stages`;
-}
-
-function assignmentSummaryLine(
-  status: ProjectIssueStatus,
-  allUsers: ApproverUser[],
-  agents: Array<{ id: string; name: string }>,
-): string {
-  const actor = ALLOWED_ACTOR_LABELS[status.allowedActors];
-  const parts: string[] = [actor];
-  if (status.defaultAssigneeUserId) {
-    parts.push(allUsers.find((u) => u.id === status.defaultAssigneeUserId)?.name ?? "Human default");
-  }
-  if (status.defaultAssigneeAgentId) {
-    parts.push(agents.find((a) => a.id === status.defaultAssigneeAgentId)?.name ?? "AI default");
-  }
-  return parts.join(" · ");
-}
-
-function normalWorkflowSummaryStrip(
-  status: ProjectIssueStatus,
-  allStatuses: ProjectIssueStatus[],
-  allUsers: ApproverUser[],
-  agents: Array<{ id: string; name: string }>,
-): string {
-  const t = transitionSummaryLine(status, allStatuses);
-  const a = assignmentSummaryLine(status, allUsers, agents);
-  return t ? `${t} · ${a}` : a;
-}
-
-/** Outline chevron control — explicit toggle so controlled open/close is reliable (not only expand). */
-function WorkflowDetailsDisclosureButton({
-  open,
-  onToggle,
+/** Jira-style destination chip for transition picker (colored fill + uppercase). */
+function TransitionTargetLozenge({
+  statusValue,
+  displayName,
+  hexColor,
+  theme,
+  muted,
 }: {
-  open: boolean;
-  onToggle: () => void;
+  statusValue: string;
+  displayName: string;
+  hexColor: string;
+  theme: "light" | "dark";
+  muted?: boolean;
 }) {
+  const label = displayName.toUpperCase();
+  const fromHex = issueJiraLozengeColorsFromHex(hexColor, theme);
+  if (fromHex) {
+    return (
+      <span
+        className={cn(
+          "inline-flex max-w-full min-w-0 truncate rounded px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+          muted && "opacity-45 saturate-50",
+        )}
+        style={{ backgroundColor: fromHex.backgroundColor, color: fromHex.color }}
+      >
+        {label}
+      </span>
+    );
+  }
+  const builtIn = issueStatusJiraLozenge[statusValue] ?? issueStatusJiraLozengeDefault;
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="icon-sm"
-      className="h-9 w-9 shrink-0 shadow-xs"
-      onClick={onToggle}
-      aria-expanded={open}
-      aria-label={open ? "Collapse workflow details" : "Expand workflow details"}
+    <span
+      className={cn(
+        "inline-flex max-w-full min-w-0 truncate rounded px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+        builtIn,
+        muted && "opacity-45 saturate-50",
+      )}
     >
-      <ChevronDown
-        className={cn("h-4 w-4 transition-transform duration-200", open && "rotate-180")}
-        aria-hidden
-      />
-    </Button>
+      {label}
+    </span>
   );
-}
-
-function humanApprovalWorkflowSummaryStrip(
-  status: ProjectIssueStatus,
-  allStatuses: ProjectIssueStatus[],
-  allUsers: ApproverUser[],
-): string {
-  const ids = status.approverUserIds ?? [];
-  const n = ids.length;
-  let approverPart: string;
-  if (n === 0) approverPart = "Add approvers (required)";
-  else if (n === 1) approverPart = `Approver: ${allUsers.find((u) => u.id === ids[0])?.name ?? "1 member"}`;
-  else approverPart = `${n} approvers`;
-  const t = transitionSummaryLine(status, allStatuses);
-  return t ? `${approverPart} · ${t}` : approverPart;
 }
 
 function HumanApprovalAssignmentNote() {
@@ -184,6 +154,7 @@ function AllowedNextTransitionsEditor({
   disabled,
   onWorkflowPatch,
   compactIntro = false,
+  narrowColumn = false,
 }: {
   status: ProjectIssueStatus;
   allStatuses: ProjectIssueStatus[];
@@ -191,7 +162,10 @@ function AllowedNextTransitionsEditor({
   onWorkflowPatch: (id: string, patch: Record<string, unknown>) => void;
   /** Omit long explanatory copy (caller shows a single shared intro). */
   compactIntro?: boolean;
+  /** Single-column chips for board column editor layout. */
+  narrowColumn?: boolean;
 }) {
+  const theme = useOptionalTheme();
   const others = useMemo(
     () =>
       allStatuses
@@ -226,7 +200,10 @@ function AllowedNextTransitionsEditor({
         ) : null}
       </div>
       <div
-        className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        className={cn(
+          "gap-2",
+          narrowColumn ? "flex flex-col" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
+        )}
         role="group"
         aria-label="Allowed next workflow stages"
       >
@@ -246,21 +223,23 @@ function AllowedNextTransitionsEditor({
                     onWorkflowPatch(status.id, { allowedNextStatusValues: Array.from(next) });
                   }}
                   className={cn(
-                    "flex min-h-10 w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
+                    "flex min-h-10 w-full items-center justify-center rounded-lg border px-2 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
                     on
-                      ? "border-primary/40 bg-primary/8 text-foreground shadow-xs"
-                      : "border-border/70 bg-card text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground",
+                      ? "border-primary/45 bg-primary/10 shadow-xs dark:bg-primary/15"
+                      : "border-border/70 bg-card/80 hover:border-border hover:bg-muted/50",
                   )}
                 >
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/10 ring-inset dark:ring-white/15"
-                    style={{ backgroundColor: s.color }}
+                  <TransitionTargetLozenge
+                    statusValue={s.value}
+                    displayName={s.name}
+                    hexColor={s.color}
+                    theme={theme}
+                    muted={!on}
                   />
-                  <span className="min-w-0 flex-1 truncate">{s.name}</span>
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top" className="font-mono text-xs">
-                {s.value}
+              <TooltipContent side="top" className="text-xs">
+                {s.name}
               </TooltipContent>
             </Tooltip>
           );
@@ -277,6 +256,7 @@ function WorkflowActorDefaults({
   onPatch,
   disabled,
   compactIntro = false,
+  narrowColumn = false,
 }: {
   status: ProjectIssueStatus;
   allUsers: ApproverUser[];
@@ -284,13 +264,36 @@ function WorkflowActorDefaults({
   onPatch: (patch: Record<string, unknown>) => void;
   disabled?: boolean;
   compactIntro?: boolean;
+  narrowColumn?: boolean;
 }) {
   const actors = status.allowedActors;
-  const allowUserDefault = actors !== "agent_only";
-  const allowAgentDefault = actors !== "human_only";
-
   const humanSelectValue = status.defaultAssigneeUserId ?? SELECT_NONE;
   const agentSelectValue = status.defaultAssigneeAgentId ?? SELECT_NONE;
+  const combinedSelectValue = useMemo(() => {
+    if (status.defaultAssigneeUserId) return `${COMBINED_USER_PREFIX}${status.defaultAssigneeUserId}`;
+    if (status.defaultAssigneeAgentId) return `${COMBINED_AGENT_PREFIX}${status.defaultAssigneeAgentId}`;
+    return SELECT_NONE;
+  }, [status.defaultAssigneeUserId, status.defaultAssigneeAgentId]);
+
+  const onCombinedDefaultChange = (v: string) => {
+    if (v === SELECT_NONE) {
+      onPatch({ defaultAssigneeUserId: null, defaultAssigneeAgentId: null });
+      return;
+    }
+    if (v.startsWith(COMBINED_USER_PREFIX)) {
+      onPatch({
+        defaultAssigneeUserId: v.slice(COMBINED_USER_PREFIX.length),
+        defaultAssigneeAgentId: null,
+      });
+      return;
+    }
+    if (v.startsWith(COMBINED_AGENT_PREFIX)) {
+      onPatch({
+        defaultAssigneeAgentId: v.slice(COMBINED_AGENT_PREFIX.length),
+        defaultAssigneeUserId: null,
+      });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -302,7 +305,7 @@ function WorkflowActorDefaults({
           </p>
         ) : null}
       </div>
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={cn("grid gap-5", narrowColumn ? "grid-cols-1" : "sm:grid-cols-2 lg:grid-cols-3")}>
         <div className="space-y-2">
           <Label htmlFor={`wf-actors-${status.id}`} className="text-sm font-medium">
             Who can be assigned
@@ -330,7 +333,40 @@ function WorkflowActorDefaults({
             </SelectContent>
           </Select>
         </div>
-        {allowUserDefault ? (
+        {actors === "human_and_agent" ? (
+          <div className="space-y-2">
+            <Label htmlFor={`wf-def-combined-${status.id}`} className="text-sm font-medium">
+              Default assignee
+            </Label>
+            <Select value={combinedSelectValue} disabled={disabled} onValueChange={onCombinedDefaultChange}>
+              <SelectTrigger id={`wf-def-combined-${status.id}`} className="h-10 w-full shadow-xs" size="default">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SELECT_NONE}>None</SelectItem>
+                <SelectGroup>
+                  <SelectLabel>People</SelectLabel>
+                  {allUsers.map((u) => (
+                    <SelectItem key={`${COMBINED_USER_PREFIX}${u.id}`} value={`${COMBINED_USER_PREFIX}${u.id}`}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>AI agents</SelectLabel>
+                  {agents
+                    .filter((a) => a.status !== "terminated")
+                    .map((a) => (
+                      <SelectItem key={`${COMBINED_AGENT_PREFIX}${a.id}`} value={`${COMBINED_AGENT_PREFIX}${a.id}`}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+        {actors === "human_only" ? (
           <div className="space-y-2">
             <Label htmlFor={`wf-def-human-${status.id}`} className="text-sm font-medium">
               Default human assignee
@@ -359,7 +395,7 @@ function WorkflowActorDefaults({
             </Select>
           </div>
         ) : null}
-        {allowAgentDefault ? (
+        {actors === "agent_only" ? (
           <div className="space-y-2">
             <Label htmlFor={`wf-def-agent-${status.id}`} className="text-sm font-medium">
               Default AI assignee
@@ -555,7 +591,7 @@ function ApproverPicker({
         );
       })}
 
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={setOpen} modal>
         <PopoverTrigger asChild>
           <button
             type="button"
@@ -565,17 +601,17 @@ function ApproverPicker({
             {approvers.length === 0 ? "Add approver" : "Add"}
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-56 p-2" align="start">
+        <PopoverContent className="w-56 p-2" align="start" onPointerDown={(e) => e.stopPropagation()}>
           <input
             autoFocus
             placeholder="Search members..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full text-xs px-2 py-1.5 rounded border border-border bg-background mb-1.5 outline-none focus:ring-1 focus:ring-ring"
+            className="mb-1.5 w-full rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
           />
-          <div className="max-h-40 overflow-y-auto space-y-0.5">
+          <div className="max-h-40 space-y-0.5 overflow-y-auto overscroll-y-contain">
             {available.length === 0 && (
-              <p className="text-xs text-muted-foreground px-2 py-1">
+              <p className="px-2 py-1 text-xs text-muted-foreground">
                 {allUsers.length === 0 ? "No members found" : "No more members to add"}
               </p>
             )}
@@ -583,8 +619,14 @@ function ApproverPicker({
               <button
                 key={u.id}
                 type="button"
-                onClick={() => { onAddApprover(u.id); setSearch(""); setOpen(false); }}
-                className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted transition-colors"
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  onAddApprover(u.id);
+                  setSearch("");
+                  setOpen(false);
+                }}
+                className="w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted"
               >
                 <div className="font-medium">{u.name}</div>
                 <div className="text-muted-foreground truncate">{u.email}</div>
@@ -597,7 +639,31 @@ function ApproverPicker({
   );
 }
 
-/* ── Single row ── */
+/* ── Board column (Jira-style horizontal editor) ── */
+
+const WORKFLOW_COLUMN_WIDTH_CLASS = "w-[min(268px,calc(100vw-3rem))] shrink-0";
+
+/** Trackpad / wheel sideways movement should scroll the strip, not get trapped by the column’s vertical scroller. */
+function handleWorkflowColumnWheelCapture(e: React.WheelEvent<HTMLDivElement>) {
+  const el = e.target;
+  if (!(el instanceof HTMLElement) || !el.isConnected) return;
+  const strip = el.closest("[data-workflow-strip-scroll]");
+  if (!(strip instanceof HTMLElement)) return;
+
+  let dx = e.deltaX;
+  let dy = e.deltaY;
+  if (e.shiftKey && Math.abs(dy) > Math.abs(dx)) {
+    dx = dy;
+    dy = 0;
+  }
+  if (Math.abs(dx) <= Math.abs(dy)) return;
+
+  strip.scrollLeft += dx;
+  e.preventDefault();
+}
+
+const WORKFLOW_STATUS_NAME_INPUT_CLASS =
+  "h-9 w-full min-w-0 border-input bg-background text-sm font-semibold uppercase tracking-wide shadow-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40";
 
 function StatusRow({
   status,
@@ -639,205 +705,51 @@ function StatusRow({
     () => allStatuses.some((s) => s.value !== status.value),
     [allStatuses, status.value],
   );
-  const [workflowOpen, setWorkflowOpen] = useState(false);
 
   if (status.isHumanApproval) {
-    const summaryStrip = humanApprovalWorkflowSummaryStrip(status, allStatuses, allUsers);
     return (
-      <div ref={setNodeRef} style={style}>
-        <Collapsible open={workflowOpen} onOpenChange={setWorkflowOpen}>
-          <Card
-            className={cn(
-              "gap-0 overflow-hidden py-0 shadow-sm transition-[opacity,box-shadow]",
-              "border-l-[3px] border-l-amber-500/50 dark:border-l-amber-500/40",
-              isDragging && "opacity-60 ring-2 ring-ring/25",
-            )}
-          >
-            <div className="border-b border-border/60 bg-muted/30 dark:bg-muted/15">
-              <div className="flex items-center gap-3 px-4 py-3">
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={cn(
+          WORKFLOW_COLUMN_WIDTH_CLASS,
+          "flex min-h-0 h-full flex-col rounded-xl transition-shadow focus-within:z-1 focus-within:ring-2 focus-within:ring-primary/45 focus-within:ring-offset-2 focus-within:ring-offset-background",
+        )}
+        onWheelCapture={handleWorkflowColumnWheelCapture}
+      >
+        <Card
+          className={cn(
+            "flex h-full min-h-0 max-h-[min(72vh,640px)] flex-col gap-0 overflow-hidden py-0 shadow-sm transition-[opacity,box-shadow]",
+            "border-t-[3px] border-t-amber-500 dark:border-t-amber-400",
+            !status.isActive && "opacity-[0.88]",
+            isDragging && "opacity-60 ring-2 ring-ring/25",
+          )}
+        >
+          {!status.isActive ? (
+            <div className="border-b border-border/50 bg-muted/50 px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Hidden from board
+            </div>
+          ) : null}
+          <div className="border-b border-border/60 bg-muted/30 dark:bg-muted/15">
+            <div className="flex items-center justify-between gap-2 border-b border-border/40 px-3 py-2 dark:border-border/25">
+              <div className="flex min-w-0 items-center gap-1.5">
                 <button
                   type="button"
                   {...attributes}
                   {...listeners}
                   className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
-                  aria-label="Drag to reorder"
+                  aria-label="Drag to reorder columns"
                 >
                   <GripVertical className="h-4 w-4" />
                 </button>
-                <WorkflowDetailsDisclosureButton
-                  open={workflowOpen}
-                  onToggle={() => setWorkflowOpen((o) => !o)}
-                />
                 <div
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/35 bg-amber-500/10 dark:bg-amber-500/15"
                   title="Human approval"
                 >
                   <UserCheck className="h-4 w-4 text-amber-800 dark:text-amber-300" />
                 </div>
-                <Input
-                  value={nameLocked ? status.name : localName}
-                  readOnly={nameLocked}
-                  disabled={nameLocked}
-                  title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
-                  onChange={(e) => setLocalName(e.target.value)}
-                  onBlur={() => {
-                    if (nameLocked) return;
-                    if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                  }}
-                  className={cn(
-                    "h-9 min-w-0 flex-1 border-input bg-background text-sm shadow-xs",
-                    nameLocked && "cursor-not-allowed bg-muted/50 text-muted-foreground",
-                  )}
-                />
-                <Badge
-                  variant="outline"
-                  className="hidden h-8 max-w-34 shrink-0 truncate border-border/60 font-mono text-[11px] font-normal text-muted-foreground sm:inline-flex"
-                  title={status.value}
-                >
-                  {status.value}
-                </Badge>
-                <div className="flex shrink-0 items-center gap-0.5 border-l border-border/60 pl-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                    onClick={() => onToggleActive(status.id, !status.isActive)}
-                    title={status.isActive ? "Hide from Board" : "Show on Board"}
-                  >
-                    {status.isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 opacity-60" />}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                    disabled={deleteDisabled}
-                    onClick={() => onDelete(status.id)}
-                    title={
-                      deleteDisabled
-                        ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
-                        : "Delete status"
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
               </div>
-              {!workflowOpen ? (
-                <div className="border-t border-border/40 bg-muted/10 px-4 py-2.5 text-sm text-muted-foreground dark:bg-muted/5">
-                  <p className="truncate" title={summaryStrip}>
-                    {summaryStrip}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-            <CollapsibleContent>
-              <CardContent className="space-y-6 px-4 py-5 sm:px-5">
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  Configure who may approve and, if needed, which stages tasks may enter after this step.
-                </p>
-                <div className="space-y-3">
-                  <Label className="text-sm font-semibold">
-                    Approvers
-                    <span className="ml-1 font-normal text-destructive">*</span>
-                  </Label>
-                  <ApproverPicker
-                    approverUserIds={status.approverUserIds ?? []}
-                    allUsers={allUsers}
-                    minimumApprovers={1}
-                    onAddApprover={(userId) =>
-                      onUpdateApprovers(status.id, [...(status.approverUserIds ?? []), userId])
-                    }
-                    onRemoveApprover={(userId) =>
-                      onUpdateApprovers(status.id, (status.approverUserIds ?? []).filter((id) => id !== userId))
-                    }
-                  />
-                </div>
-                <Separator className="bg-border/60" />
-                <HumanApprovalAssignmentNote />
-                {hasTransitionTargets ? (
-                  <>
-                    <Separator className="bg-border/60" />
-                    <AllowedNextTransitionsEditor
-                      status={status}
-                      allStatuses={allStatuses}
-                      disabled={workflowDisabled}
-                      onWorkflowPatch={onWorkflowPatch}
-                      compactIntro
-                    />
-                  </>
-                ) : null}
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
-      </div>
-    );
-  }
-
-  const summaryStrip = normalWorkflowSummaryStrip(status, allStatuses, allUsers, agents);
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <Collapsible open={workflowOpen} onOpenChange={setWorkflowOpen}>
-        <Card
-          className={cn(
-            "gap-0 overflow-hidden py-0 shadow-sm transition-[opacity,box-shadow]",
-            isDragging && "opacity-60 ring-2 ring-ring/25",
-          )}
-        >
-          <div className="border-b border-border/60 bg-muted/30 dark:bg-muted/15">
-            <div className="flex items-center gap-3 px-4 py-3">
-              <button
-                type="button"
-                {...attributes}
-                {...listeners}
-                className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
-                aria-label="Drag to reorder"
-              >
-                <GripVertical className="h-4 w-4" />
-              </button>
-              <WorkflowDetailsDisclosureButton
-                open={workflowOpen}
-                onToggle={() => setWorkflowOpen((o) => !o)}
-              />
-              <ColorSwatchPicker
-                value={localColor}
-                onChange={(color) => {
-                  setLocalColor(color);
-                  onColorChange(status.id, color);
-                }}
-              />
-              <Input
-                value={nameLocked ? status.name : localName}
-                readOnly={nameLocked}
-                disabled={nameLocked}
-                title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
-                onChange={(e) => setLocalName(e.target.value)}
-                onBlur={() => {
-                  if (nameLocked) return;
-                  if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                }}
-                className={cn(
-                  "h-9 min-w-0 flex-1 border-input bg-background text-sm shadow-xs",
-                  nameLocked && "cursor-not-allowed bg-muted/50 text-muted-foreground",
-                )}
-              />
-              <Badge
-                variant="outline"
-                className="hidden h-8 max-w-34 shrink-0 truncate border-border/60 font-mono text-[11px] font-normal text-muted-foreground sm:inline-flex"
-                title={status.value}
-              >
-                {status.value}
-              </Badge>
-              <div className="flex shrink-0 items-center gap-0.5 border-l border-border/60 pl-3">
+              <div className="flex shrink-0 items-center gap-0.5">
                 <Button
                   type="button"
                   variant="ghost"
@@ -865,48 +777,196 @@ function StatusRow({
                 </Button>
               </div>
             </div>
-            {!workflowOpen ? (
-              <div className="border-t border-border/40 bg-muted/10 px-4 py-2.5 text-sm text-muted-foreground dark:bg-muted/5">
-                <p className="truncate" title={summaryStrip}>
-                  {summaryStrip}
-                </p>
-              </div>
-            ) : null}
-          </div>
-          <CollapsibleContent>
-            <CardContent className="space-y-6 px-4 py-5 sm:px-5">
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Choose allowed next stages and who may own tasks while they are in this stage.
-              </p>
-              {hasTransitionTargets ? (
-                <>
-                  <AllowedNextTransitionsEditor
-                    status={status}
-                    allStatuses={allStatuses}
-                    disabled={workflowDisabled}
-                    onWorkflowPatch={onWorkflowPatch}
-                    compactIntro
-                  />
-                  <Separator className="bg-border/60" />
-                </>
-              ) : null}
-              <WorkflowActorDefaults
-                status={status}
-                allUsers={allUsers}
-                agents={agents}
-                disabled={workflowDisabled}
-                onPatch={(patch) => onWorkflowPatch(status.id, patch)}
-                compactIntro
+            <div className="px-3 pb-2.5 pt-2">
+              <Label htmlFor={`wf-human-name-${status.id}`} className="sr-only">
+                Stage display name
+              </Label>
+              <Input
+                id={`wf-human-name-${status.id}`}
+                value={nameLocked ? status.name : localName}
+                readOnly={nameLocked}
+                disabled={nameLocked}
+                title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
+                onChange={(e) => setLocalName(e.target.value)}
+                onBlur={() => {
+                  if (nameLocked) return;
+                  if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+                className={cn(WORKFLOW_STATUS_NAME_INPUT_CLASS, nameLocked && "cursor-not-allowed bg-muted/50 text-muted-foreground")}
               />
-            </CardContent>
-          </CollapsibleContent>
+            </div>
+          </div>
+          <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-3 py-4">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Configure who may approve and, if needed, which stages tasks may enter after this step.
+            </p>
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">
+                Approvers
+                <span className="ml-1 font-normal text-destructive">*</span>
+              </Label>
+              <ApproverPicker
+                approverUserIds={status.approverUserIds ?? []}
+                allUsers={allUsers}
+                minimumApprovers={1}
+                onAddApprover={(userId) =>
+                  onUpdateApprovers(status.id, [...(status.approverUserIds ?? []), userId])
+                }
+                onRemoveApprover={(userId) =>
+                  onUpdateApprovers(status.id, (status.approverUserIds ?? []).filter((id) => id !== userId))
+                }
+              />
+            </div>
+            <Separator className="bg-border/60" />
+            <HumanApprovalAssignmentNote />
+            {hasTransitionTargets ? (
+              <>
+                <Separator className="bg-border/60" />
+                <AllowedNextTransitionsEditor
+                  status={status}
+                  allStatuses={allStatuses}
+                  disabled={workflowDisabled}
+                  onWorkflowPatch={onWorkflowPatch}
+                  compactIntro
+                  narrowColumn
+                />
+              </>
+            ) : null}
+          </CardContent>
         </Card>
-      </Collapsible>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        WORKFLOW_COLUMN_WIDTH_CLASS,
+        "flex min-h-0 h-full flex-col rounded-xl transition-shadow focus-within:z-1 focus-within:ring-2 focus-within:ring-primary/45 focus-within:ring-offset-2 focus-within:ring-offset-background",
+      )}
+      onWheelCapture={handleWorkflowColumnWheelCapture}
+    >
+      <Card
+        className={cn(
+          "flex h-full min-h-0 max-h-[min(72vh,640px)] flex-col gap-0 overflow-hidden py-0 shadow-sm transition-[opacity,box-shadow]",
+          !status.isActive && "opacity-[0.88]",
+          isDragging && "opacity-60 ring-2 ring-ring/25",
+        )}
+        style={{ borderTop: `3px solid ${localColor}` }}
+      >
+        {!status.isActive ? (
+          <div className="border-b border-border/50 bg-muted/50 px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Hidden from board
+          </div>
+        ) : null}
+        <div className="border-b border-border/60 bg-muted/30 dark:bg-muted/15">
+          <div className="flex items-center justify-between gap-2 border-b border-border/40 px-3 py-2 dark:border-border/25">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <button
+                type="button"
+                {...attributes}
+                {...listeners}
+                className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
+                aria-label="Drag to reorder columns"
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+              <ColorSwatchPicker
+                value={localColor}
+                onChange={(color) => {
+                  setLocalColor(color);
+                  onColorChange(status.id, color);
+                }}
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                onClick={() => onToggleActive(status.id, !status.isActive)}
+                title={status.isActive ? "Hide from Board" : "Show on Board"}
+              >
+                {status.isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 opacity-60" />}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                disabled={deleteDisabled}
+                onClick={() => onDelete(status.id)}
+                title={
+                  deleteDisabled
+                    ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
+                    : "Delete status"
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="px-3 pb-2.5 pt-2">
+            <Label htmlFor={`wf-col-name-${status.id}`} className="sr-only">
+              Stage display name
+            </Label>
+            <Input
+              id={`wf-col-name-${status.id}`}
+              value={nameLocked ? status.name : localName}
+              readOnly={nameLocked}
+              disabled={nameLocked}
+              title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
+              onChange={(e) => setLocalName(e.target.value)}
+              onBlur={() => {
+                if (nameLocked) return;
+                if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              className={cn(WORKFLOW_STATUS_NAME_INPUT_CLASS, nameLocked && "cursor-not-allowed bg-muted/50 text-muted-foreground")}
+            />
+          </div>
+        </div>
+        <CardContent className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-3 py-4">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Choose allowed next stages and who may own tasks in this stage.
+          </p>
+          {hasTransitionTargets ? (
+            <>
+              <AllowedNextTransitionsEditor
+                status={status}
+                allStatuses={allStatuses}
+                disabled={workflowDisabled}
+                onWorkflowPatch={onWorkflowPatch}
+                compactIntro
+                narrowColumn
+              />
+              <Separator className="bg-border/60" />
+            </>
+          ) : null}
+          <WorkflowActorDefaults
+            status={status}
+            allUsers={allUsers}
+            agents={agents}
+            disabled={workflowDisabled}
+            onPatch={(patch) => onWorkflowPatch(status.id, patch)}
+            compactIntro
+            narrowColumn
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-/** Backlog: pinned first, never on the board — no drag handle, visibility toggle disabled. */
+/** Backlog: first in the column strip, never on the board — no drag handle, visibility toggle disabled. */
 function BacklogWorkflowStatusRow({
   status,
   allStatuses,
@@ -941,28 +1001,22 @@ function BacklogWorkflowStatusRow({
     () => allStatuses.some((s) => s.value !== status.value),
     [allStatuses, status.value],
   );
-  const [workflowOpen, setWorkflowOpen] = useState(false);
-  const summaryStrip = normalWorkflowSummaryStrip(status, allStatuses, allUsers, agents);
 
   return (
-    <Collapsible open={workflowOpen} onOpenChange={setWorkflowOpen}>
-      <Card
-        className={cn(
-          "gap-0 overflow-hidden border-l-2 border-l-primary/25 bg-muted/20 py-0 shadow-sm dark:bg-muted/10",
-        )}
-      >
-        <div className="border-b border-border/60 bg-muted/40 dark:bg-muted/25">
-          <div className="flex items-center gap-3 px-4 py-3">
+    <Card
+      className={cn(
+        "flex h-full min-h-0 max-h-[min(72vh,640px)] w-full flex-col gap-0 overflow-hidden border-l-2 border-l-primary/25 bg-muted/20 py-0 shadow-sm dark:bg-muted/10",
+      )}
+    >
+      <div className="border-b border-border/60 bg-muted/40 dark:bg-muted/25">
+        <div className="flex items-center justify-between gap-2 border-b border-border/40 px-3 py-2 sm:px-4 dark:border-border/25">
+          <div className="flex min-w-0 items-center gap-1.5">
             <div
               className="flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground"
               title="Backlog stays first and is not shown on the board"
             >
               <Pin className="h-4 w-4" aria-hidden />
             </div>
-            <WorkflowDetailsDisclosureButton
-              open={workflowOpen}
-              onToggle={() => setWorkflowOpen((o) => !o)}
-            />
             <ColorSwatchPicker
               value={localColor}
               onChange={(color) => {
@@ -970,96 +1024,89 @@ function BacklogWorkflowStatusRow({
                 onColorChange(status.id, color);
               }}
             />
-            <Input
-              value={nameLocked ? status.name : localName}
-              readOnly={nameLocked}
-              disabled={nameLocked}
-              title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
-              onChange={(e) => setLocalName(e.target.value)}
-              onBlur={() => {
-                if (nameLocked) return;
-                if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              }}
-              className={cn(
-                "h-9 min-w-0 flex-1 border-input bg-background text-sm shadow-xs",
-                nameLocked && "cursor-not-allowed bg-muted/50 text-muted-foreground",
-              )}
-            />
-            <Badge
-              variant="outline"
-              className="hidden h-8 max-w-34 shrink-0 truncate border-border/60 font-mono text-[11px] font-normal text-muted-foreground sm:inline-flex"
-              title={status.value}
-            >
-              {status.value}
-            </Badge>
-            <div className="flex shrink-0 items-center gap-0.5 border-l border-border/60 pl-3">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="h-9 w-9 text-muted-foreground"
-                disabled
-                title="Backlog is always hidden from the board"
-              >
-                <EyeOff className="h-4 w-4 opacity-60" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                disabled={deleteDisabled}
-                onClick={() => onDelete(status.id)}
-                title={
-                  deleteDisabled
-                    ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
-                    : "Delete status"
-                }
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
           </div>
-          {!workflowOpen ? (
-            <div className="border-t border-border/40 bg-muted/10 px-4 py-2.5 text-sm text-muted-foreground dark:bg-muted/5">
-              <p className="truncate" title={summaryStrip}>
-                {summaryStrip}
-              </p>
-            </div>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-9 w-9 text-muted-foreground"
+              disabled
+              title="Backlog is always hidden from the board"
+            >
+              <EyeOff className="h-4 w-4 opacity-60" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-9 w-9 text-muted-foreground hover:text-destructive"
+              disabled={deleteDisabled}
+              onClick={() => onDelete(status.id)}
+              title={
+                deleteDisabled
+                  ? "Backlog, Todo, Done, and Cancelled are required — cannot be deleted"
+                  : "Delete status"
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-        <CollapsibleContent>
-          <CardContent className="space-y-6 px-4 py-5 sm:px-5">
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Choose allowed next stages and who may own tasks while they are in backlog.
-            </p>
-            {hasTransitionTargets ? (
-              <>
-                <AllowedNextTransitionsEditor
-                  status={status}
-                  allStatuses={allStatuses}
-                  disabled={workflowDisabled}
-                  onWorkflowPatch={onWorkflowPatch}
-                  compactIntro
-                />
-                <Separator className="bg-border/60" />
-              </>
-            ) : null}
-            <WorkflowActorDefaults
+        <div className="px-3 pb-2.5 pt-2 sm:px-4">
+          <Label htmlFor={`wf-backlog-name-${status.id}`} className="sr-only">
+            Stage display name
+          </Label>
+          <Input
+            id={`wf-backlog-name-${status.id}`}
+            value={nameLocked ? status.name : localName}
+            readOnly={nameLocked}
+            disabled={nameLocked}
+            title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
+            onChange={(e) => setLocalName(e.target.value)}
+            onBlur={() => {
+              if (nameLocked) return;
+              if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            className={cn(
+              WORKFLOW_STATUS_NAME_INPUT_CLASS,
+              "font-medium normal-case tracking-normal",
+              nameLocked && "cursor-not-allowed bg-muted/50 text-muted-foreground",
+            )}
+          />
+        </div>
+      </div>
+      <CardContent className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-y-contain px-4 py-5 sm:px-5">
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Choose allowed next stages and who may own tasks while they are in backlog.
+        </p>
+        {hasTransitionTargets ? (
+          <>
+            <AllowedNextTransitionsEditor
               status={status}
-              allUsers={allUsers}
-              agents={agents}
+              allStatuses={allStatuses}
               disabled={workflowDisabled}
-              onPatch={(patch) => onWorkflowPatch(status.id, patch)}
+              onWorkflowPatch={onWorkflowPatch}
               compactIntro
+              narrowColumn
             />
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+            <Separator className="bg-border/60" />
+          </>
+        ) : null}
+        <WorkflowActorDefaults
+          status={status}
+          allUsers={allUsers}
+          agents={agents}
+          disabled={workflowDisabled}
+          onPatch={(patch) => onWorkflowPatch(status.id, patch)}
+          compactIntro
+          narrowColumn
+        />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1100,7 +1147,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
     [statuses],
   );
 
-  // Local order for draggable rows (backlog is pinned above and omitted here)
+  // Local order for draggable board columns (backlog is fixed first in the strip and omitted here)
   const [orderedNonBacklogIds, setOrderedNonBacklogIds] = useState<string[]>(() =>
     statuses.filter((s) => !isBoardPinnedHiddenProjectIssueStatusValue(s.value)).map((s) => s.id),
   );
@@ -1325,7 +1372,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
         <div className="min-w-0 space-y-1.5">
           <CardTitle className="text-lg tracking-tight">Task statuses</CardTitle>
           <CardDescription className="max-w-2xl text-pretty leading-relaxed">
-            Configure stages, who may be assigned, and optional transition rules. Reorder with the handle; Backlog stays first and is list-only; hide a stage from the board without losing history. Use the chevron button on each stage to expand or collapse transitions and assignment; collapsed stages show a short summary below the title row.
+            Stages appear as <span className="font-medium text-foreground/90">board columns</span> left-to-right (scroll horizontally on small screens). Backlog is the first column and is not shown on the board; drag other columns by the grip to reorder. Each column shows outgoing transitions (Jira-style tags) and assignment. Use the eye to hide a stage from the board without deleting it.
           </CardDescription>
         </div>
         <CardAction className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
@@ -1358,7 +1405,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
       </CardHeader>
 
       <CardContent className="space-y-4 py-6">
-      <ProjectWorkflowMap statuses={statuses} />
+      {/* Workflow map: re-enable with <ProjectWorkflowMap statuses={statuses} /> and import from ./ProjectWorkflowMap */}
       {showAddForm && (
         <div className="rounded-lg border border-border/60 bg-muted/15 p-4 space-y-3 dark:bg-muted/10">
           <p className="text-xs font-semibold text-foreground">New status</p>
@@ -1394,45 +1441,56 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
         </div>
       )}
 
-      <div className="space-y-3">
-        {backlogStatus ? (
-          <BacklogWorkflowStatusRow
-            status={backlogStatus}
-            allStatuses={statuses}
-            onRename={(id, name) => updateMutation.mutate({ id, data: { name } })}
-            onColorChange={(id, color) => updateMutation.mutate({ id, data: { color } })}
-            onDelete={(id) => deleteMutation.mutate(id)}
-            allUsers={allUsers}
-            agents={workflowAgents}
-            onWorkflowPatch={(id, patch) => updateMutation.mutate({ id, data: patch })}
-            workflowDisabled={updateMutation.isPending}
-          />
-        ) : null}
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <SortableContext items={orderedNonBacklogIds} strategy={verticalListSortingStrategy}>
-            <div className="space-y-3">
-              {sortedDraggableStatuses.map((s) => (
-                <StatusRow
-                  key={s.id}
-                  status={s}
-                  allStatuses={statuses}
-                  onRename={(id, name) => updateMutation.mutate({ id, data: { name } })}
-                  onColorChange={(id, color) => updateMutation.mutate({ id, data: { color } })}
-                  onToggleActive={(id, isActive) => updateMutation.mutate({ id, data: { isActive } })}
-                  onDelete={(id) => deleteMutation.mutate(id)}
-                  onUpdateApprovers={(id, approverUserIds) =>
-                    updateMutation.mutate({ id, data: { approverUserIds } })
-                  }
-                  allUsers={allUsers}
-                  agents={workflowAgents}
-                  onWorkflowPatch={(id, patch) => updateMutation.mutate({ id, data: patch })}
-                  workflowDisabled={updateMutation.isPending}
-                />
-              ))}
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <div
+          data-workflow-strip-scroll
+          className="flex min-h-0 items-stretch gap-3 overflow-x-auto rounded-xl border border-border/50 bg-muted/15 p-3 pb-2 dark:bg-muted/10 [-webkit-overflow-scrolling:touch]"
+          role="list"
+          aria-label="Workflow columns"
+        >
+          {backlogStatus ? (
+            <div
+              className={cn(
+                WORKFLOW_COLUMN_WIDTH_CLASS,
+                "flex min-h-0 h-full shrink-0 flex-col rounded-xl transition-shadow focus-within:z-1 focus-within:ring-2 focus-within:ring-primary/45 focus-within:ring-offset-2 focus-within:ring-offset-background",
+              )}
+              onWheelCapture={handleWorkflowColumnWheelCapture}
+            >
+              <BacklogWorkflowStatusRow
+                status={backlogStatus}
+                allStatuses={statuses}
+                onRename={(id, name) => updateMutation.mutate({ id, data: { name } })}
+                onColorChange={(id, color) => updateMutation.mutate({ id, data: { color } })}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                allUsers={allUsers}
+                agents={workflowAgents}
+                onWorkflowPatch={(id, patch) => updateMutation.mutate({ id, data: patch })}
+                workflowDisabled={updateMutation.isPending}
+              />
             </div>
+          ) : null}
+          <SortableContext items={orderedNonBacklogIds} strategy={horizontalListSortingStrategy}>
+            {sortedDraggableStatuses.map((s) => (
+              <StatusRow
+                key={s.id}
+                status={s}
+                allStatuses={statuses}
+                onRename={(id, name) => updateMutation.mutate({ id, data: { name } })}
+                onColorChange={(id, color) => updateMutation.mutate({ id, data: { color } })}
+                onToggleActive={(id, isActive) => updateMutation.mutate({ id, data: { isActive } })}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                onUpdateApprovers={(id, approverUserIds) =>
+                  updateMutation.mutate({ id, data: { approverUserIds } })
+                }
+                allUsers={allUsers}
+                agents={workflowAgents}
+                onWorkflowPatch={(id, patch) => updateMutation.mutate({ id, data: patch })}
+                workflowDisabled={updateMutation.isPending}
+              />
+            ))}
           </SortableContext>
-        </DndContext>
-      </div>
+        </div>
+      </DndContext>
       </CardContent>
     </Card>
     </TooltipProvider>

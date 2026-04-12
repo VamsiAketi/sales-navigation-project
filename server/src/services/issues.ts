@@ -266,6 +266,13 @@ async function applyProjectWorkflowAssigneeRules(
     } else if (row.defaultAssigneeAgentId && actors !== "human_only") {
       agent = row.defaultAssigneeAgentId;
       user = null;
+    } else if (row.isHumanApproval && actors !== "agent_only") {
+      const approverIds = (row.approverUserIds as string[] | null) ?? [];
+      const firstApprover = approverIds.find((id) => typeof id === "string" && id.length > 0);
+      if (firstApprover) {
+        user = firstApprover;
+        agent = null;
+      }
     }
   }
 
