@@ -376,8 +376,50 @@
     {
       "idx": 53,
       "version": "7",
-      "when": 1775733896255,
-      "tag": "0053_nebulous_arclight",
+      "when": 1775600000000,
+      "tag": "0053_backlog_board_hidden",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1775700000000,
+      "tag": "0054_projects_board_closed_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1775800000000,
+      "tag": "0055_board_retention_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1775900000000,
+      "tag": "0056_issue_planning_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1776000000000,
+      "tag": "0057_project_issue_status_actors_assignees",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1776100000000,
+      "tag": "0058_project_issue_status_next_transitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1776200000000,
+      "tag": "0059_nebulous_arclight",
       "breakpoints": true
     }
   ]

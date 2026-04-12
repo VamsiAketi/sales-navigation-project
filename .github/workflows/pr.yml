@@ -108,10 +108,10 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      # Manifest-only PRs are allowed (pnpm-lock.yaml changes are blocked below); resolve
-      # deps in CI without requiring an updated committed lockfile until it lands on master.
+      # Install must match the committed lockfile. Lockfile updates land on master via
+      # chore/refresh-lockfile (see refresh-lockfile.yml); PRs must not commit pnpm-lock.yaml.
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm -r typecheck
@@ -148,7 +148,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm build
