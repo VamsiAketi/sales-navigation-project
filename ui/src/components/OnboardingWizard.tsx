@@ -40,7 +40,7 @@ import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
 import { pickFirstCreatedAgentId, pickFirstCreatedOwnerMemberId } from "../lib/org-defaults";
-import { AsciiArtAnimation } from "./AsciiArtAnimation";
+import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 // import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon"; // commented out: adapter type UI removed
 import {
   Building2,
@@ -61,6 +61,19 @@ import {
 } from "lucide-react";
 
 type Step = 1 | 2 | 3 | 4;
+
+/** Aligns with dashboard / sidebar Azure (Fluent-style) icon tints */
+const ONBOARDING_STEP_TABS: {
+  step: Step;
+  label: string;
+  icon: typeof Building2;
+  tint: string;
+}[] = [
+  { step: 1, label: "Company", icon: Building2, tint: azureSidebarIcon.settings },
+  { step: 2, label: "Agent", icon: Bot, tint: azureSidebarIcon.agents },
+  { step: 3, label: "Task", icon: ListTodo, tint: azureSidebarIcon.tasks },
+  { step: 4, label: "Launch", icon: Rocket, tint: azureSidebarIcon.newAction },
+];
 type AdapterType =
   | "claude_local"
   | "codex_local"
@@ -83,8 +96,8 @@ function getEnvAdapterType(raw: string | undefined): AdapterType {
   return "codex_local";
 }
 
-const DEFAULT_TASK_DESCRIPTION = `You are the Al-Admin for this organization. 
-You set the direction for all the Al Agents of the company.
+const DEFAULT_TASK_DESCRIPTION = `You are the AI-Admin for this organization.
+You set the direction for all the AI Agents of the company.
 You are responsible for the behaviour and setup of all the agents across the company.`;
 
 export function OnboardingWizard() {
@@ -124,7 +137,7 @@ export function OnboardingWizard() {
   const [companyGoal, setCompanyGoal] = useState("");
 
   // Step 2
-  const [agentName, setAgentName] = useState("AI Admin");
+  const [agentName, setAgentName] = useState("AI-Admin");
   const [adapterType, setAdapterType] = useState<AdapterType>(getEnvAdapterType(undefined));
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
@@ -141,7 +154,7 @@ export function OnboardingWizard() {
 
   // Step 3
   const [taskTitle, setTaskTitle] = useState(
-    "Setup yourself as the Al-Admin for this company"
+    "Setup yourself as the AI-Admin for this company"
   );
   const [taskDescription, setTaskDescription] = useState(
     DEFAULT_TASK_DESCRIPTION
@@ -305,7 +318,7 @@ export function OnboardingWizard() {
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
-    setAgentName("AI Admin");
+    setAgentName("AI-Admin");
     setAdapterType(getEnvAdapterType(healthData?.defaultAdapterType));
     setModel("");
     setCommand("");
@@ -316,7 +329,7 @@ export function OnboardingWizard() {
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
     // setUnsetAnthropicLoading(false); // commented out: adapter environment check UI removed
-    setTaskTitle("Setup yourself as the Al-Admin for this company");
+    setTaskTitle("Setup yourself as the AI-Admin for this company");
     setTaskDescription(DEFAULT_TASK_DESCRIPTION);
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
@@ -692,42 +705,36 @@ export function OnboardingWizard() {
           {/* Close button */}
           <button
             onClick={handleClose}
-            className="absolute top-4 left-4 z-10 rounded-sm p-1.5 text-muted-foreground/60 hover:text-foreground transition-colors"
+            className="absolute top-4 left-4 z-10 rounded-sm p-2 text-muted-foreground/60 hover:text-foreground transition-colors"
           >
-            <X className="h-5 w-5" />
+            <X className="h-6 w-6" />
             <span className="sr-only">Close</span>
           </button>
 
-          {/* Left half — form */}
-          <div
-            className={cn(
-              "w-full flex flex-col overflow-y-auto transition-[width] duration-500 ease-in-out",
-              step === 1 ? "md:w-1/2" : "md:w-full"
-            )}
-          >
-            <div className="w-full max-w-md mx-auto my-auto px-8 py-12 shrink-0">
+          {/* Form */}
+          <div className="w-full flex flex-col overflow-y-auto">
+            <div className="w-full max-w-lg mx-auto my-auto px-8 py-14 shrink-0">
               {/* Progress tabs */}
-              <div className="flex items-center gap-0 mb-8 border-b border-border">
-                {(
-                  [
-                    { step: 1 as Step, label: "Company", icon: Building2 },
-                    { step: 2 as Step, label: "Agent", icon: Bot },
-                    { step: 3 as Step, label: "Task", icon: ListTodo },
-                    { step: 4 as Step, label: "Launch", icon: Rocket }
-                  ] as const
-                ).map(({ step: s, label, icon: Icon }) => (
+              <div className="flex items-center gap-0 mb-10 border-b border-border">
+                {ONBOARDING_STEP_TABS.map(({ step: s, label, icon: Icon, tint }) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setStep(s)}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors cursor-pointer",
+                      "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer",
                       s === step
                         ? "border-foreground text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground/70 hover:border-border"
                     )}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon
+                      className={cn(
+                        "h-5 w-5 shrink-0",
+                        tint,
+                        s === step ? "opacity-100" : "opacity-[0.45]"
+                      )}
+                    />
                     {label}
                   </button>
                 ))}
@@ -735,22 +742,26 @@ export function OnboardingWizard() {
 
               {/* Step content */}
               {step === 1 && (
-                <div className="space-y-5">
-                  <div className="flex items-center gap-3 mb-1">
-                    <div className="bg-muted/50 p-2">
-                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4 mb-1">
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <Building2
+                        className={cn("h-7 w-7", azureSidebarIcon.settings)}
+                      />
                     </div>
                     <div>
-                      <h3 className="font-medium">Name your company</h3>
-                      <p className="text-xs text-muted-foreground">
-                        This is the organization your agents will work for.
+                      <h3 className="text-xl font-semibold tracking-tight">
+                        Name your company
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        This is the organization your Humans and Agents work for.
                       </p>
                     </div>
                   </div>
                   <div className="mt-3 group">
                     <label
                       className={cn(
-                        "text-xs mb-1 block transition-colors",
+                        "text-sm mb-1.5 block transition-colors",
                         companyName.trim()
                           ? "text-foreground"
                           : "text-muted-foreground group-focus-within:text-foreground"
@@ -759,7 +770,7 @@ export function OnboardingWizard() {
                       Company name
                     </label>
                     <input
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                      className="w-full rounded-md border border-border bg-transparent px-4 py-3 text-base outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
                       placeholder="Acme Corp"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
@@ -769,7 +780,7 @@ export function OnboardingWizard() {
                   <div className="group">
                     <label
                       className={cn(
-                        "text-xs mb-1 block transition-colors",
+                        "text-sm mb-1.5 block transition-colors",
                         companyGoal.trim()
                           ? "text-foreground"
                           : "text-muted-foreground group-focus-within:text-foreground"
@@ -778,7 +789,7 @@ export function OnboardingWizard() {
                       Mission / goal (optional)
                     </label>
                     <textarea
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                      className="w-full rounded-md border border-border bg-transparent px-4 py-3 text-base outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[72px]"
                       placeholder="What is this company trying to achieve?"
                       value={companyGoal}
                       onChange={(e) => setCompanyGoal(e.target.value)}
@@ -788,25 +799,27 @@ export function OnboardingWizard() {
               )}
 
               {step === 2 && (
-                <div className="space-y-5">
-                  <div className="flex items-center gap-3 mb-1">
-                    <div className="bg-muted/50 p-2">
-                      <Bot className="h-5 w-5 text-muted-foreground" />
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4 mb-1">
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <Bot className={cn("h-7 w-7", azureSidebarIcon.agents)} />
                     </div>
                     <div>
-                      <h3 className="font-medium">Create your first agent</h3>
-                      <p className="text-xs text-muted-foreground">
+                      <h3 className="text-xl font-semibold tracking-tight">
+                        Create your first agent
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
                         Choose how this agent will run tasks.
                       </p>
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
+                    <label className="text-sm text-muted-foreground mb-1.5 block">
                       Agent name
                     </label>
                     <input
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="AI Admin"
+                      className="w-full rounded-md border border-border bg-transparent px-4 py-3 text-base outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                      placeholder="AI-Admin"
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       autoFocus
@@ -1137,7 +1150,7 @@ export function OnboardingWizard() {
 
                       {adapterEnvResult && adapterEnvResult.status === "fail" && (
                         <div className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2 text-[11px] space-y-1.5">
-                          <p className="font-medium">Manual debug</p>
+                          <p className="font-medium">Command to try locally</p>
                           <p className="text-muted-foreground font-mono break-all">
                             {adapterType === "cursor"
                               ? `${effectiveAdapterCommand} -p --mode ask --output-format json \"Respond with hello.\"`
@@ -1193,13 +1206,13 @@ export function OnboardingWizard() {
                   {(adapterType === "http" ||
                     adapterType === "openclaw_gateway") && (
                     <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">
+                      <label className="text-sm text-muted-foreground mb-1.5 block">
                         {adapterType === "openclaw_gateway"
                           ? "Gateway URL"
                           : "Webhook URL"}
                       </label>
                       <input
-                        className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                        className="w-full rounded-md border border-border bg-transparent px-4 py-3 text-base font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
                         placeholder={
                           adapterType === "openclaw_gateway"
                             ? "ws://127.0.0.1:18789"
@@ -1214,39 +1227,44 @@ export function OnboardingWizard() {
               )}
 
               {step === 3 && (
-                <div className="space-y-5">
-                  <div className="flex items-center gap-3 mb-1">
-                    <div className="bg-muted/50 p-2">
-                      <ListTodo className="h-5 w-5 text-muted-foreground" />
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4 mb-1">
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <ListTodo
+                        className={cn("h-7 w-7", azureSidebarIcon.tasks)}
+                      />
                     </div>
                     <div>
-                      <h3 className="font-medium">Give it something to do</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Give your agent a small task to start with — a bug fix,
-                        a research question, writing a script.
+                      <h3 className="text-xl font-semibold tracking-tight">
+                        Give it something to do
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        Choose a first assignment that fits how your team works —
+                        for example, drafting a weekly update, reviewing a proposal,
+                        or preparing notes for a stakeholder meeting.
                       </p>
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
+                    <label className="text-sm text-muted-foreground mb-1.5 block">
                       Task title
                     </label>
                     <input
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="e.g. Research competitor pricing"
+                      className="w-full rounded-md border border-border bg-transparent px-4 py-3 text-base outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                      placeholder="e.g. Summarize last week's priorities for leadership"
                       value={taskTitle}
                       onChange={(e) => setTaskTitle(e.target.value)}
                       autoFocus
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
+                    <label className="text-sm text-muted-foreground mb-1.5 block">
                       Description (optional)
                     </label>
                     <textarea
                       ref={textareaRef}
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[120px] max-h-[300px] overflow-y-auto"
-                      placeholder="Add more detail about what the agent should do..."
+                      className="w-full rounded-md border border-border bg-transparent px-4 py-3 text-base outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[140px] max-h-[320px] overflow-y-auto"
+                      placeholder="Add goals, audience, and any context the agent should know..."
                       value={taskDescription}
                       onChange={(e) => setTaskDescription(e.target.value)}
                     />
@@ -1255,51 +1273,61 @@ export function OnboardingWizard() {
               )}
 
               {step === 4 && (
-                <div className="space-y-5">
-                  <div className="flex items-center gap-3 mb-1">
-                    <div className="bg-muted/50 p-2">
-                      <Rocket className="h-5 w-5 text-muted-foreground" />
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4 mb-1">
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <Rocket
+                        className={cn("h-7 w-7", azureSidebarIcon.newAction)}
+                      />
                     </div>
                     <div>
-                      <h3 className="font-medium">Ready to launch</h3>
-                      <p className="text-xs text-muted-foreground">
+                      <h3 className="text-xl font-semibold tracking-tight">
+                        Ready to launch
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
                         Everything is set up. Launching now will create the
                         starter task, wake the agent, and open the task.
                       </p>
                     </div>
                   </div>
                   <div className="border border-border divide-y divide-border">
-                    <div className="flex items-center gap-3 px-3 py-2.5">
-                      <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <Building2
+                        className={cn("h-5 w-5 shrink-0", azureSidebarIcon.settings)}
+                      />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
+                        <p className="text-base font-medium truncate">
                           {companyName}
                         </p>
-                        <p className="text-xs text-muted-foreground">Company</p>
+                        <p className="text-sm text-muted-foreground">Company</p>
                       </div>
-                      <Check className="h-4 w-4 text-green-500 shrink-0" />
+                      <Check className="h-5 w-5 text-green-500 shrink-0" />
                     </div>
-                    <div className="flex items-center gap-3 px-3 py-2.5">
-                      <Bot className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <Bot
+                        className={cn("h-5 w-5 shrink-0", azureSidebarIcon.agents)}
+                      />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
+                        <p className="text-base font-medium truncate">
                           {agentName}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-sm text-muted-foreground">
                           {getUIAdapter(adapterType).label}
                         </p>
                       </div>
-                      <Check className="h-4 w-4 text-green-500 shrink-0" />
+                      <Check className="h-5 w-5 text-green-500 shrink-0" />
                     </div>
-                    <div className="flex items-center gap-3 px-3 py-2.5">
-                      <ListTodo className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <ListTodo
+                        className={cn("h-5 w-5 shrink-0", azureSidebarIcon.tasks)}
+                      />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
+                        <p className="text-base font-medium truncate">
                           {taskTitle}
                         </p>
-                        <p className="text-xs text-muted-foreground">Task</p>
+                        <p className="text-sm text-muted-foreground">Task</p>
                       </div>
-                      <Check className="h-4 w-4 text-green-500 shrink-0" />
+                      <Check className="h-5 w-5 text-green-500 shrink-0" />
                     </div>
                   </div>
                 </div>
@@ -1308,21 +1336,21 @@ export function OnboardingWizard() {
               {/* Error */}
               {error && (
                 <div className="mt-3">
-                  <p className="text-xs text-destructive">{error}</p>
+                  <p className="text-sm text-destructive">{error}</p>
                 </div>
               )}
 
               {/* Footer navigation */}
-              <div className="flex items-center justify-between mt-8">
+              <div className="flex items-center justify-between mt-10">
                 <div>
                   {step > 1 && step > (onboardingOptions.initialStep ?? 1) && (
                     <Button
                       variant="ghost"
-                      size="sm"
+                      className="text-base"
                       onClick={() => setStep((step - 1) as Step)}
                       disabled={loading}
                     >
-                      <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+                      <ArrowLeft className="h-5 w-5 mr-1.5" />
                       Back
                     </Button>
                   )}
@@ -1330,54 +1358,58 @@ export function OnboardingWizard() {
                 <div className="flex items-center gap-2">
                   {step === 1 && (
                     <Button
-                      size="sm"
+                      className="text-base px-6"
                       disabled={!companyName.trim() || loading}
                       onClick={handleStep1Next}
                     >
                       {loading ? (
-                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        <Loader2 className="h-5 w-5 mr-1.5 animate-spin" />
                       ) : (
-                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                        <ArrowRight className="h-5 w-5 mr-1.5" />
                       )}
                       {loading ? "Creating..." : "Next"}
                     </Button>
                   )}
                   {step === 2 && (
                     <Button
-                      size="sm"
+                      className="text-base px-6"
                       disabled={
                         !agentName.trim() || loading || adapterEnvLoading
                       }
                       onClick={handleStep2Next}
                     >
                       {loading ? (
-                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        <Loader2 className="h-5 w-5 mr-1.5 animate-spin" />
                       ) : (
-                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                        <ArrowRight className="h-5 w-5 mr-1.5" />
                       )}
                       {loading ? "Creating..." : "Next"}
                     </Button>
                   )}
                   {step === 3 && (
                     <Button
-                      size="sm"
+                      className="text-base px-6"
                       disabled={!taskTitle.trim() || loading}
                       onClick={handleStep3Next}
                     >
                       {loading ? (
-                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        <Loader2 className="h-5 w-5 mr-1.5 animate-spin" />
                       ) : (
-                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                        <ArrowRight className="h-5 w-5 mr-1.5" />
                       )}
                       {loading ? "Creating..." : "Next"}
                     </Button>
                   )}
                   {step === 4 && (
-                    <Button size="sm" disabled={loading} onClick={handleLaunch}>
+                    <Button
+                      className="text-base px-6"
+                      disabled={loading}
+                      onClick={handleLaunch}
+                    >
                       {loading ? (
-                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        <Loader2 className="h-5 w-5 mr-1.5 animate-spin" />
                       ) : (
-                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                        <ArrowRight className="h-5 w-5 mr-1.5" />
                       )}
                       {loading ? "Creating..." : "Create & Open Task"}
                     </Button>
@@ -1385,16 +1417,6 @@ export function OnboardingWizard() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Right half — ASCII art (hidden on mobile) */}
-          <div
-            className={cn(
-              "hidden md:block overflow-hidden bg-[#1d1d1d] transition-[width,opacity] duration-500 ease-in-out",
-              step === 1 ? "w-1/2 opacity-100" : "w-0 opacity-0"
-            )}
-          >
-            <AsciiArtAnimation />
           </div>
         </div>
       </DialogPortal>
@@ -1421,7 +1443,7 @@ function AdapterEnvironmentResult({
       : "text-red-700 dark:text-red-300 border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10";
 
   return (
-    <div className={`rounded-md border px-2.5 py-2 text-[11px] ${statusClass}`}>
+    <div className={`rounded-md border px-3 py-2.5 text-sm ${statusClass}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{statusLabel}</span>
         <span className="opacity-80">
