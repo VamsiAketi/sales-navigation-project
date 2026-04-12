@@ -952,6 +952,9 @@ export function agentRoutes(db: Db) {
         reports: unknown[];
       }
     >();
+    const sortOrderByKey = new Map<string, number>();
+    const fallbackOrderByKey = new Map<string, number>();
+    let fallbackCursor = 0;
     const fallbackParentByKey = new Map<string, string | null>();
 
     const walkAgentTree = (node: Record<string, unknown>, parentKey: string | null) => {
@@ -965,6 +968,7 @@ export function agentRoutes(db: Db) {
         nodeType: "agent",
         reports: [],
       });
+      fallbackOrderByKey.set(key, fallbackCursor++);
       fallbackParentByKey.set(key, parentKey);
 
       const reports = Array.isArray(node.reports) ? (node.reports as Array<Record<string, unknown>>) : [];
@@ -976,6 +980,11 @@ export function agentRoutes(db: Db) {
     }
 
     for (const member of memberships) {
+      if (member.principalType === "user") {
+        sortOrderByKey.set(`human:${member.id}`, member.orgSort);
+      } else if (member.principalType === "agent") {
+        sortOrderByKey.set(`agent:${member.principalId}`, member.orgSort);
+      }
       if (member.principalType !== "user") continue;
       const humanName = usersById.get(member.principalId) ?? "Unknown User";
       nodesByKey.set(`human:${member.id}`, {
@@ -986,6 +995,7 @@ export function agentRoutes(db: Db) {
         nodeType: "human",
         reports: [],
       });
+      fallbackOrderByKey.set(`human:${member.id}`, fallbackCursor++);
     }
 
     const membershipsById = new Map(memberships.map((member) => [member.id, member]));
@@ -1023,6 +1033,41 @@ export function agentRoutes(db: Db) {
       parentNode.reports.push(childNode);
     }
 
+    const keyForNode = (node: { id: string; nodeType: "agent" | "human" }) =>
+      `${node.nodeType === "human" ? "human" : "agent"}:${node.id}`;
+    const sortTree = (
+      nodes: Array<{
+        id: string;
+        name: string;
+        role: string;
+        status: string;
+        nodeType: "agent" | "human";
+        reports: unknown[];
+      }>,
+    ) => {
+      nodes.sort((left, right) => {
+        const leftKey = keyForNode(left);
+        const rightKey = keyForNode(right);
+        const leftSort = sortOrderByKey.get(leftKey) ?? Number.MAX_SAFE_INTEGER;
+        const rightSort = sortOrderByKey.get(rightKey) ?? Number.MAX_SAFE_INTEGER;
+        if (leftSort !== rightSort) return leftSort - rightSort;
+        const leftFallback = fallbackOrderByKey.get(leftKey) ?? Number.MAX_SAFE_INTEGER;
+        const rightFallback = fallbackOrderByKey.get(rightKey) ?? Number.MAX_SAFE_INTEGER;
+        if (leftFallback !== rightFallback) return leftFallback - rightFallback;
+        return left.name.localeCompare(right.name);
+      });
+      for (const node of nodes) {
+        sortTree(node.reports as Array<{
+          id: string;
+          name: string;
+          role: string;
+          status: string;
+          nodeType: "agent" | "human";
+          reports: unknown[];
+        }>);
+      }
+    };
+
     const roots: Array<{
       id: string;
       name: string;
@@ -1035,6 +1080,7 @@ export function agentRoutes(db: Db) {
     for (const [key, node] of nodesByKey.entries()) {
       if (!explicitParentByKey.has(key) && !(fallbackParentByKey.get(key) ?? null)) roots.push(node);
     }
+    sortTree(roots);
 
     const leanTree = roots.map((node) => toLeanOrgNode(node as Record<string, unknown>));
     res.json(leanTree);
@@ -1044,12 +1090,82 @@ export function agentRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const { managerId, childIds } = req.body;
-    if (typeof managerId !== "string" || !Array.isArray(childIds) || !childIds.every((id) => typeof id === "string")) {
-      res.status(400).json({ error: "managerId (string) and childIds (string[]) are required" });
+    if (
+      (managerId !== null && typeof managerId !== "string") ||
+      !Array.isArray(childIds) ||
+      !childIds.every((id) => typeof id === "string")
+    ) {
+      res.status(400).json({ error: "managerId (string|null) and childIds (string[]) are required" });
       return;
     }
-    const result = await svc.updateDirectReportOrder(companyId, managerId, childIds);
-    res.json(result);
+    if (childIds.length === 0) {
+      res.json({ ok: true });
+      return;
+    }
+
+    const [memberships, companyAgents] = await Promise.all([
+      db
+        .select()
+        .from(companyMemberships)
+        .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.status, "active"))),
+      db
+        .select()
+        .from(agentsTable)
+        .where(and(eq(agentsTable.companyId, companyId), not(eq(agentsTable.status, "terminated")))),
+    ]);
+
+    const membershipById = new Map(memberships.map((membership) => [membership.id, membership]));
+    const agentMembershipByAgentId = new Map(
+      memberships
+        .filter((membership) => membership.principalType === "agent")
+        .map((membership) => [membership.principalId, membership]),
+    );
+    const agentById = new Map(companyAgents.map((agent) => [agent.id, agent]));
+
+    const resolveMembershipForNodeId = (nodeId: string) => {
+      const humanMembership = membershipById.get(nodeId);
+      if (humanMembership && humanMembership.principalType === "user") return humanMembership;
+      return agentMembershipByAgentId.get(nodeId) ?? null;
+    };
+
+    const managerMembership = typeof managerId === "string" ? resolveMembershipForNodeId(managerId) : null;
+    if (typeof managerId === "string" && !managerMembership) {
+      throw unprocessable("managerId must refer to a human membership id or an agent id in the same company");
+    }
+    const managerMembershipId = managerMembership?.id ?? null;
+
+    const childMemberships = childIds.map((childId) => {
+      const membership = resolveMembershipForNodeId(childId);
+      if (!membership) {
+        throw unprocessable("childIds must refer to human membership ids or agent ids in the same company");
+      }
+      return membership;
+    });
+
+    for (const childMembership of childMemberships) {
+      let currentParentMembershipId = childMembership.reportsToMembershipId ?? null;
+      if (!currentParentMembershipId && childMembership.principalType === "agent") {
+        const agent = agentById.get(childMembership.principalId) ?? null;
+        const fallbackAgentManagerMembership =
+          agent?.reportsTo ? (agentMembershipByAgentId.get(agent.reportsTo) ?? null) : null;
+        currentParentMembershipId = fallbackAgentManagerMembership?.id ?? null;
+      }
+      if (currentParentMembershipId !== managerMembershipId) {
+        throw unprocessable("Can only reorder direct reports for the specified manager");
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      for (let index = 0; index < childMemberships.length; index += 1) {
+        const membership = childMemberships[index]!;
+        await tx
+          .update(companyMemberships)
+          .set({ orgSort: index, updatedAt: new Date() })
+          .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, membership.id)));
+      }
+    });
+
+    res.json({ ok: true });
   });
 
   router.get("/companies/:companyId/org.svg", async (req, res) => {

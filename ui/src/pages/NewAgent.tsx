@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "@/lib/router";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { agentsApi } from "../api/agents";
+import { accessApi } from "../api/access";
 import { companySkillsApi } from "../api/companySkills";
 import { queryKeys } from "../lib/queryKeys";
 import { AGENT_ROLES } from "@paperclipai/shared";
@@ -27,6 +28,7 @@ import {
 } from "@paperclipai/adapter-codex-local";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
+import { pickFirstCreatedAgentId, pickFirstCreatedOwnerMemberId } from "../lib/org-defaults";
 
 const SUPPORTED_ADVANCED_ADAPTER_TYPES = new Set<CreateConfigValues["adapterType"]>([
   "claude_local",
@@ -102,6 +104,8 @@ export function NewAgent() {
 
   const isFirstAgent = !agents || agents.length === 0;
   const effectiveRole = isFirstAgent ? "ceo" : role;
+  const firstAgentId = pickFirstCreatedAgentId(agents ?? []);
+  const effectiveReportsTo = reportsTo ?? (!isFirstAgent ? firstAgentId : null);
 
   useEffect(() => {
     setBreadcrumbs([
@@ -132,9 +136,31 @@ export function NewAgent() {
   const createAgent = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       agentsApi.hire(selectedCompanyId!, data),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      if (selectedCompanyId && isFirstAgent) {
+        try {
+          const members = await accessApi.listMembers(selectedCompanyId);
+          const createdAgentMember =
+            members.find(
+              (member) =>
+                member.principalType === "agent" &&
+                member.principalId === result.agent.id &&
+                member.status === "active",
+            ) ?? null;
+          const firstOwnerMemberId = pickFirstCreatedOwnerMemberId(members);
+          if (createdAgentMember && firstOwnerMemberId) {
+            await accessApi.updateMemberOrgConfig(selectedCompanyId, createdAgentMember.id, {
+              reportsToMembershipId: firstOwnerMemberId,
+            });
+          }
+        } catch {
+          // Agent creation succeeded; ignore best-effort org-default assignment failure.
+        }
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.access.members(selectedCompanyId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.org(selectedCompanyId!) });
       navigate(agentUrl(result.agent));
     },
     onError: (error) => {
@@ -182,7 +208,7 @@ export function NewAgent() {
       name: name.trim(),
       role: effectiveRole,
       ...(title.trim() ? { title: title.trim() } : {}),
-      ...(reportsTo ? { reportsTo } : {}),
+      ...(effectiveReportsTo ? { reportsTo: effectiveReportsTo } : {}),
       ...(selectedSkillKeys.length > 0 ? { desiredSkills: selectedSkillKeys } : {}),
       adapterType: configValues.adapterType,
       adapterConfig: buildAdapterConfig(),
@@ -274,7 +300,7 @@ export function NewAgent() {
 
           <ReportsToPicker
             agents={agents ?? []}
-            value={reportsTo}
+            value={effectiveReportsTo}
             onChange={setReportsTo}
             disabled={isFirstAgent}
           />

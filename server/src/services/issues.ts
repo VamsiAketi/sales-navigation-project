@@ -133,6 +133,27 @@ async function getProjectDefaultGoalId(
   return row?.goalId ?? null;
 }
 
+async function promoteGoalToActiveIfPlanned(
+  dbOrTx: Pick<Db, "update">,
+  companyId: string,
+  goalId: string | null | undefined,
+) {
+  if (!goalId) return;
+  await dbOrTx
+    .update(goals)
+    .set({
+      status: "active",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(goals.id, goalId),
+        eq(goals.companyId, companyId),
+        eq(goals.status, "planned"),
+      ),
+    );
+}
+
 function touchedByUserCondition(companyId: string, userId: string) {
   return sql<boolean>`
     (
@@ -896,6 +917,7 @@ export function issueService(db: Db) {
         }
 
         const [issue] = await tx.insert(issues).values(values).returning();
+        await promoteGoalToActiveIfPlanned(tx, companyId, values.goalId);
         if (inputLabelIds) {
           await syncIssueLabels(issue.id, companyId, inputLabelIds, tx);
         }
@@ -994,6 +1016,8 @@ export function issueService(db: Db) {
           projectGoalId: nextProjectGoalId,
           defaultGoalId: defaultCompanyGoal?.id ?? null,
         });
+        const goalLinkChanged =
+          issueData.goalId !== undefined || issueData.projectId !== undefined;
         const updated = await tx
           .update(issues)
           .set(patch)
@@ -1001,6 +1025,9 @@ export function issueService(db: Db) {
           .returning()
           .then((rows) => rows[0] ?? null);
         if (!updated) return null;
+        if (goalLinkChanged && patch.goalId) {
+          await promoteGoalToActiveIfPlanned(tx, existing.companyId, patch.goalId);
+        }
         if (nextLabelIds !== undefined) {
           await syncIssueLabels(updated.id, existing.companyId, nextLabelIds, tx);
         }

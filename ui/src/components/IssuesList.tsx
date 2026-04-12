@@ -187,6 +187,7 @@ interface IssuesListProps {
   projects?: ProjectOption[];
   liveIssueIds?: Set<string>;
   projectId?: string;
+  filterStatusOptions?: ProjectIssueStatus[];
   viewStateKey: string;
   issueLinkState?: unknown;
   initialAssignees?: string[];
@@ -397,6 +398,7 @@ export function IssuesList({
   projects,
   liveIssueIds,
   projectId,
+  filterStatusOptions,
   viewStateKey,
   issueLinkState,
   initialAssignees,
@@ -524,6 +526,13 @@ export function IssuesList({
     const baseValues = new Set(statusOrder);
     const seen = new Set<string>();
     const custom: typeof base = [];
+    for (const status of filterStatusOptions ?? []) {
+      if (!status.isActive) continue;
+      if (!baseValues.has(status.value) && !seen.has(status.value)) {
+        seen.add(status.value);
+        custom.push({ value: status.value, name: status.name, color: status.color });
+      }
+    }
     for (const issue of issues) {
       if (!baseValues.has(issue.status) && !seen.has(issue.status)) {
         seen.add(issue.status);
@@ -531,7 +540,7 @@ export function IssuesList({
       }
     }
     return custom.length > 0 ? [...base, ...custom] : base;
-  }, [projectStatuses, issues]);
+  }, [projectStatuses, filterStatusOptions, issues]);
 
   useEffect(() => {
     focusHandledRef.current = null;
@@ -871,7 +880,7 @@ export function IssuesList({
                             checked={viewState.statuses.includes(s.value)}
                             onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s.value) })}
                           />
-                          <StatusIcon status={s.value} projectStatuses={projectStatuses} />
+                          <StatusIcon status={s.value} projectStatuses={projectStatuses ?? filterStatusOptions} />
                           <span className="text-sm">{s.name}</span>
                         </label>
                       ))}
