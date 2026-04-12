@@ -108,8 +108,10 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # Manifest-only PRs are allowed (pnpm-lock.yaml changes are blocked below); resolve
+      # deps in CI without requiring an updated committed lockfile until it lands on master.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Typecheck
         run: pnpm -r typecheck
@@ -123,7 +125,6 @@ jobs:
       - name: Release canary dry run
         run: |
           git checkout -B master HEAD
-          git checkout -- pnpm-lock.yaml
           ./scripts/release.sh canary --skip-verify --dry-run
 
   e2e:
@@ -147,7 +148,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build
         run: pnpm build
