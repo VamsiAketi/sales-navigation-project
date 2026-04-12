@@ -11,7 +11,6 @@ import { accessApi } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { assetsApi } from "../api/assets";
-import { goalsApi } from "../api/goals";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
@@ -51,7 +50,6 @@ import {
   Loader2,
   X,
   Check,
-  Target,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { extractProviderIdWithFallback } from "../lib/model-utils";
@@ -76,7 +74,6 @@ interface IssueDraft {
   assigneeId?: string;
   projectId: string;
   projectWorkspaceId?: string;
-  goalId?: string;
   assigneeModelOverride: string;
   assigneeThinkingEffort: string;
   assigneeChrome: boolean;
@@ -279,29 +276,6 @@ function defaultExecutionWorkspaceModeForProject(project: { executionWorkspacePo
   return "shared_workspace";
 }
 
-function defaultGoalIdForProject(
-  project:
-    | { goals?: Array<{ id: string }>; goalIds?: string[]; goalId?: string | null }
-    | null
-    | undefined,
-) {
-  return project?.goals?.[0]?.id ?? project?.goalIds?.[0] ?? project?.goalId ?? "";
-}
-
-function projectGoalIdSetFromProject(
-  project:
-    | { goals?: Array<{ id: string }>; goalIds?: string[]; goalId?: string | null }
-    | null
-    | undefined,
-) {
-  const ids = [
-    ...(project?.goalId ? [project.goalId] : []),
-    ...(project?.goalIds ?? []),
-    ...((project?.goals ?? []).map((goal) => goal.id)),
-  ].filter(Boolean);
-  return new Set(ids);
-}
-
 function issueExecutionWorkspaceModeForExistingWorkspace(mode: string | null | undefined) {
   if (mode === "isolated_workspace" || mode === "operator_branch" || mode === "shared_workspace") {
     return mode;
@@ -351,8 +325,6 @@ export function NewIssueDialog() {
   const [stagedFiles, setStagedFiles] = useState<StagedIssueFile[]>([]);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [projectValidationError, setProjectValidationError] = useState<string | null>(null);
-  const [goalId, setGoalId] = useState("");
-  const [goalValidationError, setGoalValidationError] = useState<string | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
 
@@ -406,12 +378,6 @@ export function NewIssueDialog() {
   const { data: labels } = useQuery({
     queryKey: queryKeys.issues.labels(effectiveCompanyId!),
     queryFn: () => issuesApi.listLabels(effectiveCompanyId!),
-    enabled: !!effectiveCompanyId && newIssueOpen,
-  });
-
-  const { data: goals } = useQuery({
-    queryKey: queryKeys.goals.list(effectiveCompanyId!),
-    queryFn: () => goalsApi.list(effectiveCompanyId!),
     enabled: !!effectiveCompanyId && newIssueOpen,
   });
 
@@ -595,7 +561,6 @@ export function NewIssueDialog() {
       assigneeValue,
       projectId,
       projectWorkspaceId,
-      goalId,
       assigneeModelOverride,
       assigneeThinkingEffort,
       assigneeChrome,
@@ -613,7 +578,6 @@ export function NewIssueDialog() {
     assigneeValue,
     projectId,
     projectWorkspaceId,
-    goalId,
     assigneeModelOverride,
     assigneeThinkingEffort,
     assigneeChrome,
@@ -630,7 +594,6 @@ export function NewIssueDialog() {
     if (!newIssueOpen) return;
     setDialogCompanyId(selectedCompanyId);
     setProjectValidationError(null);
-    setGoalValidationError(null);
     executionWorkspaceDefaultProjectId.current = null;
 
     const draft = loadDraft();
@@ -644,7 +607,6 @@ export function NewIssueDialog() {
       const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
-      setGoalId(defaultGoalIdForProject(defaultProject));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
@@ -669,7 +631,6 @@ export function NewIssueDialog() {
       );
       setProjectId(restoredProjectId);
       setProjectWorkspaceId(draft.projectWorkspaceId ?? defaultProjectWorkspaceIdForProject(restoredProject));
-      setGoalId(draft.goalId ?? defaultGoalIdForProject(restoredProject));
       setAssigneeModelOverride(draft.assigneeModelOverride ?? "");
       setAssigneeThinkingEffort(draft.assigneeThinkingEffort ?? "");
       setAssigneeChrome(draft.assigneeChrome ?? false);
@@ -689,7 +650,6 @@ export function NewIssueDialog() {
       setSelectedLabelIds([]);
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
-      setGoalId(defaultGoalIdForProject(defaultProject));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
@@ -749,8 +709,6 @@ export function NewIssueDialog() {
     setStagedFiles([]);
     setIsFileDragOver(false);
     setProjectValidationError(null);
-    setGoalId("");
-    setGoalValidationError(null);
     setCompanyOpen(false);
     setTargetStartDate("");
     setDueDate("");
@@ -772,8 +730,6 @@ export function NewIssueDialog() {
     setTargetStartDate("");
     setDueDate("");
     setProjectValidationError(null);
-    setGoalId("");
-    setGoalValidationError(null);
   }
 
   function discardDraft() {
@@ -789,13 +745,7 @@ export function NewIssueDialog() {
       setProjectValidationError("Project is required.");
       return;
     }
-    const hasGoals = projectGoals.length > 0;
-    if (hasGoals && !goalId) {
-      setGoalValidationError("Goal is required.");
-      return;
-    }
     setProjectValidationError(null);
-    setGoalValidationError(null);
     const assigneeAdapterOverrides = buildAssigneeAdapterOverrides({
       adapterType: assigneeAdapterType,
       modelOverride: assigneeModelOverride,
@@ -829,7 +779,6 @@ export function NewIssueDialog() {
       ...(selectedLabelIds.length > 0 ? { labelIds: selectedLabelIds } : {}),
       ...(projectId ? { projectId } : {}),
       ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
-      ...(goalId ? { goalId } : {}),
       ...(assigneeAdapterOverrides ? { assigneeAdapterOverrides } : {}),
       ...(executionWorkspacePolicy?.enabled ? { executionWorkspacePreference: executionWorkspaceMode } : {}),
       ...(executionWorkspaceMode === "reuse_existing" && selectedExecutionWorkspaceId
@@ -1008,30 +957,6 @@ export function NewIssueDialog() {
     [orderedProjects],
   );
 
-  const projectGoalIds = useMemo(() => projectGoalIdSetFromProject(currentProject), [currentProject]);
-  const projectGoals = useMemo(
-    () => {
-      if (!currentProject || projectGoalIds.size === 0) return [];
-      const byId = new Map((goals ?? []).map((goal) => [goal.id, goal]));
-      const merged = Array.from(projectGoalIds)
-        .map((gid) => byId.get(gid) ?? currentProject.goals?.find((goal) => goal.id === gid))
-        .filter((goal): goal is NonNullable<typeof goals>[number] => Boolean(goal))
-        .filter((goal) => goal.status !== "cancelled" && goal.status !== "achieved");
-      return merged;
-    },
-    [currentProject, goals, projectGoalIds],
-  );
-  const goalOptions = useMemo<InlineEntityOption[]>(
-    () =>
-      projectGoals.map((goal) => ({
-        id: goal.id,
-        label: goal.title,
-        searchText: goal.description ?? "",
-      })),
-    [projectGoals],
-  );
-  const currentGoal = useMemo(() => projectGoals.find((goal) => goal.id === goalId), [projectGoals, goalId]);
-  const goalMarkerClassName = cn("text-muted-foreground/90", goalValidationError && "text-destructive");
   const savedDraft = loadDraft();
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
   const canDiscardDraft = hasDraft || hasSavedDraft;
@@ -1043,7 +968,6 @@ export function NewIssueDialog() {
   if (!title.trim()) missingRequiredFields.push("Task title");
   if (!projectId) missingRequiredFields.push("Project");
   if (assigneeRequired && !hasAssignee) missingRequiredFields.push("Assignee");
-  if (projectGoals.length > 0 && !goalId) missingRequiredFields.push("Goal");
   const canSubmit = missingRequiredFields.length === 0 && !createIssue.isPending;
   const projectFieldLabel = formatRequiredFieldLabel("Project");
   const projectMarkerClassName = cn("text-muted-foreground/90", projectValidationError && "text-destructive");
@@ -1072,8 +996,6 @@ export function NewIssueDialog() {
     setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(nextProject));
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(nextProject));
     setSelectedExecutionWorkspaceId("");
-    setGoalId(defaultGoalIdForProject(nextProject));
-    setGoalValidationError(null);
   }, [orderedProjects]);
 
   useEffect(() => {
@@ -1087,22 +1009,6 @@ export function NewIssueDialog() {
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(project));
     setSelectedExecutionWorkspaceId("");
   }, [newIssueOpen, orderedProjects, projectId]);
-  useEffect(() => {
-    if (!newIssueOpen) return;
-    if (!projectId) {
-      if (goalId) setGoalId("");
-      setGoalValidationError(null);
-      return;
-    }
-    if (projectGoals.length === 0) {
-      if (goalId) setGoalId("");
-      setGoalValidationError(null);
-      return;
-    }
-    if (goalId && projectGoalIds.has(goalId)) return;
-    setGoalId(projectGoals[0]?.id ?? "");
-    setGoalValidationError(null);
-  }, [newIssueOpen, projectId, projectGoals, projectGoalIds, goalId]);
   const modelOverrideOptions = useMemo<InlineEntityOption[]>(
     () => {
       return [...(assigneeAdapterModels ?? [])]
@@ -1385,49 +1291,8 @@ export function NewIssueDialog() {
                   );
                 }}
               />
-              {goalOptions.length > 0 && (
-                <>
-                  <span>toward</span>
-                  <InlineEntitySelector
-                    value={goalId}
-                    options={goalOptions}
-                    placeholder="Goal"
-                    noneLabel="No goal"
-                    disablePortal
-                    includeNoneOption={false}
-                    searchPlaceholder="Search goals..."
-                    emptyMessage="No goals found."
-                    onChange={(value) => {
-                      setGoalId(value);
-                      if (value) setGoalValidationError(null);
-                    }}
-                    renderTriggerValue={(option) =>
-                      option && currentGoal ? (
-                        <>
-                          <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{option.label}</span>
-                          <span aria-hidden="true" className={goalMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Goal <span aria-hidden="true" className={goalMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
-                        </span>
-                      )
-                    }
-                    renderOption={(option) => (
-                      <>
-                        <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{option.label}</span>
-                      </>
-                    )}
-                  />
-                </>
-              )}
             </div>
           </div>
-          {goalValidationError && (
-            <p className="mt-1 text-xs text-destructive">{goalValidationError}</p>
-          )}
         </div>
 
         {currentProject && currentProjectSupportsExecutionWorkspace && (
