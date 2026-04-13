@@ -286,7 +286,11 @@ export function Routines() {
             Recurring work definitions that materialize into auditable execution issues.
           </p>
         </div>
-        <Button onClick={() => setComposerOpen(true)}>
+        <Button
+          className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+          style={{ backgroundColor: "#6569E1" }}
+          onClick={() => setComposerOpen(true)}
+        >
           <Plus className="mr-2 h-4 w-4" />
           Create routine
         </Button>
@@ -530,6 +534,8 @@ export function Routines() {
             </div>
             <div className="flex flex-col gap-2 sm:items-end">
               <Button
+                className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+                style={{ backgroundColor: "#6569E1" }}
                 onClick={() => createRoutine.mutate()}
                 disabled={
                   createRoutine.isPending ||

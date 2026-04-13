@@ -1402,7 +1402,8 @@ export function OnboardingWizard() {
                   )}
                   {step === 4 && (
                     <Button
-                      className="text-base px-6"
+                      className="text-base px-6 text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+                      style={{ backgroundColor: "#6569E1" }}
                       disabled={loading}
                       onClick={handleLaunch}
                     >

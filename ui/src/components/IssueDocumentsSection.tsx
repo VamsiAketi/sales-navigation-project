@@ -751,6 +751,8 @@ export function IssueDocumentsSection({
             </Button>
             <Button
               size="sm"
+              className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+              style={{ backgroundColor: "#6569E1" }}
               onClick={() => void commitDraft(draft, { clearAfterSave: false, trackAutosave: false })}
               disabled={upsertDocument.isPending}
             >

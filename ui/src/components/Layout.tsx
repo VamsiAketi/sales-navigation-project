@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent} from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings, Info} from "lucide-react";
+import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings, Info, Plus } from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
 import { CompanyRail } from "./CompanyRail";
 import { Sidebar } from "./Sidebar";
@@ -20,12 +20,14 @@ import { useDialog } from "../context/DialogContext";
 import { GeneralSettingsProvider } from "../context/GeneralSettingsContext";
 import { usePanel } from "../context/PanelContext";
 import { useCompany } from "../context/CompanyContext";
+import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useTheme } from "../context/ThemeContext";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useCompanyPageMemory } from "../hooks/useCompanyPageMemory";
 import { healthApi } from "../api/health";
 import { instanceSettingsApi } from "../api/instanceSettings";
+import { projectsApi } from "../api/projects";
 import { shouldSyncCompanySelectionFromRoute } from "../lib/company-selection";
 import { sidebarNavItemTextClass } from "./SidebarSection";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
@@ -268,6 +270,7 @@ export function Layout() {
     selectionSource,
     setSelectedCompanyId,
   } = useCompany();
+  const { breadcrumbs } = useBreadcrumbs();
   const [sidebarWidthPx, setSidebarWidthPx] = useState(readSidebarWidthFromStorage);
   const [sidebarResizeActive, setSidebarResizeActive] = useState(false);
   const sidebarResizeStartX = useRef(0);
@@ -275,7 +278,7 @@ export function Layout() {
   const sidebarResizeLiveWidth = useRef(sidebarWidthPx);
   const sidebarResizeCommitPending = useRef(false);
   const { theme, toggleTheme } = useTheme();
-  const { companyPrefix } = useParams<{ companyPrefix: string }>();
+  const { companyPrefix, projectId: routeProjectId } = useParams<{ companyPrefix: string; projectId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const isInstanceSettingsRoute = location.pathname.startsWith("/instance/");
@@ -305,6 +308,11 @@ export function Layout() {
     queryKey: queryKeys.instance.generalSettings,
     queryFn: () => instanceSettingsApi.getGeneral(),
   }).data?.keyboardShortcuts === true;
+  const { data: companyProjects } = useQuery({
+    queryKey: queryKeys.projects.list(selectedCompanyId!),
+    queryFn: () => projectsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
 
   useEffect(() => {
     if (companiesLoading || onboardingTriggered.current) return;
@@ -358,12 +366,30 @@ export function Layout() {
 
   const togglePanel = togglePanelVisible;
   const versionLabel = buildVisibleVersionLabel(health?.version);
+  const breadcrumbProjectRef = useMemo(() => {
+    for (let idx = breadcrumbs.length - 1; idx >= 0; idx -= 1) {
+      const href = breadcrumbs[idx]?.href;
+      if (!href) continue;
+      const match = href.match(/\/projects\/([^/?#]+)/);
+      if (match?.[1]) return decodeURIComponent(match[1]);
+    }
+    return null;
+  }, [breadcrumbs]);
+  const resolvedGlobalProjectId = useMemo(() => {
+    const projectRef = breadcrumbProjectRef ?? routeProjectId ?? null;
+    if (!projectRef) return "";
+    const project = (companyProjects ?? []).find((entry) => entry.id === projectRef || entry.urlKey === projectRef);
+    return project?.id ?? projectRef;
+  }, [breadcrumbProjectRef, companyProjects, routeProjectId]);
+  const openGlobalNewIssue = useCallback(() => {
+    openNewIssue({ projectId: resolvedGlobalProjectId });
+  }, [openNewIssue, resolvedGlobalProjectId]);
 
   useCompanyPageMemory();
 
   useKeyboardShortcuts({
     enabled: keyboardShortcutsEnabled,
-    onNewIssue: () => openNewIssue(),
+    onNewIssue: openGlobalNewIssue,
     onToggleSidebar: toggleSidebar,
     onTogglePanel: togglePanel,
   });
@@ -728,6 +754,20 @@ export function Layout() {
         </div>
       </div>
       {isMobile && <MobileBottomNav visible={mobileNavVisible} />}
+      <Button
+        type="button"
+        size="icon"
+        className={cn(
+          "fixed right-4 z-30 h-12 w-12 rounded-full text-white shadow-sm transition hover:brightness-105 active:brightness-95",
+          isMobile ? "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]" : "bottom-6 right-6",
+        )}
+        style={{ backgroundColor: "#6569E1" }}
+        onClick={openGlobalNewIssue}
+        aria-label="Create new task"
+        title="Create new task"
+      >
+        <Plus className="h-5 w-5" />
+      </Button>
       <CommandPalette />
       <NewIssueDialog />
       <NewProjectDialog />

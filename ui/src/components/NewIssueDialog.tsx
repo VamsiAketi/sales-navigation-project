@@ -286,6 +286,14 @@ function issueExecutionWorkspaceModeForExistingWorkspace(mode: string | null | u
   return "shared_workspace";
 }
 
+function resolveProjectByRef<T extends { id: string; urlKey?: string | null }>(
+  projects: T[],
+  projectRef: string,
+): T | undefined {
+  if (!projectRef) return undefined;
+  return projects.find((project) => project.id === projectRef || project.urlKey === projectRef);
+}
+
 export function canSubmitNewIssue(input: {
   title: string;
   projectId: string;
@@ -603,8 +611,9 @@ export function NewIssueDialog() {
       setStatus(newIssueDefaults.status ?? "backlog");
       setPriority(newIssueDefaults.priority ?? "");
       setSelectedLabelIds([]);
-      const defaultProjectId = newIssueDefaults.projectId ?? "";
-      const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
+      const defaultProjectRef = newIssueDefaults.projectId ?? "";
+      const defaultProject = resolveProjectByRef(orderedProjects, defaultProjectRef);
+      const defaultProjectId = defaultProject?.id ?? defaultProjectRef;
       setProjectId(defaultProjectId);
       setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
@@ -617,8 +626,9 @@ export function NewIssueDialog() {
       setDueDate("");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
     } else if (draft && draft.title.trim()) {
-      const restoredProjectId = newIssueDefaults.projectId ?? draft.projectId;
-      const restoredProject = orderedProjects.find((project) => project.id === restoredProjectId);
+      const restoredProjectRef = newIssueDefaults.projectId ?? draft.projectId;
+      const restoredProject = resolveProjectByRef(orderedProjects, restoredProjectRef);
+      const restoredProjectId = restoredProject?.id ?? restoredProjectRef;
       setTitle(draft.title);
       setDescription(draft.description);
       setStatus(newIssueDefaults.status ?? (draft.status || "backlog"));
@@ -643,8 +653,9 @@ export function NewIssueDialog() {
       setDueDate(draft.dueDate ?? "");
       executionWorkspaceDefaultProjectId.current = restoredProjectId || null;
     } else {
-      const defaultProjectId = newIssueDefaults.projectId ?? "";
-      const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
+      const defaultProjectRef = newIssueDefaults.projectId ?? "";
+      const defaultProject = resolveProjectByRef(orderedProjects, defaultProjectRef);
+      const defaultProjectId = defaultProject?.id ?? defaultProjectRef;
       setStatus(newIssueDefaults.status ?? "backlog");
       setPriority(newIssueDefaults.priority ?? "");
       setSelectedLabelIds([]);
@@ -1198,6 +1209,7 @@ export function NewIssueDialog() {
                 value={assigneeValue}
                 options={assigneeOptions}
                 placeholder="Assignee"
+                className="w-[150px]"
                 disablePortal
                 noneLabel="No assignee"
                 searchPlaceholder="Search assignees..."
@@ -1221,24 +1233,24 @@ export function NewIssueDialog() {
                     currentAssignee ? (
                       <>
                         <AgentIcon icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{option.label}</span>
+                        <span className="truncate" title={option.label}>{option.label}</span>
                       </>
                     ) : (
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate" title={option.label}>{option.label}</span>
                     )
                   ) : (
                     <span className="text-muted-foreground">Assignee</span>
                   )
                 }
                 renderOption={(option) => {
-                  if (!option.id) return <span className="truncate">{option.label}</span>;
+                  if (!option.id) return <span className="truncate" title={option.label}>{option.label}</span>;
                   const assignee = parseAssigneeValue(option.id).assigneeAgentId
                     ? (agents ?? []).find((agent) => agent.id === parseAssigneeValue(option.id).assigneeAgentId)
                     : null;
                   return (
                     <>
                       {assignee ? <AgentIcon icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate" title={option.label}>{option.label}</span>
                     </>
                   );
                 }}
@@ -1248,7 +1260,8 @@ export function NewIssueDialog() {
                 ref={projectSelectorRef}
                 value={projectId}
                 options={projectOptions}
-                placeholder="Project"
+                placeholder="Select Project"
+                className="w-[150px]"
                 disablePortal
                 noneLabel="No project"
                 includeNoneOption={false}
@@ -1268,17 +1281,17 @@ export function NewIssueDialog() {
                         className="h-3.5 w-3.5 shrink-0 rounded-sm"
                         style={{ backgroundColor: currentProject.color ?? "#6366f1" }}
                       />
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate" title={option.label}>{option.label}</span>
                       <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
                     </>
                   ) : (
                     <span className="text-muted-foreground">
-                      Project <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
+                      Select Project <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
                     </span>
                   )
                 }
                 renderOption={(option) => {
-                  if (!option.id) return <span className="truncate">{option.label}</span>;
+                  if (!option.id) return <span className="truncate" title={option.label}>{option.label}</span>;
                   const project = orderedProjects.find((item) => item.id === option.id);
                   return (
                     <>
@@ -1286,7 +1299,7 @@ export function NewIssueDialog() {
                         className="h-3.5 w-3.5 shrink-0 rounded-sm"
                         style={{ backgroundColor: project?.color ?? "#6366f1" }}
                       />
-                      <span className="truncate">{option.label}</span>
+                      <span className="truncate" title={option.label}>{option.label}</span>
                     </>
                   );
                 }}
@@ -1748,7 +1761,8 @@ export function NewIssueDialog() {
             </div>
             <Button
               size="sm"
-              className="min-w-34 shrink-0 select-none disabled:opacity-100"
+              className="min-w-34 shrink-0 select-none text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+              style={{ backgroundColor: "#6569E1" }}
               disabled={!canSubmit}
               onClick={handleSubmit}
               aria-busy={createIssue.isPending}

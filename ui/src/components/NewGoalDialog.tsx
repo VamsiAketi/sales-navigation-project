@@ -270,6 +270,8 @@ export function NewGoalDialog() {
         <div className="flex items-center justify-end px-4 py-2.5 border-t border-border">
           <Button
             size="sm"
+            className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+            style={{ backgroundColor: "#6569E1" }}
             disabled={!title.trim() || createGoal.isPending}
             onClick={handleSubmit}
           >

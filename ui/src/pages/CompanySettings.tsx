@@ -442,6 +442,8 @@ export function CompanySettings() {
             <div>
               <Button
                 size="sm"
+                className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+                style={{ backgroundColor: "#6569E1" }}
                 onClick={() =>
                   createSecretMutation.mutate({
                     name: newSecretName.trim(),
