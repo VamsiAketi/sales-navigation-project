@@ -284,10 +284,21 @@ export async function createApp(
 
   if (opts.requestPasswordReset) {
     const requestPasswordResetHandler = async (req: express.Request, res: express.Response) => {
-      const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
       if (!email) {
         res.status(400).json({ message: "email is required" });
         return;
+      }
+      if (db) {
+        const userExists = await db
+          .select({ id: authUsers.id })
+          .from(authUsers)
+          .where(eq(authUsers.email, email))
+          .then((rows) => rows[0] ?? null);
+        if (!userExists) {
+          res.status(404).json({ message: "Invalid email. No account found for this address." });
+          return;
+        }
       }
       const redirectTo =
         typeof req.body?.redirectTo === "string" ? req.body.redirectTo : undefined;
@@ -295,7 +306,6 @@ export async function createApp(
         typeof req.body?.callbackURL === "string" ? req.body.callbackURL : undefined;
       try {
         await opts.requestPasswordReset!({ email, redirectTo, callbackURL });
-        // Mirror Better Auth behavior: always return success to avoid account enumeration.
         res.json({ status: true });
       } catch (error) {
         logger.error(
@@ -309,6 +319,30 @@ export async function createApp(
     app.post("/api/auth/forget-password", requestPasswordResetHandler);
     app.post("/api/auth/forgot-password", requestPasswordResetHandler);
   }
+
+  // Validate existing account before sending sign-in OTP.
+  app.post("/api/auth/email-otp/send-verification-otp", async (req, res, next) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!email) {
+      res.status(400).json({ message: "Email is required." });
+      return;
+    }
+    if (!db) {
+      next();
+      return;
+    }
+    const existingUser = await db
+      .select({ id: authUsers.id })
+      .from(authUsers)
+      .where(eq(authUsers.email, email))
+      .then((rows) => rows[0] ?? null);
+    if (!existingUser) {
+      res.status(404).json({ message: "Email is not registered in this system." });
+      return;
+    }
+    req.body.email = email;
+    next();
+  });
 
   if (opts.betterAuthHandler) {
     app.all("/api/auth/{*authPath}", opts.betterAuthHandler);

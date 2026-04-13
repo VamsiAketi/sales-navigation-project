@@ -166,11 +166,20 @@ function UserMenu() {
   });
 
   const userId = session?.user?.id ?? null;
+  const mustChangePassword = session?.user?.mustChangePassword === true;
   const initial = (session?.user?.name ?? session?.user?.email ?? "?")[0]?.toUpperCase() ?? "?";
   const passwordPromptSeenKey = userId ? `paperclip:password-change-prompt-seen:${userId}` : null;
 
   useEffect(() => {
     if (!passwordPromptSeenKey || !userId) return;
+    if (!mustChangePassword) {
+      try {
+        window.localStorage.removeItem(passwordPromptSeenKey);
+      } catch {
+        // ignore localStorage write errors
+      }
+      return;
+    }
     try {
       const seen = window.localStorage.getItem(passwordPromptSeenKey);
       if (seen === "1") return;
@@ -206,7 +215,7 @@ function UserMenu() {
     if (toastId) {
       markSeen();
     }
-  }, [passwordPromptSeenKey, pushToast, userId]);
+  }, [mustChangePassword, passwordPromptSeenKey, pushToast, userId]);
 
   if (!session?.user) return null;
 

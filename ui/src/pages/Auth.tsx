@@ -124,7 +124,7 @@ export function AuthPage() {
     },
     onSuccess: () => {
       setError(null);
-      setForgotSuccess("If an account exists for that email, a reset link has been sent.");
+      setForgotSuccess("Reset link sent to your email.");
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Failed to request password reset");
