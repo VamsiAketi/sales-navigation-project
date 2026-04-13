@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { NavLink, useLocation } from "@/lib/router";
+import { Link, NavLink, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Plus } from "lucide-react";
+import { Bot, ChevronRight, Plus } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
@@ -13,6 +13,8 @@ import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { useAgentOrder } from "../hooks/useAgentOrder";
 import { AgentIcon } from "./AgentIconPicker";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
+import { sidebarNavItemTextClass } from "./SidebarSection";
+import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 import {
   Collapsible,
   CollapsibleContent,
@@ -190,34 +192,58 @@ export function SidebarAgents() {
   const agentMatch = location.pathname.match(/^\/(?:[^/]+\/)?agents\/([^/]+)(?:\/([^/]+))?/);
   const activeAgentId = agentMatch?.[1] ?? null;
   const activeTab = agentMatch?.[2] ?? null;
+  const agentsSectionActive = /^\/(?:[^/]+\/)?agents(?:\/|$)/.test(location.pathname);
 
   if (sidebarCompact) return null;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className="group">
-        <div className="flex items-center px-3 py-1.5">
-          <CollapsibleTrigger className="flex items-center gap-1 flex-1 min-w-0">
+        <div className="flex items-stretch gap-0">
+          <CollapsibleTrigger className="flex w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/40 hover:bg-black/[0.04] hover:text-muted-foreground/80 dark:hover:bg-white/[0.06]">
             <ChevronRight
               className={cn(
-                "h-4 w-4 text-muted-foreground/60 transition-transform",
+                "h-3.5 w-3.5 transition-transform",
                 open && "rotate-90"
               )}
             />
-            <span className="text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
-              Agents
-            </span>
           </CollapsibleTrigger>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              openNewAgent();
-            }}
-            className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
-            aria-label="New agent"
+          <div
+            className={cn(
+              "group/nav flex flex-1 items-center font-normal transition-[background-color,color,border-color] duration-100 outline-none",
+              sidebarNavItemTextClass,
+              "mx-0 gap-2.5 py-2 pl-2 pr-2.5",
+              agentsSectionActive
+                ? "bg-[var(--sidebar-active-bg)] text-foreground"
+                : "text-sidebar-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.06]",
+            )}
           >
-            <Plus className="h-3 w-3" />
-          </button>
+            <Link
+              to="/agents"
+              className="flex min-w-0 flex-1 items-center gap-2.5"
+              onClick={() => {
+                if (isMobile) setSidebarOpen(false);
+              }}
+            >
+              <Bot
+                className={cn(
+                  "h-4 w-4 shrink-0",
+                  agentsSectionActive ? "text-[var(--sidebar-active-bar)]" : azureSidebarIcon.agents,
+                )}
+              />
+              <span className="flex-1 truncate">Agents</span>
+            </Link>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openNewAgent();
+              }}
+              className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
+              aria-label="New agent"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
         </div>
       </div>
 

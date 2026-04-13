@@ -31,6 +31,17 @@ export const companySkillsApi = {
       `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/files`,
       { path, content },
     ),
+  uploadFile: async (companyId: string, skillId: string, path: string, file: File) => {
+    const buffer = await file.arrayBuffer();
+    const safeFile = new File([buffer], file.name, { type: file.type });
+    const form = new FormData();
+    form.append("path", path);
+    form.append("file", safeFile);
+    return api.postForm<CompanySkillFileDetail>(
+      `/companies/${encodeURIComponent(companyId)}/skills/${encodeURIComponent(skillId)}/files/upload`,
+      form,
+    );
+  },
   create: (companyId: string, payload: CompanySkillCreateRequest) =>
     api.post<CompanySkill>(
       `/companies/${encodeURIComponent(companyId)}/skills`,

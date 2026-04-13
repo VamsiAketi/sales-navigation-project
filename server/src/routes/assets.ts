@@ -51,7 +51,9 @@ async function sanitizeSvgBuffer(input: Buffer): Promise<Buffer | null> {
   try {
     const [{ default: createDOMPurify }, { JSDOM }] = await Promise.all([import("dompurify"), import("jsdom")]);
     const baseDom = new JSDOM("");
-    const domPurify = createDOMPurify(baseDom.window);
+    const domPurify = createDOMPurify(
+      baseDom.window as unknown as Parameters<typeof createDOMPurify>[0],
+    );
 
     domPurify.addHook("uponSanitizeAttribute", (_node: unknown, data: any) => {
       const attrName = String(data.attrName ?? "").toLowerCase();
