@@ -15,6 +15,10 @@ spec:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   storageClassName: azurefile-csi
+  {{- if .Values.sharedStorage.mountOptions }}
+  mountOptions:
+    {{- toYaml .Values.sharedStorage.mountOptions | nindent 4 }}
+  {{- end }}
   csi:
     driver: file.csi.azure.com
     readOnly: false

@@ -73,15 +73,27 @@ server:
     SMTP_PASS: "am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9"
 
 
-# -- Shared Azurxxe File Storage (one file share for ALL tenants, subPath per tenant)
+# -- Shared Azure File Storage (one file share for ALL tenants, subPath per tenant)
 # Pre-requisite: Storage Account + File Share must be created once by infra team.
 # Secret "azure-storage-secret" must exist in kube-system with storage account credentials.
+#
+# mountOptions: SMB mapping for the pod user (1000:1000). Without uid/gid/mode, Azure Files
+# often surfaces EPERM to tools that use sendfile/copy_file_range or strict permission checks
+# (e.g. OpenAI Codex session files under .../codex-home/sessions). If you change these options,
+# you must recreate the PersistentVolume (mountOptions are immutable on existing PVs); data on
+# the share is unchanged.
 sharedStorage:
   resourceGroup: "ai-harness-prod"
   storageAccount: "aiharnessstorage"
   fileShareName: "paperclip-shared"
   secretName: "azure-storage-secret"
   secretNamespace: "kube-system"
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+    - uid=1000
+    - gid=1000
+    - mfsymlinks
 
 # -- Ingress configuration
 ingress:

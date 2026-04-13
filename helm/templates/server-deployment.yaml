@@ -64,9 +64,15 @@ spec:
               echo "Fixing permissions on /paperclip ..."
               # Azure Files (via SMB/CIFS) frequently lands with root-owned dirs for new subPath mounts.
               # Git/tooling needs to be able to write and set executable bits (chmod) during clone.
-              chown -R 1000:1000 /paperclip || true
-              chmod -R u+rwX,g+rwX,o+rX /paperclip || true
-              echo "Permissions fixed."
+              # chown/chmod often no-op or fail on SMB; server-shared-pv mountOptions (uid/gid/modes) matter.
+              if chown -R 1000:1000 /paperclip 2>/dev/null; then
+                echo "chown 1000:1000 succeeded."
+              else
+                echo "WARN: chown failed or skipped (typical on Azure Files). Ensure sharedStorage.mountOptions includes uid=1000,gid=1000."
+              fi
+              chmod -R u+rwX,g+rwX,o+rX /paperclip 2>/dev/null || \
+                echo "WARN: chmod on /paperclip failed (typical on Azure Files); rely on mount file_mode/dir_mode."
+              echo "Permission fix step finished."
           securityContext:
             runAsUser: 0
             runAsGroup: 0
