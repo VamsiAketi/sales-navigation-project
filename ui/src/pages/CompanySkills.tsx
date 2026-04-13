@@ -280,6 +280,8 @@ function NewSkillForm({
           </Button>
           <Button
             size="sm"
+            className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+            style={{ backgroundColor: "#6569E1" }}
             onClick={() => onCreate({ name, slug: slug || null, description: description || null })}
             disabled={isPending || name.trim().length === 0}
           >

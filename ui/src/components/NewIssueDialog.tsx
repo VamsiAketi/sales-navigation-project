@@ -1198,6 +1198,7 @@ export function NewIssueDialog() {
                 value={assigneeValue}
                 options={assigneeOptions}
                 placeholder="Assignee"
+                className="w-[150px]"
                 disablePortal
                 noneLabel="No assignee"
                 searchPlaceholder="Search assignees..."
@@ -1249,6 +1250,7 @@ export function NewIssueDialog() {
                 value={projectId}
                 options={projectOptions}
                 placeholder="Project"
+                className="w-[150px]"
                 disablePortal
                 noneLabel="No project"
                 includeNoneOption={false}
@@ -1748,7 +1750,8 @@ export function NewIssueDialog() {
             </div>
             <Button
               size="sm"
-              className="min-w-34 shrink-0 select-none disabled:opacity-100"
+              className="min-w-34 shrink-0 select-none text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+              style={{ backgroundColor: "#6569E1" }}
               disabled={!canSubmit}
               onClick={handleSubmit}
               aria-busy={createIssue.isPending}

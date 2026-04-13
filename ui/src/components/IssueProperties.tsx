@@ -219,6 +219,18 @@ function issuePlanningDateInputValue(value: Date | string | null | undefined): s
   return d.toISOString().slice(0, 10);
 }
 
+function truncateProjectDisplayName(value: string | null | undefined): string {
+  const text = (value ?? "").trim();
+  if (!text) return "None";
+  return text.length > 8 ? `${text.slice(0, 8)}...` : text;
+}
+
+function truncateGoalDisplayName(value: string | null | undefined): string {
+  const text = (value ?? "").trim();
+  if (!text) return "No goal";
+  return text.length > 8 ? `${text.slice(0, 8)}...` : text;
+}
+
 /** Displays a value with a copy-to-clipboard icon and "Copied!" feedback. */
 function CopyableValue({ value, label, mono, className }: { value: string; label?: string; mono?: boolean; className?: string }) {
   const [copied, setCopied] = useState(false);
@@ -442,9 +454,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   };
 
   const projectName = (id: string | null) => {
-    if (!id) return id?.slice(0, 8) ?? "None";
+    if (!id) return "None";
     const project = orderedProjects.find((p) => p.id === id);
-    return project?.name ?? id.slice(0, 8);
+    return truncateProjectDisplayName(project?.name ?? id);
   };
   const currentProject = issue.projectId
     ? orderedProjects.find((project) => project.id === issue.projectId) ?? null
@@ -718,7 +730,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             )}
 
             <button
-              className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+              style={{ backgroundColor: "#6569E1" }}
               disabled={!newLabelName.trim() || createLabel.isPending || labelsSaving}
               onClick={() => createLabel.mutate({ name: newLabelName.trim(), color: newLabelColor })}
             >
@@ -995,7 +1008,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               className="shrink-0 h-3 w-3 rounded-sm"
               style={{ backgroundColor: p.color ?? "#6366f1" }}
             />
-            {p.name}
+            {truncateProjectDisplayName(p.name)}
           </button>
         ))}
       </div>
@@ -1027,7 +1040,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
               type="date"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              className="min-w-0 w-full max-w-[7rem] bg-transparent text-sm outline-none"
               value={issuePlanningDateInputValue(issue.targetStartAt)}
               onChange={(e) => {
                 const v = e.target.value;
@@ -1043,7 +1056,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
               type="date"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              className="min-w-0 w-full max-w-[7rem] bg-transparent text-sm outline-none"
               value={issuePlanningDateInputValue(issue.dueAt)}
               onChange={(e) => {
                 const v = e.target.value;
@@ -1125,7 +1138,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                   ? (
                     <>
                       <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="text-sm truncate">{currentGoal?.title ?? issue.goalId.slice(0, 8)}</span>
+                      <span className="text-sm truncate">{truncateGoalDisplayName(currentGoal?.title ?? issue.goalId)}</span>
                     </>
                     )
                   : (
@@ -1169,7 +1182,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                       }}
                     >
                       <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate flex-1 text-left">{goal.title}</span>
+                      <span className="truncate flex-1 text-left">{truncateGoalDisplayName(goal.title)}</span>
                       {goal.status !== "active" && (
                         <span className="text-[10px] text-muted-foreground capitalize shrink-0">{goal.status}</span>
                       )}

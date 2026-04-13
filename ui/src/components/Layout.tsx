@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent} from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings, Info} from "lucide-react";
+import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings, Info, Plus } from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
 import { CompanyRail } from "./CompanyRail";
 import { Sidebar } from "./Sidebar";
@@ -728,6 +728,20 @@ export function Layout() {
         </div>
       </div>
       {isMobile && <MobileBottomNav visible={mobileNavVisible} />}
+      <Button
+        type="button"
+        size="icon"
+        className={cn(
+          "fixed right-4 z-30 h-12 w-12 rounded-full text-white shadow-sm transition hover:brightness-105 active:brightness-95",
+          isMobile ? "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]" : "bottom-6 right-6",
+        )}
+        style={{ backgroundColor: "#6569E1" }}
+        onClick={() => openNewIssue()}
+        aria-label="Create new task"
+        title="Create new task"
+      >
+        <Plus className="h-5 w-5" />
+      </Button>
       <CommandPalette />
       <NewIssueDialog />
       <NewProjectDialog />

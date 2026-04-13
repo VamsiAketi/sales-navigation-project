@@ -1166,7 +1166,8 @@ export function CompanyDirectory() {
                   <Button
                     type="button"
                     size="default"
-                    className="rounded-full px-8 shadow-sm"
+                    className="rounded-full px-8 shadow-sm text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+                    style={{ backgroundColor: "#6569E1" }}
                     onClick={() => humanInviteMutation.mutate()}
                     disabled={
                       humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId

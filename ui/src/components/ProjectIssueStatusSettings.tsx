@@ -1432,7 +1432,14 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
             <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setShowAddForm(false)}>
               Cancel
             </Button>
-            <Button type="button" size="sm" className="h-8" onClick={handleAddStatus} disabled={createMutation.isPending}>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+              style={{ backgroundColor: "#6569E1" }}
+              onClick={handleAddStatus}
+              disabled={createMutation.isPending}
+            >
               Create status
             </Button>
           </div>
