@@ -1,4 +1,6 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
+import path from "node:path";
+import multer from "multer";
 import type { Db } from "@paperclipai/db";
 import {
   companySkillCreateSchema,
@@ -12,6 +14,7 @@ import { accessService, agentService, companySkillService, logActivity } from ".
 import { forbidden } from "../errors.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
+import { MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
 
 type SkillTelemetryInput = {
   key: string;
@@ -23,9 +26,14 @@ type SkillTelemetryInput = {
 
 export function companySkillRoutes(db: Db) {
   const router = Router();
+  const skillFileUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
+  });
   const agents = agentService(db);
   const access = accessService(db);
   const svc = companySkillService(db);
+  const allowedUploadExtensions = new Set([".csv", ".pdf", ".doc", ".docx", ".xls", ".xlsx"]);
 
   function canCreateAgents(agent: { permissions: Record<string, unknown> | null | undefined }) {
     if (!agent.permissions || typeof agent.permissions !== "object") return false;
@@ -50,6 +58,15 @@ export function companySkillRoutes(db: Db) {
       return null;
     }
     return skill.key;
+  }
+
+  async function runSingleFileUpload(req: Request, res: Response) {
+    await new Promise<void>((resolve, reject) => {
+      skillFileUpload.single("file")(req, res, (err: unknown) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
   }
 
   async function assertCanMutateCompanySkills(req: Request, companyId: string) {
@@ -186,6 +203,63 @@ export function companySkillRoutes(db: Db) {
       res.json(result);
     },
   );
+
+  router.post("/companies/:companyId/skills/:skillId/files/upload", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const skillId = req.params.skillId as string;
+    await assertCanMutateCompanySkills(req, companyId);
+
+    try {
+      await runSingleFileUpload(req, res);
+    } catch (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          res.status(422).json({ error: `File exceeds ${MAX_ATTACHMENT_BYTES} bytes` });
+          return;
+        }
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+
+    const file = (req as Request & { file?: { buffer: Buffer; originalname: string } }).file;
+    const relativePath = String(req.body?.path ?? "");
+    if (!file) {
+      res.status(400).json({ error: "Missing file field 'file'" });
+      return;
+    }
+    if (!relativePath.trim()) {
+      res.status(400).json({ error: "Missing field 'path'" });
+      return;
+    }
+
+    const ext = path.extname(relativePath).toLowerCase();
+    if (!allowedUploadExtensions.has(ext)) {
+      res.status(422).json({ error: "Only Excel, CSV, PDF, and Word files are allowed." });
+      return;
+    }
+
+    const result = await svc.updateFileBinary(companyId, skillId, relativePath, file.buffer);
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "company.skill_file_uploaded",
+      entityType: "company_skill",
+      entityId: skillId,
+      details: {
+        path: result.path,
+        originalFilename: file.originalname,
+      },
+    });
+
+    res.status(201).json(result);
+  });
 
   router.post(
     "/companies/:companyId/skills/import",
