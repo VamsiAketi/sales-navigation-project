@@ -39,7 +39,7 @@ export function Activity() {
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Aduit Log" }]);
+    setBreadcrumbs([{ label: "Audit Log" }]);
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({

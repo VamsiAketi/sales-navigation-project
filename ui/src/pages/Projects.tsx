@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { EntityRow } from "../components/EntityRow";
-import { StatusBadge } from "../components/StatusBadge";
+import { ProjectStatusPicker } from "../components/ProjectStatusPicker";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { formatDate, projectUrl } from "../lib/utils";
@@ -17,7 +18,27 @@ export function Projects() {
   const { selectedCompanyId } = useCompany();
   const { openNewProject } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
   const [showArchived, setShowArchived] = useState(false);
+
+  const updateProjectStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      projectsApi.update(id, { status }, selectedCompanyId ?? undefined),
+    onSuccess: (_data, variables) => {
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(selectedCompanyId) });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(variables.id) });
+    },
+    onError: (err: Error) => {
+      pushToast({
+        title: "Could not update project status",
+        body: err.message,
+        tone: "error",
+      });
+    },
+  });
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Projects" }]);
@@ -82,7 +103,27 @@ export function Projects() {
                       {formatDate(project.targetDate)}
                     </span>
                   )}
-                  <StatusBadge status={project.status} />
+                  <span
+                    className="shrink-0"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    <ProjectStatusPicker
+                      status={project.status}
+                      disabled={
+                        updateProjectStatus.isPending &&
+                        updateProjectStatus.variables?.id === project.id
+                      }
+                      onChange={(status) => {
+                        if (status !== project.status) {
+                          updateProjectStatus.mutate({ id: project.id, status });
+                        }
+                      }}
+                    />
+                  </span>
                 </div>
               }
             />
@@ -126,6 +167,27 @@ export function Projects() {
                           {formatDate(project.targetDate)}
                         </span>
                       )}
+                      <span
+                        className="shrink-0"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <ProjectStatusPicker
+                          status={project.status}
+                          disabled={
+                            updateProjectStatus.isPending &&
+                            updateProjectStatus.variables?.id === project.id
+                          }
+                          onChange={(status) => {
+                            if (status !== project.status) {
+                              updateProjectStatus.mutate({ id: project.id, status });
+                            }
+                          }}
+                        />
+                      </span>
                     </div>
                   }
                 />
