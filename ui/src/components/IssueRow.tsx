@@ -6,6 +6,7 @@ import { createIssueDetailPath, mergeIssueModalLocationState } from "../lib/issu
 import { cn } from "../lib/utils";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import { StatusIcon } from "./StatusIcon";
+import { ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS } from "../lib/issue-list-layout";
 
 type UnreadState = "hidden" | "visible" | "fading";
 
@@ -82,12 +83,19 @@ export function IssueRow({
           ) : null}
           {desktopMetaLeading ?? (
             <>
-              <span className="hidden shrink-0 sm:inline-flex">
-                <StatusIcon
-                  status={issue.status}
-                  projectStatuses={projectStatuses}
-                  className={selected ? "border-muted-foreground! text-muted-foreground!" : undefined}
-                />
+              <span
+                className={cn(
+                  "hidden items-center justify-start sm:inline-flex",
+                  ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
+                )}
+              >
+                <span className="min-w-0 max-w-full">
+                  <StatusIcon
+                    status={issue.status}
+                    projectStatuses={projectStatuses}
+                    className={selected ? "border-muted-foreground! text-muted-foreground!" : undefined}
+                  />
+                </span>
               </span>
               <span className="shrink-0 font-mono text-xs text-muted-foreground">
                 {identifier}

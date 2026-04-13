@@ -23,6 +23,7 @@ import { PriorityIcon } from "./PriorityIcon";
 import { EmptyState } from "./EmptyState";
 import { Identity } from "./Identity";
 import { IssueRow } from "./IssueRow";
+import { ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS } from "../lib/issue-list-layout";
 import { PageSkeleton } from "./PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1418,7 +1419,10 @@ export function IssuesList({
         <div className="hidden sm:flex items-center gap-2 border-b border-border bg-muted/30 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground select-none">
           <span className="flex shrink-0 items-center gap-2">
             <span className="w-3.5 shrink-0" />
-            <span className="h-4 w-4 shrink-0" />
+            <span
+              className={cn("inline-flex", ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS)}
+              aria-hidden
+            />
             <span className="shrink-0 font-mono text-xs tabular-nums">ID</span>
             <span className="inline-flex min-w-19 shrink-0" aria-hidden />
           </span>
@@ -1506,17 +1510,22 @@ export function IssuesList({
                   desktopMetaLeading={(
                     <>
                       <span
-                        className="hidden shrink-0 sm:inline-flex"
+                        className={cn(
+                          "hidden items-center justify-start sm:inline-flex",
+                          ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
+                        )}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                         }}
                       >
-                        <StatusIcon
-                          status={issue.status}
-                          onChange={(s) => onUpdateIssue(issue.id, { status: s })}
-                          projectStatuses={projectStatuses}
-                        />
+                        <span className="min-w-0 max-w-full">
+                          <StatusIcon
+                            status={issue.status}
+                            onChange={(s) => onUpdateIssue(issue.id, { status: s })}
+                            projectStatuses={projectStatuses}
+                          />
+                        </span>
                       </span>
                       <span className="shrink-0 font-mono text-xs text-muted-foreground">
                         {issue.identifier ?? issue.id.slice(0, 8)}
