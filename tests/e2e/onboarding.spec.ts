@@ -64,7 +64,7 @@ test.describe("Onboarding wizard", () => {
     ).toBeVisible({ timeout: 10_000 });
 
     const taskTitleInput = page.locator(
-      'input[placeholder="e.g. Research competitor pricing"]'
+      'input[placeholder="e.g. Summarize last week\'s priorities for leadership"]'
     );
     await taskTitleInput.clear();
     await taskTitleInput.fill(TASK_TITLE);
