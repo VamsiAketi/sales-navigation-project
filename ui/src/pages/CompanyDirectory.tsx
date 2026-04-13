@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Loader2, UserRound, Users } from "lucide-react";
+import { Bot, Check, Loader2, UserRound, Users } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useToast } from "../context/ToastContext";
 import { accessApi, type CompanyMember } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
@@ -90,7 +91,6 @@ const AGENT_ROLE_OPTIONS = [
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
-const INVITE_HUMAN_ROLE_OPTIONS = HUMAN_ROLE_OPTIONS.filter((role) => role !== "Owner");
 const DEFAULT_INVITE_ROLE = "IT";
 
 function defaultPermissionsForRole(role: string | null | undefined): PermissionKey[] {
@@ -415,6 +415,7 @@ function descendantsOf(rootId: string, childrenById: Map<string, string[]>) {
 export function CompanyDirectory() {
   const { selectedCompany, selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { pushToast } = useToast();
   const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<"users" | "agents">("users");
@@ -447,6 +448,7 @@ export function CompanyDirectory() {
     temporaryUsername: string;
     temporaryPassword: string;
   } | null>(null);
+  const [humanInviteCredentialsCopied, setHumanInviteCredentialsCopied] = useState(false);
 
   const {
     data: companyMembers,
@@ -525,9 +527,41 @@ export function CompanyDirectory() {
     });
   }, [activeAgentMembers, search]);
 
+  const persistedHumanRoles = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (companyMembers ?? [])
+            .map((member) => normalizeRoleLabel(member.membershipRole ?? ""))
+            .filter((role) => role.length > 0),
+        ),
+      ),
+    [companyMembers],
+  );
+
+  const persistedAgentRoles = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (agentsList ?? [])
+            .map((agent) => normalizeRoleLabel(agent.role ?? ""))
+            .filter((role) => role.length > 0),
+        ),
+      ),
+    [agentsList],
+  );
+
   const manageHumanRoleOptions = useMemo(
-    () => Array.from(new Set([...HUMAN_ROLE_OPTIONS, ...customHumanRoles])),
-    [customHumanRoles],
+    () => Array.from(new Set([...HUMAN_ROLE_OPTIONS, ...persistedHumanRoles, ...customHumanRoles])),
+    [customHumanRoles, persistedHumanRoles],
+  );
+  const inviteHumanRoleOptions = useMemo(
+    () => manageHumanRoleOptions.filter((role) => role !== "Owner"),
+    [manageHumanRoleOptions],
+  );
+  const assignableAgentRoleOptions = useMemo(
+    () => Array.from(new Set([...AGENT_ROLE_OPTIONS, ...persistedAgentRoles, ...customAgentRoles])),
+    [customAgentRoles, persistedAgentRoles],
   );
 
   useEffect(() => {
@@ -668,7 +702,10 @@ export function CompanyDirectory() {
         })),
       }),
     onSuccess: async (created) => {
+      const invitedMembershipRole =
+        humanInviteRole.trim().length > 0 ? humanInviteRole.trim() : DEFAULT_INVITE_ROLE;
       setHumanInviteError(null);
+      setHumanInviteCredentialsCopied(false);
       setHumanInviteCredentials({
         name: created.name,
         email: created.email,
@@ -694,13 +731,10 @@ export function CompanyDirectory() {
         if (createdMember) {
           const firstHumanMemberId = pickFirstCreatedHumanMemberId(members);
           const firstOwnerMemberId = pickFirstCreatedOwnerMemberId(members);
-          const shouldBeOwner = firstHumanMemberId === createdMember.id;
-          const reportsToMembershipId = shouldBeOwner
-            ? null
-            : (firstOwnerMemberId ?? firstHumanMemberId);
+          const reportsToMembershipId = firstOwnerMemberId ?? firstHumanMemberId;
 
           await accessApi.updateMemberOrgConfig(selectedCompanyId!, createdMember.id, {
-            membershipRole: shouldBeOwner ? "owner" : "member",
+            membershipRole: invitedMembershipRole,
             reportsToMembershipId: reportsToMembershipId && reportsToMembershipId !== createdMember.id
               ? reportsToMembershipId
               : null,
@@ -712,6 +746,7 @@ export function CompanyDirectory() {
       await invalidateMembers();
     },
     onError: (err) => {
+      setHumanInviteCredentialsCopied(false);
       setHumanInviteCredentials(null);
       setHumanInviteError(err instanceof Error ? err.message : "Failed to create human invite");
     },
@@ -720,6 +755,13 @@ export function CompanyDirectory() {
   useEffect(() => {
     setHumanInvitePermissionKeys(permissionsForRole(humanInviteRole));
   }, [humanInviteRole]);
+
+  useEffect(() => {
+    if (inviteDialogOpen) return;
+    setHumanInviteCredentials(null);
+    setHumanInviteCredentialsCopied(false);
+    setHumanInviteError(null);
+  }, [inviteDialogOpen]);
 
   const humanSaveMutation = useMutation({
     mutationFn: (input: { memberId: string; membershipRole: string | null; reportsToMembershipId: string | null }) =>
@@ -1082,7 +1124,7 @@ export function CompanyDirectory() {
                         <Label className="text-xs text-muted-foreground">Role</Label>
                         <InlineEntitySelector
                           value={humanInviteRole}
-                          options={INVITE_HUMAN_ROLE_OPTIONS.map((role) => ({ id: role, label: role }))}
+                          options={inviteHumanRoleOptions.map((role) => ({ id: role, label: role }))}
                           placeholder="Role"
                           noneLabel="None"
                           includeNoneOption={false}
@@ -1130,12 +1172,30 @@ export function CompanyDirectory() {
                               ].join("\n");
                               try {
                                 await navigator.clipboard.writeText(credentialsText);
+                                setHumanInviteCredentialsCopied(true);
+                                window.setTimeout(() => setHumanInviteCredentialsCopied(false), 2000);
+                                pushToast({
+                                  title: "Credentials copied",
+                                  body: "Temporary login details were copied to clipboard.",
+                                  tone: "success",
+                                });
                               } catch {
-                                /* clipboard may not be available */
+                                pushToast({
+                                  title: "Copy failed",
+                                  body: "Clipboard is unavailable. Copy the details manually.",
+                                  tone: "error",
+                                });
                               }
                             }}
                           >
-                            Copy credentials
+                            {humanInviteCredentialsCopied ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <Check className="h-4 w-4" />
+                                Copied
+                              </span>
+                            ) : (
+                              "Copy credentials"
+                            )}
                           </Button>
                         </div>
                       </div>
@@ -1283,7 +1343,6 @@ export function CompanyDirectory() {
                       <div className="flex flex-wrap gap-2">
                         {manageHumanRoleOptions.map((role) => {
                           const selected = role === selectedManageHumanRole;
-                          const isSystemRole = (HUMAN_ROLE_OPTIONS as readonly string[]).includes(role);
                           return (
                             <button
                               key={role}
@@ -1297,7 +1356,6 @@ export function CompanyDirectory() {
                               onClick={() => setSelectedManageHumanRole(role)}
                             >
                               {role}
-                              {isSystemRole ? "" : " (custom)"}
                             </button>
                           );
                         })}
@@ -1576,8 +1634,7 @@ export function CompanyDirectory() {
                       <RolePicker
                         member={selectedHumanMember}
                         label="Role"
-                        options={HUMAN_ROLE_OPTIONS}
-                        customOptions={customHumanRoles}
+                        options={manageHumanRoleOptions}
                         onAddCustomOption={(role) =>
                           setCustomHumanRoles((prev) => (prev.includes(role) ? prev : [...prev, role]))
                         }
@@ -1768,8 +1825,7 @@ export function CompanyDirectory() {
                       <RolePicker
                         member={selectedAgentMember}
                         label="Role label"
-                        options={AGENT_ROLE_OPTIONS}
-                        customOptions={customAgentRoles}
+                        options={assignableAgentRoleOptions}
                         onAddCustomOption={(role) =>
                           setCustomAgentRoles((prev) => (prev.includes(role) ? prev : [...prev, role]))
                         }

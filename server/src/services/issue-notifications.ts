@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, authUsers, companyMemberships, issues, projectIssueStatuses, projects, userNotificationPreferences } from "@paperclipai/db";
+import { agents, authUsers, companies, companyMemberships, issues, projectIssueStatuses, projects, userNotificationPreferences } from "@paperclipai/db";
 import {
   projectNotificationConfigSchema,
   userNotificationPreferencesSchema,
@@ -75,6 +75,7 @@ function buildEmailBody(input: {
   newStatus?: string | null;
   commentSnippet?: string | null;
   assignedUserName?: string | null;
+  issueUrl?: string | null;
 }) {
   const issueRef = input.issueIdentifier ?? input.issueTitle;
   const actor = input.actorLabel?.trim() || input.actorType;
@@ -93,6 +94,9 @@ function buildEmailBody(input: {
   if (input.eventType === "issue.assigned") {
     const assignee = input.assignedUserName?.trim() || "a user";
     lines.push(`${actor} assigned this issue to ${assignee}.`);
+  }
+  if (input.issueUrl) {
+    lines.push("", `Open ticket: ${input.issueUrl}`);
   }
   lines.push("", "This email was sent by your project notification settings.");
   return lines.join("\n");
@@ -122,8 +126,10 @@ export function issueNotificationService(db: Db) {
           projectId: issues.projectId,
           assigneeUserId: issues.assigneeUserId,
           createdByUserId: issues.createdByUserId,
+          issuePrefix: companies.issuePrefix,
         })
         .from(issues)
+        .innerJoin(companies, eq(companies.id, issues.companyId))
         .where(eq(issues.id, input.issueId))
         .then((rows) => rows[0] ?? null);
       if (!issue || !issue.projectId) return;
@@ -149,6 +155,14 @@ export function issueNotificationService(db: Db) {
         if (!rule.statuses.includes(next)) return;
       }
       const channels = rule?.channels ?? config.defaultChannels ?? ["email"];
+      const appBaseUrl =
+        process.env.PAPERCLIP_PUBLIC_URL ??
+        process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
+        process.env.BETTER_AUTH_URL ??
+        process.env.BETTER_AUTH_BASE_URL ??
+        "http://localhost:3100";
+      const normalizedAppBaseUrl = appBaseUrl.replace(/\/+$/, "");
+      const issueUrl = `${normalizedAppBaseUrl}/${encodeURIComponent(issue.issuePrefix)}/issues/${encodeURIComponent(issue.id)}`;
 
       let resolvedActorLabel = input.payload.actorLabel?.trim() || null;
       if (!resolvedActorLabel) {
@@ -240,6 +254,7 @@ export function issueNotificationService(db: Db) {
           newStatus: input.payload.newStatus,
           commentSnippet: input.payload.commentSnippet,
           assignedUserName: resolvedAssignedUserName,
+          issueUrl,
         });
         const createdNotification = await notifications.create({
           userId: recipient.id,

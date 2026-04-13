@@ -93,7 +93,7 @@ export function AuthPage() {
     onSuccess: () => {
       setError(null);
       setCodeSent(true);
-      setCodeSuccess("Code sent. Check your email and enter the code to continue.");
+      setCodeSuccess("If an account exists for that email, an OTP has been sent.");
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Failed to send sign-in code");
@@ -124,7 +124,7 @@ export function AuthPage() {
     },
     onSuccess: () => {
       setError(null);
-      setForgotSuccess("If an account exists for that email, a reset link has been sent.");
+      setForgotSuccess("Reset link sent to your email.");
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Failed to request password reset");
@@ -459,10 +459,10 @@ export function AuthPage() {
                 </Button>
               </div>
             )}
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            {codeSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{codeSuccess}</p>}
-            {forgotSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{forgotSuccess}</p>}
-            {resetSuccess && <p className="text-xs text-emerald-600 dark:text-emerald-400">{resetSuccess}</p>}
+            {error && <p className="text-center text-xs text-destructive">{error}</p>}
+            {codeSuccess && <p className="text-center text-xs text-emerald-600 dark:text-emerald-400">{codeSuccess}</p>}
+            {forgotSuccess && <p className="text-center text-xs text-emerald-600 dark:text-emerald-400">{forgotSuccess}</p>}
+            {resetSuccess && <p className="text-center text-xs text-emerald-600 dark:text-emerald-400">{resetSuccess}</p>}
             {!(!isResetMode && mode === "sign_in" && forgotRequested) && !(useEmailCode && !codeSent) && (
               <>
                 {!isResetMode && mode === "sign_in" && useEmailCode && codeSent ? (
