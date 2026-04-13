@@ -296,7 +296,7 @@ export async function createApp(
           .where(eq(authUsers.email, email))
           .then((rows) => rows[0] ?? null);
         if (!userExists) {
-          res.status(404).json({ message: "Invalid email. No account found for this address." });
+          res.json({ status: true });
           return;
         }
       }
@@ -337,7 +337,7 @@ export async function createApp(
       .where(eq(authUsers.email, email))
       .then((rows) => rows[0] ?? null);
     if (!existingUser) {
-      res.status(404).json({ message: "Email is not registered in this system." });
+      res.json({ status: true });
       return;
     }
     req.body.email = email;
