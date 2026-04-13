@@ -141,7 +141,7 @@ export function SidebarPrimaryNav({ liveRunCount, inboxBadge, pluginContext }: S
         return (
           <SidebarNavItem
             to="/dashboard"
-            label="Command center"
+            label="Command Center"
             icon={LayoutDashboard}
             iconClassName={azureSidebarIcon.dashboard}
             liveCount={liveRunCount}

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -17,128 +17,153 @@ import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
+import { authApi } from "../api/auth";
+import {
+  DASHBOARD_SECTION_IDS,
+  loadDashboardSectionOrder,
+  saveDashboardSectionOrder,
+  type DashboardSectionId,
+} from "../lib/dashboard-layout-storage";
+import { DASHBOARD_TILE_SURFACE } from "../lib/dashboard-tile-styles";
 import { MetricCard } from "../components/MetricCard";
 import { EmptyState } from "../components/EmptyState";
 import { StatusIcon } from "../components/StatusIcon";
 import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
-import { cn, formatCents, formatTokens } from "../lib/utils";
-import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, ArrowRight, GripVertical } from "lucide-react";
+import { cn, formatCents, formatTokens, agentUrl, projectUrl } from "../lib/utils";
+import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, ArrowRight, Target, Wallet } from "lucide-react";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
-import type { Agent, CostByAgent, CostByProject, Goal, GoalStatus, Issue, Project } from "@paperclipai/shared";
+import {
+  GOAL_STATUSES,
+  type Agent,
+  type CostByAgent,
+  type CostByProject,
+  type DashboardSummary,
+  type Goal,
+  type GoalStatus,
+  type Issue,
+  type Project,
+} from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useToast } from "../context/ToastContext";
 
 // ── Goals section ──────────────────────────────────────────────────────────
 
 const GOAL_STATUS_CONFIG: Record<GoalStatus, { label: string; color: string; badgeCls: string; barCls: string }> = {
-  active:    { label: "Active",    color: "#3b82f6", badgeCls: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",   barCls: "bg-blue-500" },
+  active:    { label: "Active",    color: "#10b981", badgeCls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300", barCls: "bg-emerald-500" },
   achieved:  { label: "Achieved",  color: "#22c55e", badgeCls: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300", barCls: "bg-green-500" },
   planned:   { label: "Planned",   color: "#f59e0b", badgeCls: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300", barCls: "bg-amber-500" },
-  cancelled: { label: "Cancelled", color: "#6b7280", badgeCls: "bg-muted text-muted-foreground",                                       barCls: "bg-muted-foreground/50" },
+  cancelled: { label: "Cancelled", color: "#6b7280", badgeCls: "bg-muted text-muted-foreground", barCls: "bg-muted-foreground/50" },
 };
 
-function GoalCard({ goal, projectCount, totalIssues, inProgress, done, blocked }: {
-  goal: Goal;
-  projectCount: number;
-  totalIssues: number;
-  inProgress: number;
-  done: number;
-  blocked: number;
-}) {
+function goalStatusMenuLabel(status: string): string {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function GoalCard({ goal, companyId }: { goal: Goal; companyId: string }) {
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+  const [statusOpen, setStatusOpen] = useState(false);
   const cfg = GOAL_STATUS_CONFIG[goal.status] ?? GOAL_STATUS_CONFIG.planned;
-  const progress = totalIssues > 0 ? Math.round((done / totalIssues) * 100) : 0;
+
+  const updateGoalStatus = useMutation({
+    mutationFn: (status: GoalStatus) => goalsApi.update(goal.id, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.goals.list(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.goals.detail(goal.id) });
+    },
+    onError: (err: Error) => {
+      pushToast({
+        title: "Could not update goal status",
+        body: err.message,
+        tone: "error",
+      });
+    },
+  });
 
   return (
     <div
-      className="group relative rounded-xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5"
-      style={{ borderTopWidth: 2, borderTopColor: cfg.color }}
+      className={cn(
+        "group relative flex items-center gap-3 overflow-hidden",
+        DASHBOARD_TILE_SURFACE,
+        "p-4 transition-colors hover:bg-accent/20",
+      )}
     >
-      <div className="p-4">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <p className="font-semibold text-sm leading-snug line-clamp-2 flex-1 min-w-0">{goal.title}</p>
-          <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize whitespace-nowrap", cfg.badgeCls)}>
-            {cfg.label}
-          </span>
-        </div>
-
-        {/* Level badge */}
-        <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground capitalize">
-          {goal.level}
-        </span>
-
-        {/* Stats grid */}
-        <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
-          <div className="rounded-lg bg-muted/50 px-2 py-2">
-            <p className="text-lg font-bold tabular-nums leading-none">{projectCount}</p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">Projects</p>
-          </div>
-          <div className="rounded-lg bg-muted/50 px-2 py-2">
-            <p className="text-lg font-bold tabular-nums leading-none">{totalIssues}</p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">Tasks</p>
-          </div>
-          <div className="rounded-lg bg-muted/50 px-2 py-2">
-            <p className={cn("text-lg font-bold tabular-nums leading-none", inProgress > 0 ? "text-yellow-600 dark:text-yellow-400" : "")}>{inProgress}</p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">Active</p>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        {totalIssues > 0 ? (
-          <div className="mt-3">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
-              <span>{done} done{blocked > 0 ? ` · ${blocked} blocked` : ""}</span>
-              <span className="font-medium">{progress}%</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-              <div className={cn("h-full rounded-full transition-all", cfg.barCls)} style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-        ) : (
-          <p className="mt-3 text-[11px] text-muted-foreground/60">No tasks linked yet</p>
-        )}
+      <Link
+        to={`/goals/${goal.id}`}
+        className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        aria-label={`Open goal: ${goal.title}`}
+      />
+      <div
+        className="relative z-[1] flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-50 dark:bg-rose-950/35 pointer-events-none"
+        aria-hidden
+      >
+        <Target className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+      </div>
+      <div className="relative z-[1] min-w-0 flex-1 pointer-events-none">
+        <p className="text-sm font-semibold leading-snug text-foreground line-clamp-1">{goal.title}</p>
+        <p className="text-xs text-muted-foreground capitalize">{goal.level}</p>
+      </div>
+      <div className="relative z-[2] shrink-0 pointer-events-auto">
+        <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              disabled={updateGoalStatus.isPending}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-[10px] font-semibold capitalize whitespace-nowrap cursor-pointer hover:opacity-90 transition-opacity disabled:pointer-events-none disabled:opacity-50",
+                cfg.badgeCls,
+              )}
+            >
+              {cfg.label}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-40 p-1" align="end">
+            {GOAL_STATUSES.map((s) => (
+              <Button
+                key={s}
+                variant="ghost"
+                size="sm"
+                className={cn("w-full justify-start text-xs", s === goal.status && "bg-accent")}
+                onClick={() => {
+                  if (s !== goal.status) updateGoalStatus.mutate(s);
+                  setStatusOpen(false);
+                }}
+              >
+                {goalStatusMenuLabel(s)}
+              </Button>
+            ))}
+          </PopoverContent>
+        </Popover>
       </div>
     </div>
   );
 }
 
-function GoalsSection({ goals, projects, issues }: { goals: Goal[]; projects: Project[]; issues: Issue[] }) {
-  const metrics = useMemo(() => goals.map((goal) => {
-    const linked = projects.filter((p) => p.goalIds.includes(goal.id));
-    const pids = new Set(linked.map((p) => p.id));
-    const gi = issues.filter((i) => i.projectId && pids.has(i.projectId));
-    return {
-      goal,
-      projectCount: linked.length,
-      totalIssues: gi.length,
-      inProgress: gi.filter((i) => i.status === "in_progress").length,
-      done: gi.filter((i) => i.status === "done").length,
-      blocked: gi.filter((i) => i.status === "blocked").length,
-    };
-  }), [goals, projects, issues]);
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Goals</h3>
-        <Link
-          to="/goals"
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          View all <ArrowRight className="h-3 w-3" />
-        </Link>
-      </div>
-      {goals.length === 0 ? (
-        <div className="rounded-xl border border-border p-4">
-          <p className="text-sm text-muted-foreground">No goals defined yet.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {metrics.map((m) => <GoalCard key={m.goal.id} {...m} />)}
-        </div>
+function GoalsSection({ companyId, goals }: { companyId: string; goals: Goal[] }) {
+  return goals.length === 0 ? (
+    <Link
+      to="/goals"
+      className={cn(
+        DASHBOARD_TILE_SURFACE,
+        "block p-4 no-underline text-inherit transition-colors hover:bg-accent/30 hover:border-border",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       )}
+    >
+      <p className="text-sm text-muted-foreground">No goals defined yet.</p>
+      <p className="mt-2 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        Go to goals <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+      </p>
+    </Link>
+  ) : (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+      {goals.map((goal) => (
+        <GoalCard key={goal.id} companyId={companyId} goal={goal} />
+      ))}
     </div>
   );
 }
@@ -156,13 +181,23 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
             View all <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
-        <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+        <div className={cn(DASHBOARD_TILE_SURFACE, "overflow-hidden")}>
           {byAgent.length === 0 ? (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No cost events yet.</p>
+            <Link
+              to="/costs"
+              className="block px-4 py-4 no-underline text-inherit transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <p className="text-sm text-muted-foreground">No cost events yet.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Open costs</p>
+            </Link>
           ) : (
             <div className="divide-y divide-border">
               {byAgent.slice(0, 6).map((row) => (
-                <div key={row.agentId} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <Link
+                  key={row.agentId}
+                  to={agentUrl({ id: row.agentId, name: row.agentName })}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 no-underline text-inherit transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
                   <Identity name={row.agentName ?? row.agentId} size="sm" className="min-w-0" />
                   <div className="text-right shrink-0">
                     <div className="text-sm font-medium tabular-nums">{formatCents(row.costCents)}</div>
@@ -170,7 +205,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
                       {formatTokens(row.inputTokens + row.cachedInputTokens + row.outputTokens)} tok
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}
@@ -185,16 +220,30 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
             View all <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
-        <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+        <div className={cn(DASHBOARD_TILE_SURFACE, "overflow-hidden")}>
           {byProject.length === 0 ? (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No project-attributed run costs yet.</p>
+            <Link
+              to="/costs"
+              className="block px-4 py-4 no-underline text-inherit transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <p className="text-sm text-muted-foreground">No project-attributed run costs yet.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Open costs</p>
+            </Link>
           ) : (
             <div className="divide-y divide-border">
               {byProject.slice(0, 6).map((row, i) => (
-                <div key={row.projectId ?? `unattributed-${i}`} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <Link
+                  key={row.projectId ?? `unattributed-${i}`}
+                  to={
+                    row.projectId
+                      ? projectUrl({ id: row.projectId, name: row.projectName })
+                      : "/costs"
+                  }
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 no-underline text-inherit transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
                   <span className="text-sm truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
                   <span className="text-sm font-medium tabular-nums shrink-0">{formatCents(row.costCents)}</span>
-                </div>
+                </Link>
               ))}
             </div>
           )}
@@ -204,43 +253,136 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
   );
 }
 
-// ── Draggable sections ─────────────────────────────────────────────────────
-
-const SECTION_IDS = ["goals", "metrics", "charts", "costs"] as const;
-type SectionId = (typeof SECTION_IDS)[number];
-const STORAGE_KEY = "dashboard:section-order";
-
-function loadSectionOrder(): SectionId[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.every((id): id is SectionId => SECTION_IDS.includes(id as SectionId))) {
-        const missing = SECTION_IDS.filter((id) => !parsed.includes(id));
-        return [...(parsed as SectionId[]), ...missing];
-      }
-    }
-  } catch {}
-  return [...SECTION_IDS];
+function formatBoardRoleLabel(role: string | null | undefined): string {
+  const raw = (role ?? "member").trim();
+  if (!raw) return "Member";
+  const r = raw.toLowerCase();
+  if (r === "owner") return import.meta.env.DEV ? "Local Owner" : "Owner";
+  return raw
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
 }
 
-function DraggableSection({ id, children }: { id: string; children: React.ReactNode }) {
+function CostsMtdSection({ data }: { data: DashboardSummary }) {
+  const monthLabel = useMemo(() => {
+    const d = new Date();
+    return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }, []);
+  const budgetHeadline =
+    data.costs.monthBudgetCents > 0 ? formatCents(data.costs.monthBudgetCents) : "Not set";
+  const budgetSub =
+    data.costs.monthBudgetCents > 0
+      ? `${data.costs.monthUtilizationPercent}% utilized`
+      : "Set budgets on the Costs page";
+  const noSpend = data.costs.monthSpendCents === 0;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] text-muted-foreground">Month to date · {monthLabel}</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Link
+          to="/costs"
+          className={cn(
+            DASHBOARD_TILE_SURFACE,
+            "relative flex gap-3 p-4 no-underline text-inherit outline-none transition-colors hover:bg-accent/25 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          )}
+        >
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-950/40"
+            aria-hidden
+          >
+            <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCents(data.costs.monthSpendCents)}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Inference and usage in this period</p>
+          </div>
+        </Link>
+        <Link
+          to="/costs"
+          className={cn(
+            DASHBOARD_TILE_SURFACE,
+            "relative flex gap-3 p-4 no-underline text-inherit outline-none transition-colors hover:bg-accent/25 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          )}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-950/40" aria-hidden>
+            <Wallet className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{budgetHeadline}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{budgetSub}</p>
+          </div>
+        </Link>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {noSpend
+          ? "No usage spend recorded this month yet."
+          : "Totals include inference and governed spend for this company."}{" "}
+        <Link to="/costs" className="font-medium text-foreground underline underline-offset-2 hover:no-underline">
+          Open Costs
+        </Link>{" "}
+        for per-teammate breakdown.
+      </p>
+    </div>
+  );
+}
+
+// ── Draggable sections ─────────────────────────────────────────────────────
+
+function SectionDragHandle(props: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      className="mt-0.5 flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted active:cursor-grabbing"
+      title="Drag to reorder section"
+      {...props}
+    >
+      <span className="grid grid-cols-2 gap-0.5" aria-hidden>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <span key={i} className="h-1 w-1 rounded-full bg-muted-foreground/65" />
+        ))}
+      </span>
+    </button>
+  );
+}
+
+function DraggableSection({
+  id,
+  title,
+  headerRight,
+  children,
+}: {
+  id: string;
+  /** Section heading (e.g. GOALS). Omit for untitled bands (metrics, charts). */
+  title?: string | null;
+  headerRight?: ReactNode;
+  children: ReactNode;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const showHeaderRow = Boolean(title) || Boolean(headerRight);
+
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("group relative", isDragging ? "z-50 opacity-50" : "")}
+      className={cn("flex gap-3", isDragging ? "z-50 opacity-50" : "")}
     >
-      <button
-        {...attributes}
-        {...listeners}
-        className="absolute -top-1 right-0 flex h-6 w-6 cursor-grab items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted"
-        title="Drag to reorder"
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
-      {children}
+      <SectionDragHandle {...attributes} {...listeners} />
+      <div className="min-w-0 flex-1 space-y-3">
+        {showHeaderRow ? (
+          <div className="flex items-center justify-between gap-2">
+            {title ? (
+              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</h2>
+            ) : (
+              <span className="sr-only">Dashboard section</span>
+            )}
+            {headerRight}
+          </div>
+        ) : null}
+        {children}
+      </div>
     </div>
   );
 }
@@ -254,15 +396,32 @@ export function Dashboard() {
   const { selectedCompanyId, companies } = useCompany();
   const { openOnboarding } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(loadSectionOrder);
+  const [sectionOrder, setSectionOrder] = useState<DashboardSectionId[]>(() => [...DASHBOARD_SECTION_IDS]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const { data: session, status: sessionStatus } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    staleTime: 60_000,
+  });
+  const sessionResolved = sessionStatus !== "pending";
+  const layoutUserId = session?.user?.id ?? null;
+
+  useEffect(() => {
+    if (!selectedCompanyId || !sessionResolved) return;
+    setSectionOrder(loadDashboardSectionOrder(layoutUserId, selectedCompanyId));
+  }, [layoutUserId, selectedCompanyId, sessionResolved]);
 
   function handleSectionDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id || !selectedCompanyId) return;
     setSectionOrder((prev) => {
-      const next = arrayMove(prev, prev.indexOf(active.id as SectionId), prev.indexOf(over.id as SectionId));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      const next = arrayMove(
+        prev,
+        prev.indexOf(active.id as DashboardSectionId),
+        prev.indexOf(over.id as DashboardSectionId),
+      );
+      saveDashboardSectionOrder(layoutUserId, selectedCompanyId, next);
       return next;
     });
   }
@@ -285,7 +444,7 @@ export function Dashboard() {
   });
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Dashboard" }]);
+    setBreadcrumbs([{ label: "Command Center" }]);
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({
@@ -424,6 +583,14 @@ export function Dashboard() {
     return map;
   }, [members]);
 
+  const boardRoleLabel = useMemo(() => {
+    const uid = session?.user?.id;
+    if (!uid || !members) return null;
+    const me = members.find((m) => m.principalType === "user" && m.user?.id === uid);
+    if (!me) return null;
+    return formatBoardRoleLabel(me.membershipRole);
+  }, [session?.user?.id, members]);
+
   const agentName = (id: string | null) => {
     if (!id || !agents) return null;
     return agents.find((a) => a.id === id)?.name ?? null;
@@ -453,6 +620,13 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <header className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Command Center</h1>
+        {boardRoleLabel ? (
+          <p className="text-sm text-muted-foreground sm:pt-0.5">{boardRoleLabel}</p>
+        ) : null}
+      </header>
+
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
       {hasNoAgents && (
@@ -491,72 +665,138 @@ export function Dashboard() {
         </div>
       ) : null}
 
+      <p className="text-[11px] text-muted-foreground">
+        Drag a section by the handle on the left. Order is saved per company
+        {layoutUserId ? " for your account" : " on this browser"}.
+      </p>
+
       <DndContext sensors={sensors} onDragEnd={handleSectionDragEnd}>
         <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
           <div className="space-y-6">
             {sectionOrder.map((id) => {
-              if (id === "goals") return (
-                <DraggableSection key="goals" id="goals">
-                  <GoalsSection goals={goals ?? []} projects={projects ?? []} issues={issues ?? []} />
-                </DraggableSection>
-              );
-              if (id === "metrics") return data ? (
-                <DraggableSection key="metrics" id="metrics">
-                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-1 sm:gap-2">
-                    <MetricCard
-                      icon={Bot}
-                      value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
-                      label="Agents Enabled"
-                      to="/agents"
-                      description={<span>{data.agents.running} running{", "}{data.agents.paused} paused{", "}{data.agents.error} errors</span>}
-                    />
-                    <MetricCard
-                      icon={CircleDot}
-                      value={data.tasks.inProgress}
-                      label="Tasks In Progress"
-                      to="/issues"
-                      description={<span>{data.tasks.open} open{", "}{data.tasks.blocked} blocked</span>}
-                    />
-                    <MetricCard
-                      icon={DollarSign}
-                      value={formatCents(data.costs.monthSpendCents)}
-                      label="Month Spend"
-                      to="/costs"
-                      description={<span>{data.costs.monthBudgetCents > 0 ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget` : "Unlimited budget"}</span>}
-                    />
-                    <MetricCard
-                      icon={ShieldCheck}
-                      value={data.pendingApprovals + data.budgets.pendingApprovals}
-                      label="Pending Approvals"
-                      to="/approvals"
-                      description={<span>{data.budgets.pendingApprovals > 0 ? `${data.budgets.pendingApprovals} budget overrides awaiting board review` : "Awaiting board review"}</span>}
-                    />
-                  </div>
-                </DraggableSection>
-              ) : null;
-              if (id === "charts") return (
-                <DraggableSection key="charts" id="charts">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <ChartCard title="Run Aduit Log" subtitle="Last 14 days">
-                      <RunActivityChart runs={runs ?? []} />
-                    </ChartCard>
-                    <ChartCard title="Issues by Priority" subtitle="Last 14 days">
-                      <PriorityChart issues={issues ?? []} />
-                    </ChartCard>
-                    <ChartCard title="Issues by Status" subtitle="Last 14 days">
-                      <IssueStatusChart issues={issues ?? []} />
-                    </ChartCard>
-                    <ChartCard title="Success Rate" subtitle="Last 14 days">
-                      <SuccessRateChart runs={runs ?? []} />
-                    </ChartCard>
-                  </div>
-                </DraggableSection>
-              );
-              if (id === "costs") return (
-                <DraggableSection key="costs" id="costs">
-                  <CostBreakdownSection byAgent={costData?.byAgent ?? []} byProject={costData?.byProject ?? []} />
-                </DraggableSection>
-              );
+              if (id === "goals") {
+                return (
+                  <DraggableSection
+                    key="goals"
+                    id="goals"
+                    title="Goals"
+                    headerRight={
+                      <Link
+                        to="/goals"
+                        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        View all <ArrowRight className="h-3 w-3" aria-hidden />
+                      </Link>
+                    }
+                  >
+                    <GoalsSection companyId={selectedCompanyId} goals={goals ?? []} />
+                  </DraggableSection>
+                );
+              }
+              if (id === "metrics") {
+                return data ? (
+                  <DraggableSection key="metrics" id="metrics">
+                    <div className="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-4">
+                      <MetricCard
+                        icon={Bot}
+                        iconTint="violet"
+                        value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
+                        label="AI teammates"
+                        to="/agents"
+                        description={
+                          <span>
+                            {data.agents.running} running{", "}
+                            {data.agents.paused} paused{", "}
+                            {data.agents.error} errors
+                          </span>
+                        }
+                      />
+                      <MetricCard
+                        icon={CircleDot}
+                        iconTint="sky"
+                        value={data.tasks.inProgress}
+                        label="Tasks in motion"
+                        to="/issues"
+                        description={
+                          <span>
+                            {data.tasks.open} open{", "}
+                            {data.tasks.blocked} blocked
+                          </span>
+                        }
+                      />
+                      <MetricCard
+                        icon={DollarSign}
+                        iconTint="emerald"
+                        value={formatCents(data.costs.monthSpendCents)}
+                        label="Month spend"
+                        to="/costs"
+                        description={
+                          <span>
+                            {data.costs.monthBudgetCents > 0
+                              ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
+                              : "Unlimited budget"}
+                          </span>
+                        }
+                      />
+                      <MetricCard
+                        icon={ShieldCheck}
+                        iconTint="purple"
+                        value={data.pendingApprovals + data.budgets.pendingApprovals}
+                        label="Governance queue"
+                        to="/approvals"
+                        description={<span>Awaiting owner review</span>}
+                      />
+                    </div>
+                  </DraggableSection>
+                ) : null;
+              }
+              if (id === "charts") {
+                return (
+                  <DraggableSection key="charts" id="charts">
+                    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                      <ChartCard
+                        title="Execution volume"
+                        subtitle="Last 14 days"
+                        to="/activity"
+                        drillLabel="Open activity log"
+                      >
+                        <RunActivityChart runs={runs ?? []} />
+                      </ChartCard>
+                      <ChartCard title="Tasks by priority" subtitle="Last 14 days" to="/issues" drillLabel="Open issues">
+                        <PriorityChart issues={issues ?? []} />
+                      </ChartCard>
+                      <ChartCard
+                        title="Task status"
+                        subtitle="Last 14 days"
+                        caption="Where work stands"
+                        to="/issues"
+                        drillLabel="Open issues"
+                      >
+                        <IssueStatusChart issues={issues ?? []} />
+                      </ChartCard>
+                      <ChartCard
+                        title="Run success rate"
+                        subtitle="Last 14 days"
+                        caption="Quality of execution"
+                        to="/agents/all"
+                        drillLabel="View agents & runs"
+                      >
+                        <SuccessRateChart runs={runs ?? []} />
+                      </ChartCard>
+                    </div>
+                  </DraggableSection>
+                );
+              }
+              if (id === "costs") {
+                return (
+                  <DraggableSection key="costs" id="costs" title="Costs">
+                    {data ? <CostsMtdSection data={data} /> : null}
+                    <div className={data ? "border-t border-border/60 pt-5" : ""}>
+                      <CostBreakdownSection byAgent={costData?.byAgent ?? []} byProject={costData?.byProject ?? []} />
+                    </div>
+                  </DraggableSection>
+                );
+              }
               return null;
             })}
           </div>
@@ -567,7 +807,7 @@ export function Dashboard() {
         slotTypes={["dashboardWidget"]}
         context={{ companyId: selectedCompanyId }}
         className="grid gap-4 md:grid-cols-2"
-        itemClassName="rounded-lg border bg-card p-4 shadow-sm"
+        itemClassName={cn(DASHBOARD_TILE_SURFACE, "p-4")}
       />
     </div>
   );

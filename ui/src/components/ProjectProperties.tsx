@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CompanySecret, Project } from "@paperclipai/shared";
 import { DEFAULT_BOARD_CLOSED_RETENTION_DAYS } from "@paperclipai/shared";
 import { StatusBadge } from "./StatusBadge";
+import { ProjectStatusPicker } from "./ProjectStatusPicker";
 import { cn, formatDate } from "../lib/utils";
 import { goalsApi } from "../api/goals";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -11,7 +12,6 @@ import { projectsApi } from "../api/projects";
 import { secretsApi } from "../api/secrets";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
-import { statusBadge, statusBadgeDefault } from "../lib/status-colors";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -163,14 +163,6 @@ function ProjectSecretBindingsEditor({
   );
 }
 
-const PROJECT_STATUSES = [
-  { value: "backlog", label: "Backlog" },
-  { value: "planned", label: "Planned" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-];
-
 interface ProjectPropertiesProps {
   project: Project;
   onUpdate?: (data: Record<string, unknown>) => void;
@@ -265,42 +257,6 @@ function PropertyRow({
         {children}
       </div>
     </div>
-  );
-}
-
-function ProjectStatusPicker({ status, onChange }: { status: string; onChange: (status: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const colorClass = statusBadge[status] ?? statusBadgeDefault;
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          className={cn(
-            "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer hover:opacity-80 transition-opacity",
-            colorClass,
-          )}
-        >
-          {status.replace("_", " ")}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-40 p-1" align="start">
-        {PROJECT_STATUSES.map((s) => (
-          <Button
-            key={s.value}
-            variant="ghost"
-            size="sm"
-            className={cn("w-full justify-start gap-2 text-xs", s.value === status && "bg-accent")}
-            onClick={() => {
-              onChange(s.value);
-              setOpen(false);
-            }}
-          >
-            {s.label}
-          </Button>
-        ))}
-      </PopoverContent>
-    </Popover>
   );
 }
 

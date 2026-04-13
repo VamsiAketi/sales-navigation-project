@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { useSidebar } from "../context/SidebarContext";
 
-/** Nav row label size (Command center, projects, agents, company links, …). */
+/** Nav row label size (Command Center, projects, agents, company links, …). */
 export const sidebarNavItemTextClass =
   "text-[length:var(--sidebar-nav-font-size,15px)] leading-snug";
 
