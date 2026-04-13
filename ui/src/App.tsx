@@ -409,7 +409,17 @@ export function App() {
 
 function IssueDetailModal() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { issueId } = useParams<{ issueId: string }>();
+  const issuePageState = (() => {
+    if (typeof location.state !== "object" || location.state === null) return undefined;
+    const {
+      issueModal: _issueModal,
+      backgroundLocation: _backgroundLocation,
+      ...rest
+    } = location.state as Record<string, unknown>;
+    return Object.keys(rest).length > 0 ? rest : undefined;
+  })();
   return (
     <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
       <DialogContent
@@ -420,7 +430,9 @@ function IssueDetailModal() {
             <IssueDetail fullWidth />
           </div>
           <IssueDetailModalTaskInfoPanel
-            onGoToPage={() => { if (issueId) navigate(`/issues/${issueId}`); }}
+            onGoToPage={() => {
+              if (issueId) navigate(`/issues/${issueId}`, { state: issuePageState });
+            }}
           />
         </div>
       </DialogContent>

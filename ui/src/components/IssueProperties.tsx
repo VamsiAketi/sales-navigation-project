@@ -222,13 +222,18 @@ function issuePlanningDateInputValue(value: Date | string | null | undefined): s
 function truncateProjectDisplayName(value: string | null | undefined): string {
   const text = (value ?? "").trim();
   if (!text) return "None";
-  return text.length > 8 ? `${text.slice(0, 8)}...` : text;
+  return text.length > 11 ? `${text.slice(0, 8)}...` : text;
 }
 
 function truncateGoalDisplayName(value: string | null | undefined): string {
   const text = (value ?? "").trim();
   if (!text) return "No goal";
-  return text.length > 8 ? `${text.slice(0, 8)}...` : text;
+  return text.length > 11 ? `${text.slice(0, 8)}...` : text;
+}
+
+function fullDisplayNameTitle(value: string | null | undefined): string | undefined {
+  const text = (value ?? "").trim();
+  return text.length > 11 ? text : undefined;
 }
 
 /** Displays a value with a copy-to-clipboard icon and "Copied!" feedback. */
@@ -757,11 +762,13 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   );
 
   const assigneeTrigger = assignee ? (
-    <Identity name={assignee.name} size="sm" />
+    <span className="min-w-0" title={assignee.name}>
+      <Identity name={assignee.name} size="sm" />
+    </span>
   ) : assigneeUserLabel ? (
     <>
       <User className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="text-sm">{assigneeUserLabel}</span>
+      <span className="text-sm truncate" title={assigneeUserLabel}>{assigneeUserLabel}</span>
     </>
   ) : (
     <>
@@ -878,7 +885,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               }}
             >
               <User className="h-3 w-3 shrink-0 text-muted-foreground" />
-              {m.user!.name}
+              <span className="truncate flex-1 text-left" title={m.user!.name}>
+                {m.user!.name}
+              </span>
             </button>
           ))}
         {assigneePickerAllowsAgents && sortedAgents
@@ -910,7 +919,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             }}
           >
             <AgentIcon icon={a.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
-            {a.name}
+            <span className="truncate flex-1 text-left" title={a.name}>
+              {a.name}
+            </span>
           </button>
         ))}
       </div>
@@ -940,7 +951,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         className="shrink-0 h-3 w-3 rounded-sm"
         style={{ backgroundColor: orderedProjects.find((p) => p.id === issue.projectId)?.color ?? "#6366f1" }}
       />
-      <span className="text-sm truncate">{projectName(issue.projectId)}</span>
+      <span className="text-sm truncate" title={fullDisplayNameTitle(currentProject?.name ?? issue.projectId)}>
+        {projectName(issue.projectId)}
+      </span>
     </>
   ) : (
     <>
@@ -1008,7 +1021,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               className="shrink-0 h-3 w-3 rounded-sm"
               style={{ backgroundColor: p.color ?? "#6366f1" }}
             />
-            {truncateProjectDisplayName(p.name)}
+            <span className="truncate" title={fullDisplayNameTitle(p.name)}>
+              {truncateProjectDisplayName(p.name)}
+            </span>
           </button>
         ))}
       </div>
@@ -1138,7 +1153,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                   ? (
                     <>
                       <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="text-sm truncate">{truncateGoalDisplayName(currentGoal?.title ?? issue.goalId)}</span>
+                      <span
+                        className="text-sm truncate"
+                        title={fullDisplayNameTitle(currentGoal?.title ?? issue.goalId)}
+                      >
+                        {truncateGoalDisplayName(currentGoal?.title ?? issue.goalId)}
+                      </span>
                     </>
                     )
                   : (
@@ -1182,7 +1202,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                       }}
                     >
                       <Target className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate flex-1 text-left">{truncateGoalDisplayName(goal.title)}</span>
+                      <span className="truncate flex-1 text-left" title={fullDisplayNameTitle(goal.title)}>
+                        {truncateGoalDisplayName(goal.title)}
+                      </span>
                       {goal.status !== "active" && (
                         <span className="text-[10px] text-muted-foreground capitalize shrink-0">{goal.status}</span>
                       )}
