@@ -22,7 +22,6 @@ import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
-import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
 import { PluginSlotOutlet } from "@/plugins/slots";
 import { CompanyPatternIcon } from "./CompanyPatternIcon";
@@ -154,7 +153,6 @@ export function Sidebar() {
   const { companies, selectedCompanyId, selectedCompany } = useCompany();
   const compactCompanyLink =
     sidebarCompact && companies.filter((c) => c.status !== "archived").length > 1;
-  const inboxBadge = useInboxBadge(selectedCompanyId);
   const { data: liveRuns } = useQuery({
     queryKey: queryKeys.liveRuns(selectedCompanyId!),
     queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
@@ -239,11 +237,7 @@ export function Sidebar() {
           sidebarCompact ? "px-0.5" : "px-0",
         )}
       >
-        <SidebarPrimaryNav
-          liveRunCount={liveRunCount}
-          inboxBadge={inboxBadge}
-          pluginContext={pluginContext}
-        />
+        <SidebarPrimaryNav liveRunCount={liveRunCount} pluginContext={pluginContext} />
 
         <SidebarProjects />
 

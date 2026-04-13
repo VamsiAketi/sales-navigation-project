@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link, useLocation, useNavigate, useParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +15,12 @@ import { useToast } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { assigneeValueFromSelection, suggestedCommentAssigneeValue } from "../lib/assignees";
 import { queryKeys } from "../lib/queryKeys";
-import { readIssueDetailBreadcrumb, readIssueDetailBreadcrumbChain } from "../lib/issueDetailBreadcrumb";
+import {
+  createIssueDetailPath,
+  mergeIssueModalLocationState,
+  readIssueDetailBreadcrumb,
+  readIssueDetailBreadcrumbChain,
+} from "../lib/issueDetailBreadcrumb";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { relativeTime, cn } from "../lib/utils";
@@ -58,8 +63,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import type { ActivityEvent } from "@paperclipai/shared";
-import type { Agent, IssueAttachment } from "@paperclipai/shared";
+import { INBOX_MINE_ISSUE_STATUS_FILTER, type ActivityEvent, type Agent, type IssueAttachment } from "@paperclipai/shared";
+import { getRecentTouchedIssues } from "../lib/inbox";
+import { NextUnreadIcon } from "../components/icons/NextUnreadIcon";
 
 type CommentReassignment = {
   assigneeAgentId: string | null;
@@ -356,6 +362,35 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     return [single ?? { label: "Tasks", href: "/issues" }];
   }, [location.state]);
 
+  const { data: inboxTouchedIssuesRaw = [] } = useQuery({
+    queryKey: queryKeys.issues.listTouchedByMe(resolvedCompanyId!),
+    queryFn: () =>
+      issuesApi.list(resolvedCompanyId!, {
+        touchedByUserId: "me",
+        status: INBOX_MINE_ISSUE_STATUS_FILTER,
+      }),
+    enabled: !!resolvedCompanyId,
+  });
+
+  const nextUnreadIssue = useMemo(() => {
+    if (!issue) return null;
+    const ordered = getRecentTouchedIssues(inboxTouchedIssuesRaw);
+    const start = ordered.findIndex((i) => i.id === issue.id);
+    if (start < 0) return null;
+    for (let j = start + 1; j < ordered.length; j++) {
+      const row = ordered[j];
+      if (row?.isUnreadForMe) return row;
+    }
+    return null;
+  }, [issue, inboxTouchedIssuesRaw]);
+
+  const goToNextUnreadIssue = useCallback(() => {
+    if (!nextUnreadIssue) return;
+    const pathId = nextUnreadIssue.identifier ?? nextUnreadIssue.id;
+    const navigationState = mergeIssueModalLocationState(location.state, location);
+    navigate(createIssueDetailPath(pathId, navigationState), { state: navigationState });
+  }, [nextUnreadIssue, navigate, location]);
+
   // Filter out runs already shown by the live widget to avoid duplication
   const timelineRuns = useMemo(() => {
     const liveIds = new Set<string>();
@@ -548,6 +583,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.activeRun(issueId!) });
     if (selectedCompanyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listMineByMe(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listTouchedByMe(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId) });
@@ -558,6 +594,8 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     mutationFn: (id: string) => issuesApi.markRead(id),
     onSuccess: () => {
       if (selectedCompanyId) {
+        // Inbox / Attention Queue lists use listMineByMe — refresh after mark read.
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.listMineByMe(selectedCompanyId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.listTouchedByMe(selectedCompanyId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe(selectedCompanyId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId) });
@@ -866,6 +904,17 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
             <Button
               variant="ghost"
               size="icon-xs"
+              onClick={goToNextUnreadIssue}
+              disabled={!nextUnreadIssue}
+              title={nextUnreadIssue ? "Next unread in Attention Queue" : "No next unread item"}
+              aria-label={nextUnreadIssue ? "Next unread in Attention Queue" : "No next unread item"}
+              className="text-muted-foreground hover:text-foreground disabled:opacity-100 disabled:text-muted-foreground/45"
+            >
+              <NextUnreadIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={copyIssueToClipboard}
               title="Copy link to ticket"
             >
@@ -882,6 +931,17 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           </div>
 
           <div className="hidden md:flex items-center md:ml-auto shrink-0">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={goToNextUnreadIssue}
+              disabled={!nextUnreadIssue}
+              title={nextUnreadIssue ? "Next unread in Attention Queue" : "No next unread item"}
+              aria-label={nextUnreadIssue ? "Next unread in Attention Queue" : "No next unread item"}
+              className="text-muted-foreground hover:text-foreground disabled:opacity-100 disabled:text-muted-foreground/45"
+            >
+              <NextUnreadIcon className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon-xs"

@@ -37,7 +37,6 @@ import {DEFAULT_PRIMARY_NAV_IDS, ROUTINES_NAV_ID} from "../lib/sidebar-menu-orde
 import { usePrimarySidebarNavOrder, useCompanySidebarNavOrder } from "../hooks/useSidebarMenuOrder";
 import { cn } from "../lib/utils";
 import { sidebarNavItemTextClass } from "./SidebarSection";
-import type { InboxBadgeData } from "../lib/inbox";
 
 function SortableNavRow({
   id,
@@ -89,11 +88,10 @@ function SortableNavRow({
 
 type SidebarPrimaryNavProps = {
   liveRunCount: number;
-  inboxBadge: InboxBadgeData;
   pluginContext: { companyId: string | null; companyPrefix: string | null };
 };
 
-export function SidebarPrimaryNav({ liveRunCount, inboxBadge, pluginContext }: SidebarPrimaryNavProps) {
+export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimaryNavProps) {
   const { sidebarCompact } = useSidebar();
   const { selectedCompanyId } = useCompany();
   const { data: session } = useQuery({
@@ -195,9 +193,6 @@ export function SidebarPrimaryNav({ liveRunCount, inboxBadge, pluginContext }: S
             label="Attention Queue"
             icon={Inbox}
             iconClassName={azureSidebarIcon.inbox}
-            badge={inboxBadge.inbox}
-            badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
-            alert={inboxBadge.failedRuns > 0}
             className={dragDisabled ? undefined : "!pl-2"}
           />
         );

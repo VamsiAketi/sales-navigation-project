@@ -123,6 +123,7 @@ import { FilterBar, type FilterValue } from "@/components/FilterBar";
 import { InlineEditor } from "@/components/InlineEditor";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { Identity } from "@/components/Identity";
+import { NextUnreadIcon } from "@/components/icons/NextUnreadIcon";
 
 /* ------------------------------------------------------------------ */
 /*  Section wrapper                                                    */
@@ -1271,6 +1272,18 @@ export function DesignGuide() {
       {/* ============================================================ */}
       {/*  ICON REFERENCE                                               */}
       {/* ============================================================ */}
+      <Section title="App icons">
+        <SubSection title="NextUnreadIcon (task detail · next unread in Attention Queue)">
+          <div className="flex flex-wrap items-center gap-4">
+            <NextUnreadIcon className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground font-mono">NextUnreadIcon</span>
+            <span className="text-sm text-muted-foreground">
+              Lucide-weight chevron + solid dot (same blue family as inbox unread)
+            </span>
+          </div>
+        </SubSection>
+      </Section>
+
       <Section title="Common Icons (Lucide)">
         <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
           {[
