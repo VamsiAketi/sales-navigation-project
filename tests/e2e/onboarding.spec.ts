@@ -17,7 +17,7 @@ import { test, expect } from "@playwright/test";
 const SKIP_LLM = process.env.PAPERCLIP_E2E_SKIP_LLM !== "false";
 
 const COMPANY_NAME = `E2E-Test-${Date.now()}`;
-const AGENT_NAME = "AI Admin";
+const AGENT_NAME = "AI-Admin";
 const TASK_TITLE = "E2E test task";
 
 test.describe("Onboarding wizard", () => {
@@ -47,7 +47,7 @@ test.describe("Onboarding wizard", () => {
       page.locator("h3", { hasText: "Create your first agent" })
     ).toBeVisible({ timeout: 10_000 });
 
-    const agentNameInput = page.locator('input[placeholder="AI Admin"]');
+    const agentNameInput = page.locator('input[placeholder="AI-Admin"]');
     await expect(agentNameInput).toHaveValue(AGENT_NAME);
 
     // await expect(
@@ -64,7 +64,7 @@ test.describe("Onboarding wizard", () => {
     ).toBeVisible({ timeout: 10_000 });
 
     const taskTitleInput = page.locator(
-      'input[placeholder="e.g. Research competitor pricing"]'
+      'input[placeholder="e.g. Summarize last week\'s priorities for leadership"]'
     );
     await taskTitleInput.clear();
     await taskTitleInput.fill(TASK_TITLE);
@@ -125,7 +125,7 @@ test.describe("Onboarding wizard", () => {
     expect(task).toBeTruthy();
     expect(task.assigneeAgentId).toBe(ceoAgent.id);
     expect(task.description).toContain(
-      "You are the Al-Admin for this organization."
+      "You are the AI-Admin for this organization."
     );
     expect(task.description).not.toContain("github.com/paperclipai/companies");
 
