@@ -646,14 +646,20 @@ export function agentRoutes(db: Db) {
     const reports = Array.isArray(node.reports)
       ? (node.reports as Array<Record<string, unknown>>).map((report) => toLeanOrgNode(report))
       : [];
-    return {
+    const nodeType = node.nodeType === "human" ? "human" : "agent";
+    const base: Record<string, unknown> = {
       id: String(node.id),
       name: String(node.name),
       role: String(node.role),
       status: String(node.status),
-      nodeType: node.nodeType === "human" ? "human" : "agent",
+      nodeType,
       reports,
     };
+    if (nodeType === "human") {
+      if (typeof node.principalUserId === "string") base.principalUserId = node.principalUserId;
+      if (node.image === null || typeof node.image === "string") base.image = node.image;
+    }
+    return base;
   }
 
   router.param("id", async (req, _res, next, rawId) => {
@@ -933,13 +939,12 @@ export function agentRoutes(db: Db) {
           id: authUsers.id,
           name: authUsers.name,
           email: authUsers.email,
+          image: authUsers.image,
         })
         .from(authUsers),
     ]);
 
-    const usersById = new Map(
-      users.map((user) => [user.id, user.name?.trim() || user.email || "Unknown User"]),
-    );
+    const userRowById = new Map(users.map((user) => [user.id, user]));
 
     const nodesByKey = new Map<
       string,
@@ -949,6 +954,8 @@ export function agentRoutes(db: Db) {
         role: string;
         status: string;
         nodeType: "agent" | "human";
+        principalUserId?: string;
+        image?: string | null;
         reports: unknown[];
       }
     >();
@@ -986,13 +993,16 @@ export function agentRoutes(db: Db) {
         sortOrderByKey.set(`agent:${member.principalId}`, member.orgSort);
       }
       if (member.principalType !== "user") continue;
-      const humanName = usersById.get(member.principalId) ?? "Unknown User";
+      const u = userRowById.get(member.principalId);
+      const humanName = u?.name?.trim() || u?.email || "Unknown User";
       nodesByKey.set(`human:${member.id}`, {
         id: member.id,
         name: humanName,
         role: member.membershipRole ?? "member",
         status: member.status,
         nodeType: "human",
+        principalUserId: member.principalId,
+        image: u?.image ?? null,
         reports: [],
       });
       fallbackOrderByKey.set(`human:${member.id}`, fallbackCursor++);

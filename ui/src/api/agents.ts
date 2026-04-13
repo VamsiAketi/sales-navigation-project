@@ -49,6 +49,10 @@ export interface OrgNode {
   role: string;
   status: string;
   nodeType?: "agent" | "human";
+  /** Auth user id (human members only). */
+  principalUserId?: string;
+  /** Profile image URL path (human members only), e.g. `/api/assets/…/content`. */
+  image?: string | null;
   reports: OrgNode[];
 }
 

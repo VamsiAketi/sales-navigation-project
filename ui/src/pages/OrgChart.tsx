@@ -15,8 +15,11 @@ import {
 } from "@dnd-kit/core";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { accessApi } from "../api/access";
+import { assetsApi } from "../api/assets";
+import { authApi } from "../api/auth";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
 import { useOrgChartViewMemory } from "../hooks/useOrgChartViewMemory";
@@ -24,12 +27,23 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { ChevronDown, ChevronRight, Download, Maximize2, Minus, Network, Plus, Upload, User, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  Camera,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Maximize2,
+  Minus,
+  Network,
+  Plus,
+  Upload,
+  User,
+} from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 
-// Layout constants
-const CARD_W = 224;
-const CARD_H = 128;
+// Layout constants (visual cards may grow vertically; layout uses fixed anchor height)
+const CARD_W = 260;
+const CARD_H = 112;
 const GAP_X = 72;
 const GAP_Y = 160;
 const PADDING = 96;
@@ -42,6 +56,9 @@ interface LayoutNode {
   role: string;
   status: string;
   nodeType: "agent" | "human";
+  /** Human auth user id (for self-service photo + display). */
+  principalUserId?: string;
+  image?: string | null;
   x: number;
   y: number;
   children: LayoutNode[];
@@ -81,6 +98,8 @@ function layoutTree(node: OrgNode, x: number, y: number, isExpanded: (id: string
     role: node.role,
     status: node.status,
     nodeType: node.nodeType ?? "agent",
+    principalUserId: node.principalUserId,
+    image: node.image ?? null,
     x: x + (totalW - CARD_W) / 2,
     y,
     children: layoutChildren,
@@ -249,26 +268,118 @@ const statusDotColor: Record<string, string> = {
 };
 const defaultDotColor = "#a3a3a3";
 
-// ── Type accent config ──────────────────────────────────────────────────
+/** Soft lavender connectors (reference org chart). */
+const ORG_EDGE_STROKE = "#a5b4fc";
 
-const nodeAccent = {
-  human: {
-    iconBg: "bg-blue-50 dark:bg-blue-950/40",
-    iconColor: "text-blue-500 dark:text-blue-400",
-    badgeBg: "bg-blue-50 dark:bg-blue-950/40",
-    badgeText: "text-blue-600 dark:text-blue-400",
-    borderTop: "#3b82f6",
-    label: "Human",
-  },
-  agent: {
-    iconBg: "bg-violet-50 dark:bg-violet-950/40",
-    iconColor: "text-violet-500 dark:text-violet-400",
-    badgeBg: "bg-violet-50 dark:bg-violet-950/40",
-    badgeText: "text-violet-600 dark:text-violet-400",
-    borderTop: "#8b5cf6",
-    label: "AI Agent",
-  },
-};
+function formatMembershipRole(role: string): string {
+  const trimmed = (role || "member").trim() || "member";
+  return trimmed.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function humanStatusDotColor(status: string): string {
+  if (status === "active") return "#facc15";
+  if (status === "suspended") return "#94a3b8";
+  return "#cbd5e1";
+}
+
+function resolveAssetSrc(path: string): string {
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  if (path.startsWith("/")) return path;
+  return path;
+}
+
+function HumanOrgAvatar({
+  companyId,
+  membershipId,
+  principalUserId,
+  imageUrl,
+  status,
+  sessionUserId,
+}: {
+  companyId: string;
+  membershipId: string;
+  principalUserId: string | undefined;
+  imageUrl: string | null | undefined;
+  status: string;
+  sessionUserId: string | null | undefined;
+}) {
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+  const [localImage, setLocalImage] = useState<string | null>(imageUrl ?? null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setLocalImage(imageUrl ?? null);
+  }, [imageUrl]);
+
+  const canUpload = !!principalUserId && !!sessionUserId && sessionUserId === principalUserId;
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const uploaded = await assetsApi.uploadImage(companyId, file, "org-profile");
+      return accessApi.patchMemberProfilePhoto(companyId, membershipId, uploaded.assetId);
+    },
+    onSuccess: (res) => {
+      setLocalImage(res.image);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.org(companyId) });
+    },
+    onError: (err: Error) => {
+      pushToast({ title: "Could not update photo", body: err.message, tone: "error" });
+    },
+  });
+
+  const dotColor = humanStatusDotColor(status);
+
+  return (
+    <div className="relative h-12 w-12 shrink-0">
+      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800/90">
+        {localImage ? (
+          <img
+            src={resolveAssetSrc(localImage)}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <User className="h-6 w-6 text-slate-500 dark:text-slate-400" />
+        )}
+      </div>
+      <span
+        className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-card shadow-sm"
+        style={{ backgroundColor: dotColor }}
+      />
+      {canUpload ? (
+        <>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) uploadMutation.mutate(f);
+            }}
+          />
+          <button
+            type="button"
+            data-org-avatar-upload
+            className="absolute -top-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-background/95 text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+            title="Upload photo"
+            disabled={uploadMutation.isPending}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              fileRef.current?.click();
+            }}
+          >
+            <Camera className="h-3 w-3" />
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 // ── Card body (shared with drag overlay) ───────────────────────────────
 
@@ -276,67 +387,74 @@ function CardContent({
   node,
   agent,
   isAgentNode,
+  companyId,
+  sessionUserId,
 }: {
-  node: { id: string; name: string; role: string; status: string };
+  node: {
+    id: string;
+    name: string;
+    role: string;
+    status: string;
+    principalUserId?: string;
+    image?: string | null;
+  };
   agent: Agent | undefined;
   isAgentNode: boolean;
+  companyId: string;
+  sessionUserId: string | null | undefined;
 }) {
   const dotColor = statusDotColor[node.status] ?? defaultDotColor;
-  const accent = isAgentNode ? nodeAccent.agent : nodeAccent.human;
   const budgetLabel = agent?.budgetMonthlyCents
     ? `$${Math.round(agent.budgetMonthlyCents / 100).toLocaleString()}/mo`
     : null;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Top accent bar */}
-      <div
-        className="h-0.5 w-full rounded-t-2xl shrink-0"
-        style={{ backgroundColor: accent.borderTop }}
-      />
-
-      <div className="flex items-start gap-3 px-3.5 pt-3 pb-2.5 flex-1">
-        {/* Avatar */}
-        <div className="relative shrink-0 mt-0.5">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accent.iconBg}`}>
-            {isAgentNode ? (
-              <AgentIcon icon={agent?.icon} className={`h-5 w-5 ${accent.iconColor}`} />
-            ) : (
-              <User className={`h-5 w-5 ${accent.iconColor}`} />
-            )}
+    <div className="flex h-full flex-col">
+      <div className="flex flex-1 items-center gap-3 px-4 py-3.5">
+        {isAgentNode ? (
+          <div className="relative h-12 w-12 shrink-0">
+            <div className="flex h-full w-full items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800/90">
+              <AgentIcon icon={agent?.icon} className="h-6 w-6 text-violet-500 dark:text-violet-400" />
+            </div>
+            <span
+              className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-card shadow-sm"
+              style={{ backgroundColor: dotColor }}
+            />
           </div>
-          <span
-            className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-card shadow-sm"
-            style={{ backgroundColor: dotColor }}
+        ) : (
+          <HumanOrgAvatar
+            companyId={companyId}
+            membershipId={node.id}
+            principalUserId={node.principalUserId}
+            imageUrl={node.image}
+            status={node.status}
+            sessionUserId={sessionUserId}
           />
-        </div>
+        )}
 
-        {/* Text block */}
-        <div className="flex flex-col min-w-0 flex-1 gap-0.5">
-          <span className="text-[13px] font-semibold text-foreground leading-tight truncate">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate text-sm font-semibold leading-tight tracking-tight text-foreground">
             {node.name}
           </span>
-          <span className="text-[11px] text-muted-foreground leading-snug truncate">
-            {isAgentNode ? (agent?.title ?? roleLabel(node.role)) : node.role}
+          <span className="truncate text-xs leading-snug text-muted-foreground">
+            {isAgentNode
+              ? (agent?.title ?? roleLabel(node.role))
+              : formatMembershipRole(node.role)}
           </span>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
+              {isAgentNode ? "AI teammate" : "Human"}
+            </span>
+            {budgetLabel ? (
+              <span className="font-mono text-[10px] text-muted-foreground/70">{budgetLabel}</span>
+            ) : null}
+            {isAgentNode && agent ? (
+              <span className="ml-auto font-mono text-[9px] uppercase tracking-wide text-muted-foreground/50">
+                {adapterLabels[agent.adapterType] ?? agent.adapterType}
+              </span>
+            ) : null}
+          </div>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center gap-1.5 px-3.5 pb-3 flex-wrap">
-        <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ${accent.badgeBg} ${accent.badgeText}`}>
-          {accent.label}
-        </span>
-        {budgetLabel && (
-          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/60 font-mono">
-            {budgetLabel}
-          </span>
-        )}
-        {isAgentNode && agent && (
-          <span className="ml-auto text-[9px] text-muted-foreground/40 font-mono uppercase tracking-wide">
-            {adapterLabels[agent.adapterType] ?? agent.adapterType}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -353,6 +471,8 @@ interface OrgCardProps {
   hasReports: boolean;
   onToggleExpand: (expand: boolean) => void;
   onNavigate: () => void;
+  companyId: string;
+  sessionUserId: string | null | undefined;
 }
 
 function OrgCard({
@@ -364,6 +484,8 @@ function OrgCard({
   hasReports,
   onToggleExpand,
   onNavigate,
+  companyId,
+  sessionUserId,
 }: OrgCardProps) {
   const isAgentNode = node.nodeType === "agent";
 
@@ -389,21 +511,27 @@ function OrgCard({
       ref={setRef}
       data-org-card
       className={[
-        "absolute bg-card border rounded-2xl select-none transition-all duration-150",
+        "absolute select-none rounded-2xl border border-slate-200/90 bg-white transition-all duration-150 dark:border-border/60 dark:bg-card",
         isDragging
-          ? "opacity-20 cursor-grabbing shadow-sm"
+          ? "cursor-grabbing opacity-20 shadow-sm"
           : isDropTarget
-            ? "border-primary ring-2 ring-primary/30 shadow-xl cursor-grab"
+            ? "cursor-grab border-primary shadow-xl ring-2 ring-primary/30"
             : isInvalidTarget
-              ? "opacity-50 cursor-not-allowed shadow-sm border-border/50"
-              : "shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] hover:-translate-y-0.5 cursor-grab border-border/70 hover:border-border",
+              ? "cursor-not-allowed border-border/50 opacity-50 shadow-sm"
+              : "cursor-grab border-transparent shadow-[0_4px_6px_-1px_rgba(15,23,42,0.08),0_2px_4px_-2px_rgba(15,23,42,0.05)] hover:-translate-y-0.5 hover:shadow-[0_8px_16px_-4px_rgba(15,23,42,0.12)] dark:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.35)]",
       ].join(" ")}
       style={{ left: node.x, top: node.y, width: CARD_W, minHeight: CARD_H }}
       onClick={onNavigate}
       {...listeners}
       {...attributes}
     >
-      <CardContent node={node} agent={agent} isAgentNode={isAgentNode} />
+      <CardContent
+        node={node}
+        agent={agent}
+        isAgentNode={isAgentNode}
+        companyId={companyId}
+        sessionUserId={sessionUserId}
+      />
 
       {hasReports && (
         <div className="px-3.5 pb-2.5 -mt-1.5">
@@ -469,12 +597,12 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
 function DotGrid() {
   return (
     <svg
-      className="absolute inset-0 w-full h-full pointer-events-none"
+      className="pointer-events-none absolute inset-0 h-full w-full"
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <pattern id="org-dotgrid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
-          <circle cx="1" cy="1" r="1" className="fill-foreground/[0.07]" />
+        <pattern id="org-dotgrid" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+          <circle cx="1.5" cy="1.5" r="1" className="fill-slate-400/[0.12] dark:fill-foreground/[0.06]" />
         </pattern>
       </defs>
       <rect width="100%" height="100%" fill="url(#org-dotgrid)" />
@@ -496,6 +624,13 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    staleTime: 60_000,
+  });
+  const sessionUserId = session?.user?.id ?? null;
 
   const { memory, expandedSet, setExpandedNodeIds, toggleExpanded, setViewport } = useOrgChartViewMemory(companyId);
 
@@ -943,7 +1078,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
       >
         <div
           ref={containerRef}
-          className="w-full flex-1 min-h-0 overflow-hidden relative bg-muted/10 dark:bg-muted/5 border border-border/60 rounded-xl"
+          className="relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50 dark:border-border/50 dark:bg-muted/20"
           style={{ cursor: isPanning ? "grabbing" : "default" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -1064,12 +1199,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
           </div>
 
           {/* Connector lines */}
-          <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
-            <defs>
-              <marker id="org-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L6,3 z" className="fill-foreground/20" />
-              </marker>
-            </defs>
+          <svg className="pointer-events-none absolute inset-0" style={{ width: "100%", height: "100%" }}>
             <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
               {edges.map(({ parent, child }) => {
                 const x1 = parent.x + CARD_W / 2;
@@ -1083,9 +1213,9 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
                     key={`${parent.id}-${child.id}`}
                     d={`M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`}
                     fill="none"
-                    stroke="currentColor"
-                    className="text-foreground/20 dark:text-foreground/15"
-                    strokeWidth={1.5}
+                    stroke={ORG_EDGE_STROKE}
+                    strokeOpacity={0.85}
+                    strokeWidth={1.35}
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
                   />
@@ -1123,6 +1253,8 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
                     if (node.nodeType !== "agent") return;
                     navigate(agent ? agentUrl(agent) : `/agents/${node.id}`);
                   }}
+                  companyId={companyId}
+                  sessionUserId={sessionUserId}
                 />
               );
             })}
@@ -1132,10 +1264,16 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
         <DragOverlay dropAnimation={null}>
           {activeNode ? (
             <div
-              className="bg-card border border-primary rounded-2xl shadow-2xl opacity-95 pointer-events-none"
+              className="pointer-events-none rounded-2xl border border-primary bg-white opacity-95 shadow-2xl dark:bg-card"
               style={{ width: CARD_W, minHeight: CARD_H }}
             >
-              <CardContent node={activeNode} agent={activeAgent} isAgentNode={activeIsAgent} />
+              <CardContent
+                node={activeNode}
+                agent={activeAgent}
+                isAgentNode={activeIsAgent}
+                companyId={companyId}
+                sessionUserId={sessionUserId}
+              />
             </div>
           ) : null}
         </DragOverlay>

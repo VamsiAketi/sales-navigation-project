@@ -142,8 +142,8 @@ describe("GET /api/companies/:companyId/org", () => {
     ];
 
     const users = [
-      { id: "user-a", name: "Human A", email: "a@example.com" },
-      { id: "user-b", name: "Human B", email: "b@example.com" },
+      { id: "user-a", name: "Human A", email: "a@example.com", image: null },
+      { id: "user-b", name: "Human B", email: "b@example.com", image: null },
     ];
 
     const db = {
@@ -173,6 +173,8 @@ describe("GET /api/companies/:companyId/org", () => {
         role: "Manager",
         status: "active",
         nodeType: "human",
+        principalUserId: "user-b",
+        image: null,
         reports: [
           {
             id: "agent-c",
@@ -188,6 +190,8 @@ describe("GET /api/companies/:companyId/org", () => {
             role: "Engineer",
             status: "active",
             nodeType: "human",
+            principalUserId: "user-a",
+            image: null,
             reports: [],
           },
         ],
