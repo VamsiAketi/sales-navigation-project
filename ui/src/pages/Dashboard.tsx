@@ -335,13 +335,13 @@ function SectionDragHandle(props: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
-      className="mt-0.5 flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted active:cursor-grabbing"
+      className="mt-0.5 flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted active:cursor-grabbing"
       title="Drag to reorder section"
       {...props}
     >
-      <span className="grid grid-cols-2 gap-0.5" aria-hidden>
+      <span className="grid grid-cols-2 gap-px" aria-hidden>
         {Array.from({ length: 6 }).map((_, i) => (
-          <span key={i} className="h-1 w-1 rounded-full bg-muted-foreground/65" />
+          <span key={i} className="h-0.5 w-0.5 rounded-full bg-muted-foreground/65" />
         ))}
       </span>
     </button>
@@ -367,7 +367,7 @@ function DraggableSection({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("flex gap-3", isDragging ? "z-50 opacity-50" : "")}
+      className={cn("flex gap-1.5", isDragging ? "z-50 opacity-50" : "")}
     >
       <SectionDragHandle {...attributes} {...listeners} />
       <div className="min-w-0 flex-1 space-y-3">
@@ -497,6 +497,10 @@ export function Dashboard() {
 
   const recentIssues = issues ? getRecentIssues(issues) : [];
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 10), [activity]);
+  const dashboardGoals = useMemo(
+    () => (goals ?? []).filter((g) => g.status !== "cancelled"),
+    [goals],
+  );
 
   useEffect(() => {
     for (const timer of activityAnimationTimersRef.current) {
@@ -665,11 +669,6 @@ export function Dashboard() {
         </div>
       ) : null}
 
-      <p className="text-[11px] text-muted-foreground">
-        Drag a section by the handle on the left. Order is saved per company
-        {layoutUserId ? " for your account" : " on this browser"}.
-      </p>
-
       <DndContext sensors={sensors} onDragEnd={handleSectionDragEnd}>
         <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
           <div className="space-y-6">
@@ -689,7 +688,7 @@ export function Dashboard() {
                       </Link>
                     }
                   >
-                    <GoalsSection companyId={selectedCompanyId} goals={goals ?? []} />
+                    <GoalsSection companyId={selectedCompanyId} goals={dashboardGoals} />
                   </DraggableSection>
                 );
               }
