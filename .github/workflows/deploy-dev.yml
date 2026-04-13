@@ -109,6 +109,14 @@ jobs:
           DB_NAME="ai-harness-dev"
           DATABASE_URL="postgresql://${{ secrets.AZURE_POSTGRES_USER }}:${{ secrets.AZURE_POSTGRES_PASSWORD }}@${{ secrets.AZURE_POSTGRES_HOST }}:5432/${DB_NAME}?sslmode=require"
 
+          # Helm 4+ uses server-side apply; scaling the Deployment in Rancher/UI makes Rancher own
+          # .spec.replicas and breaks upgrade until we force-conflict or reset replicas elsewhere.
+          FORCE_CONFLICTS_ARG=""
+          if helm upgrade --help 2>&1 | grep -q -- '--force-conflicts'; then
+            FORCE_CONFLICTS_ARG="--force-conflicts"
+            echo "Helm 4+: using --force-conflicts so the chart can reclaim .spec.replicas after UI scale."
+          fi
+
           helm upgrade --install "${DEV_RELEASE_NAME}" ./helm \
           --namespace "${DEV_NAMESPACE}" \
           --set fullnameOverride="${DEV_RELEASE_NAME}" \
@@ -128,7 +136,8 @@ jobs:
           --set-string server.database.externalUrl="${DATABASE_URL}" \
           --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
           --set-string server.secrets.paperclipSecretsMasterKey="${{ secrets.PAPERCLIP_SECRETS_MASTER_KEY }}" \
-          --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
+          --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}" \
+          ${FORCE_CONFLICTS_ARG}
       - name: Capture CEO invite URL from logs
         id: capture_invite
         run: |
