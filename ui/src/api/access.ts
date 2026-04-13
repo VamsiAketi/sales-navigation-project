@@ -120,7 +120,7 @@ export type CompanyMember = {
     permissionKey: PermissionKey;
     scope: Record<string, unknown> | null;
   }>;
-  user: { id: string; name: string; email: string } | null;
+  user: { id: string; name: string; email: string; image?: string | null } | null;
   agent: { id: string; name: string; role: string } | null;
 };
 
@@ -161,6 +161,12 @@ export const accessApi = {
 
   listMembers: (companyId: string) =>
     api.get<CompanyMember[]>(`/companies/${companyId}/members`),
+
+  patchMemberProfilePhoto: (companyId: string, memberId: string, assetId: string) =>
+    api.patch<{ ok: true; image: string }>(
+      `/companies/${companyId}/members/${encodeURIComponent(memberId)}/profile-photo`,
+      { assetId },
+    ),
 
   updateMemberOrgConfig: (
     companyId: string,

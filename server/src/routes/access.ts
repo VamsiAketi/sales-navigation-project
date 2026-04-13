@@ -14,6 +14,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents as dbAgents,
   agentApiKeys,
+  assets,
   authUsers,
   companyMemberships,
   instanceUserRoles,
@@ -3112,11 +3113,12 @@ export function accessRoutes(
             .select({
               id: authUsers.id,
               name: authUsers.name,
-              email: authUsers.email
+              email: authUsers.email,
+              image: authUsers.image,
             })
             .from(authUsers)
             .where(inArray(authUsers.id, userIds))
-        : Promise.resolve([] as Array<{ id: string; name: string; email: string }>),
+        : Promise.resolve([] as Array<{ id: string; name: string; email: string; image: string | null }>),
       agentIds.length > 0
         ? db
             .select({
@@ -3211,6 +3213,57 @@ export function accessRoutes(
             : null
       }))
     );
+  });
+
+  router.patch("/companies/:companyId/members/:memberId/profile-photo", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const memberId = req.params.memberId as string;
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type !== "board") throw forbidden("Board access required");
+    const userId = req.actor.userId;
+    if (!userId) throw forbidden();
+
+    const assetId = typeof (req.body as { assetId?: unknown })?.assetId === "string"
+      ? (req.body as { assetId: string }).assetId
+      : null;
+    if (!assetId) throw badRequest("assetId is required");
+
+    const [member] = await db
+      .select()
+      .from(companyMemberships)
+      .where(and(eq(companyMemberships.id, memberId), eq(companyMemberships.companyId, companyId)))
+      .limit(1);
+    if (!member) throw notFound("Member not found");
+    if (member.principalType !== "user") throw badRequest("Profile photo applies to human members only");
+
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(and(eq(assets.id, assetId), eq(assets.companyId, companyId)))
+      .limit(1);
+    if (!asset) throw notFound("Asset not found");
+
+    const isSelf = userId === member.principalId;
+    const canManage = await access.canUser(companyId, userId, "users:manage_permissions");
+    if (!isSelf && !canManage) throw forbidden("You cannot update this profile photo");
+
+    const imageUrl = `/api/assets/${asset.id}/content`;
+    await db
+      .update(authUsers)
+      .set({ image: imageUrl, updatedAt: new Date() })
+      .where(eq(authUsers.id, member.principalId));
+
+    await logActivity(db, {
+      companyId,
+      actorType: "user",
+      actorId: userId,
+      action: "user.profile_photo_updated",
+      entityType: "user",
+      entityId: member.principalId,
+      details: { assetId: asset.id, membershipId: member.id },
+    });
+
+    res.json({ ok: true as const, image: imageUrl });
   });
 
   router.patch(
