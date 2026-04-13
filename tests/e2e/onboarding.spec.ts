@@ -22,20 +22,12 @@ const TASK_TITLE = "E2E test task";
 
 test.describe("Onboarding wizard", () => {
   test("completes full wizard flow", async ({ page }) => {
-    await page.goto("/");
+    // `/` redirects to the dashboard when companies already exist; `/onboarding`
+    // always triggers the route-driven wizard (step 1) even with existing data.
+    await page.goto("/onboarding");
 
     const wizardHeading = page.locator("h3", { hasText: "Name your company" });
-    const newCompanyBtn = page.getByRole("button", { name: "New Company" });
-
-    await expect(
-      wizardHeading.or(newCompanyBtn)
-    ).toBeVisible({ timeout: 15_000 });
-
-    if (await newCompanyBtn.isVisible()) {
-      await newCompanyBtn.click();
-    }
-
-    await expect(wizardHeading).toBeVisible({ timeout: 5_000 });
+    await expect(wizardHeading).toBeVisible({ timeout: 15_000 });
 
     const companyNameInput = page.locator('input[placeholder="Acme Corp"]');
     await companyNameInput.fill(COMPANY_NAME);
