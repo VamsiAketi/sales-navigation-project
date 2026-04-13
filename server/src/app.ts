@@ -340,6 +340,16 @@ export async function createApp(
       res.json({ status: true });
       return;
     }
+    const mustChangePassword = await db
+      .select({ id: instanceUserRoles.id })
+      .from(instanceUserRoles)
+      .where(and(eq(instanceUserRoles.userId, existingUser.id), eq(instanceUserRoles.role, "must_change_password")))
+      .then((rows) => rows[0] ?? null);
+    if (mustChangePassword) {
+      // Do not send OTP until initial temporary password setup is completed.
+      res.json({ status: true });
+      return;
+    }
     req.body.email = email;
     next();
   });

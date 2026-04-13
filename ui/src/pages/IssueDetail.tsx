@@ -764,7 +764,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   );
 
   return (
-    <div className={fullWidth ? "space-y-6" : "max-w-2xl space-y-6"}>
+    <div className={fullWidth ? "space-y-6 pt-4" : "max-w-2xl space-y-6 pt-4"}>
       {/* Parent chain breadcrumb */}
       {ancestors.length > 0 && (
         <nav className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
