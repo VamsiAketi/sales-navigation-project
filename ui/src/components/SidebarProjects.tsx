@@ -80,7 +80,8 @@ function SortableProjectItem({
             if (isMobile) setSidebarOpen(false);
           }}
           className={cn(
-            "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium transition-colors",
+            // pl-0: list is wrapped with pl-7 so rows nest under "Projects" (chevron w-5 + pl-2).
+            "flex items-center gap-2.5 py-1.5 pl-0 pr-3 text-[13px] font-medium transition-colors",
             activeProjectRef === routeRef || activeProjectRef === project.id
               ? "bg-accent text-foreground"
               : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
@@ -240,7 +241,7 @@ export function SidebarProjects() {
             items={orderedProjects.map((project) => project.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="flex flex-col gap-0.5 mt-0.5">
+            <div className="mt-0.5 flex flex-col gap-0.5 pl-7">
               {orderedProjects.map((project: Project) => (
                 <SortableProjectItem
                   key={project.id}
