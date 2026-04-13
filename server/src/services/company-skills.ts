@@ -1329,6 +1329,23 @@ function isMarkdownPath(filePath: string) {
   return fileName === "skill.md" || fileName.endsWith(".md");
 }
 
+function isBinaryPreviewPath(filePath: string) {
+  const fileName = path.posix.basename(filePath).toLowerCase();
+  return (
+    fileName.endsWith(".pdf")
+    || fileName.endsWith(".doc")
+    || fileName.endsWith(".docx")
+    || fileName.endsWith(".xls")
+    || fileName.endsWith(".xlsx")
+    || fileName.endsWith(".png")
+    || fileName.endsWith(".jpg")
+    || fileName.endsWith(".jpeg")
+    || fileName.endsWith(".gif")
+    || fileName.endsWith(".webp")
+    || fileName.endsWith(".svg")
+  );
+}
+
 function deriveSkillSourceInfo(skill: CompanySkill): {
   editable: boolean;
   editableReason: string | null;
@@ -1391,8 +1408,8 @@ function deriveSkillSourceInfo(skill: CompanySkill): {
       return {
         editable: true,
         editableReason: null,
-        sourceLabel: "Paperclip workspace",
-        sourceBadge: "paperclip",
+        sourceLabel: "AI-Harness Workspace",
+        sourceBadge: "local",
         sourcePath: managedRoot,
       };
     }
@@ -1684,7 +1701,13 @@ export function companySkillService(db: Db) {
     if (skill.sourceType === "local_path" || skill.sourceType === "catalog") {
       const absolutePath = resolveLocalSkillFilePath(skill, normalizedPath);
       if (absolutePath) {
-        content = await fs.readFile(absolutePath, "utf8");
+        if (isBinaryPreviewPath(normalizedPath)) {
+          const stats = await fs.stat(absolutePath).catch(() => null);
+          const byteSize = stats?.size ?? 0;
+          content = `Binary file preview is not supported in editor.\nPath: ${normalizedPath}\nSize: ${byteSize} bytes`;
+        } else {
+          content = await fs.readFile(absolutePath, "utf8");
+        }
       } else if (normalizedPath === "SKILL.md") {
         content = skill.markdown;
       } else {
@@ -1765,6 +1788,20 @@ export function companySkillService(db: Db) {
     return imported[0]!;
   }
 
+  async function refreshLocalSkillFileInventoryFromDisk(skill: CompanySkill) {
+    const skillDir = normalizeSkillDirectory(skill);
+    if (!skillDir) return;
+    const inventory = await collectLocalSkillInventory(skillDir, "full");
+    await db
+      .update(companySkills)
+      .set({
+        fileInventory: serializeFileInventory(inventory),
+        trustLevel: deriveTrustLevel(inventory),
+        updatedAt: new Date(),
+      })
+      .where(eq(companySkills.id, skill.id));
+  }
+
   async function updateFile(companyId: string, skillId: string, relativePath: string, content: string): Promise<CompanySkillFileDetail> {
     await ensureSkillInventoryCurrent(companyId);
     const skill = await getById(skillId);
@@ -1799,6 +1836,36 @@ export function companySkillService(db: Db) {
         .set({ updatedAt: new Date() })
         .where(eq(companySkills.id, skill.id));
     }
+
+    await refreshLocalSkillFileInventoryFromDisk(skill);
+
+    const detail = await readFile(companyId, skillId, normalizedPath);
+    if (!detail) throw notFound("Skill file not found");
+    return detail;
+  }
+
+  async function updateFileBinary(companyId: string, skillId: string, relativePath: string, content: Buffer): Promise<CompanySkillFileDetail> {
+    await ensureSkillInventoryCurrent(companyId);
+    const skill = await getById(skillId);
+    if (!skill || skill.companyId !== companyId) throw notFound("Skill not found");
+
+    const source = deriveSkillSourceInfo(skill);
+    if (!source.editable || skill.sourceType !== "local_path") {
+      throw unprocessable(source.editableReason ?? "This skill cannot be edited.");
+    }
+
+    const normalizedPath = normalizePortablePath(relativePath);
+    const absolutePath = resolveLocalSkillFilePath(skill, normalizedPath);
+    if (!absolutePath) throw notFound("Skill file not found");
+
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, content);
+    await db
+      .update(companySkills)
+      .set({ updatedAt: new Date() })
+      .where(eq(companySkills.id, skill.id));
+
+    await refreshLocalSkillFileInventoryFromDisk(skill);
 
     const detail = await readFile(companyId, skillId, normalizedPath);
     if (!detail) throw notFound("Skill file not found");
@@ -2360,6 +2427,7 @@ export function companySkillService(db: Db) {
     updateStatus,
     readFile,
     updateFile,
+    updateFileBinary,
     createLocalSkill,
     deleteSkill,
     importFromSource,

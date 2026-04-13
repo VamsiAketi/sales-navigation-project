@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type SVGProps } from "react";
+import { useEffect, useMemo, useRef, useState, type SVGProps } from "react";
 import { Link, useNavigate, useParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -29,6 +29,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,13 +45,16 @@ import {
   ChevronRight,
   Code2,
   Eye,
+  FilePlus,
   FileCode2,
   FileText,
   Folder,
+  FolderPlus,
   FolderOpen,
   Github,
   Link2,
   ExternalLink,
+  Info,
   Paperclip,
   Pencil,
   Plus,
@@ -65,6 +74,8 @@ type SkillTreeNode = {
 const SKILL_TREE_BASE_INDENT = 16;
 const SKILL_TREE_STEP_INDENT = 24;
 const SKILL_TREE_ROW_HEIGHT_CLASS = "min-h-9";
+const ALLOWED_UPLOAD_EXTENSIONS = ["csv", "pdf", "doc", "docx", "xls", "xlsx"] as const;
+const ALLOWED_UPLOAD_ACCEPT = ".csv,.pdf,.doc,.docx,.xls,.xlsx";
 
 function VercelMark(props: SVGProps<SVGSVGElement>) {
   return (
@@ -300,6 +311,7 @@ function SkillTree({
   expandedDirs,
   onToggleDir,
   onSelectPath,
+  onOpenAddToSkill,
   depth = 0,
 }: {
   nodes: SkillTreeNode[];
@@ -308,6 +320,7 @@ function SkillTree({
   expandedDirs: Set<string>;
   onToggleDir: (path: string) => void;
   onSelectPath: (path: string) => void;
+  onOpenAddToSkill?: (skillId: string, kind: "file" | "folder", parentPath?: string) => void;
   depth?: number;
 }) {
   return (
@@ -319,7 +332,7 @@ function SkillTree({
             <div key={node.path ?? node.name}>
               <div
                 className={cn(
-                  "group grid w-full grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-x-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground",
+                  "group grid w-full grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-x-1 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground",
                   SKILL_TREE_ROW_HEIGHT_CLASS,
                 )}
               >
@@ -334,13 +347,39 @@ function SkillTree({
                   </span>
                   <span className="truncate">{node.name}</span>
                 </button>
-                <button
-                  type="button"
-                  className="flex h-9 w-9 items-center justify-center self-center rounded-sm text-muted-foreground opacity-70 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                  onClick={() => node.path && onToggleDir(node.path)}
-                >
-                  {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                </button>
+                <div className="flex items-center justify-end gap-1">
+                  {node.path && onOpenAddToSkill ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-4 w-4 items-center justify-center rounded-sm text-muted-foreground opacity-70 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                          title="Add file or folder in this folder"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span className="sr-only">Add in folder</span>
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => onOpenAddToSkill(skillId, "file", node.path ?? undefined)}>
+                          <FilePlus className="mr-2 h-3.5 w-3.5" />
+                          Add file
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onOpenAddToSkill(skillId, "folder", node.path ?? undefined)}>
+                          <FolderPlus className="mr-2 h-3.5 w-3.5" />
+                          Add folder
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="flex h-4 w-4 items-center justify-center rounded-sm text-muted-foreground opacity-70 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                    onClick={() => node.path && onToggleDir(node.path)}
+                  >
+                    {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
               </div>
               {expanded && (
                 <SkillTree
@@ -350,6 +389,7 @@ function SkillTree({
                   expandedDirs={expandedDirs}
                   onToggleDir={onToggleDir}
                   onSelectPath={onSelectPath}
+                  onOpenAddToSkill={onOpenAddToSkill}
                   depth={depth + 1}
                 />
               )}
@@ -392,6 +432,7 @@ function SkillList({
   onToggleDir,
   onSelectSkill,
   onSelectPath,
+  onOpenAddToSkill,
 }: {
   skills: CompanySkillListItem[];
   selectedSkillId: string | null;
@@ -403,6 +444,7 @@ function SkillList({
   onToggleDir: (skillId: string, path: string) => void;
   onSelectSkill: (skillId: string) => void;
   onSelectPath: (skillId: string, path: string) => void;
+  onOpenAddToSkill?: (skillId: string, kind: "file" | "folder", parentPath?: string) => void;
 }) {
   const filteredSkills = skills.filter((skill) => {
     const haystack = `${skill.name} ${skill.key} ${skill.slug} ${skill.sourceLabel ?? ""}`.toLowerCase();
@@ -429,7 +471,7 @@ function SkillList({
           <div key={skill.id} className="border-b border-border">
             <div
               className={cn(
-                "group grid grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-x-1 px-3 py-1.5 hover:bg-accent/30",
+                "group grid grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-x-1 px-3 py-1.5 hover:bg-accent/30",
                 skill.id === selectedSkillId && "text-foreground",
               )}
             >
@@ -453,14 +495,40 @@ function SkillList({
                   </span>
                 </span>
               </Link>
-              <button
-                type="button"
-                className="flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-sm text-muted-foreground opacity-80 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                onClick={() => onToggleSkill(skill.id)}
-                aria-label={expanded ? `Collapse ${skill.name}` : `Expand ${skill.name}`}
-              >
-                {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              </button>
+              <div className="flex items-center justify-end gap-1">
+                {skill.editable && onOpenAddToSkill ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-4 w-4 shrink-0 items-center justify-center self-center rounded-sm text-muted-foreground opacity-80 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                        title="Add file or folder to this skill"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span className="sr-only">Add to skill</span>
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onOpenAddToSkill(skill.id, "file")}>
+                        <FilePlus className="mr-2 h-3.5 w-3.5" />
+                        Add file
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onOpenAddToSkill(skill.id, "folder")}>
+                        <FolderPlus className="mr-2 h-3.5 w-3.5" />
+                        Add folder
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+                <button
+                  type="button"
+                  className="flex h-4 w-4 shrink-0 items-center justify-center self-center rounded-sm text-muted-foreground opacity-80 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                  onClick={() => onToggleSkill(skill.id)}
+                  aria-label={expanded ? `Collapse ${skill.name}` : `Expand ${skill.name}`}
+                >
+                  {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                </button>
+              </div>
             </div>
             <div
               aria-hidden={!expanded}
@@ -477,6 +545,7 @@ function SkillList({
                   expandedDirs={expandedDirs[skill.id] ?? new Set<string>()}
                   onToggleDir={(path) => onToggleDir(skill.id, path)}
                   onSelectPath={(path) => onSelectPath(skill.id, path)}
+                  onOpenAddToSkill={skill.editable ? onOpenAddToSkill : undefined}
                   depth={1}
                 />
               </div>
@@ -547,6 +616,9 @@ function SkillPane({
   const body = file?.markdown ? stripFrontmatter(file.content) : file?.content ?? "";
   const currentPin = shortRef(detail.sourceRef);
   const latestPin = shortRef(updateStatus?.latestRef);
+  const isAiHarnessWorkspace = detail.sourceType === "local_path" && detail.sourcePath !== null;
+  const isSkillsSh = detail.sourceType === "skills_sh";
+  const shouldHideKeyAndMode = isAiHarnessWorkspace || isSkillsSh;
 
   return (
     <div className="min-w-0">
@@ -569,9 +641,9 @@ function SkillPane({
               <Pencil className="h-3.5 w-3.5" />
               {editMode ? "Stop editing" : "Edit"}
             </button>
-          ) : (
+          ) : !isSkillsSh ? (
             <div className="text-sm text-muted-foreground">{detail.editableReason}</div>
-          )}
+          ) : null}
         </div>
 
         <div className="mt-4 space-y-3 border-t border-border pt-4 text-sm">
@@ -595,13 +667,24 @@ function SkillPane({
                 )}
               </span>
             </div>
-            {detail.sourceType === "github" && (
+            {(detail.sourceType === "github" || detail.sourceType === "skills_sh") && (
               <div className="flex flex-wrap items-center gap-2">
+                {detail.sourceType !== "skills_sh" && (
+                  <>
+                    <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Pin</span>
+                    <span className="font-mono text-xs">{currentPin ?? "untracked"}</span>
+                    {updateStatus?.trackingRef && (
+                      <span className="text-xs text-muted-foreground">tracking {updateStatus.trackingRef}</span>
+                    )}
+                  </>
+                )}
+                {/* Hidden for skills.sh imports:
                 <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Pin</span>
                 <span className="font-mono text-xs">{currentPin ?? "untracked"}</span>
                 {updateStatus?.trackingRef && (
                   <span className="text-xs text-muted-foreground">tracking {updateStatus.trackingRef}</span>
                 )}
+                */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -629,6 +712,19 @@ function SkillPane({
                 )}
               </div>
             )}
+            {!shouldHideKeyAndMode && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Key</span>
+                  <span className="font-mono text-xs">{detail.key}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Mode</span>
+                  <span>{detail.editable ? "Editable" : "Read only"}</span>
+                </div>
+              </>
+            )}
+            {/* Hidden for AI-Harness Workspace and skills.sh:
             <div className="flex items-center gap-2">
               <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Key</span>
               <span className="font-mono text-xs">{detail.key}</span>
@@ -637,6 +733,7 @@ function SkillPane({
               <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Mode</span>
               <span>{detail.editable ? "Editable" : "Read only"}</span>
             </div>
+            */}
           </div>
           <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
             <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Used by</span>
@@ -665,6 +762,34 @@ function SkillPane({
             <div className="truncate font-mono text-sm">{file?.path ?? "SKILL.md"}</div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Add file/folder moved to left sidebar (expanded skill file tree):
+            {detail.editable && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" title="Add file or folder to this skill">
+                    <Plus className="h-4 w-4" />
+                    <span className="sr-only">Add to skill</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onOpenAddToSkill("file")}>
+                    <FilePlus className="mr-2 h-3.5 w-3.5" />
+                    Add file
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onOpenAddToSkill("folder")}>
+                    <FolderPlus className="mr-2 h-3.5 w-3.5" />
+                    Add folder
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {detail.editable && (
+              <Button variant="ghost" size="sm" onClick={() => onOpenAddToSkill("file")}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                New
+              </Button>
+            )}
+            */}
             {file?.markdown && !editMode && (
               <div className="flex items-center border border-border">
                 <button
@@ -742,9 +867,22 @@ export function CompanySkills() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const [skillFilter, setSkillFilter] = useState("");
-  const [source, setSource] = useState("");
+  const [skillsShSource, setSkillsShSource] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [skillsShOpen, setSkillsShOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [emptySourceHelpOpen, setEmptySourceHelpOpen] = useState(false);
+  const [createPathOpen, setCreatePathOpen] = useState(false);
+  const [createPathKind, setCreatePathKind] = useState<"file" | "folder">("file");
+  const [createPathValue, setCreatePathValue] = useState("");
+  const [createFolderInitialFile, setCreateFolderInitialFile] = useState("README.md");
+  const [createFileDir, setCreateFileDir] = useState("");
+  const [createFileStem, setCreateFileStem] = useState("");
+  const [createFileExtension, setCreateFileExtension] = useState("md");
+  const [createUploadFile, setCreateUploadFile] = useState<File | null>(null);
+  const createUploadInputRef = useRef<HTMLInputElement | null>(null);
+  /** When set, create dialog targets this skill (from left tree); else uses route selection. */
+  const [createPathTargetSkillId, setCreatePathTargetSkillId] = useState<string | null>(null);
+  const createPathDialogWasOpen = useRef(false);
   const [expandedSkillId, setExpandedSkillId] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Record<string, Set<string>>>({});
   const [viewMode, setViewMode] = useState<"preview" | "code">("preview");
@@ -856,6 +994,20 @@ export function CompanySkills() {
     setDisplayedFile(null);
   }, [selectedSkillId]);
 
+  useEffect(() => {
+    if (createPathOpen) {
+      if (!createPathDialogWasOpen.current) {
+        setCreateFolderInitialFile("README.md");
+        setCreateFileStem("");
+        setCreateFileExtension("md");
+        setCreateUploadFile(null);
+      }
+      createPathDialogWasOpen.current = true;
+    } else {
+      createPathDialogWasOpen.current = false;
+    }
+  }, [createPathOpen]);
+
   const activeDetail = detailQuery.data ?? displayedDetail;
   const activeFile = fileQuery.data ?? displayedFile;
 
@@ -872,7 +1024,7 @@ export function CompanySkills() {
       if (result.warnings[0]) {
         pushToast({ tone: "warn", title: "Import warnings", body: result.warnings[0] });
       }
-      setSource("");
+      setSkillsShSource("");
     },
     onError: (error) => {
       pushToast({
@@ -973,6 +1125,96 @@ export function CompanySkills() {
     },
   });
 
+  const createPath = useMutation({
+    mutationFn: async () => {
+      const skillId = createPathTargetSkillId ?? selectedSkillId;
+      if (!selectedCompanyId || !skillId) {
+        throw new Error("Select a skill first.");
+      }
+
+      let normalizedPath: string;
+      if (createPathKind === "folder") {
+        const targetPath = createPathValue.trim().replace(/^\/+/, "");
+        if (!targetPath) {
+          throw new Error("Folder path is required.");
+        }
+        if (targetPath.includes("..")) {
+          throw new Error("Path cannot contain '..'.");
+        }
+        const initial = (createFolderInitialFile.trim() || "README.md").replace(/^\/+/, "");
+        if (initial.includes("..")) {
+          throw new Error("Initial file path cannot contain '..'.");
+        }
+        normalizedPath = `${targetPath.replace(/\/+$/, "")}/${initial}`;
+      } else {
+        const stem = createFileStem.trim();
+        let ext = createFileExtension.trim().replace(/^\./, "");
+        if (!createUploadFile) {
+          throw new Error("Select a file to upload.");
+        }
+        if (!stem) {
+          throw new Error("File name is required.");
+        }
+        if (stem.includes("/") || stem.includes("\\")) {
+          throw new Error("File name cannot include path separators.");
+        }
+        if (!ext) {
+          throw new Error("File extension is required.");
+        }
+        if (ext.includes("/") || ext.includes("\\") || ext.includes("..")) {
+          throw new Error("Invalid extension.");
+        }
+        const allowedExtSet = new Set<string>(ALLOWED_UPLOAD_EXTENSIONS);
+        if (!allowedExtSet.has(ext.toLowerCase())) {
+          throw new Error("Only Excel, CSV, PDF, and Word files are allowed.");
+        }
+        const fileName = `${stem}.${ext}`;
+        const dir = createFileDir.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+        if (dir.includes("..")) {
+          throw new Error("Path cannot contain '..'.");
+        }
+        normalizedPath = dir ? `${dir}/${fileName}` : fileName;
+        return companySkillsApi.uploadFile(selectedCompanyId, skillId, normalizedPath, createUploadFile);
+      }
+
+      if (normalizedPath.includes("..")) {
+        throw new Error("Path cannot contain '..'.");
+      }
+
+      return companySkillsApi.updateFile(selectedCompanyId, skillId, normalizedPath, "");
+    },
+    onSuccess: async (result) => {
+      const skillId = createPathTargetSkillId ?? selectedSkillId;
+      if (!selectedCompanyId || !skillId) return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(selectedCompanyId, skillId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.file(selectedCompanyId, skillId, result.path) }),
+      ]);
+      navigate(skillRoute(skillId, result.path));
+      setCreatePathOpen(false);
+      setCreatePathTargetSkillId(null);
+      setCreatePathValue("");
+      setCreateFolderInitialFile("README.md");
+      setCreateFileDir("");
+      setCreateFileStem("");
+      setCreateFileExtension("md");
+      setCreateUploadFile(null);
+      pushToast({
+        tone: "success",
+        title: createPathKind === "folder" ? "Folder created" : "File created",
+        body: result.path,
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        tone: "error",
+        title: "Create failed",
+        body: error instanceof Error ? error.message : "Failed to create path.",
+      });
+    },
+  });
+
   const installUpdate = useMutation({
     mutationFn: () => companySkillsApi.installUpdate(selectedCompanyId!, selectedSkillId!),
     onSuccess: async (skill) => {
@@ -1002,10 +1244,9 @@ export function CompanySkills() {
     return <EmptyState icon={Boxes} message="Select a company to manage skills." />;
   }
 
-  function handleAddSkillSource() {
-    const trimmedSource = source.trim();
+  function handleImportSkillsSh() {
+    const trimmedSource = skillsShSource.trim();
     if (trimmedSource.length === 0) {
-      setEmptySourceHelpOpen(true);
       return;
     }
     importSkill.mutate(trimmedSource);
@@ -1013,29 +1254,48 @@ export function CompanySkills() {
 
   return (
     <>
-      <Dialog open={emptySourceHelpOpen} onOpenChange={setEmptySourceHelpOpen}>
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add a skill source</DialogTitle>
+            <DialogTitle>Add Skill</DialogTitle>
             <DialogDescription>
-              Paste a local path, GitHub URL, or `skills.sh` command into the field first.
+              Choose how you want to add a skill.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm">
-            <a
-              href="https://skills.sh"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-start justify-between rounded-md border border-border px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
+            <button
+              type="button"
+              onClick={() => {
+                setAddOpen(false);
+                setCreateOpen(true);
+              }}
+              className="flex w-full items-start justify-between rounded-md border border-border px-3 py-3 text-left text-foreground transition-colors hover:bg-accent/40"
             >
               <span>
-                <span className="block font-medium">Browse skills.sh</span>
+                <span className="block font-medium">Create your own Skill</span>
                 <span className="mt-1 block text-muted-foreground">
-                  Find install commands and paste one here.
+                  Start from a local editable skill in AI-Harness Workspace.
+                </span>
+              </span>
+              <FolderPlus className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddOpen(false);
+                setSkillsShOpen(true);
+              }}
+              className="flex w-full items-start justify-between rounded-md border border-border px-3 py-3 text-left text-foreground transition-colors hover:bg-accent/40"
+            >
+              <span>
+                <span className="block font-medium">Browse Skills.sh</span>
+                <span className="mt-1 block text-muted-foreground">
+                  Discover skills and import using a skills.sh URL or key.
                 </span>
               </span>
               <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-            </a>
+            </button>
+            {/* Hidden per unified add flow:
             <a
               href="https://github.com/search?q=SKILL.md&type=code"
               target="_blank"
@@ -1050,8 +1310,217 @@ export function CompanySkills() {
               </span>
               <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             </a>
+            */}
           </div>
           <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={skillsShOpen} onOpenChange={setSkillsShOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Browse Skills.sh</DialogTitle>
+            <DialogDescription>
+              Paste a skills.sh URL or skill key like <code>owner/repo/skill</code>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <a
+              href="https://skills.sh"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-foreground no-underline hover:underline"
+            >
+              Open skills.sh
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <Input
+              value={skillsShSource}
+              onChange={(event) => setSkillsShSource(event.target.value)}
+              placeholder="https://skills.sh/owner/repo/skill or owner/repo/skill"
+            />
+          </div>
+          <DialogFooter showCloseButton>
+            <Button onClick={handleImportSkillsSh} disabled={importSkill.isPending || skillsShSource.trim().length === 0}>
+              {importSkill.isPending ? "Importing..." : "Import from Skills.sh"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={createPathOpen}
+        onOpenChange={(open) => {
+          setCreatePathOpen(open);
+          if (!open) setCreatePathTargetSkillId(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          {(() => {
+            const fileTarget = createFileDir.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+            const folderTarget = createPathValue.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+            const targetPath = (createPathKind === "file" ? fileTarget : folderTarget) || "/";
+            const targetSkillId = createPathTargetSkillId ?? selectedSkillId;
+            const targetSkill = visibleSkills.find((skill) => skill.id === targetSkillId) ?? null;
+            const skillRoot = (targetSkill?.slug || targetSkill?.key || targetSkill?.name || "skill")
+              .replace(/^\/+/, "")
+              .replace(/\/+$/, "");
+            const renderedPath = targetPath === "/" ? `/${skillRoot}` : `/${skillRoot}/${targetPath}`;
+            return (
+              <DialogHeader>
+                <DialogTitle>{`Create in ${renderedPath}`}</DialogTitle>
+                <DialogDescription>
+                  Add a new file or folder at this path. Paths are relative to the skill root.
+                </DialogDescription>
+              </DialogHeader>
+            );
+          })()}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={createPathKind === "file" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setCreatePathKind("file")}
+              >
+                <FilePlus className="mr-1.5 h-3.5 w-3.5" />
+                File
+              </Button>
+              <Button
+                type="button"
+                variant={createPathKind === "folder" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setCreatePathKind("folder")}
+              >
+                <FolderPlus className="mr-1.5 h-3.5 w-3.5" />
+                Folder
+              </Button>
+            </div>
+            {createPathKind === "file" ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => createUploadInputRef.current?.click()}
+                  >
+                    Upload file
+                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                        aria-label="Allowed file types"
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Allowed: .xlsx, .xls, .csv, .pdf, .doc, .docx</TooltipContent>
+                  </Tooltip>
+                </div>
+                <input
+                  ref={createUploadInputRef}
+                  type="file"
+                  accept={ALLOWED_UPLOAD_ACCEPT}
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setCreateUploadFile(file);
+                    if (!file) return;
+                    const dotIndex = file.name.lastIndexOf(".");
+                    if (dotIndex <= 0 || dotIndex === file.name.length - 1) return;
+                    const nextStem = file.name.slice(0, dotIndex);
+                    const nextExt = file.name.slice(dotIndex + 1).toLowerCase();
+                    setCreateFileStem(nextStem);
+                    setCreateFileExtension(nextExt);
+                  }}
+                />
+                {createUploadFile ? (
+                  <p className="text-xs text-muted-foreground">Selected: {createUploadFile.name}</p>
+                ) : null}
+                <div className="space-y-1">
+                  <label htmlFor="skill-new-file-stem" className="text-xs text-muted-foreground">
+                    File name (without extension)
+                  </label>
+                  <Input
+                    id="skill-new-file-stem"
+                    value={createFileStem}
+                    onChange={(event) => setCreateFileStem(event.target.value)}
+                    placeholder="e.g. notes"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="skill-new-file-ext" className="text-xs text-muted-foreground">
+                    Extension
+                  </label>
+                  <Input
+                    id="skill-new-file-ext"
+                    value={createFileExtension}
+                    onChange={(event) => setCreateFileExtension(event.target.value)}
+                    placeholder="md, ts, json, sh, …"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <label htmlFor="skill-new-folder-path" className="text-xs text-muted-foreground">
+                    Folder path
+                  </label>
+                  <Input
+                    id="skill-new-folder-path"
+                    value={createPathValue}
+                    onChange={(event) => setCreatePathValue(event.target.value)}
+                    placeholder="e.g. references/new-topic"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="skill-new-folder-seed" className="text-xs text-muted-foreground">
+                    Initial file inside folder
+                  </label>
+                  <Input
+                    id="skill-new-folder-seed"
+                    value={createFolderInitialFile}
+                    onChange={(event) => setCreateFolderInitialFile(event.target.value)}
+                    placeholder="README.md"
+                  />
+                </div>
+              </>
+            )}
+            {/* Previous single-path input for both kinds:
+            <Input
+              value={createPathValue}
+              onChange={(event) => setCreatePathValue(event.target.value)}
+              placeholder={createPathKind === "file" ? "references/notes.md" : "references/new-topic"}
+            />
+            {createPathKind === "folder" && (
+              <Input
+                value={createFolderInitialFile}
+                onChange={(event) => setCreateFolderInitialFile(event.target.value)}
+                placeholder="Initial file (default README.md)"
+              />
+            )}
+            */}
+          </div>
+          <DialogFooter showCloseButton>
+            <Button
+              onClick={() => createPath.mutate()}
+              disabled={
+                createPath.isPending
+                || (createPathKind === "folder"
+                  ? createPathValue.trim().length === 0
+                  : !createUploadFile
+                    || createFileStem.trim().length === 0
+                    || createFileExtension.trim().replace(/^\./, "").length === 0)
+              }
+            >
+              {createPath.isPending
+                ? "Creating..."
+                : createPathKind === "file" && createUploadFile
+                  ? "Upload file"
+                  : "Create"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1075,7 +1544,7 @@ export function CompanySkills() {
                 >
                   <RefreshCw className={cn("h-4 w-4", scanProjects.isPending && "animate-spin")} />
                 </Button>
-                <Button variant="ghost" size="icon-sm" onClick={() => setCreateOpen((value) => !value)}>
+                <Button variant="ghost" size="icon-sm" onClick={() => setAddOpen(true)} title="Add skill">
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -1091,22 +1560,24 @@ export function CompanySkills() {
               />
             </div>
 
+            {/* Hidden per unified add flow:
             <div className="mt-3 flex items-center gap-2 border-b border-border pb-2">
               <input
-                value={source}
-                onChange={(event) => setSource(event.target.value)}
+                value={skillsShSource}
+                onChange={(event) => setSkillsShSource(event.target.value)}
                 placeholder="Paste path, GitHub URL, or skills.sh command"
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={handleAddSkillSource}
+                onClick={handleImportSkillsSh}
                 disabled={importSkill.isPending}
               >
                 {importSkill.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Add"}
               </Button>
             </div>
+            */}
             {scanStatusMessage && (
               <p className="mt-3 text-xs text-muted-foreground">
                 {scanStatusMessage}
@@ -1147,6 +1618,18 @@ export function CompanySkills() {
               }}
               onSelectSkill={(currentSkillId) => setExpandedSkillId(currentSkillId)}
               onSelectPath={() => {}}
+              onOpenAddToSkill={(skillId, kind, parentPath) => {
+                setCreatePathTargetSkillId(skillId);
+                setCreatePathKind(kind);
+                if (kind === "file") {
+                  setCreateFileDir(parentPath ?? "");
+                } else {
+                  setCreatePathValue(parentPath ?? "");
+                }
+                navigate(skillRoute(skillId));
+                setExpandedSkillId(skillId);
+                setCreatePathOpen(true);
+              }}
             />
           )}
         </aside>
