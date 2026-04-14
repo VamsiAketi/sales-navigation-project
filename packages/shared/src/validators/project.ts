@@ -12,7 +12,12 @@ const executionWorkspaceStrategySchema = z
   })
   .strict();
 
-const projectNotificationEventSchema = z.enum(["issue.status_changed", "issue.comment_added", "issue.assigned"]);
+const projectNotificationEventSchema = z.enum([
+  "issue.status_changed",
+  "issue.comment_added",
+  "issue.comment_mentioned",
+  "issue.assigned",
+]);
 const projectNotificationChannelSchema = z.enum(["email"]);
 const projectNotificationRecipientRoleSchema = z.enum(["issue_assignee_user", "issue_creator_user"]);
 

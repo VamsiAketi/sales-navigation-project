@@ -20,6 +20,8 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { cn } from "../lib/utils";
+import { pickTextColorForPillBg } from "../lib/color-contrast";
+import { useOptionalTheme } from "../context/ThemeContext";
 import { mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import { isProjectIssueWorkflowTransitionAllowed, type Issue, type ProjectIssueStatus } from "@paperclipai/shared";
@@ -218,6 +220,8 @@ const KanbanCardContent = memo(function KanbanCardContent({
   accentDot: string;
   showNewBadge?: boolean;
 }) {
+  const theme = useOptionalTheme();
+  void theme;
   return (
     <>
       {/* Top row: ticket ID badge + AI active pill */}
@@ -258,10 +262,11 @@ const KanbanCardContent = memo(function KanbanCardContent({
           {(issue.labels ?? []).slice(0, 2).map((label) => (
             <span
               key={label.id}
-              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium text-black"
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
               style={{
                 borderColor: `${label.color}55`,
                 backgroundColor: `${label.color}14`,
+                color: pickTextColorForPillBg(label.color, 0.08),
               }}
             >
               <span

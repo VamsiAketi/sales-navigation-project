@@ -42,6 +42,9 @@ function defaultNotificationConfig(): ProjectNotificationConfig {
         enabled: true,
         notifyRoles: ["issue_assignee_user", "issue_creator_user"],
       },
+      "issue.comment_mentioned": {
+        enabled: true,
+      },
       "issue.assigned": {
         enabled: true,
         notifyRoles: ["issue_assignee_user", "issue_creator_user"],
@@ -62,6 +65,15 @@ function mergeNotificationConfig(raw: unknown): ProjectNotificationConfig {
       ...parsed.data.rules,
     },
   };
+}
+
+function humanizeCommentSnippet(snippet: string | null | undefined): string | null {
+  if (!snippet) return null;
+  const normalizedMentions = snippet
+    .replace(/\[@([^\]]+)\]\((?:user|agent|project):\/\/[^)]+\)/gi, "@$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalizedMentions.length > 0 ? normalizedMentions : null;
 }
 
 function buildEmailBody(input: {
@@ -87,6 +99,12 @@ function buildEmailBody(input: {
   }
   if (input.eventType === "issue.comment_added") {
     lines.push(`${actor} added a comment.`);
+    if (input.commentSnippet) {
+      lines.push(`Comment: "${input.commentSnippet}"`);
+    }
+  }
+  if (input.eventType === "issue.comment_mentioned") {
+    lines.push(`${actor} mentioned you in a comment.`);
     if (input.commentSnippet) {
       lines.push(`Comment: "${input.commentSnippet}"`);
     }
@@ -235,14 +253,17 @@ export function issueNotificationService(db: Db) {
         if (userPrefs.enabled === false) continue;
         const userEventPrefs = userPrefs.events[input.eventType];
         if (userEventPrefs?.enabled === false) continue;
+        const readableCommentSnippet = humanizeCommentSnippet(input.payload.commentSnippet);
         const title = `[${project.name}] ${input.payload.issueIdentifier ?? input.payload.issueTitle}`;
         const actor = resolvedActorLabel ?? input.actorType;
         const inAppMessage =
           input.eventType === "issue.status_changed"
             ? `${actor} changed status from "${input.payload.oldStatus ?? "unknown"}" to "${input.payload.newStatus ?? "unknown"}".`
             : input.eventType === "issue.comment_added"
-              ? `${actor} added a comment${input.payload.commentSnippet ? `: "${input.payload.commentSnippet}"` : "."}`
-              : `${actor} assigned this issue to ${resolvedAssignedUserName || "a user"}.`;
+              ? `${actor} added a comment${readableCommentSnippet ? `: "${readableCommentSnippet}"` : "."}`
+              : input.eventType === "issue.comment_mentioned"
+                ? `${actor} mentioned you in a comment${readableCommentSnippet ? `: "${readableCommentSnippet}"` : "."}`
+                : `${actor} assigned this issue to ${resolvedAssignedUserName || "a user"}.`;
         const message = buildEmailBody({
           recipientName: recipient.name,
           issueIdentifier: input.payload.issueIdentifier,
@@ -252,7 +273,7 @@ export function issueNotificationService(db: Db) {
           actorLabel: resolvedActorLabel,
           oldStatus: input.payload.oldStatus,
           newStatus: input.payload.newStatus,
-          commentSnippet: input.payload.commentSnippet,
+          commentSnippet: readableCommentSnippet,
           assignedUserName: resolvedAssignedUserName,
           issueUrl,
         });
@@ -271,7 +292,7 @@ export function issueNotificationService(db: Db) {
             issueTitle: input.payload.issueTitle,
             oldStatus: input.payload.oldStatus ?? null,
             newStatus: input.payload.newStatus ?? null,
-            commentSnippet: input.payload.commentSnippet ?? null,
+            commentSnippet: readableCommentSnippet,
             assignedUserId: input.payload.assignedUserId ?? null,
             actorLabel: resolvedActorLabel,
             assignedUserName: resolvedAssignedUserName,
@@ -436,19 +457,47 @@ export function issueNotificationService(db: Db) {
           id: issues.id,
           companyId: issues.companyId,
           projectId: issues.projectId,
+          issuePrefix: companies.issuePrefix,
+          companyName: companies.name,
         })
         .from(issues)
+        .innerJoin(companies, eq(companies.id, issues.companyId))
         .where(eq(issues.id, input.issueId))
         .then((rows) => rows[0] ?? null);
       if (!issue) return;
 
-      const projectName = issue.projectId
-        ? await db
-          .select({ name: projects.name })
+      let channels: string[] = ["email"];
+      let notificationTitleScope = issue.companyName;
+
+      if (issue.projectId) {
+        const project = await db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            notificationConfig: projects.notificationConfig,
+          })
           .from(projects)
           .where(and(eq(projects.id, issue.projectId), eq(projects.companyId, issue.companyId)))
-          .then((rows) => rows[0]?.name ?? "Project")
-        : "Project";
+          .then((rows) => rows[0] ?? null);
+        if (!project) return;
+
+        const config = mergeNotificationConfig(project.notificationConfig);
+        if (config.enabled === false) return;
+        const rule = config.rules?.["issue.comment_mentioned"];
+        if (rule?.enabled === false) return;
+        if (rule?.onlyIfActorIsAgent && input.actorType !== "agent") return;
+        channels = rule?.channels ?? config.defaultChannels ?? ["email"];
+        notificationTitleScope = project.name;
+      }
+
+      const appBaseUrl =
+        process.env.PAPERCLIP_PUBLIC_URL ??
+        process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
+        process.env.BETTER_AUTH_URL ??
+        process.env.BETTER_AUTH_BASE_URL ??
+        "http://localhost:3100";
+      const normalizedAppBaseUrl = appBaseUrl.replace(/\/+$/, "");
+      const issueUrl = `${normalizedAppBaseUrl}/${encodeURIComponent(issue.issuePrefix)}/issues/${encodeURIComponent(issue.id)}`;
 
       let resolvedActorLabel = input.payload.actorLabel?.trim() || null;
       if (!resolvedActorLabel) {
@@ -471,11 +520,19 @@ export function issueNotificationService(db: Db) {
         }
       }
 
-      const recipientRows = await db
+      const mentionSet = Array.from(new Set(input.mentionUserIds));
+      const recipients = await db
         .select({
-          userId: authUsers.id,
+          id: authUsers.id,
+          name: authUsers.name,
+          email: authUsers.email,
+          notificationPreferences: userNotificationPreferences.preferences,
         })
         .from(authUsers)
+        .leftJoin(
+          userNotificationPreferences,
+          eq(userNotificationPreferences.userId, authUsers.id),
+        )
         .innerJoin(
           companyMemberships,
           and(
@@ -485,32 +542,74 @@ export function issueNotificationService(db: Db) {
             eq(companyMemberships.status, "active"),
           ),
         )
-        .where(inArray(authUsers.id, Array.from(new Set(input.mentionUserIds))));
+        .where(inArray(authUsers.id, mentionSet));
 
       const actor = resolvedActorLabel ?? input.actorType;
-      const title = `[${projectName}] Mentioned in ${input.payload.issueIdentifier ?? input.payload.issueTitle}`;
-      const message = `${actor} mentioned you in a comment${input.payload.commentSnippet ? `: "${input.payload.commentSnippet}"` : "."}`;
+      const title = `[${notificationTitleScope}] Mentioned in ${input.payload.issueIdentifier ?? input.payload.issueTitle}`;
 
-      for (const recipient of recipientRows) {
-        if (input.actorType === "user" && input.actorId && recipient.userId === input.actorId) continue;
-        await notifications.create({
-          userId: recipient.userId,
+      for (const recipient of recipients) {
+        if (input.actorType === "user" && input.actorId && recipient.id === input.actorId) continue;
+
+        const parsedUserPrefs = userNotificationPreferencesSchema.safeParse(recipient.notificationPreferences);
+        const userPrefs = parsedUserPrefs.success ? parsedUserPrefs.data : defaultUserPreferences();
+        if (userPrefs.enabled === false) continue;
+        const userEventPrefs = userPrefs.events["issue.comment_mentioned"];
+        if (userEventPrefs?.enabled === false) continue;
+        const readableCommentSnippet = humanizeCommentSnippet(input.payload.commentSnippet);
+
+        const inAppMessage = `${actor} mentioned you in a comment${readableCommentSnippet ? `: "${readableCommentSnippet}"` : "."}`;
+        const emailText = buildEmailBody({
+          recipientName: recipient.name,
+          issueIdentifier: input.payload.issueIdentifier,
+          issueTitle: input.payload.issueTitle,
+          eventType: "issue.comment_mentioned",
+          actorType: input.actorType,
+          actorLabel: resolvedActorLabel,
+          commentSnippet: readableCommentSnippet,
+          issueUrl,
+        });
+
+        const createdNotification = await notifications.create({
+          userId: recipient.id,
           companyId: issue.companyId,
           projectId: issue.projectId,
           issueId: issue.id,
           eventType: "issue.comment_mentioned",
           title,
-          message,
+          message: inAppMessage,
           channel: "in_app",
-          emailDeliveryStatus: "skipped",
+          emailDeliveryStatus: "queued",
           payload: {
             issueIdentifier: input.payload.issueIdentifier,
             issueTitle: input.payload.issueTitle,
             commentId: input.commentId,
-            commentSnippet: input.payload.commentSnippet ?? null,
+            commentSnippet: readableCommentSnippet,
             actorLabel: resolvedActorLabel,
           },
         });
+
+        const userChannels = userEventPrefs?.channels ?? userPrefs.defaultChannels;
+        const canEmail =
+          channels.includes("email") &&
+          userChannels.includes("email") &&
+          userPrefs.channels.email.enabled &&
+          Boolean(recipient.email);
+        if (!canEmail) {
+          await notifications.updateEmailDeliveryStatus(createdNotification.id, "skipped");
+          continue;
+        }
+        const delivery = await sendSystemEmail({
+          toEmail: recipient.email!,
+          subject: `[AI-Harness] ${title}`,
+          textBody: emailText,
+        });
+        await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
+        if (delivery.status === "failed") {
+          logger.warn(
+            { issueId: issue.id, projectId: issue.projectId, recipientUserId: recipient.id, message: delivery.message },
+            "Failed to send comment @-mention notification email",
+          );
+        }
       }
     },
   };

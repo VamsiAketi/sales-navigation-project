@@ -320,6 +320,42 @@ export async function createApp(
     app.post("/api/auth/forgot-password", requestPasswordResetHandler);
   }
 
+  app.post("/api/auth/sign-in-method", async (req, res) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!email) {
+      res.status(400).json({ message: "Email is required." });
+      return;
+    }
+    if (!db) {
+      res.json({ mode: "otp_or_password" as const });
+      return;
+    }
+
+    const existingUser = await db
+      .select({ id: authUsers.id })
+      .from(authUsers)
+      .where(eq(authUsers.email, email))
+      .then((rows) => rows[0] ?? null);
+
+    // Privacy-safe default: treat unknown users like regular sign-in.
+    if (!existingUser) {
+      res.json({ mode: "otp_or_password" as const });
+      return;
+    }
+
+    const mustChangePassword = await db
+      .select({ id: instanceUserRoles.id })
+      .from(instanceUserRoles)
+      .where(and(eq(instanceUserRoles.userId, existingUser.id), eq(instanceUserRoles.role, "must_change_password")))
+      .then((rows) => rows[0] ?? null);
+
+    if (mustChangePassword) {
+      res.json({ mode: "password_only" as const });
+      return;
+    }
+    res.json({ mode: "otp_or_password" as const });
+  });
+
   // Validate existing account before sending sign-in OTP.
   app.post("/api/auth/email-otp/send-verification-otp", async (req, res, next) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";

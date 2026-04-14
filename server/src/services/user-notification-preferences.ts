@@ -11,6 +11,7 @@ import {
 const ALL_EVENTS: ProjectNotificationEventType[] = [
   "issue.status_changed",
   "issue.comment_added",
+  "issue.comment_mentioned",
   "issue.assigned",
 ];
 

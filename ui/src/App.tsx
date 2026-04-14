@@ -442,24 +442,14 @@ function IssueDetailModal() {
 
 function IssueDetailModalTaskInfoPanel({ onGoToPage }: { onGoToPage?: () => void }) {
   const { panelContent } = usePanel();
-  const { selectedCompany } = useCompany();
-  const logoAssetId = selectedCompany?.logoAssetId ?? null;
-  const logoSrc = logoAssetId ? `/api/assets/${logoAssetId}/content` : null;
 
   if (!panelContent) return null;
 
   return (
     <aside className="hidden md:flex w-fit min-w-[220px] max-w-[320px] shrink-0 flex-col border-l border-border bg-card">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2 pr-[3.25rem]">
-        {logoSrc ? (
-          <img
-            src={logoSrc}
-            alt={selectedCompany?.name ? `${selectedCompany.name} logo` : "Company logo"}
-            className="h-6 w-6 rounded object-contain bg-background"
-          />
-        ) : null}
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {selectedCompany?.name ? `${selectedCompany.name} • Task Info` : "Task Info"}
+          Task Info
         </span>
         {onGoToPage && (
           <Button
