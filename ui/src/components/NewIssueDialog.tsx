@@ -44,7 +44,6 @@ import {
   ArrowDown,
   AlertTriangle,
   Tag,
-  Calendar,
   Paperclip,
   FileText,
   Loader2,
@@ -309,6 +308,26 @@ export function canSubmitNewIssue(input: {
   if (!isBoardPinnedHiddenProjectIssueStatusValue(status) && !input.hasAssignee) return false;
   return true;
 }
+
+function openNativeDatePicker(input: HTMLInputElement): void {
+  const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+  if (typeof pickerInput.showPicker !== "function") return;
+  try {
+    pickerInput.showPicker();
+  } catch {
+    // Ignore browsers that block showPicker in some interaction states.
+  }
+}
+
+const nativeDateLeftClass = cn(
+  "min-w-0 flex-1 bg-transparent text-xs outline-none",
+  "relative pl-[1.35rem]",
+  "[&::-webkit-calendar-picker-indicator]:absolute",
+  "[&::-webkit-calendar-picker-indicator]:left-[0.15rem]",
+  "[&::-webkit-calendar-picker-indicator]:right-auto",
+  "[&::-webkit-calendar-picker-indicator]:m-0",
+  "[&::-webkit-calendar-picker-indicator]:p-0",
+);
 
 export function NewIssueDialog() {
   const { newIssueOpen, newIssueDefaults, closeNewIssue } = useDialog();
@@ -1687,10 +1706,10 @@ export function NewIssueDialog() {
               <div>
                 <div className="mb-1 text-[11px] text-muted-foreground">Start date</div>
                 <div className="flex items-center gap-2 rounded-md border border-border bg-transparent px-2 py-1.5">
-                  <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <input
                     type="date"
-                    className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                    className={nativeDateLeftClass}
+                    onPointerDown={(e) => openNativeDatePicker(e.currentTarget)}
                     value={targetStartDate}
                     onChange={(e) => setTargetStartDate(e.target.value)}
                     disabled={createIssue.isPending}
@@ -1711,10 +1730,10 @@ export function NewIssueDialog() {
               <div>
                 <div className="mb-1 text-[11px] text-muted-foreground">Due date</div>
                 <div className="flex items-center gap-2 rounded-md border border-border bg-transparent px-2 py-1.5">
-                  <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <input
                     type="date"
-                    className="min-w-0 flex-1 bg-transparent text-xs outline-none"
+                    className={nativeDateLeftClass}
+                    onPointerDown={(e) => openNativeDatePicker(e.currentTarget)}
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
                     disabled={createIssue.isPending}

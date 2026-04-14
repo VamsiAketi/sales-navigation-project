@@ -1,7 +1,13 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
+  authAccounts,
+  authPasskeys,
+  authSessions,
+  authUsers,
+  boardApiKeys,
   companyMemberships,
+  deletedUserEmails,
   instanceUserRoles,
   principalPermissionGrants,
 } from "@paperclipai/db";
@@ -14,6 +20,14 @@ type GrantInput = {
 };
 
 export function accessService(db: Db) {
+  function makeDeletedEmailTombstone(userId: string, now: Date): string {
+    return `deleted+${userId}.${now.getTime()}@deleted.invalid`;
+  }
+
+  function isDeletedEmailTombstone(email: string): boolean {
+    return email.toLowerCase().endsWith("@deleted.invalid");
+  }
+
   async function isInstanceAdmin(userId: string | null | undefined): Promise<boolean> {
     if (!userId) return false;
     const row = await db
@@ -112,17 +126,68 @@ export function accessService(db: Db) {
     companyId: string,
     memberId: string,
   ): Promise<MembershipRow | null> {
-    const rows = await db
-      .update(companyMemberships)
-      .set({ status: "deleted", updatedAt: new Date() })
-      .where(
-        and(
-          eq(companyMemberships.id, memberId),
-          eq(companyMemberships.companyId, companyId),
-        ),
-      )
-      .returning();
-    return rows[0] ?? null;
+    return db.transaction(async (tx) => {
+      const now = new Date();
+      const rows = await tx
+        .update(companyMemberships)
+        .set({ status: "deleted", updatedAt: now })
+        .where(
+          and(
+            eq(companyMemberships.id, memberId),
+            eq(companyMemberships.companyId, companyId),
+          ),
+        )
+        .returning();
+      const deleted = rows[0] ?? null;
+      if (!deleted || deleted.principalType !== "user") return deleted;
+
+      const hasOtherMemberships = await tx
+        .select({ id: companyMemberships.id })
+        .from(companyMemberships)
+        .where(
+          and(
+            eq(companyMemberships.principalType, "user"),
+            eq(companyMemberships.principalId, deleted.principalId),
+            sql`${companyMemberships.status} != 'deleted'`,
+          ),
+        )
+        .then((entries) => (entries[0] ?? null) !== null);
+      if (hasOtherMemberships) return deleted;
+
+      const authUser = await tx
+        .select({ id: authUsers.id, email: authUsers.email })
+        .from(authUsers)
+        .where(eq(authUsers.id, deleted.principalId))
+        .then((entries) => entries[0] ?? null);
+      if (!authUser || isDeletedEmailTombstone(authUser.email)) return deleted;
+
+      await tx.insert(deletedUserEmails).values({
+        userId: authUser.id,
+        originalEmail: authUser.email,
+        deletedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx
+        .update(authUsers)
+        .set({
+          email: makeDeletedEmailTombstone(authUser.id, now),
+          emailVerified: false,
+          updatedAt: now,
+        })
+        .where(eq(authUsers.id, authUser.id));
+
+      await tx.delete(authSessions).where(eq(authSessions.userId, authUser.id));
+      await tx.delete(authAccounts).where(eq(authAccounts.userId, authUser.id));
+      await tx.delete(authPasskeys).where(eq(authPasskeys.userId, authUser.id));
+      await tx
+        .update(boardApiKeys)
+        .set({ revokedAt: now })
+        .where(eq(boardApiKeys.userId, authUser.id));
+
+      return deleted;
+    });
   }
 
   async function listActiveUserMemberships(companyId: string) {

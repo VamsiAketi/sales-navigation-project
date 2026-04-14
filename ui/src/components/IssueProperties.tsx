@@ -29,7 +29,7 @@ import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X, Target, AlertTriangle, ChevronDown, ChevronRight, Calendar } from "lucide-react";
+import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2, Copy, Check, Loader2, X, Target, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
 /** Color swatches for label creation — excludes white and very light colors. */
@@ -219,6 +219,26 @@ function issuePlanningDateInputValue(value: Date | string | null | undefined): s
   if (Number.isNaN(d.getTime())) return "";
   return d.toISOString().slice(0, 10);
 }
+
+function openNativeDatePicker(input: HTMLInputElement): void {
+  const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+  if (typeof pickerInput.showPicker !== "function") return;
+  try {
+    pickerInput.showPicker();
+  } catch {
+    // Ignore browsers that block showPicker in some interaction states.
+  }
+}
+
+const nativeDateLeftClass = cn(
+  "min-w-0 w-full max-w-[7rem] bg-transparent text-sm outline-none",
+  "relative pl-[1.35rem]",
+  "[&::-webkit-calendar-picker-indicator]:absolute",
+  "[&::-webkit-calendar-picker-indicator]:left-[0.15rem]",
+  "[&::-webkit-calendar-picker-indicator]:right-auto",
+  "[&::-webkit-calendar-picker-indicator]:m-0",
+  "[&::-webkit-calendar-picker-indicator]:p-0",
+);
 
 function truncateProjectDisplayName(value: string | null | undefined): string {
   const text = (value ?? "").trim();
@@ -1054,10 +1074,10 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
         <PropertyRow label="Start">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
               type="date"
-              className="min-w-0 w-full max-w-[7rem] bg-transparent text-sm outline-none"
+              className={nativeDateLeftClass}
+              onPointerDown={(e) => openNativeDatePicker(e.currentTarget)}
               value={issuePlanningDateInputValue(issue.targetStartAt)}
               onChange={(e) => {
                 const v = e.target.value;
@@ -1070,10 +1090,10 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
         <PropertyRow label="Due">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Calendar className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
               type="date"
-              className="min-w-0 w-full max-w-[7rem] bg-transparent text-sm outline-none"
+              className={nativeDateLeftClass}
+              onPointerDown={(e) => openNativeDatePicker(e.currentTarget)}
               value={issuePlanningDateInputValue(issue.dueAt)}
               onChange={(e) => {
                 const v = e.target.value;
