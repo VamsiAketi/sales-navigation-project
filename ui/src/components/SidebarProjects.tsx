@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, NavLink, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, FolderKanban, Plus } from "lucide-react";
+import { ChevronRight, Folder, FolderKanban, Plus } from "lucide-react";
 import {
   DndContext,
   MouseSensor,
@@ -21,8 +21,11 @@ import { queryKeys } from "../lib/queryKeys";
 import { cn, projectRouteRef } from "../lib/utils";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
-import { sidebarNavItemTextClass } from "./SidebarSection";
-import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
+import {
+  sidebarNavCollapsibleGroupClass,
+  sidebarNavSubItemTextClass,
+} from "./SidebarSection";
+import { azureProjectStatusIconClass, azureSidebarIcon } from "../lib/sidebar-icon-tints";
 import {
   Collapsible,
   CollapsibleContent,
@@ -60,6 +63,7 @@ function SortableProjectItem({
   } = useSortable({ id: project.id });
 
   const routeRef = projectRouteRef(project);
+  const isActive = activeProjectRef === routeRef || activeProjectRef === project.id;
 
   return (
     <div
@@ -80,17 +84,26 @@ function SortableProjectItem({
             if (isMobile) setSidebarOpen(false);
           }}
           className={cn(
-            // pl-0: list is wrapped with pl-7 so rows nest under "Projects" (chevron w-5 + pl-2).
-            "flex items-center gap-2.5 py-1.5 pl-0 pr-3 text-[13px] font-medium transition-colors",
-            activeProjectRef === routeRef || activeProjectRef === project.id
-              ? "bg-accent text-foreground"
-              : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+            // Azure portal–style nav: left accent on active, neutral hover (Fluent list / Hub menu).
+            sidebarNavSubItemTextClass,
+            "flex items-center gap-2.5 rounded-sm py-1.5 pl-2 pr-3 transition-colors border-l-2 -ml-px",
+            isActive
+              ? "border-[#0078d4] bg-[#edebe9] text-[#201f1e] dark:border-[#0078d4] dark:bg-[var(--sidebar-active-bg)] dark:text-foreground"
+              : "border-transparent text-[#323130] hover:bg-[#f3f2f1] dark:text-foreground/85 dark:hover:bg-white/[0.06]",
           )}
         >
           <span
-            className="shrink-0 h-3.5 w-3.5 rounded-sm"
-            style={{ backgroundColor: project.color ?? "#6366f1" }}
-          />
+            className="inline-flex shrink-0"
+            title={`Project status: ${project.status.replace(/_/g, " ")}`}
+          >
+            <Folder
+              className={cn(
+                "h-3.5 w-3.5 stroke-[1.5]",
+                azureProjectStatusIconClass(project.status),
+              )}
+              aria-hidden
+            />
+          </span>
           <span className="flex-1 truncate">{project.name}</span>
           {project.pauseReason === "budget" ? <BudgetSidebarMarker title="Project paused by budget" /> : null}
         </NavLink>
@@ -194,8 +207,8 @@ export function SidebarProjects() {
           </CollapsibleTrigger>
           <div
             className={cn(
-              "group/nav flex flex-1 items-center font-normal transition-[background-color,color,border-color] duration-100 outline-none",
-              sidebarNavItemTextClass,
+              "group/nav flex flex-1 items-center transition-[background-color,color,border-color] duration-100 outline-none",
+              sidebarNavCollapsibleGroupClass,
               "mx-0 gap-2.5 py-2 pl-2 pr-2.5",
               projectsSectionActive
                 ? "bg-[var(--sidebar-active-bg)] text-foreground"
@@ -241,7 +254,7 @@ export function SidebarProjects() {
             items={orderedProjects.map((project) => project.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="mt-0.5 flex flex-col gap-0.5 pl-7">
+            <div className="mt-0.5 flex flex-col gap-0.5 pl-[calc(1.25rem+0.5rem+1rem+0.625rem)]">
               {orderedProjects.map((project: Project) => (
                 <SortableProjectItem
                   key={project.id}

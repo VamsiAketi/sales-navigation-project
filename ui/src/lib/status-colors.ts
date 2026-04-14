@@ -159,3 +159,23 @@ export const priorityColor: Record<string, string> = {
 };
 
 export const priorityColorDefault = "text-yellow-600 dark:text-yellow-400";
+
+// ---------------------------------------------------------------------------
+// Project lifecycle — sidebar / selectors (not arbitrary branding hues)
+// ---------------------------------------------------------------------------
+
+/** Solid fill for small project markers (matches project workflow: queued → active → done). */
+export const projectStatusSwatch: Record<string, string> = {
+  backlog: "bg-slate-400/90 dark:bg-slate-500",
+  planned: "bg-slate-400/55 dark:bg-slate-500/80",
+  in_progress: "bg-amber-500 dark:bg-amber-400",
+  completed: "bg-emerald-500 dark:bg-emerald-400",
+  cancelled: "bg-neutral-400 dark:bg-neutral-500",
+};
+
+export const projectStatusSwatchDefault = "bg-muted-foreground/50";
+
+export function projectStatusSwatchClass(status: string | null | undefined): string {
+  if (!status) return projectStatusSwatchDefault;
+  return projectStatusSwatch[status] ?? projectStatusSwatchDefault;
+}

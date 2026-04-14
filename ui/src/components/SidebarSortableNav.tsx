@@ -253,7 +253,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
         itemClassName={cn(
           "font-medium",
           sidebarNavItemTextClass,
-          sidebarCompact && "text-center text-[13px] leading-tight",
+          sidebarCompact && "text-center text-[14px] leading-tight",
         )}
         missingBehavior="placeholder"
       />
@@ -306,9 +306,10 @@ export function SidebarCompanyNavSection() {
         return (
           <SidebarNavItem
             to="/activity"
-            label="Aduit Log"
+            label="Audit Log"
             icon={History}
             iconClassName={azureSidebarIcon.audit}
+            textVariant="sub"
             className={dragDisabled ? undefined : "!pl-2"}
           />
         );
@@ -319,6 +320,7 @@ export function SidebarCompanyNavSection() {
             label="Company Settings"
             icon={Settings}
             iconClassName={azureSidebarIcon.settings}
+            textVariant="sub"
             className={dragDisabled ? undefined : "!pl-2"}
           />
         );

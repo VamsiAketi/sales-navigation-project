@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
@@ -10,6 +11,7 @@ import { EntityRow } from "../components/EntityRow";
 import { ProjectStatusPicker } from "../components/ProjectStatusPicker";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { projectLinkedToGoal } from "../lib/goal-rollup";
 import { formatDate, projectUrl } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Archive, ChevronRight, Hexagon, Plus } from "lucide-react";
@@ -21,6 +23,8 @@ export function Projects() {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const [showArchived, setShowArchived] = useState(false);
+  const [searchParams] = useSearchParams();
+  const goalIdFilter = searchParams.get("goalId") ?? undefined;
 
   const updateProjectStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
@@ -50,15 +54,21 @@ export function Projects() {
     enabled: !!selectedCompanyId,
   });
 
-  const projects = useMemo(
-    () => (allProjects ?? []).filter((p) => !p.archivedAt),
-    [allProjects],
-  );
+  const projects = useMemo(() => {
+    let list = (allProjects ?? []).filter((p) => !p.archivedAt);
+    if (goalIdFilter) {
+      list = list.filter((p) => projectLinkedToGoal(p, goalIdFilter));
+    }
+    return list;
+  }, [allProjects, goalIdFilter]);
 
-  const archivedProjects = useMemo(
-    () => (allProjects ?? []).filter((p) => !!p.archivedAt),
-    [allProjects],
-  );
+  const archivedProjects = useMemo(() => {
+    let list = (allProjects ?? []).filter((p) => !!p.archivedAt);
+    if (goalIdFilter) {
+      list = list.filter((p) => projectLinkedToGoal(p, goalIdFilter));
+    }
+    return list;
+  }, [allProjects, goalIdFilter]);
 
   if (!selectedCompanyId) {
     return <EmptyState icon={Hexagon} message="Select a company to view projects." />;

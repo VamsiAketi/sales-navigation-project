@@ -41,7 +41,9 @@ import {
 import { RoutineVariablesEditor, RoutineVariablesHint } from "../components/RoutineVariablesEditor";
 import { ScheduleEditor, describeSchedule } from "../components/ScheduleEditor";
 import { RunButton } from "../components/AgentActionButtons";
+import { projectStatusSwatchClass } from "../lib/status-colors";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
+import { cn } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -824,8 +826,10 @@ export function RoutineDetail() {
               option && currentProject ? (
                 <>
                   <span
-                    className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                    style={{ backgroundColor: currentProject.color ?? "#64748b" }}
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                      projectStatusSwatchClass(currentProject.status),
+                    )}
                   />
                   <span className="truncate">{option.label}</span>
                 </>
@@ -839,8 +843,10 @@ export function RoutineDetail() {
               return (
                 <>
                   <span
-                    className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                    style={{ backgroundColor: project?.color ?? "#64748b" }}
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                      projectStatusSwatchClass(project?.status),
+                    )}
                   />
                   <span className="truncate">{option.label}</span>
                 </>
@@ -949,7 +955,7 @@ export function RoutineDetail() {
           </TabsTrigger>
 <TabsTrigger value="activity" className="gap-1.5">
             <ActivityIcon className="h-3.5 w-3.5" />
-            Aduit Log
+            Audit Log
           </TabsTrigger>
         </TabsList>
 

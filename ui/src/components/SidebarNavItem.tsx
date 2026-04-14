@@ -94,7 +94,7 @@
 import { NavLink } from "@/lib/router";
 import { cn } from "../lib/utils";
 import { useSidebar } from "../context/SidebarContext";
-import { sidebarNavItemTextClass } from "./SidebarSection";
+import { sidebarNavItemTextClass, sidebarNavSubItemTextClass } from "./SidebarSection";
 import type { LucideIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LiveHeartbeatIcon } from "./LiveHeartbeatIcon";
@@ -107,6 +107,8 @@ interface SidebarNavItemProps {
   iconClassName?: string;
   end?: boolean;
   className?: string;
+  /** `sub` — rows under a section heading (smaller than `sidebarNavSectionHeadingClass`). */
+  textVariant?: "default" | "sub";
   textBadge?: string;
   textBadgeTone?: "default" | "amber";
   alert?: boolean;
@@ -120,6 +122,7 @@ export function SidebarNavItem({
   iconClassName,
   end,
   className,
+  textVariant = "default",
   textBadge,
   textBadgeTone = "default",
   alert = false,
@@ -127,10 +130,13 @@ export function SidebarNavItem({
 }: SidebarNavItemProps) {
   const { isMobile, setSidebarOpen, sidebarCompact } = useSidebar();
 
+  const textClass =
+    textVariant === "sub" ? sidebarNavSubItemTextClass : sidebarNavItemTextClass;
+
   const navClassName = ({ isActive }: { isActive: boolean }) =>
     cn(
       "group/nav flex items-center font-normal transition-[background-color,color,border-color] duration-100 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-      sidebarNavItemTextClass,
+      textClass,
       sidebarCompact
         ? "min-h-10 w-full justify-center rounded-sm !px-0 py-2"
         : "mx-0 gap-2.5 border-l-[3px] border-transparent py-2 pl-3 pr-2.5",

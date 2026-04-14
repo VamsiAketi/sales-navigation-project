@@ -24,6 +24,7 @@ import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
+import { projectStatusSwatchClass } from "../lib/status-colors";
 import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
 import { Separator } from "@/components/ui/separator";
@@ -948,8 +949,10 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const projectTrigger = issue.projectId ? (
     <>
       <span
-        className="shrink-0 h-3 w-3 rounded-sm"
-        style={{ backgroundColor: orderedProjects.find((p) => p.id === issue.projectId)?.color ?? "#6366f1" }}
+        className={cn(
+          "shrink-0 h-3 w-3 rounded-sm border border-border/40",
+          projectStatusSwatchClass(orderedProjects.find((p) => p.id === issue.projectId)?.status),
+        )}
       />
       <span className="text-sm truncate" title={fullDisplayNameTitle(currentProject?.name ?? issue.projectId)}>
         {projectName(issue.projectId)}
@@ -1018,8 +1021,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             }}
           >
             <span
-              className="shrink-0 h-3 w-3 rounded-sm"
-              style={{ backgroundColor: p.color ?? "#6366f1" }}
+              className={cn("shrink-0 h-3 w-3 rounded-sm border border-border/40", projectStatusSwatchClass(p.status))}
             />
             <span className="truncate" title={fullDisplayNameTitle(p.name)}>
               {truncateProjectDisplayName(p.name)}

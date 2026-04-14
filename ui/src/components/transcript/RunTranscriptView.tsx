@@ -291,7 +291,7 @@ function parseSystemActivity(text: string): { activityId?: string; name: string;
   if (!match) return null;
   return {
     status: match[1].toLowerCase() === "started" ? "running" : "completed",
-    name: humanizeLabel(match[2] ?? "Aduit Log"),
+    name: humanizeLabel(match[2] ?? "Audit Log"),
     activityId: match[3] || undefined,
   };
 }

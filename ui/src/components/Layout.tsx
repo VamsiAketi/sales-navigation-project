@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings, Info, Plus } from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
@@ -39,7 +39,6 @@ import {
 } from "../lib/instance-settings";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
-import { NotFoundPage } from "../pages/NotFound";
 import { Button } from "@/components/ui/button";
 
 const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
@@ -297,8 +296,6 @@ export function Layout() {
     const requestedPrefix = companyPrefix.toUpperCase();
     return companies.find((company) => company.issuePrefix.toUpperCase() === requestedPrefix) ?? null;
   }, [companies, companyPrefix]);
-  const hasUnknownCompanyPrefix =
-    Boolean(companyPrefix) && !companiesLoading && companies.length > 0 && !matchedCompany;
   const { data: health } = useQuery({
     queryKey: queryKeys.health,
     queryFn: () => healthApi.get(),
@@ -328,16 +325,40 @@ export function Layout() {
     }
   }, [companies, companiesLoading, openOnboarding, health?.deploymentMode]);
 
+  /** Unknown URL prefix (e.g. /ACCOUNT/...) → same path under the user's company — never show "Company not found". */
+  useLayoutEffect(() => {
+    if (!companyPrefix || companiesLoading || companies.length === 0) return;
+    if (matchedCompany) return;
+    const fallback =
+      (selectedCompanyId ? companies.find((company) => company.id === selectedCompanyId) : null)
+      ?? companies[0]
+      ?? null;
+    if (!fallback) return;
+    const suffix = location.pathname.replace(/^\/[^/]+/, "") || "/dashboard";
+    const nextPath = `/${fallback.issuePrefix}${suffix}`;
+    if (location.pathname !== nextPath) {
+      navigate(`${nextPath}${location.search}${location.hash}`, { replace: true });
+    }
+    if (selectedCompanyId !== fallback.id) {
+      setSelectedCompanyId(fallback.id, { source: "route_sync" });
+    }
+  }, [
+    companyPrefix,
+    companies,
+    companiesLoading,
+    matchedCompany,
+    location.pathname,
+    location.search,
+    location.hash,
+    navigate,
+    selectedCompanyId,
+    setSelectedCompanyId,
+  ]);
+
   useEffect(() => {
     if (!companyPrefix || companiesLoading || companies.length === 0) return;
 
     if (!matchedCompany) {
-      const fallback = (selectedCompanyId ? companies.find((company) => company.id === selectedCompanyId) : null)
-        ?? companies[0]
-        ?? null;
-      if (fallback && selectedCompanyId !== fallback.id) {
-        setSelectedCompanyId(fallback.id, { source: "route_sync" });
-      }
       return;
     }
 
@@ -748,14 +769,7 @@ export function Layout() {
                   ),
               )}
             >
-              {hasUnknownCompanyPrefix ? (
-                <NotFoundPage
-                  scope="invalid_company_prefix"
-                  requestedPrefix={companyPrefix ?? selectedCompany?.issuePrefix}
-                />
-              ) : (
-                <Outlet />
-              )}
+              <Outlet />
             </main>
             <PropertiesPanel />
           </div>

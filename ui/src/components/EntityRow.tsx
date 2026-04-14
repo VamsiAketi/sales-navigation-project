@@ -14,6 +14,8 @@ interface EntityRowProps {
   state?: unknown;
   onClick?: () => void;
   className?: string;
+  /** Azure portal–style resource row (typography + hover). */
+  variant?: "default" | "azure";
 }
 
 export function EntityRow({
@@ -27,13 +29,20 @@ export function EntityRow({
   state,
   onClick,
   className,
+  variant = "default",
 }: EntityRowProps) {
   const isClickable = !!(to || onClick);
   const classes = cn(
-    "flex items-center gap-3 px-4 py-2 text-sm border-b border-border last:border-b-0 transition-colors",
-    isClickable && "cursor-pointer hover:bg-accent/50",
-    selected && "bg-accent/30",
-    className
+    "flex items-center gap-3 border-b last:border-b-0 transition-colors",
+    variant === "azure"
+      ? "px-3 py-2.5 text-[13px] border-b-[#edebe9] dark:border-b-white/10"
+      : "px-4 py-2 text-sm border-border",
+    isClickable &&
+      (variant === "azure"
+        ? "cursor-pointer hover:bg-[#f3f2f1] dark:hover:bg-white/[0.06]"
+        : "cursor-pointer hover:bg-accent/50"),
+    selected && (variant === "azure" ? "bg-[#edebe9]/80 dark:bg-white/[0.08]" : "bg-accent/30"),
+    className,
   );
 
   const content = (
@@ -46,10 +55,24 @@ export function EntityRow({
               {identifier}
             </span>
           )}
-          <span className="truncate">{title}</span>
+          <span
+            className={cn(
+              "truncate",
+              variant === "azure" && "font-semibold text-[#201f1e] dark:text-foreground",
+            )}
+          >
+            {title}
+          </span>
         </div>
         {subtitle && (
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{subtitle}</p>
+          <p
+            className={cn(
+              "text-xs text-muted-foreground truncate mt-0.5",
+              variant === "azure" && "text-[12px] text-[#605e5c] dark:text-muted-foreground",
+            )}
+          >
+            {subtitle}
+          </p>
         )}
       </div>
       {trailing && <div className="flex items-center gap-2 shrink-0">{trailing}</div>}

@@ -36,6 +36,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { Identity } from "../components/Identity";
 import { approvalLabel, defaultTypeIcon, typeIcon } from "../components/ApprovalPayload";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
+import { projectStatusSwatchClass } from "../lib/status-colors";
 import { timeAgo } from "../lib/timeAgo";
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { Button } from "@/components/ui/button";
@@ -242,7 +243,7 @@ export function InboxIssueTrailingColumns({
   issue,
   columns,
   projectName,
-  projectColor,
+  projectStatus,
   workspaceName,
   assigneeName,
   currentUserId,
@@ -250,7 +251,7 @@ export function InboxIssueTrailingColumns({
   issue: Issue;
   columns: InboxIssueColumn[];
   projectName: string | null;
-  projectColor: string | null;
+  projectStatus: string | null;
   workspaceName: string | null;
   assigneeName: string | null;
   currentUserId: string | null;
@@ -294,18 +295,19 @@ export function InboxIssueTrailingColumns({
 
         if (column === "project") {
           if (projectName) {
-            const accentColor = projectColor ?? "#64748b";
             return (
               <span
                 key={column}
-                className="inline-flex min-w-0 items-center gap-2 text-xs font-medium"
-                style={{ color: pickTextColorForPillBg(accentColor, 0.12) }}
+                className="inline-flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground"
               >
                 <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: accentColor }}
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full border border-border/40",
+                    projectStatusSwatchClass(projectStatus),
+                  )}
+                  title={projectStatus ? `Project status: ${projectStatus.replace(/_/g, " ")}` : undefined}
                 />
-                <span className="truncate">{projectName}</span>
+                <span className="truncate text-foreground">{projectName}</span>
               </span>
             );
           }
@@ -966,9 +968,9 @@ export function Inbox() {
     return map;
   }, [issues]);
   const projectById = useMemo(() => {
-    const map = new Map<string, { name: string; color: string | null }>();
+    const map = new Map<string, { name: string; status: string }>();
     for (const project of projects ?? []) {
-      map.set(project.id, { name: project.name, color: project.color });
+      map.set(project.id, { name: project.name, status: project.status });
     }
     return map;
   }, [projects]);
@@ -1945,7 +1947,7 @@ export function Inbox() {
                           issue={issue}
                           columns={visibleTrailingIssueColumns}
                           projectName={issueProject?.name ?? null}
-                          projectColor={issueProject?.color ?? null}
+                          projectStatus={issueProject?.status ?? null}
                           workspaceName={resolveIssueWorkspaceName(issue, {
                             executionWorkspaceById,
                             projectWorkspaceById,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useCallback } from "react";
+import { issueRollsUpToGoal, isGoalActiveIssueStatus } from "../lib/goal-rollup";
 import { useLocation, useSearchParams } from "@/lib/router";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
@@ -23,6 +24,8 @@ export function Issues() {
 
   const initialSearch = searchParams.get("q") ?? "";
   const participantAgentId = searchParams.get("participantAgentId") ?? undefined;
+  const goalIdFilter = searchParams.get("goalId") ?? undefined;
+  const activeGoalTasksOnly = searchParams.get("active") === "1";
   const handleSearchChange = useCallback((search: string) => {
     const trimmedSearch = search.trim();
     const currentSearch = new URLSearchParams(window.location.search).get("q") ?? "";
@@ -45,7 +48,7 @@ export function Issues() {
     enabled: !!selectedCompanyId,
   });
 
-  const { data: projects } = useQuery({
+  const { data: projects, isLoading: projectsLoading } = useQuery({
     queryKey: queryKeys.projects.list(selectedCompanyId!),
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
@@ -102,11 +105,28 @@ export function Issues() {
     setBreadcrumbs([{ label: "Tasks" }]);
   }, [setBreadcrumbs]);
 
-  const { data: issues, isLoading, error } = useQuery({
+  const { data: issuesRaw, isLoading, error } = useQuery({
     queryKey: [...queryKeys.issues.list(selectedCompanyId!), "participant-agent", participantAgentId ?? "__all__"],
     queryFn: () => issuesApi.list(selectedCompanyId!, { participantAgentId }),
     enabled: !!selectedCompanyId,
   });
+
+  const issues = useMemo(() => {
+    let list = issuesRaw ?? [];
+    if (!goalIdFilter) return list;
+    if (!projects) return [];
+    const projectById = new Map(projects.map((p) => [p.id, p]));
+    list = list.filter((i) => issueRollsUpToGoal(i, goalIdFilter, projectById));
+    // Match dashboard goal card "Tasks" count (non-cancelled)
+    list = list.filter((i) => i.status !== "cancelled");
+    if (activeGoalTasksOnly) {
+      list = list.filter((i) => isGoalActiveIssueStatus(i.status));
+    }
+    return list;
+  }, [issuesRaw, projects, goalIdFilter, activeGoalTasksOnly]);
+
+  const goalFilterWaiting = !!(goalIdFilter && projectsLoading);
+  const issuesListLoading = isLoading || goalFilterWaiting;
 
   const issuesQueryKey = [
     ...queryKeys.issues.list(selectedCompanyId!),
@@ -150,7 +170,7 @@ export function Issues() {
     <IssuesList
       forceListView
       issues={issues ?? []}
-      isLoading={isLoading}
+      isLoading={issuesListLoading}
       error={error as Error | null}
       agents={agents}
       projects={projects}

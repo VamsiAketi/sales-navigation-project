@@ -143,7 +143,7 @@ export function ChartCard({
 }) {
   const body = (
     <>
-      <div className="mb-3">
+      <div className="mb-2">
         <p className="text-[13px] font-semibold leading-tight tracking-tight text-foreground">{title}</p>
         {subtitle && <p className="mt-0.5 text-[11px] text-muted-foreground">{subtitle}</p>}
         {caption && <p className="mt-1 text-[11px] text-muted-foreground/90">{caption}</p>}
@@ -197,7 +197,7 @@ export function RunActivityChart({ runs }: { runs: HeartbeatRun[] }) {
   return (
     <>
       <ChartPlotShell>
-        <ResponsiveContainer width="100%" height={132}>
+        <ResponsiveContainer width="100%" height={112}>
           <LineChart data={data} margin={LINE_MARGIN}>
             <AzureCartesianGrid />
             <XAxis
@@ -271,7 +271,7 @@ export function PriorityChart({ issues }: { issues: { priority: string; createdA
   return (
     <>
       <ChartPlotShell>
-        <ResponsiveContainer width="100%" height={132}>
+        <ResponsiveContainer width="100%" height={112}>
           <LineChart data={data} margin={LINE_MARGIN}>
             <AzureCartesianGrid />
             <XAxis
@@ -362,7 +362,7 @@ export function IssueStatusChart({ issues }: { issues: { status: string; created
   return (
     <>
       <ChartPlotShell>
-        <ResponsiveContainer width="100%" height={132}>
+        <ResponsiveContainer width="100%" height={112}>
           <LineChart data={data} margin={LINE_MARGIN}>
             <AzureCartesianGrid />
             <XAxis
@@ -472,7 +472,7 @@ export function SuccessRateChart({ runs }: { runs: HeartbeatRun[] }) {
   return (
     <>
       <ChartPlotShell>
-        <ResponsiveContainer width="100%" height={140}>
+        <ResponsiveContainer width="100%" height={112}>
           <LineChart data={data} margin={LINE_MARGIN}>
             <AzureCartesianGrid />
             <XAxis

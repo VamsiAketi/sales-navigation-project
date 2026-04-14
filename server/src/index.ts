@@ -42,6 +42,11 @@ import { printStartupBanner } from "./startup-banner.js";
 import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-claim.js";
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
 import { initTelemetry, getTelemetryClient } from "./telemetry.js";
+import {
+  LOCAL_BOARD_USER_EMAIL,
+  LOCAL_BOARD_USER_ID,
+  LOCAL_BOARD_USER_NAME,
+} from "./local-board-defaults.js";
 
 type BetterAuthSessionUser = {
   id: string;
@@ -193,18 +198,14 @@ export async function startServer(): Promise<StartedServer> {
     }
   }
   
-  const LOCAL_BOARD_USER_ID = "local-board";
-  const LOCAL_BOARD_USER_EMAIL = "local@paperclip.local";
-  const LOCAL_BOARD_USER_NAME = "Board";
-  
   async function ensureLocalTrustedBoardPrincipal(db: any): Promise<void> {
     const now = new Date();
     const existingUser = await db
-      .select({ id: authUsers.id })
+      .select({ id: authUsers.id, email: authUsers.email })
       .from(authUsers)
       .where(eq(authUsers.id, LOCAL_BOARD_USER_ID))
-      .then((rows: Array<{ id: string }>) => rows[0] ?? null);
-  
+      .then((rows: Array<{ id: string; email: string | null }>) => rows[0] ?? null);
+
     if (!existingUser) {
       await db.insert(authUsers).values({
         id: LOCAL_BOARD_USER_ID,
@@ -215,6 +216,11 @@ export async function startServer(): Promise<StartedServer> {
         createdAt: now,
         updatedAt: now,
       });
+    } else if (existingUser.email !== LOCAL_BOARD_USER_EMAIL) {
+      await db
+        .update(authUsers)
+        .set({ email: LOCAL_BOARD_USER_EMAIL, updatedAt: now })
+        .where(eq(authUsers.id, LOCAL_BOARD_USER_ID));
     }
   
     const role = await db
