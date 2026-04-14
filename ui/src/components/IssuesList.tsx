@@ -98,6 +98,33 @@ function compareWorkflowStatus(a: string, b: string, columnOrder: string[]): num
   return a.localeCompare(b);
 }
 
+/**
+ * `PREFIX-123` identifiers: locale-compare prefix, then numeric suffix as an integer (`FOO-2` before `FOO-10`).
+ * Otherwise full-string `localeCompare` (e.g. UUID prefix fallback).
+ */
+function parseIssueIdentifierSortKey(lowerId: string): { prefix: string; num: number } | null {
+  const i = lowerId.lastIndexOf("-");
+  if (i < 0) return null;
+  const suffix = lowerId.slice(i + 1);
+  if (!/^\d+$/.test(suffix)) return null;
+  const num = Number(suffix);
+  if (!Number.isSafeInteger(num)) return null;
+  return { prefix: lowerId.slice(0, i), num };
+}
+
+function compareIssueIdentifiers(aId: string, bId: string): number {
+  const aKey = aId.toLowerCase();
+  const bKey = bId.toLowerCase();
+  const aParsed = parseIssueIdentifierSortKey(aKey);
+  const bParsed = parseIssueIdentifierSortKey(bKey);
+  if (aParsed && bParsed) {
+    const prefixCmp = aParsed.prefix.localeCompare(bParsed.prefix);
+    if (prefixCmp !== 0) return prefixCmp;
+    return aParsed.num - bParsed.num;
+  }
+  return aKey.localeCompare(bKey);
+}
+
 function workflowStatusGroupLabel(value: string, projectStatuses: ProjectIssueStatus[] | undefined): string {
   const row = projectStatuses?.find((s) => s.value === value);
   return row?.name ?? statusLabel(value);
@@ -235,9 +262,9 @@ function sortIssues(issues: Issue[], state: IssueViewState, statusColumnOrder: s
       case "status":
         return dir * compareWorkflowStatus(a.status, b.status, statusColumnOrder);
       case "id": {
-        const aId = (a.identifier ?? a.id.slice(0, 8)).toLowerCase();
-        const bId = (b.identifier ?? b.id.slice(0, 8)).toLowerCase();
-        return dir * aId.localeCompare(bId);
+        const aId = a.identifier ?? a.id.slice(0, 8);
+        const bId = b.identifier ?? b.id.slice(0, 8);
+        return dir * compareIssueIdentifiers(aId, bId);
       }
       case "priority":
         return dir * (priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority));
