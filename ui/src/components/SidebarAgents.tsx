@@ -13,7 +13,10 @@ import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { useAgentOrder } from "../hooks/useAgentOrder";
 import { AgentIcon } from "./AgentIconPicker";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
-import { sidebarNavItemTextClass } from "./SidebarSection";
+import {
+  sidebarNavCollapsibleGroupClass,
+  sidebarNavSubItemTextClass,
+} from "./SidebarSection";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 import {
   Collapsible,
@@ -76,12 +79,13 @@ function AgentTreeNode({
             if (isMobile) setSidebarOpen(false);
           }}
           className={cn(
-            "flex items-center gap-2 flex-1 min-w-0 text-[13px] font-medium",
-            isActive ? "text-foreground" : "text-foreground/80 hover:text-foreground"
+            "group/nav flex items-center gap-2 flex-1 min-w-0 outline-none transition-colors",
+            sidebarNavSubItemTextClass,
+            isActive ? "text-foreground" : "text-foreground/80 hover:text-foreground",
           )}
         >
           <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
-          <span className="flex-1 truncate">{agent.name}</span>
+          <span className="flex-1 truncate leading-snug">{agent.name}</span>
           {(agent.pauseReason === "budget" || runCount > 0) && (
             <span className="ml-auto flex items-center gap-1.5 shrink-0">
               {agent.pauseReason === "budget" && (
@@ -210,8 +214,8 @@ export function SidebarAgents() {
           </CollapsibleTrigger>
           <div
             className={cn(
-              "group/nav flex flex-1 items-center font-normal transition-[background-color,color,border-color] duration-100 outline-none",
-              sidebarNavItemTextClass,
+              "group/nav flex flex-1 items-center transition-[background-color,color,border-color] duration-100 outline-none",
+              sidebarNavCollapsibleGroupClass,
               "mx-0 gap-2.5 py-2 pl-2 pr-2.5",
               agentsSectionActive
                 ? "bg-[var(--sidebar-active-bg)] text-foreground"

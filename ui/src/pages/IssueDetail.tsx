@@ -1176,7 +1176,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           </TabsTrigger>
           <TabsTrigger value="activity" className="gap-1.5">
             <ActivityIcon className="h-3.5 w-3.5" />
-            Aduit Log
+            Audit Log
           </TabsTrigger>
           {issuePluginTabItems.map((item) => (
             <TabsTrigger key={item.value} value={item.value}>

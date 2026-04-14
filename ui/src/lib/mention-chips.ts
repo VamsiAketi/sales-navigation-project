@@ -13,6 +13,8 @@ export type ParsedMentionChip =
       kind: "project";
       projectId: string;
       color: string | null;
+      /** When set (and no legacy `color`), chip dot uses lifecycle styling. */
+      projectStatus?: string | null;
     };
 
 const iconMaskCache = new Map<string, string>();
@@ -65,6 +67,12 @@ export function applyMentionChipDecoration(element: HTMLElement, mention: Parsed
   element.classList.add("paperclip-mention-chip", `paperclip-mention-chip--${mention.kind}`);
   if (mention.kind === "project") {
     element.classList.add("paperclip-project-mention-chip");
+    const st = mention.projectStatus?.trim();
+    if (st) {
+      element.dataset.projectStatus = st;
+    } else {
+      delete element.dataset.projectStatus;
+    }
   }
 
   const style = mentionChipInlineStyle(mention);
@@ -94,6 +102,7 @@ export function clearMentionChipDecoration(element: HTMLElement) {
   element.style.removeProperty("color");
   element.style.removeProperty("--paperclip-mention-project-color");
   element.style.removeProperty("--paperclip-mention-icon-mask");
+  delete element.dataset.projectStatus;
 }
 
 function projectMentionColors(color: string): Pick<CSSProperties, "borderColor" | "backgroundColor" | "color"> {

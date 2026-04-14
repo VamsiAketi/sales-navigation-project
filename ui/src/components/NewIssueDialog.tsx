@@ -56,6 +56,7 @@ import { extractProviderIdWithFallback } from "../lib/model-utils";
 import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDefault } from "../lib/status-colors";
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { setFocusAfterIssueCreate } from "../lib/focus-created-issue";
+import { projectStatusSwatchClass } from "../lib/status-colors";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
@@ -452,7 +453,7 @@ export function NewIssueDialog() {
         name: project.name,
         kind: "project",
         projectId: project.id,
-        projectColor: project.color,
+        projectStatus: project.status,
       });
     }
     return options;
@@ -1278,8 +1279,10 @@ export function NewIssueDialog() {
                   option && currentProject ? (
                     <>
                       <span
-                        className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                        style={{ backgroundColor: currentProject.color ?? "#6366f1" }}
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                          projectStatusSwatchClass(currentProject.status),
+                        )}
                       />
                       <span className="truncate" title={option.label}>{option.label}</span>
                       <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
@@ -1296,8 +1299,10 @@ export function NewIssueDialog() {
                   return (
                     <>
                       <span
-                        className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                        style={{ backgroundColor: project?.color ?? "#6366f1" }}
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                          projectStatusSwatchClass(project?.status),
+                        )}
                       />
                       <span className="truncate" title={option.label}>{option.label}</span>
                     </>

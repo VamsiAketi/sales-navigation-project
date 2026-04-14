@@ -409,7 +409,54 @@ a.paperclip-mention-chip[data-mention-kind="project"]::before {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 999px;
-  background-color: var(--paperclip-mention-project-color, currentColor);
+  /* Legacy mentions set --paperclip-mention-project-color; new mentions use data-project-status. */
+  background-color: var(--paperclip-mention-project-color, hsl(var(--muted-foreground)));
+}
+
+/* Project lifecycle (matches status-colors projectStatusSwatch) */
+.paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="backlog"]::before,
+a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="backlog"]::before {
+  background-color: var(--paperclip-mention-project-color, #94a3b8);
+}
+.dark .paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="backlog"]::before,
+.dark a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="backlog"]::before {
+  background-color: var(--paperclip-mention-project-color, #64748b);
+}
+
+.paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="planned"]::before,
+a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="planned"]::before {
+  background-color: var(--paperclip-mention-project-color, #94a3b8);
+}
+.dark .paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="planned"]::before,
+.dark a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="planned"]::before {
+  background-color: var(--paperclip-mention-project-color, #64748b);
+}
+
+.paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="in_progress"]::before,
+a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="in_progress"]::before {
+  background-color: var(--paperclip-mention-project-color, #f59e0b);
+}
+.dark .paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="in_progress"]::before,
+.dark a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="in_progress"]::before {
+  background-color: var(--paperclip-mention-project-color, #fbbf24);
+}
+
+.paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="completed"]::before,
+a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="completed"]::before {
+  background-color: var(--paperclip-mention-project-color, #10b981);
+}
+.dark .paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="completed"]::before,
+.dark a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="completed"]::before {
+  background-color: var(--paperclip-mention-project-color, #34d399);
+}
+
+.paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="cancelled"]::before,
+a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="cancelled"]::before {
+  background-color: var(--paperclip-mention-project-color, #a3a3a3);
+}
+.dark .paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="cancelled"]::before,
+.dark a.paperclip-mention-chip[data-mention-kind="project"][data-project-status="cancelled"]::before {
+  background-color: var(--paperclip-mention-project-color, #737373);
 }
 
 .paperclip-mdxeditor-content a.paperclip-mention-chip[data-mention-kind="agent"]::before,

@@ -44,6 +44,14 @@ import { ScrollToBottom } from "../components/ScrollToBottom";
 import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd } from "../lib/utils";
 import { cn } from "../lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -532,6 +540,7 @@ export function AgentDetail() {
   const navigate = useNavigate();
   const [actionError, setActionError] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [terminateConfirmOpen, setTerminateConfirmOpen] = useState(false);
   const activeView = urlRunId ? "runs" as AgentDetailView : parseAgentDetailView(urlTab ?? null);
   const needsDashboardData = activeView === "dashboard";
   const needsRunData = activeView === "runs" || Boolean(urlRunId);
@@ -889,10 +898,11 @@ export function AgentDetail() {
                 Reset Sessions
               </button>
               <button
+                type="button"
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
                 onClick={() => {
-                  agentAction.mutate("terminate");
                   setMoreOpen(false);
+                  setTerminateConfirmOpen(true);
                 }}
               >
                 <Trash2 className="h-3 w-3" />
@@ -900,6 +910,34 @@ export function AgentDetail() {
               </button>
             </PopoverContent>
           </Popover>
+
+          <Dialog open={terminateConfirmOpen} onOpenChange={setTerminateConfirmOpen}>
+            <DialogContent showCloseButton={false} className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Terminate this agent?</DialogTitle>
+                <DialogDescription>
+                  {agent.name} will be permanently terminated and cannot run heartbeats or receive assignments again.
+                  This cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button type="button" variant="outline" onClick={() => setTerminateConfirmOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={agentAction.isPending}
+                  onClick={() => {
+                    agentAction.mutate("terminate");
+                    setTerminateConfirmOpen(false);
+                  }}
+                >
+                  Terminate agent
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -1160,7 +1198,7 @@ function AgentOverview({
 
       {/* Charts */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <ChartCard title="Run Aduit Log" subtitle="Last 14 days">
+        <ChartCard title="Run Audit Log" subtitle="Last 14 days">
           <RunActivityChart runs={runs} />
         </ChartCard>
         <ChartCard title="Issues by Priority" subtitle="Last 14 days">
@@ -2490,7 +2528,7 @@ function AgentSkillsTab({
           key: entry.key,
           name: entry.runtimeName ?? entry.key,
           description: null,
-          detail: entry.detail ?? null,
+          detail: null,
           locationLabel: entry.locationLabel ?? null,
           originLabel: entry.originLabel ?? null,
           linkTo: null,

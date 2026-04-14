@@ -31,6 +31,7 @@ import { AgentIcon } from "./AgentIconPicker";
 import { applyMentionChipDecoration, clearMentionChipDecoration, parseMentionChipHref } from "../lib/mention-chips";
 import { MentionAwareLinkNode, mentionAwareLinkNodeReplacement } from "../lib/mention-aware-link-node";
 import { mentionDeletionPlugin } from "../lib/mention-deletion";
+import { projectStatusSwatchClass } from "../lib/status-colors";
 import { cn } from "../lib/utils";
 
 /* ---- Mention types ---- */
@@ -42,7 +43,10 @@ export interface MentionOption {
   agentId?: string;
   agentIcon?: string | null;
   projectId?: string;
+  /** @deprecated Legacy project mention URLs only; UI uses projectStatus. */
   projectColor?: string | null;
+  /** Project lifecycle; drives semantic marker color. */
+  projectStatus?: string | null;
   userId?: string;
 }
 
@@ -166,7 +170,7 @@ function detectMention(container: HTMLElement): MentionState | null {
 
 function mentionMarkdown(option: MentionOption): string {
   if (option.kind === "project" && option.projectId) {
-    return `[@${option.name}](${buildProjectMentionHref(option.projectId, option.projectColor ?? null)}) `;
+    return `[@${option.name}](${buildProjectMentionHref(option.projectId, null)}) `;
   }
   if (option.kind === "human" && option.userId) {
     return `[@${option.name}](${buildUserMentionHref(option.userId)}) `;
@@ -334,7 +338,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
         const option = mentionOptionByKey.get(`project:${parsed.projectId}`);
         applyMentionChipDecoration(link, {
           ...parsed,
-          color: parsed.color ?? option?.projectColor ?? null,
+          color: parsed.color ?? null,
+          projectStatus: parsed.color ? null : (option?.projectStatus ?? null),
         });
         continue;
       }
@@ -417,7 +422,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
           editable.focus();
 
           const mentionHref = option.kind === "project" && option.projectId
-            ? buildProjectMentionHref(option.projectId, option.projectColor ?? null)
+            ? buildProjectMentionHref(option.projectId, null)
             : buildAgentMentionHref(
                 option.agentId ?? option.id.replace(/^agent:/, ""),
                 option.agentIcon ?? null,
@@ -600,8 +605,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
             >
               {option.kind === "project" && option.projectId ? (
                 <span
-                  className="inline-flex h-2 w-2 rounded-full border border-border/50"
-                  style={{ backgroundColor: option.projectColor ?? "#64748b" }}
+                  className={cn(
+                    "inline-flex h-2 w-2 rounded-full border border-border/40",
+                    projectStatusSwatchClass(option.projectStatus ?? null),
+                  )}
                 />
               ) : option.kind === "human" ? (
                 <span className="inline-flex h-2.5 w-2.5 rounded-full bg-slate-500/70" />

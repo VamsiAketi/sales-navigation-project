@@ -46,6 +46,25 @@ const AGENT_ICON_TINTS = [
   azureSidebarIcon.agents,
 ] as const;
 
+/**
+ * Project lifecycle — Azure / Fluent semantic icon colors (sidebar resource list).
+ * Pairs with `Folder` glyph; maps status to Microsoft-style info / success / neutral.
+ */
+export const azureProjectStatusIcon: Record<string, string> = {
+  backlog: "text-[#605e5c] dark:text-[#c8c6c4]",
+  planned: "text-[#8a8886] dark:text-[#a19f9d]",
+  in_progress: "text-[#0078d4] dark:text-[#4cc2ff]",
+  completed: "text-[#107c10] dark:text-[#54b054]",
+  cancelled: "text-[#a19f9d] dark:text-[#8a8886]",
+};
+
+const azureProjectStatusIconDefault = azureProjectStatusIcon.backlog;
+
+export function azureProjectStatusIconClass(status: string | null | undefined): string {
+  if (!status) return azureProjectStatusIconDefault;
+  return azureProjectStatusIcon[status] ?? azureProjectStatusIconDefault;
+}
+
 /** Stable per-agent hue so each AI teammate reads as a distinct "service" icon. */
 export function azureAgentSidebarIconTint(id: string): string {
   let h = 0;

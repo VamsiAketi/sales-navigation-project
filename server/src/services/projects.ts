@@ -2,7 +2,6 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { projects, projectGoals, goals, projectWorkspaces, workspaceRuntimeServices } from "@paperclipai/db";
 import {
-  PROJECT_COLORS,
   projectNotificationConfigSchema,
   deriveProjectUrlKey,
   hasNonAsciiContent,
@@ -467,12 +466,9 @@ export function projectService(db: Db) {
       const { goalIds: inputGoalIds, ...projectData } = data;
       const ids = resolveGoalIds({ goalIds: inputGoalIds, goalId: projectData.goalId });
 
-      // Auto-assign a color from the palette if none provided
-      if (!projectData.color) {
-        const existing = await db.select({ color: projects.color }).from(projects).where(eq(projects.companyId, companyId));
-        const usedColors = new Set(existing.map((r) => r.color).filter(Boolean));
-        const nextColor = PROJECT_COLORS.find((c) => !usedColors.has(c)) ?? PROJECT_COLORS[existing.length % PROJECT_COLORS.length];
-        projectData.color = nextColor;
+      // UI uses project status for semantic markers; do not assign decorative colors.
+      if (projectData.color === undefined || projectData.color === "") {
+        projectData.color = null;
       }
 
       const existingProjects = await db

@@ -10,7 +10,9 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
+import { projectStatusSwatchClass } from "../lib/status-colors";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
+import { cn } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
@@ -426,8 +428,10 @@ export function Routines() {
                       option && currentProject ? (
                         <>
                           <span
-                            className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                            style={{ backgroundColor: currentProject.color ?? "#64748b" }}
+                            className={cn(
+                              "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                              projectStatusSwatchClass(currentProject.status),
+                            )}
                           />
                           <span className="truncate">{option.label}</span>
                         </>
@@ -441,8 +445,10 @@ export function Routines() {
                       return (
                         <>
                           <span
-                            className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                            style={{ backgroundColor: project?.color ?? "#64748b" }}
+                            className={cn(
+                              "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                              projectStatusSwatchClass(project?.status),
+                            )}
                           />
                           <span className="truncate">{option.label}</span>
                         </>
@@ -613,8 +619,10 @@ export function Routines() {
                         {routine.projectId ? (
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <span
-                              className="shrink-0 h-3 w-3 rounded-sm"
-                              style={{ backgroundColor: projectById.get(routine.projectId)?.color ?? "#6366f1" }}
+                              className={cn(
+                                "shrink-0 h-3 w-3 rounded-sm border border-border/40",
+                                projectStatusSwatchClass(projectById.get(routine.projectId)?.status),
+                              )}
                             />
                             <span className="truncate">{projectById.get(routine.projectId)?.name ?? "Unknown"}</span>
                           </div>

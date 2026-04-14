@@ -32,7 +32,7 @@ import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
 import { cn, formatCents, formatTokens, agentUrl, projectUrl } from "../lib/utils";
-import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, ArrowRight, Target, Wallet } from "lucide-react";
+import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, ArrowRight, Wallet } from "lucide-react";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
 import {
@@ -47,6 +47,7 @@ import {
   type Project,
 } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { issueRollsUpToGoal, isGoalActiveIssueStatus, projectLinkedToGoal } from "../lib/goal-rollup";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "../context/ToastContext";
@@ -54,17 +55,39 @@ import { useToast } from "../context/ToastContext";
 // ── Goals section ──────────────────────────────────────────────────────────
 
 const GOAL_STATUS_CONFIG: Record<GoalStatus, { label: string; color: string; badgeCls: string; barCls: string }> = {
-  active:    { label: "Active",    color: "#10b981", badgeCls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300", barCls: "bg-emerald-500" },
+  active:    { label: "Active",    color: "#0ea5e9", badgeCls: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-200", barCls: "bg-sky-500" },
   achieved:  { label: "Achieved",  color: "#22c55e", badgeCls: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300", barCls: "bg-green-500" },
   planned:   { label: "Planned",   color: "#f59e0b", badgeCls: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300", barCls: "bg-amber-500" },
   cancelled: { label: "Cancelled", color: "#6b7280", badgeCls: "bg-muted text-muted-foreground", barCls: "bg-muted-foreground/50" },
 };
 
+function computeGoalDashboardStats(goalId: string, issues: Issue[], projects: Project[]) {
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+  const projectCount = projects.filter((p) => !p.archivedAt && projectLinkedToGoal(p, goalId)).length;
+  const goalIssues = issues.filter((i) => issueRollsUpToGoal(i, goalId, projectById));
+  const nonCancelled = goalIssues.filter((i) => i.status !== "cancelled");
+  const taskCount = nonCancelled.length;
+  const doneCount = goalIssues.filter((i) => i.status === "done").length;
+  const blockedCount = goalIssues.filter((i) => i.status === "blocked").length;
+  const activeTaskCount = goalIssues.filter((i) => isGoalActiveIssueStatus(i.status)).length;
+  const progressPercent =
+    nonCancelled.length === 0 ? 0 : Math.round((doneCount / nonCancelled.length) * 100);
+  return { projectCount, taskCount, activeTaskCount, doneCount, blockedCount, progressPercent };
+}
+
 function goalStatusMenuLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function GoalCard({ goal, companyId }: { goal: Goal; companyId: string }) {
+function GoalCard({
+  goal,
+  companyId,
+  stats,
+}: {
+  goal: Goal;
+  companyId: string;
+  stats: ReturnType<typeof computeGoalDashboardStats>;
+}) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const [statusOpen, setStatusOpen] = useState(false);
@@ -85,66 +108,143 @@ function GoalCard({ goal, companyId }: { goal: Goal; companyId: string }) {
     },
   });
 
+  const goalQs = `goalId=${encodeURIComponent(goal.id)}`;
+
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-3 overflow-hidden",
+        "group relative flex flex-col overflow-hidden",
         DASHBOARD_TILE_SURFACE,
-        "p-4 transition-colors hover:bg-accent/20",
+        "transition-colors hover:bg-accent/15",
       )}
     >
-      <Link
-        to={`/goals/${goal.id}`}
-        className="absolute inset-0 z-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        aria-label={`Open goal: ${goal.title}`}
-      />
-      <div
-        className="relative z-[1] flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-50 dark:bg-rose-950/35 pointer-events-none"
-        aria-hidden
-      >
-        <Target className="h-5 w-5 text-rose-600 dark:text-rose-400" />
-      </div>
-      <div className="relative z-[1] min-w-0 flex-1 pointer-events-none">
-        <p className="text-sm font-semibold leading-snug text-foreground line-clamp-1">{goal.title}</p>
-        <p className="text-xs text-muted-foreground capitalize">{goal.level}</p>
-      </div>
-      <div className="relative z-[2] shrink-0 pointer-events-auto">
-        <Popover open={statusOpen} onOpenChange={setStatusOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              disabled={updateGoalStatus.isPending}
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-[10px] font-semibold capitalize whitespace-nowrap cursor-pointer hover:opacity-90 transition-opacity disabled:pointer-events-none disabled:opacity-50",
-                cfg.badgeCls,
-              )}
-            >
-              {cfg.label}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-40 p-1" align="end">
-            {GOAL_STATUSES.map((s) => (
-              <Button
-                key={s}
-                variant="ghost"
-                size="sm"
-                className={cn("w-full justify-start text-xs", s === goal.status && "bg-accent")}
-                onClick={() => {
-                  if (s !== goal.status) updateGoalStatus.mutate(s);
-                  setStatusOpen(false);
-                }}
+      {/* Header */}
+      <div className="relative z-[1] flex items-start justify-between gap-3 p-4 pb-3">
+        <Link
+          to={`/goals/${goal.id}`}
+          className={cn(
+            "min-w-0 space-y-2 rounded-md text-left no-underline outline-none transition-opacity hover:opacity-90",
+            "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          )}
+        >
+          <h3 className="text-lg font-bold leading-tight tracking-tight text-foreground line-clamp-2 pr-1">
+            {goal.title}
+          </h3>
+          <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium capitalize text-muted-foreground">
+            {goal.level}
+          </span>
+        </Link>
+        <div className="relative z-[2] shrink-0">
+          <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                disabled={updateGoalStatus.isPending}
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shadow-sm transition-opacity hover:opacity-95 disabled:pointer-events-none disabled:opacity-50",
+                  cfg.badgeCls,
+                )}
               >
-                {goalStatusMenuLabel(s)}
-              </Button>
-            ))}
-          </PopoverContent>
-        </Popover>
+                {cfg.label}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-40 p-1" align="end">
+              {GOAL_STATUSES.map((s) => (
+                <Button
+                  key={s}
+                  variant="ghost"
+                  size="sm"
+                  className={cn("w-full justify-start text-xs", s === goal.status && "bg-accent")}
+                  onClick={() => {
+                    if (s !== goal.status) updateGoalStatus.mutate(s);
+                    setStatusOpen(false);
+                  }}
+                >
+                  {goalStatusMenuLabel(s)}
+                </Button>
+              ))}
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+
+      {/* Summary metrics — each cell links to the filtered Projects / Tasks view */}
+      <div className="relative z-[1] grid grid-cols-3 border-y border-border/60 bg-muted/45 px-1 py-2 dark:bg-muted/25">
+        <Link
+          to={`/projects?${goalQs}`}
+          className={cn(
+            "flex flex-col items-center justify-center rounded-md px-1 py-2 text-inherit no-underline outline-none transition-colors",
+            "hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          )}
+          aria-label={`View ${stats.projectCount} project${stats.projectCount === 1 ? "" : "s"} for this goal`}
+        >
+          <p className="text-2xl font-semibold tabular-nums leading-none text-foreground">{stats.projectCount}</p>
+          <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">Projects</p>
+        </Link>
+        <Link
+          to={`/issues?${goalQs}`}
+          className={cn(
+            "flex flex-col items-center justify-center rounded-md border-x border-border/50 px-1 py-2 text-inherit no-underline outline-none transition-colors",
+            "hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          )}
+          aria-label={`View ${stats.taskCount} task${stats.taskCount === 1 ? "" : "s"} for this goal`}
+        >
+          <p className="text-2xl font-semibold tabular-nums leading-none text-foreground">{stats.taskCount}</p>
+          <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">Tasks</p>
+        </Link>
+        <Link
+          to={`/issues?${goalQs}&active=1`}
+          className={cn(
+            "flex flex-col items-center justify-center rounded-md px-1 py-2 text-inherit no-underline outline-none transition-colors",
+            "hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          )}
+          aria-label={`View ${stats.activeTaskCount} active task${stats.activeTaskCount === 1 ? "" : "s"} for this goal`}
+        >
+          <p className="text-2xl font-semibold tabular-nums leading-none text-amber-600 dark:text-amber-400">
+            {stats.activeTaskCount}
+          </p>
+          <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">Active</p>
+        </Link>
+      </div>
+
+      {/* Progress */}
+      <div className="relative z-[1] space-y-2 p-4 pt-3">
+        <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>
+            {stats.doneCount} done{stats.blockedCount > 0 ? ` · ${stats.blockedCount} blocked` : ""}
+          </span>
+          <span className="tabular-nums font-medium text-foreground">{stats.progressPercent}%</span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn("h-full rounded-full transition-[width]", cfg.barCls)}
+            style={{ width: `${Math.min(100, Math.max(0, stats.progressPercent))}%` }}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
-function GoalsSection({ companyId, goals }: { companyId: string; goals: Goal[] }) {
+function GoalsSection({
+  companyId,
+  goals,
+  issues,
+  projects,
+}: {
+  companyId: string;
+  goals: Goal[];
+  issues: Issue[];
+  projects: Project[];
+}) {
+  const statsByGoalId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof computeGoalDashboardStats>>();
+    for (const g of goals) {
+      map.set(g.id, computeGoalDashboardStats(g.id, issues, projects));
+    }
+    return map;
+  }, [goals, issues, projects]);
+
   return goals.length === 0 ? (
     <Link
       to="/goals"
@@ -162,7 +262,7 @@ function GoalsSection({ companyId, goals }: { companyId: string; goals: Goal[] }
   ) : (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
       {goals.map((goal) => (
-        <GoalCard key={goal.id} companyId={companyId} goal={goal} />
+        <GoalCard key={goal.id} companyId={companyId} goal={goal} stats={statsByGoalId.get(goal.id)!} />
       ))}
     </div>
   );
@@ -172,10 +272,10 @@ function GoalsSection({ companyId, goals }: { companyId: string; goals: Goal[] }
 
 function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; byProject: CostByProject[] }) {
   return (
-    <div className="grid md:grid-cols-2 gap-4">
+    <div className="grid md:grid-cols-2 gap-3">
       {/* By agent */}
       <div>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">By Agent</h3>
           <Link to="/costs" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
             View all <ArrowRight className="h-3 w-3" />
@@ -185,7 +285,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
           {byAgent.length === 0 ? (
             <Link
               to="/costs"
-              className="block px-4 py-4 no-underline text-inherit transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="block px-4 py-3 no-underline text-inherit transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <p className="text-sm text-muted-foreground">No cost events yet.</p>
               <p className="mt-1 text-xs text-muted-foreground">Open costs</p>
@@ -196,7 +296,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
                 <Link
                   key={row.agentId}
                   to={agentUrl({ id: row.agentId, name: row.agentName })}
-                  className="flex items-center justify-between gap-3 px-4 py-2.5 no-underline text-inherit transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="flex items-center justify-between gap-3 px-4 py-2 no-underline text-inherit transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <Identity name={row.agentName ?? row.agentId} size="sm" className="min-w-0" />
                   <div className="text-right shrink-0">
@@ -214,7 +314,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
 
       {/* By project */}
       <div>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">By Project</h3>
           <Link to="/costs" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
             View all <ArrowRight className="h-3 w-3" />
@@ -224,7 +324,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
           {byProject.length === 0 ? (
             <Link
               to="/costs"
-              className="block px-4 py-4 no-underline text-inherit transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="block px-4 py-3 no-underline text-inherit transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <p className="text-sm text-muted-foreground">No project-attributed run costs yet.</p>
               <p className="mt-1 text-xs text-muted-foreground">Open costs</p>
@@ -239,7 +339,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
                       ? projectUrl({ id: row.projectId, name: row.projectName })
                       : "/costs"
                   }
-                  className="flex items-center justify-between gap-3 px-4 py-2.5 no-underline text-inherit transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="flex items-center justify-between gap-3 px-4 py-2 no-underline text-inherit transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span className="text-sm truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
                   <span className="text-sm font-medium tabular-nums shrink-0">{formatCents(row.costCents)}</span>
@@ -257,7 +357,7 @@ function formatBoardRoleLabel(role: string | null | undefined): string {
   const raw = (role ?? "member").trim();
   if (!raw) return "Member";
   const r = raw.toLowerCase();
-  if (r === "owner") return import.meta.env.DEV ? "Local Owner" : "Owner";
+  if (r === "owner") return "Owner";
   return raw
     .split(/[\s_-]+/)
     .filter(Boolean)
@@ -279,9 +379,9 @@ function CostsMtdSection({ data }: { data: DashboardSummary }) {
   const noSpend = data.costs.monthSpendCents === 0;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <p className="text-[11px] text-muted-foreground">Month to date · {monthLabel}</p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Link
           to="/costs"
           className={cn(
@@ -370,7 +470,7 @@ function DraggableSection({
       className={cn("flex gap-1.5", isDragging ? "z-50 opacity-50" : "")}
     >
       <SectionDragHandle {...attributes} {...listeners} />
-      <div className="min-w-0 flex-1 space-y-3">
+      <div className="min-w-0 flex-1 space-y-2">
         {showHeaderRow ? (
           <div className="flex items-center justify-between gap-2">
             {title ? (
@@ -623,13 +723,12 @@ export function Dashboard() {
   const hasNoAgents = agents !== undefined && agents.length === 0;
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Command Center</h1>
-        {boardRoleLabel ? (
-          <p className="text-sm text-muted-foreground sm:pt-0.5">{boardRoleLabel}</p>
-        ) : null}
-      </header>
+    <div className="space-y-4">
+      {boardRoleLabel ? (
+        <header className="flex justify-end">
+          <p className="text-sm text-muted-foreground">{boardRoleLabel}</p>
+        </header>
+      ) : null}
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
@@ -671,7 +770,7 @@ export function Dashboard() {
 
       <DndContext sensors={sensors} onDragEnd={handleSectionDragEnd}>
         <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
-          <div className="space-y-6">
+          <div className="space-y-4">
             {sectionOrder.map((id) => {
               if (id === "goals") {
                 return (
@@ -688,7 +787,12 @@ export function Dashboard() {
                       </Link>
                     }
                   >
-                    <GoalsSection companyId={selectedCompanyId} goals={dashboardGoals} />
+                    <GoalsSection
+                      companyId={selectedCompanyId}
+                      goals={dashboardGoals}
+                      issues={issues ?? []}
+                      projects={projects ?? []}
+                    />
                   </DraggableSection>
                 );
               }
@@ -752,7 +856,7 @@ export function Dashboard() {
               if (id === "charts") {
                 return (
                   <DraggableSection key="charts" id="charts">
-                    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                       <ChartCard
                         title="Execution volume"
                         subtitle="Last 14 days"
@@ -790,7 +894,7 @@ export function Dashboard() {
                 return (
                   <DraggableSection key="costs" id="costs" title="Costs">
                     {data ? <CostsMtdSection data={data} /> : null}
-                    <div className={data ? "border-t border-border/60 pt-5" : ""}>
+                    <div className={data ? "border-t border-border/60 pt-4" : ""}>
                       <CostBreakdownSection byAgent={costData?.byAgent ?? []} byProject={costData?.byProject ?? []} />
                     </div>
                   </DraggableSection>

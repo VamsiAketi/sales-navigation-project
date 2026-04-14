@@ -5,14 +5,12 @@ import { Button } from "@/components/ui/button";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
 
-type NotFoundScope = "board" | "invalid_company_prefix" | "global";
-
 interface NotFoundPageProps {
-  scope?: NotFoundScope;
-  requestedPrefix?: string;
+  /** @deprecated Kept for call-site compatibility; both variants use the same UI. */
+  scope?: "board" | "global";
 }
 
-export function NotFoundPage({ scope = "global", requestedPrefix }: NotFoundPageProps) {
+export function NotFoundPage(_props: NotFoundPageProps = {}) {
   const location = useLocation();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { companies, selectedCompany } = useCompany();
@@ -24,13 +22,9 @@ export function NotFoundPage({ scope = "global", requestedPrefix }: NotFoundPage
   const fallbackCompany = selectedCompany ?? companies[0] ?? null;
   const dashboardHref = fallbackCompany ? `/${fallbackCompany.issuePrefix}/dashboard` : "/";
   const currentPath = `${location.pathname}${location.search}${location.hash}`;
-  const normalizedPrefix = requestedPrefix?.toUpperCase();
 
-  const title = scope === "invalid_company_prefix" ? "Company not found" : "Page not found";
-  const description =
-    scope === "invalid_company_prefix"
-      ? `No company matches prefix "${normalizedPrefix ?? "unknown"}".`
-      : "This route does not exist.";
+  const title = "Page not found";
+  const description = "This route does not exist.";
 
   return (
     <div className="mx-auto max-w-2xl py-10">

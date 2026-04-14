@@ -60,6 +60,7 @@ import {
   claimBoardOwnership,
   inspectBoardClaimChallenge
 } from "../board-claim.js";
+import { LOCAL_BOARD_USER_EMAIL } from "../local-board-defaults.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -1458,7 +1459,7 @@ function isLocalImplicit(req: Request) {
 }
 
 async function resolveActorEmail(db: Db, req: Request): Promise<string | null> {
-  if (isLocalImplicit(req)) return "local@paperclip.local";
+  if (isLocalImplicit(req)) return LOCAL_BOARD_USER_EMAIL;
   const userId = req.actor.userId;
   if (!userId) return null;
   const user = await db
@@ -3301,12 +3302,18 @@ export function accessRoutes(
         if (parentMember.status !== "active") {
           throw conflict("Manager member must be active");
         }
+        if (parentMember.principalType !== "user") {
+          throw badRequest("Members must report to a human manager; agents cannot be managers in the reporting line");
+        }
       }
 
       const targetIds: string[] | null = Array.isArray(req.body.managedAgentMemberIds)
         ? Array.from(new Set((req.body.managedAgentMemberIds as string[]).map((value) => String(value))))
         : null;
       if (targetIds) {
+        if (member.principalType !== "user") {
+          throw badRequest("Only human members can be direct managers of agents");
+        }
         for (const targetId of targetIds) {
           const target = membersById.get(targetId) ?? null;
           if (!target || target.status !== "active" || target.principalType !== "agent") {

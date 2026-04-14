@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { Link, Navigate, useParams } from "@/lib/router";
+import { Link, Navigate, useLocation, useParams } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "@/context/CompanyContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
@@ -25,6 +25,7 @@ export function PluginPage() {
     pluginRoutePath?: string;
   }>();
   const { companies, selectedCompanyId } = useCompany();
+  const location = useLocation();
   const { setBreadcrumbs } = useBreadcrumbs();
   const routeCompany = useMemo(() => {
     if (!routeCompanyPrefix) return null;
@@ -99,8 +100,15 @@ export function PluginPage() {
   }, [pageSlot, companyPrefix, setBreadcrumbs]);
 
   if (!resolvedCompanyId) {
-    if (hasInvalidCompanyPrefix) {
-      return <NotFoundPage scope="invalid_company_prefix" requestedPrefix={routeCompanyPrefix} />;
+    if (hasInvalidCompanyPrefix && companies.length > 0) {
+      const fallback = companies.find((c) => c.id === selectedCompanyId) ?? companies[0]!;
+      const suffix = location.pathname.replace(/^\/[^/]+/, "") || "/dashboard";
+      return (
+        <Navigate
+          to={`/${fallback.issuePrefix}${suffix}${location.search}${location.hash}`}
+          replace
+        />
+      );
     }
     return (
       <div className="space-y-4">

@@ -2,17 +2,25 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { useSidebar } from "../context/SidebarContext";
 
-/** Nav row label size (Command Center, projects, agents, company links, …). */
+/** Primary rail links (Command Center, instance settings, footer) — not nested under a section heading. */
 export const sidebarNavItemTextClass =
-  "text-[length:var(--sidebar-nav-font-size,15px)] leading-snug";
+  "text-[length:var(--sidebar-nav-font-size,14px)] leading-snug";
 
 /** Workspace / instance title in the sidebar header. */
 export const sidebarNavHeaderTextClass =
   "text-[15px] font-semibold leading-snug tracking-tight text-sidebar-foreground";
 
-/** Azure-style section labels (Projects, Agents, Company). */
+/** Section labels (e.g. Company) — parent tier; keep larger than nested list rows. */
 export const sidebarNavSectionHeadingClass =
-  "text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/90";
+  "text-[13px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/90";
+
+/** Collapsible group title row (Projects, Agents) — same scale as section headings, title case. */
+export const sidebarNavCollapsibleGroupClass =
+  "text-[13px] font-semibold leading-snug";
+
+/** Nested lists under a section heading or collapsible (project rows, agents, Company links). */
+export const sidebarNavSubItemTextClass =
+  "text-[12px] leading-snug font-normal";
 
 export function sidebarNavBlockClass(compact: boolean) {
   return cn(
