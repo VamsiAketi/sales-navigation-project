@@ -439,6 +439,7 @@ export function CompanyDirectory() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
+  const [humanInviteSubmitAttempted, setHumanInviteSubmitAttempted] = useState(false);
   const [humanInviteRole, setHumanInviteRole] = useState<string>(DEFAULT_INVITE_ROLE);
   const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
   const [humanInvitePermissionKeys, setHumanInvitePermissionKeys] = useState<PermissionKey[]>([]);
@@ -705,6 +706,7 @@ export function CompanyDirectory() {
       const invitedMembershipRole =
         humanInviteRole.trim().length > 0 ? humanInviteRole.trim() : DEFAULT_INVITE_ROLE;
       setHumanInviteError(null);
+      setHumanInviteSubmitAttempted(false);
       setHumanInviteCredentialsCopied(false);
       setHumanInviteCredentials({
         name: created.name,
@@ -760,6 +762,7 @@ export function CompanyDirectory() {
     if (inviteDialogOpen) return;
     setHumanInviteCredentials(null);
     setHumanInviteCredentialsCopied(false);
+    setHumanInviteSubmitAttempted(false);
     setHumanInviteError(null);
   }, [inviteDialogOpen]);
 
@@ -1095,7 +1098,7 @@ export function CompanyDirectory() {
                     <div className="space-y-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="invite-name" className="text-xs text-muted-foreground">
-                          Name <span className="font-normal">(optional)</span>
+                          Name
                         </Label>
                         <Input
                           id="invite-name"
@@ -1105,6 +1108,9 @@ export function CompanyDirectory() {
                           value={humanInviteName}
                           onChange={(e) => setHumanInviteName(e.target.value)}
                         />
+                        {humanInviteSubmitAttempted && !humanInviteName.trim() ? (
+                          <p className="text-xs text-destructive">Required field</p>
+                        ) : null}
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="invite-email" className="text-xs text-muted-foreground">
@@ -1119,6 +1125,9 @@ export function CompanyDirectory() {
                           onChange={(e) => setHumanInviteEmail(e.target.value)}
                           autoComplete="email"
                         />
+                        {humanInviteSubmitAttempted && !humanInviteEmail.trim() ? (
+                          <p className="text-xs text-destructive">Required field</p>
+                        ) : null}
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">Role</Label>
@@ -1228,9 +1237,13 @@ export function CompanyDirectory() {
                     size="default"
                     className="rounded-full px-8 shadow-sm text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
                     style={{ backgroundColor: "#6569E1" }}
-                    onClick={() => humanInviteMutation.mutate()}
+                    onClick={() => {
+                      setHumanInviteSubmitAttempted(true);
+                      if (!humanInviteName.trim() || !humanInviteEmail.trim()) return;
+                      humanInviteMutation.mutate();
+                    }}
                     disabled={
-                      humanInviteMutation.isPending || !humanInviteEmail.trim() || !selectedCompanyId
+                      humanInviteMutation.isPending || !selectedCompanyId
                     }
                   >
                     {humanInviteMutation.isPending ? "Creating..." : "Create invite"}

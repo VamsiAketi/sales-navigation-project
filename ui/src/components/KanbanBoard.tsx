@@ -252,16 +252,15 @@ const KanbanCardContent = memo(function KanbanCardContent({
         {issue.title}
       </p>
 
-      {/* Labels — use label.color as text so it's theme-independent */}
+      {/* Labels */}
       {(issue.labels ?? []).length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-1">
           {(issue.labels ?? []).slice(0, 2).map((label) => (
             <span
               key={label.id}
-              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium text-black"
               style={{
                 borderColor: `${label.color}55`,
-                color: label.color,
                 backgroundColor: `${label.color}14`,
               }}
             >
