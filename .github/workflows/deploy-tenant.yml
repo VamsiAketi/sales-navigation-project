@@ -136,6 +136,12 @@ jobs:
             HELM_EXTRA_ARGS="${HELM_EXTRA_ARGS} --set server.nodeName=${NODE_NAME}"
           fi
 
+          FORCE_CONFLICTS_ARG=""
+          if helm upgrade --help 2>&1 | grep -q -- '--force-conflicts'; then
+            FORCE_CONFLICTS_ARG="--force-conflicts"
+            echo "Helm 4+: using --force-conflicts so the chart can reclaim .spec.replicas after UI scale."
+          fi
+
           helm upgrade --install "${RELEASE_NAME}" ./helm \
             --namespace "${NAMESPACE}" \
             --set fullnameOverride="${RELEASE_NAME}" \
@@ -162,7 +168,7 @@ jobs:
             --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
             --set-string server.secrets.paperclipSecretsMasterKey="${{ secrets.PAPERCLIP_SECRETS_MASTER_KEY }}" \
             --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}" \
-            ${HELM_EXTRA_ARGS}
+            ${HELM_EXTRA_ARGS} ${FORCE_CONFLICTS_ARG}
 
       - name: Capture CEO invite URL from logs
         id: capture_invite
