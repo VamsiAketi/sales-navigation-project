@@ -31,6 +31,7 @@ import { SwipeToArchive } from "../components/SwipeToArchive";
 
 import { StatusIcon } from "../components/StatusIcon";
 import { cn } from "../lib/utils";
+import { ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS } from "../lib/issue-list-layout";
 import { StatusBadge } from "../components/StatusBadge";
 import { Identity } from "../components/Identity";
 import { approvalLabel, defaultTypeIcon, typeIcon } from "../components/ApprovalPayload";
@@ -175,8 +176,15 @@ export function InboxIssueMetaLeading({
   return (
     <>
       {showStatus ? (
-        <span className="hidden shrink-0 sm:inline-flex">
-          <StatusIcon status={issue.status} />
+        <span
+          className={cn(
+            "hidden items-center justify-start sm:inline-flex",
+            ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
+          )}
+        >
+          <span className="min-w-0 max-w-full">
+            <StatusIcon status={issue.status} />
+          </span>
         </span>
       ) : null}
       {showIdentifier ? (
