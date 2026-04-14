@@ -99,6 +99,33 @@ function compareWorkflowStatus(a: string, b: string, columnOrder: string[]): num
   return a.localeCompare(b);
 }
 
+/**
+ * `PREFIX-123` identifiers: locale-compare prefix, then numeric suffix as an integer (`FOO-2` before `FOO-10`).
+ * Otherwise full-string `localeCompare` (e.g. UUID prefix fallback).
+ */
+function parseIssueIdentifierSortKey(lowerId: string): { prefix: string; num: number } | null {
+  const i = lowerId.lastIndexOf("-");
+  if (i < 0) return null;
+  const suffix = lowerId.slice(i + 1);
+  if (!/^\d+$/.test(suffix)) return null;
+  const num = Number(suffix);
+  if (!Number.isSafeInteger(num)) return null;
+  return { prefix: lowerId.slice(0, i), num };
+}
+
+function compareIssueIdentifiers(aId: string, bId: string): number {
+  const aKey = aId.toLowerCase();
+  const bKey = bId.toLowerCase();
+  const aParsed = parseIssueIdentifierSortKey(aKey);
+  const bParsed = parseIssueIdentifierSortKey(bKey);
+  if (aParsed && bParsed) {
+    const prefixCmp = aParsed.prefix.localeCompare(bParsed.prefix);
+    if (prefixCmp !== 0) return prefixCmp;
+    return aParsed.num - bParsed.num;
+  }
+  return aKey.localeCompare(bKey);
+}
+
 function workflowStatusGroupLabel(value: string, projectStatuses: ProjectIssueStatus[] | undefined): string {
   const row = projectStatuses?.find((s) => s.value === value);
   return row?.name ?? statusLabel(value);
@@ -129,7 +156,7 @@ export type IssueViewState = {
   reporters: string[];
   labels: string[];
   projects: string[];
-  sortField: "status" | "priority" | "title" | "created" | "updated";
+  sortField: "status" | "id" | "priority" | "title" | "assignee" | "reporter" | "created" | "updated";
   sortDir: "asc" | "desc";
   groupBy: "status" | "priority" | "assignee" | "none";
   viewMode: "list" | "board";
@@ -235,10 +262,25 @@ function sortIssues(issues: Issue[], state: IssueViewState, statusColumnOrder: s
     switch (state.sortField) {
       case "status":
         return dir * compareWorkflowStatus(a.status, b.status, statusColumnOrder);
+      case "id": {
+        const aId = a.identifier ?? a.id.slice(0, 8);
+        const bId = b.identifier ?? b.id.slice(0, 8);
+        return dir * compareIssueIdentifiers(aId, bId);
+      }
       case "priority":
         return dir * (priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority));
       case "title":
         return dir * a.title.localeCompare(b.title);
+      case "assignee": {
+        const aAssignee = (a.assigneeUserId ?? a.assigneeAgentId ?? "").toLowerCase();
+        const bAssignee = (b.assigneeUserId ?? b.assigneeAgentId ?? "").toLowerCase();
+        return dir * aAssignee.localeCompare(bAssignee);
+      }
+      case "reporter": {
+        const aReporter = (a.createdByUserId ?? a.createdByAgentId ?? "").toLowerCase();
+        const bReporter = (b.createdByUserId ?? b.createdByAgentId ?? "").toLowerCase();
+        return dir * aReporter.localeCompare(bReporter);
+      }
       case "created":
         return dir * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       case "updated":
@@ -601,6 +643,14 @@ export function IssuesList({
     });
   }, [viewStateLsKey]);
 
+  const applySort = useCallback((field: IssueViewState["sortField"]) => {
+    if (viewState.sortField === field) {
+      updateView({ sortDir: viewState.sortDir === "asc" ? "desc" : "asc" });
+      return;
+    }
+    updateView({ sortField: field, sortDir: "asc" });
+  }, [updateView, viewState.sortDir, viewState.sortField]);
+
   const { data: searchedIssues = [] } = useQuery({
     queryKey: [
       ...queryKeys.issues.search(selectedCompanyId!, normalizedIssueSearch, projectId),
@@ -848,6 +898,9 @@ export function IssuesList({
     if (hideStatusFilter && viewState.statuses.length > 0) c -= 1;
     return c;
   }, [viewState, hideStatusFilter]);
+  const hasSortApplied =
+    viewState.sortField !== defaultViewState.sortField ||
+    viewState.sortDir !== defaultViewState.sortDir;
   const statusFilterCount = hideStatusFilter
     ? 0
     : viewState.statuses.length + (viewState.showHidden ? 1 : 0);
@@ -1292,12 +1345,23 @@ export function IssuesList({
             </Popover>
           )}
 
-          {activeFilterCount > 0 && (
+          {(activeFilterCount > 0 || hasSortApplied) && (
             <Button
               variant="outline"
               size="sm"
               className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => updateView({ statuses: [], priorities: [], assignees: [], reporters: [], labels: [], projects: [] })}
+              onClick={() =>
+                updateView({
+                  statuses: [],
+                  priorities: [],
+                  assignees: [],
+                  reporters: [],
+                  labels: [],
+                  projects: [],
+                  sortField: defaultViewState.sortField,
+                  sortDir: defaultViewState.sortDir,
+                })
+              }
             >
               Clear filters
             </Button>
@@ -1316,8 +1380,11 @@ export function IssuesList({
                 <div className="p-2 space-y-0.5">
                   {([
                     ["status", "Status"],
+                    ["id", "ID"],
                     ["priority", "Priority"],
                     ["title", "Title"],
+                    ["assignee", "Assignee"],
+                    ["reporter", "Reported by"],
                     ["created", "Created"],
                     ["updated", "Updated"],
                   ] as const).map(([field, label]) => (
@@ -1326,13 +1393,7 @@ export function IssuesList({
                       className={`flex items-center justify-between w-full px-2 py-1.5 text-sm rounded-sm ${
                         viewState.sortField === field ? "bg-accent/50 text-foreground" : "hover:bg-accent/50 text-muted-foreground"
                       }`}
-                      onClick={() => {
-                        if (viewState.sortField === field) {
-                          updateView({ sortDir: viewState.sortDir === "asc" ? "desc" : "asc" });
-                        } else {
-                          updateView({ sortField: field, sortDir: "asc" });
-                        }
-                      }}
+                      onClick={() => applySort(field)}
                     >
                       <span>{label}</span>
                       {viewState.sortField === field && (
@@ -1416,23 +1477,62 @@ export function IssuesList({
       )}
 
       {!isLoading && filtered.length > 0 && (forceListView || viewState.viewMode === "list") && (
-        <div className="hidden sm:flex items-center gap-2 border-b border-border bg-muted/30 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground select-none">
+        <div className="sticky top-[3.25rem] z-50 hidden sm:flex items-center gap-2 border-b border-border bg-background/95 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/90 select-none">
+          <span className="w-3.5 shrink-0" />
           <span className="flex shrink-0 items-center gap-2">
-            <span className="w-3.5 shrink-0" />
-            <span
-              className={cn("inline-flex", ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS)}
-              aria-hidden
-            />
-            <span className="shrink-0 font-mono text-xs tabular-nums">ID</span>
-            <span className="inline-flex min-w-19 shrink-0" aria-hidden />
+            <button
+              type="button"
+              className={cn("inline-flex shrink-0 truncate text-left hover:text-foreground", ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS)}
+              onClick={() => applySort("status")}
+            >
+              Status {viewState.sortField === "status" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
+            <button
+              type="button"
+              className="w-[84px] shrink-0 truncate text-left font-mono text-xs tabular-nums hover:text-foreground"
+              onClick={() => applySort("id")}
+            >
+              ID {viewState.sortField === "id" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
+            <span className="w-[76px] shrink-0" aria-hidden />
           </span>
-          <span className="min-w-0 flex-1">Title</span>
+          <button
+            type="button"
+            className="min-w-0 flex-1 text-left hover:text-foreground"
+            onClick={() => applySort("title")}
+          >
+            Title {viewState.sortField === "title" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+          </button>
           <div className={cn(LIST_TRAILING_GRID, "ml-auto")}>
-            <span className="shrink-0">Priority</span>
+            <button
+              type="button"
+              className="shrink-0 text-left hover:text-foreground"
+              onClick={() => applySort("priority")}
+            >
+              Priority {viewState.sortField === "priority" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
             <span className="min-w-0 shrink-0 truncate">Labels</span>
-            <span className="shrink-0 px-2">Assignee</span>
-            <span className="min-w-0 shrink-0 truncate">Reported by</span>
-            <span className="shrink-0 text-right">Created</span>
+            <button
+              type="button"
+              className="shrink-0 px-2 text-left hover:text-foreground"
+              onClick={() => applySort("assignee")}
+            >
+              Assignee {viewState.sortField === "assignee" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
+            <button
+              type="button"
+              className="min-w-0 shrink-0 truncate text-left hover:text-foreground"
+              onClick={() => applySort("reporter")}
+            >
+              Reported by {viewState.sortField === "reporter" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
+            <button
+              type="button"
+              className="shrink-0 text-right hover:text-foreground"
+              onClick={() => applySort("created")}
+            >
+              Created {viewState.sortField === "created" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
           </div>
         </div>
       )}
@@ -1527,10 +1627,10 @@ export function IssuesList({
                           />
                         </span>
                       </span>
-                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                      <span className="w-[84px] shrink-0 truncate font-mono text-xs text-muted-foreground">
                         {issue.identifier ?? issue.id.slice(0, 8)}
                       </span>
-                      <span className="hidden min-w-19 shrink-0 items-center justify-start sm:inline-flex">
+                      <span className="hidden w-[76px] shrink-0 items-center justify-start sm:inline-flex">
                         {liveIssueIds?.has(issue.id) ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 sm:gap-1.5 sm:px-2">
                             <span className="relative flex h-2 w-2">

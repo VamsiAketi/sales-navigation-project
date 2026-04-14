@@ -282,6 +282,11 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isInstanceSettingsRoute = location.pathname.startsWith("/instance/");
+  const isCompanyBoardRoute = /^\/[^/]+\/issues\/?$/.test(location.pathname);
+  const isProjectBoardRoute =
+    /^\/projects\/[^/]+\/(backlog|issues)\/?$/.test(location.pathname) ||
+    /^\/[^/]+\/projects\/[^/]+\/(backlog|issues)\/?$/.test(location.pathname);
+  const isBoardRoute = isCompanyBoardRoute || isProjectBoardRoute;
   const onboardingTriggered = useRef(false);
   const lastMainScrollTop = useRef(0);
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
@@ -737,7 +742,10 @@ export function Layout() {
                 "flex-1",
                 isMobile
                   ? "overflow-visible p-4 pb-[calc(5rem+env(safe-area-inset-bottom))]"
-                  : "overflow-auto md:px-6 md:pb-6 md:pt-0",
+                  : cn(
+                    "overflow-auto md:px-6 md:pb-6",
+                    isBoardRoute ? "md:pt-0" : "md:pt-4",
+                  ),
               )}
             >
               {hasUnknownCompanyPrefix ? (

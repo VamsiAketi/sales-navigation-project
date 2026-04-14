@@ -107,8 +107,6 @@ interface SidebarNavItemProps {
   iconClassName?: string;
   end?: boolean;
   className?: string;
-  badge?: number;
-  badgeTone?: "default" | "danger";
   textBadge?: string;
   textBadgeTone?: "default" | "amber";
   alert?: boolean;
@@ -122,8 +120,6 @@ export function SidebarNavItem({
   iconClassName,
   end,
   className,
-  badge,
-  badgeTone = "default",
   textBadge,
   textBadgeTone = "default",
   alert = false,
@@ -169,16 +165,6 @@ export function SidebarNavItem({
             {alert && (
               <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-sidebar" />
             )}
-            {sidebarCompact && badge != null && badge > 0 && (
-              <span
-                className={cn(
-                  "absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[9px] font-semibold leading-none ring-2 ring-sidebar",
-                  badgeTone === "danger" ? "bg-red-600 text-red-50" : "bg-primary text-primary-foreground",
-                )}
-              >
-                {badge > 9 ? "9+" : badge}
-              </span>
-            )}
             {sidebarCompact && liveCount != null && liveCount > 0 && (
               <span className="absolute -bottom-0.5 -right-0.5 flex h-1.5 w-1.5 rounded-full bg-blue-500 ring-2 ring-sidebar" />
             )}
@@ -206,18 +192,6 @@ export function SidebarNavItem({
                   </span>
                 </span>
               )}
-              {badge != null && badge > 0 && (
-                <span
-                  className={cn(
-                    "ml-auto rounded-full px-1.5 py-0.5 text-xs leading-none",
-                    badgeTone === "danger"
-                      ? "bg-red-600/90 text-red-50"
-                      : "bg-primary/90 text-primary-foreground",
-                  )}
-                >
-                  {badge}
-                </span>
-              )}
             </>
           )}
         </>
@@ -229,7 +203,6 @@ export function SidebarNavItem({
     const tipParts = [label];
     if (textBadge) tipParts.push(`(${textBadge})`);
     if (liveCount != null && liveCount > 0) tipParts.push(`${liveCount} live`);
-    if (badge != null && badge > 0) tipParts.push(`${badge} in queue`);
     const tip = tipParts.join(" · ");
 
     return (

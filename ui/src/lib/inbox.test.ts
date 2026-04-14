@@ -302,6 +302,20 @@ describe("inbox helpers", () => {
     });
   });
 
+  it("counts only unread touched issues toward the mine-issue slice of the badge", () => {
+    const result = computeInboxBadgeData({
+      approvals: [],
+      joinRequests: [],
+      dashboard: undefined,
+      heartbeatRuns: [],
+      mineIssues: [makeIssue("1", true), makeIssue("2", false)],
+      dismissed: new Set<string>(),
+    });
+
+    expect(result.mineIssues).toBe(1);
+    expect(result.inbox).toBe(1);
+  });
+
   it("drops dismissed runs and alerts from the computed badge", () => {
     const result = computeInboxBadgeData({
       approvals: [],
