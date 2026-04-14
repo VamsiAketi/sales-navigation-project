@@ -23,6 +23,7 @@ import { PriorityIcon } from "./PriorityIcon";
 import { EmptyState } from "./EmptyState";
 import { Identity } from "./Identity";
 import { IssueRow } from "./IssueRow";
+import { ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS } from "../lib/issue-list-layout";
 import { PageSkeleton } from "./PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1481,7 +1482,7 @@ export function IssuesList({
           <span className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              className="w-14 shrink-0 truncate text-left hover:text-foreground"
+              className={cn("inline-flex shrink-0 truncate text-left hover:text-foreground", ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS)}
               onClick={() => applySort("status")}
             >
               Status {viewState.sortField === "status" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
@@ -1609,17 +1610,22 @@ export function IssuesList({
                   desktopMetaLeading={(
                     <>
                       <span
-                        className="hidden w-14 shrink-0 sm:inline-flex"
+                        className={cn(
+                          "hidden items-center justify-start sm:inline-flex",
+                          ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
+                        )}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                         }}
                       >
-                        <StatusIcon
-                          status={issue.status}
-                          onChange={(s) => onUpdateIssue(issue.id, { status: s })}
-                          projectStatuses={projectStatuses}
-                        />
+                        <span className="min-w-0 max-w-full">
+                          <StatusIcon
+                            status={issue.status}
+                            onChange={(s) => onUpdateIssue(issue.id, { status: s })}
+                            projectStatuses={projectStatuses}
+                          />
+                        </span>
                       </span>
                       <span className="w-[84px] shrink-0 truncate font-mono text-xs text-muted-foreground">
                         {issue.identifier ?? issue.id.slice(0, 8)}
