@@ -94,14 +94,7 @@ export function pickTextColorForSolidBg(hexColor: string): string {
  * WCAG contrast ratio.
  */
 export function pickTextColorForPillBg(hexColor: string, alpha = 0.22): string {
-  const fg = hexToRgb(hexColor);
-  if (!fg) return TEXT_LIGHT;
-  const pageBg = isDarkMode() ? DARK_BG : LIGHT_BG;
-  const effectiveBg = composite(fg, pageBg, alpha);
-  const bgLum = relativeLuminance(effectiveBg.r, effectiveBg.g, effectiveBg.b);
-  const whiteLum = relativeLuminance(248, 250, 252);
-  const blackLum = relativeLuminance(17, 24, 39);
-  return contrastRatio(bgLum, whiteLum) >= contrastRatio(bgLum, blackLum)
-    ? TEXT_LIGHT
-    : TEXT_DARK;
+  void hexColor;
+  void alpha;
+  return isDarkMode() ? TEXT_LIGHT : TEXT_DARK;
 }

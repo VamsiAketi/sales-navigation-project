@@ -48,11 +48,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => resolveInitialTheme());
 
   const setTheme = useCallback((nextTheme: Theme) => {
+    // Apply immediately so theme-dependent render calculations update in the same paint.
+    applyTheme(nextTheme);
     setThemeState(nextTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((current) => (current === "dark" ? "light" : "dark"));
+    setThemeState((current) => {
+      const nextTheme: Theme = current === "dark" ? "light" : "dark";
+      // Apply immediately so components that derive styles from theme classes don't lag one render.
+      applyTheme(nextTheme);
+      return nextTheme;
+    });
   }, []);
 
   useEffect(() => {

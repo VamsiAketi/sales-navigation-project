@@ -71,7 +71,11 @@ export interface ProjectIssueStatus {
   updatedAt: Date;
 }
 
-export type ProjectNotificationEventType = "issue.status_changed" | "issue.comment_added" | "issue.assigned";
+export type ProjectNotificationEventType =
+  | "issue.status_changed"
+  | "issue.comment_added"
+  | "issue.comment_mentioned"
+  | "issue.assigned";
 export type ProjectNotificationChannel = "email";
 export type ProjectNotificationRecipientRole = "issue_assignee_user" | "issue_creator_user";
 

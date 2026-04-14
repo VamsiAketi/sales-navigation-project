@@ -19,7 +19,13 @@ const betterAuthClient = createAuthClient({
 });
 
 export type NotificationChannelType = "email" | "sms" | "whatsapp";
-export type ProjectNotificationEventType = "issue.status_changed" | "issue.comment_added" | "issue.assigned";
+export type ProjectNotificationEventType =
+  | "issue.status_changed"
+  | "issue.comment_added"
+  | "issue.comment_mentioned"
+  | "issue.assigned";
+
+export type SignInMethodMode = "otp_or_password" | "password_only";
 
 export type UserNotificationPreferences = {
   enabled: boolean;
@@ -124,6 +130,15 @@ export const authApi = {
       email: input.email,
       type: "sign-in",
     });
+  },
+
+  getSignInMethod: async (input: { email: string }): Promise<{ mode: SignInMethodMode }> => {
+    const payload = await authPost("/sign-in-method", { email: input.email });
+    const mode =
+      payload && typeof payload === "object" && (payload as { mode?: unknown }).mode === "password_only"
+        ? "password_only"
+        : "otp_or_password";
+    return { mode };
   },
 
   signInEmailCode: async (input: { email: string; code: string }) => {

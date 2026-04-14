@@ -65,7 +65,6 @@ import {
 } from "lucide-react";
 import { INBOX_MINE_ISSUE_STATUS_FILTER, type ActivityEvent, type Agent, type IssueAttachment } from "@paperclipai/shared";
 import { getRecentTouchedIssues } from "../lib/inbox";
-import { NextUnreadIcon } from "../components/icons/NextUnreadIcon";
 
 type CommentReassignment = {
   assigneeAgentId: string | null;
@@ -904,17 +903,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
             <Button
               variant="ghost"
               size="icon-xs"
-              onClick={goToNextUnreadIssue}
-              disabled={!nextUnreadIssue}
-              title={nextUnreadIssue ? "Next unread in Attention Queue" : "No next unread item"}
-              aria-label={nextUnreadIssue ? "Next unread in Attention Queue" : "No next unread item"}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-100 disabled:text-muted-foreground/45"
-            >
-              <NextUnreadIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
               onClick={copyIssueToClipboard}
               title="Copy link to ticket"
             >
@@ -931,17 +919,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           </div>
 
           <div className="hidden md:flex items-center md:ml-auto shrink-0">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={goToNextUnreadIssue}
-              disabled={!nextUnreadIssue}
-              title={nextUnreadIssue ? "Next unread in Attention Queue" : "No next unread item"}
-              aria-label={nextUnreadIssue ? "Next unread in Attention Queue" : "No next unread item"}
-              className="text-muted-foreground hover:text-foreground disabled:opacity-100 disabled:text-muted-foreground/45"
-            >
-              <NextUnreadIcon className="h-4 w-4" />
-            </Button>
             <Button
               variant="ghost"
               size="icon-xs"

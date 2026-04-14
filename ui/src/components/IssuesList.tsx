@@ -903,6 +903,7 @@ export function IssuesList({
   const statusFilterCount = hideStatusFilter
     ? 0
     : viewState.statuses.length + (viewState.showHidden ? 1 : 0);
+  const canSortStatus = !(fixedStatusFilter && fixedStatusFilter.length === 1);
   const priorityFilterCount = viewState.priorities.length;
   const reporterFilterCount = viewState.reporters.length;
   const labelFilterCount = viewState.labels.length;
@@ -1378,7 +1379,7 @@ export function IssuesList({
               <PopoverContent align="end" className="w-48 p-0">
                 <div className="p-2 space-y-0.5">
                   {([
-                    ["status", "Status"],
+                    ...(canSortStatus ? ([["status", "Status"]] as const) : []),
                     ["id", "ID"],
                     ["priority", "Priority"],
                     ["title", "Title"],
@@ -1476,16 +1477,20 @@ export function IssuesList({
       )}
 
       {!isLoading && filtered.length > 0 && (forceListView || viewState.viewMode === "list") && (
-        <div className="sticky top-[3.25rem] z-50 hidden sm:flex items-center gap-2 border-b border-border bg-background/95 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/90 select-none">
+        <div className="sticky top-[3.25rem] z-50 hidden sm:flex items-center gap-2 border-b border-border bg-background/95 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/90 select-none">
           <span className="w-3.5 shrink-0" />
           <span className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              className="w-14 shrink-0 truncate text-left hover:text-foreground"
-              onClick={() => applySort("status")}
-            >
-              Status {viewState.sortField === "status" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
-            </button>
+            {canSortStatus ? (
+              <button
+                type="button"
+                className="w-14 shrink-0 truncate text-left hover:text-foreground"
+                onClick={() => applySort("status")}
+              >
+                Status {viewState.sortField === "status" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+            ) : (
+              <span className="w-14 shrink-0 truncate text-left">Status</span>
+            )}
             <button
               type="button"
               className="w-[84px] shrink-0 truncate text-left font-mono text-xs tabular-nums hover:text-foreground"
@@ -1497,12 +1502,12 @@ export function IssuesList({
           </span>
           <button
             type="button"
-            className="min-w-0 flex-1 text-left hover:text-foreground"
+            className="min-w-0 flex-1 pr-3 text-left hover:text-foreground"
             onClick={() => applySort("title")}
           >
             Title {viewState.sortField === "title" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
           </button>
-          <div className={cn(LIST_TRAILING_GRID, "ml-auto")}>
+          <div className={cn(LIST_TRAILING_GRID, "ml-auto border-l border-border/70 pl-3")}>
             <button
               type="button"
               className="shrink-0 text-left hover:text-foreground"

@@ -22,6 +22,9 @@ export function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showPasswordLogin, setShowPasswordLogin] = useState(false);
+  const [signInFlowStarted, setSignInFlowStarted] = useState(false);
+  const [canUseOtpAndPasskey, setCanUseOtpAndPasskey] = useState(false);
   const [useEmailCode, setUseEmailCode] = useState(false);
   const [emailCode, setEmailCode] = useState("");
   const [otpDigits, setOtpDigits] = useState<string[]>(Array.from({ length: OTP_LENGTH }, () => ""));
@@ -100,6 +103,34 @@ export function AuthPage() {
     },
   });
 
+  const continueSignInMutation = useMutation({
+    mutationFn: async () => {
+      return authApi.getSignInMethod({ email: email.trim() });
+    },
+    onSuccess: ({ mode }) => {
+      setError(null);
+      setForgotSuccess(null);
+      setSignInFlowStarted(true);
+      if (mode === "password_only") {
+        setCanUseOtpAndPasskey(false);
+        setUseEmailCode(false);
+        setShowPasswordLogin(true);
+        return;
+      }
+      setCanUseOtpAndPasskey(true);
+      setShowPasswordLogin(false);
+      setUseEmailCode(true);
+      setCodeSent(false);
+      setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+      setEmailCode("");
+      setCodeSuccess(null);
+      sendCodeMutation.mutate();
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Failed to continue sign in");
+    },
+  });
+
   const passkeyMutation = useMutation({
     mutationFn: async () => {
       await authApi.signInPasskey();
@@ -149,7 +180,11 @@ export function AuthPage() {
 
   const canSubmit =
     email.trim().length > 0 &&
-    (useEmailCode ? codeSent && emailCode.trim().length === OTP_LENGTH : password.trim().length > 0) &&
+    (useEmailCode
+      ? codeSent && emailCode.trim().length === OTP_LENGTH
+      : mode === "sign_in"
+        ? signInFlowStarted && showPasswordLogin && password.trim().length > 0
+        : password.trim().length > 0) &&
     (mode === "sign_in" || (name.trim().length > 0 && password.trim().length >= 8));
   const canRequestReset = email.trim().length > 0;
   const canSubmitReset = password.trim().length >= 8 && confirmPassword === password;
@@ -186,8 +221,10 @@ export function AuthPage() {
                 ? useEmailCode
                   ? codeSent
                     ? "Enter the verification code sent to your email to sign in."
-                    : "Use your email to receive a one-time verification code."
-                  : "Use your email and password to access this instance."
+                    : "Sending a one-time verification code to your email."
+                  : signInFlowStarted
+                    ? "Enter your password to continue."
+                    : "Enter your email to continue."
                 : "Create an account for this instance. Email confirmation is not required in v1."}
           </p>
           {loggedOut && (
@@ -209,6 +246,15 @@ export function AuthPage() {
                   return;
                 }
                 resetPasswordMutation.mutate();
+                return;
+              }
+              if (mode === "sign_in" && !signInFlowStarted) {
+                if (continueSignInMutation.isPending) return;
+                if (email.trim().length === 0) {
+                  setError("Enter your email first.");
+                  return;
+                }
+                continueSignInMutation.mutate();
                 return;
               }
               if (mutation.isPending) return;
@@ -252,19 +298,23 @@ export function AuthPage() {
                     setEmail(event.target.value);
                     setError(null);
                     setForgotSuccess(null);
-                    if (useEmailCode) {
-                      setCodeSent(false);
-                      setCodeSuccess(null);
-                      setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-                      setEmailCode("");
-                    }
+                    setSignInFlowStarted(false);
+                    setCanUseOtpAndPasskey(false);
+                    setUseEmailCode(false);
+                    setShowPasswordLogin(false);
+                    setForgotRequested(false);
+                    setPassword("");
+                    setCodeSent(false);
+                    setCodeSuccess(null);
+                    setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+                    setEmailCode("");
                   }}
                   autoComplete="email"
                   autoFocus={mode === "sign_in"}
                 />
               </div>
             )}
-            {(isResetMode || !useEmailCode) && (
+            {(isResetMode || (!useEmailCode && (mode !== "sign_in" || showPasswordLogin))) && (
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <label htmlFor="password" className="text-xs text-muted-foreground block">Password</label>
@@ -307,32 +357,20 @@ export function AuthPage() {
                 )}
               </div>
             )}
-            {!isResetMode && mode === "sign_in" && useEmailCode && !codeSent && (
+            {!isResetMode && mode === "sign_in" && signInFlowStarted && canUseOtpAndPasskey && useEmailCode && !codeSent && (
               <div className="space-y-3 rounded-xl border border-border bg-card/70 p-4">
-                <p className="text-xs text-muted-foreground">Enter email id and send OTP.</p>
-                <Button
-                  type="button"
-                  disabled={email.trim().length === 0 || sendCodeMutation.isPending}
-                  onClick={() => {
-                    if (email.trim().length === 0) {
-                      setError("Enter your email first.");
-                      return;
-                    }
-                    const next = Array.from({ length: OTP_LENGTH }, () => "");
-                    setOtpDigits(next);
-                    setEmailCode("");
-                    setCodeSuccess(null);
-                    setError(null);
-                    sendCodeMutation.mutate();
-                  }}
-                  className="w-full"
-                >
-                  {sendCodeMutation.isPending ? "Sending OTP..." : "Send OTP"}
-                </Button>
+                <p className="text-xs text-muted-foreground">
+                  {sendCodeMutation.isPending
+                    ? "Sending OTP to your email..."
+                    : "Preparing OTP input..."}
+                </p>
                 <button
                   type="button"
                   className="w-full text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
                   onClick={() => {
+                    setSignInFlowStarted(false);
+                    setCanUseOtpAndPasskey(false);
+                    setShowPasswordLogin(false);
                     setUseEmailCode(false);
                     setCodeSent(false);
                     setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
@@ -345,7 +383,7 @@ export function AuthPage() {
                 </button>
               </div>
             )}
-            {!isResetMode && mode === "sign_in" && useEmailCode && codeSent && (
+            {!isResetMode && mode === "sign_in" && signInFlowStarted && canUseOtpAndPasskey && useEmailCode && codeSent && (
               <div className="space-y-3 rounded-xl border border-border bg-card/70 p-4">
                 <div>
                   <label className="mb-2 block text-xs text-muted-foreground">Verification code</label>
@@ -439,7 +477,7 @@ export function AuthPage() {
                 </div>
               </div>
             )}
-            {!isResetMode && mode === "sign_in" && forgotRequested && (
+            {!isResetMode && mode === "sign_in" && showPasswordLogin && forgotRequested && (
               <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
                 <p>Enter your email and we will send a password reset link.</p>
                 <Button
@@ -466,53 +504,102 @@ export function AuthPage() {
             {!(!isResetMode && mode === "sign_in" && forgotRequested) && !(useEmailCode && !codeSent) && (
               <>
                 {!isResetMode && mode === "sign_in" && useEmailCode && codeSent ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={email.trim().length === 0 || sendCodeMutation.isPending}
-                    onClick={() => {
-                      if (email.trim().length === 0) {
-                        setError("Enter your email first.");
-                        return;
-                      }
-                      const next = Array.from({ length: OTP_LENGTH }, () => "");
-                      setOtpDigits(next);
-                      setEmailCode("");
-                      setCodeSuccess(null);
-                      setError(null);
-                      sendCodeMutation.mutate();
-                    }}
-                    className="w-full"
-                  >
-                    {sendCodeMutation.isPending ? "Sending OTP..." : "Resend OTP"}
-                  </Button>
-                ) : (
                   <>
                     <Button
-                      type="submit"
-                      disabled={isResetMode ? resetPasswordMutation.isPending : mutation.isPending}
-                      aria-disabled={
-                        isResetMode
-                          ? !canSubmitReset || resetPasswordMutation.isPending
-                          : !canSubmit || mutation.isPending
-                      }
-                      className={`w-full ${
-                        isResetMode
-                          ? !canSubmitReset && !resetPasswordMutation.isPending ? "opacity-50" : ""
-                          : !canSubmit && !mutation.isPending ? "opacity-50" : ""
-                      }`}
+                      type="button"
+                      variant="secondary"
+                      disabled={email.trim().length === 0 || sendCodeMutation.isPending}
+                      onClick={() => {
+                        if (email.trim().length === 0) {
+                          setError("Enter your email first.");
+                          return;
+                        }
+                        const next = Array.from({ length: OTP_LENGTH }, () => "");
+                        setOtpDigits(next);
+                        setEmailCode("");
+                        setCodeSuccess(null);
+                        setError(null);
+                        sendCodeMutation.mutate();
+                      }}
+                      className="w-full"
                     >
-                      {isResetMode
-                        ? resetPasswordMutation.isPending
-                          ? "Resetting…"
-                          : "Reset Password"
-                        : mutation.isPending
-                          ? "Working…"
-                          : mode === "sign_in"
-                            ? "Login"
-                            : "Create Account"}
+                      {sendCodeMutation.isPending ? "Sending OTP..." : "Resend OTP"}
                     </Button>
-                    {!isResetMode && mode === "sign_in" && !useEmailCode && (
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-xs text-muted-foreground">or</span>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setShowPasswordLogin(true);
+                        setUseEmailCode(false);
+                        setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
+                        setEmailCode("");
+                        setCodeSuccess(null);
+                        setError(null);
+                      }}
+                      className="w-full"
+                    >
+                      <Lock className="mr-2 h-4 w-4" />
+                      Login using Password
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={passkeyMutation.isPending}
+                      onClick={() => {
+                        setError(null);
+                        passkeyMutation.mutate();
+                      }}
+                      className="w-full"
+                    >
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      {passkeyMutation.isPending ? "Opening Passkey..." : "Login with Passkey"}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {!isResetMode && mode === "sign_in" && !signInFlowStarted && (
+                      <Button
+                        type="submit"
+                        disabled={email.trim().length === 0 || continueSignInMutation.isPending}
+                        className={`w-full ${
+                          email.trim().length === 0 && !continueSignInMutation.isPending ? "opacity-50" : ""
+                        }`}
+                      >
+                        {continueSignInMutation.isPending ? "Checking..." : "Continue"}
+                      </Button>
+                    )}
+                    {(isResetMode || mode !== "sign_in" || (signInFlowStarted && showPasswordLogin)) && (
+                      <Button
+                        type="submit"
+                        disabled={isResetMode ? resetPasswordMutation.isPending : mutation.isPending}
+                        aria-disabled={
+                          isResetMode
+                            ? !canSubmitReset || resetPasswordMutation.isPending
+                            : !canSubmit || mutation.isPending
+                        }
+                        className={`w-full ${
+                          isResetMode
+                            ? !canSubmitReset && !resetPasswordMutation.isPending ? "opacity-50" : ""
+                            : !canSubmit && !mutation.isPending ? "opacity-50" : ""
+                        }`}
+                      >
+                        {isResetMode
+                          ? resetPasswordMutation.isPending
+                            ? "Resetting…"
+                            : "Reset Password"
+                          : mutation.isPending
+                            ? "Working…"
+                            : mode === "sign_in"
+                              ? "Login"
+                              : "Create Account"}
+                      </Button>
+                    )}
+                    {!isResetMode && mode === "sign_in" && signInFlowStarted && canUseOtpAndPasskey && !useEmailCode && showPasswordLogin && (
                       <>
                         <div className="flex items-center gap-3">
                           <div className="h-px flex-1 bg-border" />
@@ -523,6 +610,7 @@ export function AuthPage() {
                           type="button"
                           variant="secondary"
                           onClick={() => {
+                            setShowPasswordLogin(false);
                             setUseEmailCode(true);
                             setForgotRequested(false);
                             setPassword("");
@@ -531,6 +619,7 @@ export function AuthPage() {
                             setEmailCode("");
                             setCodeSuccess(null);
                             setError(null);
+                            sendCodeMutation.mutate();
                           }}
                           className="w-full"
                         >
@@ -554,25 +643,7 @@ export function AuthPage() {
                     )}
                   </>
                 )}
-                {!isResetMode && mode === "sign_in" && useEmailCode && codeSent && (
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-border" />
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                      onClick={() => {
-                        setUseEmailCode(false);
-                        setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-                        setEmailCode("");
-                        setCodeSuccess(null);
-                        setError(null);
-                      }}
-                    >
-                      Use password instead
-                    </button>
-                    <div className="h-px flex-1 bg-border" />
-                  </div>
-                )}
+                
               </>
             )}
           </form>

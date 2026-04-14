@@ -25,6 +25,9 @@ function defaultNotificationConfig(): ProjectNotificationConfig {
         enabled: true,
         notifyRoles: ["issue_assignee_user", "issue_creator_user"],
       },
+      "issue.comment_mentioned": {
+        enabled: true,
+      },
       "issue.assigned": {
         enabled: true,
         notifyRoles: ["issue_assignee_user", "issue_creator_user"],
@@ -68,6 +71,11 @@ const EVENT_META: Array<{
     key: "issue.comment_added",
     label: "New comments",
     description: "When someone adds a comment on an issue.",
+  },
+  {
+    key: "issue.comment_mentioned",
+    label: "@mentions in comments",
+    description: "When someone @mentions a human teammate in an issue comment.",
   },
   {
     key: "issue.assigned",
@@ -219,6 +227,7 @@ export function ProjectNotificationSettings({
           {EVENT_META.map(({ key, label, description }) => {
             const r = ruleFor(draft, key, defaults);
             const statusRule = key === "issue.status_changed";
+            const mentionOnlyRule = key === "issue.comment_mentioned";
             return (
               <div key={key} className="rounded-md border border-border/80 px-3 py-3 space-y-2">
                 <label className="flex items-start gap-2 text-sm">
@@ -239,8 +248,14 @@ export function ProjectNotificationSettings({
 
                 {r.enabled !== false ? (
                   <div className="ml-6 space-y-2 border-l border-border pl-3">
-                    <p className="text-[11px] text-muted-foreground">Notify</p>
-                    {(Object.keys(ROLE_LABELS) as ProjectNotificationRecipientRole[]).map((role) => (
+                    {mentionOnlyRule ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Only users @mentioned in the comment are notified (in-app and email when enabled below).
+                      </p>
+                    ) : null}
+                    {!mentionOnlyRule ? <p className="text-[11px] text-muted-foreground">Notify</p> : null}
+                    {!mentionOnlyRule
+                      ? (Object.keys(ROLE_LABELS) as ProjectNotificationRecipientRole[]).map((role) => (
                       <label key={role} className="flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"
@@ -261,8 +276,10 @@ export function ProjectNotificationSettings({
                         />
                         {ROLE_LABELS[role]}
                       </label>
-                    ))}
+                    ))
+                      : null}
 
+                    {!mentionOnlyRule ? (
                     <label className="flex items-center gap-2 text-xs pt-1">
                       <input
                         type="checkbox"
@@ -276,6 +293,7 @@ export function ProjectNotificationSettings({
                       />
                       Only when the actor is an agent
                     </label>
+                    ) : null}
 
                     {statusRule ? (
                       <div className="pt-1 space-y-1">

@@ -565,7 +565,7 @@ function NotificationPreferencesTab() {
 
   const pref = data;
   const notificationEvents: Array<{
-    key: "issue.status_changed" | "issue.comment_added" | "issue.assigned";
+    key: "issue.status_changed" | "issue.comment_added" | "issue.comment_mentioned" | "issue.assigned";
     label: string;
     description: string;
   }> = [
@@ -578,6 +578,11 @@ function NotificationPreferencesTab() {
       key: "issue.comment_added",
       label: "New comments",
       description: "Notify me when someone adds a new comment to an issue I am involved in.",
+    },
+    {
+      key: "issue.comment_mentioned",
+      label: "@mentions in comments",
+      description: "Notify me when someone @mentions me in an issue comment.",
     },
     {
       key: "issue.assigned",
