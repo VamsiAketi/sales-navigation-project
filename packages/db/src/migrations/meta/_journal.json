@@ -421,6 +421,13 @@
       "when": 1776200000000,
       "tag": "0059_nebulous_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1776300000000,
+      "tag": "0060_deleted_user_emails",
+      "breakpoints": true
     }
   ]
 }

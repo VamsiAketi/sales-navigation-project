@@ -1,6 +1,7 @@
 export { companies } from "./companies.js";
 export { companyLogos } from "./company_logos.js";
 export { authUsers, authSessions, authAccounts, authVerifications, authPasskeys } from "./auth.js";
+export { deletedUserEmails } from "./deleted_user_emails.js";
 export { userNotificationPreferences } from "./user_notification_preferences.js";
 export { userNotifications } from "./user_notifications.js";
 export { instanceSettings } from "./instance_settings.js";
