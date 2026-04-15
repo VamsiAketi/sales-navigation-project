@@ -1251,12 +1251,14 @@ export function NewIssueDialog() {
                 renderTriggerValue={(option) =>
                   option ? (
                     currentAssignee ? (
-                      <>
+                      <span className="flex min-w-0 items-center gap-1.5 overflow-hidden align-middle">
                         <AgentIcon icon={currentAssignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="truncate" title={option.label}>{option.label}</span>
-                      </>
+                        <span className="block min-w-0 flex-1 truncate" title={option.label}>{option.label}</span>
+                      </span>
                     ) : (
-                      <span className="truncate" title={option.label}>{option.label}</span>
+                      <span className="flex min-w-0 items-center overflow-hidden">
+                        <span className="block min-w-0 flex-1 truncate" title={option.label}>{option.label}</span>
+                      </span>
                     )
                   ) : (
                     <span className="text-muted-foreground">Assignee</span>
@@ -1268,10 +1270,10 @@ export function NewIssueDialog() {
                     ? (agents ?? []).find((agent) => agent.id === parseAssigneeValue(option.id).assigneeAgentId)
                     : null;
                   return (
-                    <>
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
                       {assignee ? <AgentIcon icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                      <span className="truncate" title={option.label}>{option.label}</span>
-                    </>
+                      <span className="min-w-0 truncate" title={option.label}>{option.label}</span>
+                    </span>
                   );
                 }}
               />

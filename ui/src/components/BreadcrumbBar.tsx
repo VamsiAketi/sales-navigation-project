@@ -226,8 +226,8 @@ function UserMenu() {
       // proceed with local cleanup even if the server call fails
     }
     queryClient.clear();
-    // Force a clean auth page load and suppress immediate cached-session bounce.
-    window.location.assign("/auth?logged_out=1");
+    // Force a clean auth page load and replace history entry for this page.
+    window.location.replace("/auth?logged_out=1");
   };
 
   return (
