@@ -1055,14 +1055,20 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
 
         {/* Stats pills */}
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 px-2.5 py-1 rounded-full">
+          <Link
+            to={{ pathname: "/company/people", search: "?tab=users" }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/40"
+          >
             <User className="h-3 w-3" />
             {humanCount} {humanCount === 1 ? "Human" : "Humans"}
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/50 px-2.5 py-1 rounded-full">
+          </Link>
+          <Link
+            to={{ pathname: "/company/people", search: "?tab=agents" }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600 transition-colors hover:bg-violet-100 dark:border-violet-900/50 dark:bg-violet-950/40 dark:text-violet-400 dark:hover:bg-violet-900/40"
+          >
             <Network className="h-3 w-3" />
             {agentCount} {agentCount === 1 ? "AI Agent" : "AI Agents"}
-          </span>
+          </Link>
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 px-2.5 py-1 rounded-full">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
             {liveCount} Live
@@ -1250,7 +1256,13 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
                   hasReports={hasReports}
                   onToggleExpand={(expand) => toggleExpanded(node.id, expand)}
                   onNavigate={() => {
-                    if (node.nodeType !== "agent") return;
+                    if (node.nodeType === "human") {
+                      navigate({
+                        pathname: "/company/people",
+                        search: `?tab=users&memberId=${encodeURIComponent(node.id)}`,
+                      });
+                      return;
+                    }
                     navigate(agent ? agentUrl(agent) : `/agents/${node.id}`);
                   }}
                   companyId={companyId}

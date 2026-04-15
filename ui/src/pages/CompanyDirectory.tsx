@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link } from "@/lib/router";
+import { Link, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Check, Loader2, UserRound, Users } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
@@ -417,10 +417,22 @@ export function CompanyDirectory() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<"users" | "agents">("users");
+  const routeTab = searchParams.get("tab");
+  const requestedHumanMemberId = searchParams.get("memberId")?.trim() || null;
+  const initialTab: "users" | "agents" =
+    routeTab === "agents" || routeTab === "agent"
+      ? "agents"
+      : routeTab === "users" || routeTab === "user" || routeTab === "humans" || routeTab === "human"
+        ? "users"
+        : "users";
+
+  const [activeTab, setActiveTab] = useState<"users" | "agents">(initialTab);
   const [search, setSearch] = useState("");
-  const [selectedHumanMemberId, setSelectedHumanMemberId] = useState<string | null>(null);
+  const [selectedHumanMemberId, setSelectedHumanMemberId] = useState<string | null>(
+    requestedHumanMemberId,
+  );
   const [selectedAgentMemberId, setSelectedAgentMemberId] = useState<string | null>(null);
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
   const [memberManagerDrafts, setMemberManagerDrafts] = useState<Record<string, string>>({});
@@ -450,6 +462,11 @@ export function CompanyDirectory() {
     temporaryPassword: string;
   } | null>(null);
   const [humanInviteCredentialsCopied, setHumanInviteCredentialsCopied] = useState(false);
+
+  useEffect(() => {
+    if (!requestedHumanMemberId) return;
+    setSelectedHumanMemberId(requestedHumanMemberId);
+  }, [requestedHumanMemberId]);
 
   const {
     data: companyMembers,
