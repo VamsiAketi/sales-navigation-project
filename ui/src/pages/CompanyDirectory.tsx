@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils";
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
 const HUMAN_ROLE_OPTIONS = [
-  "Owner",
+  "owner",
   "Director",
   "CEO",
   "COO",
@@ -249,7 +249,9 @@ function HumanPermissionsPanel({
 }
 
 function normalizeRoleLabel(input: string) {
-  return input.trim().replace(/\s+/g, " ");
+  const normalized = input.trim().replace(/\s+/g, " ");
+  if (normalized.toLowerCase() === "owner") return "owner";
+  return normalized;
 }
 
 function readCompanyRolePrefs(companyId: string) {
@@ -443,7 +445,7 @@ export function CompanyDirectory() {
   const [customAgentRoles, setCustomAgentRoles] = useState<string[]>([]);
   const [newHumanRole, setNewHumanRole] = useState("");
   const [newAgentRole, setNewAgentRole] = useState("");
-  const [selectedManageHumanRole, setSelectedManageHumanRole] = useState<string>(HUMAN_ROLE_OPTIONS[0] ?? "Owner");
+  const [selectedManageHumanRole, setSelectedManageHumanRole] = useState<string>(HUMAN_ROLE_OPTIONS[0] ?? "owner");
   const [humanRolePermissions, setHumanRolePermissions] = useState<Record<string, PermissionKey[]>>({});
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -570,11 +572,11 @@ export function CompanyDirectory() {
   );
 
   const manageHumanRoleOptions = useMemo(
-    () => Array.from(new Set([...HUMAN_ROLE_OPTIONS, ...persistedHumanRoles, ...customHumanRoles])),
+    () => Array.from(new Set([...HUMAN_ROLE_OPTIONS, ...persistedHumanRoles, ...customHumanRoles].map(normalizeRoleLabel))),
     [customHumanRoles, persistedHumanRoles],
   );
   const inviteHumanRoleOptions = useMemo(
-    () => manageHumanRoleOptions.filter((role) => role !== "Owner"),
+    () => manageHumanRoleOptions.filter((role) => role.toLowerCase() !== "owner"),
     [manageHumanRoleOptions],
   );
   const assignableAgentRoleOptions = useMemo(

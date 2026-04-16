@@ -27,6 +27,7 @@ import {
 } from "@paperclipai/db";
 import detectPort from "detect-port";
 import { createApp } from "./app.js";
+import { parseMicrosoftSsoAutoProvisionFromEnv } from "./auth/microsoft-sso-provision.js";
 import { loadConfig } from "./config.js";
 import { logger } from "./middleware/logger.js";
 import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
@@ -604,6 +605,8 @@ export async function startServer(): Promise<StartedServer> {
     resolveSession,
     requestPasswordReset,
     changePassword,
+    microsoftSsoAutoProvision:
+      config.deploymentMode === "authenticated" ? parseMicrosoftSsoAutoProvisionFromEnv() : null,
   });
   const server = createServer(app as unknown as Parameters<typeof createServer>[0]);
   

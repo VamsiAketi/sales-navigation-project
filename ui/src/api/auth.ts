@@ -159,6 +159,24 @@ export const authApi = {
     }
   },
 
+  signInMicrosoft: async () => {
+    const callbackURL =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/auth`
+        : "/auth";
+    const result = await betterAuthClient.signIn.social({
+      provider: "microsoft",
+      callbackURL,
+    });
+    if ("error" in result && result.error) {
+      const message =
+        (typeof result.error.message === "string" && result.error.message.length > 0)
+          ? result.error.message
+          : "Microsoft sign-in failed";
+      throw new Error(message);
+    }
+  },
+
   addPasskey: async (input?: { name?: string }) => {
     const result = await betterAuthClient.passkey.addPasskey({ name: input?.name });
     if ("error" in result && result.error) {

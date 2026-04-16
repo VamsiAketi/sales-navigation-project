@@ -1,6 +1,6 @@
 import { readConfigFile } from "./config-file.js";
 import { existsSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { config as loadDotenv } from "dotenv";
 import { resolvePaperclipEnvPath } from "./paths.js";
 import { maybeRepairLegacyWorktreeConfigAndEnvFiles } from "./worktree-config.js";
@@ -29,13 +29,47 @@ if (existsSync(PAPERCLIP_ENV_FILE_PATH)) {
   loadDotenv({ path: PAPERCLIP_ENV_FILE_PATH, override: false, quiet: true });
 }
 
-const CWD_ENV_PATH = resolve(process.cwd(), ".env");
-const isSameFile = existsSync(CWD_ENV_PATH) && existsSync(PAPERCLIP_ENV_FILE_PATH)
-  ? realpathSync(CWD_ENV_PATH) === realpathSync(PAPERCLIP_ENV_FILE_PATH)
-  : CWD_ENV_PATH === PAPERCLIP_ENV_FILE_PATH;
-if (!isSameFile && existsSync(CWD_ENV_PATH)) {
-  loadDotenv({ path: CWD_ENV_PATH, override: false, quiet: true });
+/**
+ * Dev runs the API with `cwd` = `server/`, so a repo-root `.env` is otherwise ignored.
+ * Load `.env` from ancestors (repo root → … → cwd) so shared secrets work; later files override earlier.
+ */
+function loadAncestorDotEnvFiles(): void {
+  const fromCwdToRoot: string[] = [];
+  let dir = resolve(process.cwd());
+  for (let i = 0; i < 10; i++) {
+    const candidate = resolve(dir, ".env");
+    if (existsSync(candidate)) {
+      fromCwdToRoot.push(candidate);
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  const paperclipReal = existsSync(PAPERCLIP_ENV_FILE_PATH)
+    ? (() => {
+        try {
+          return realpathSync(PAPERCLIP_ENV_FILE_PATH);
+        } catch {
+          return PAPERCLIP_ENV_FILE_PATH;
+        }
+      })()
+    : null;
+  const seenReal = new Set<string>();
+  for (const filePath of fromCwdToRoot.reverse()) {
+    try {
+      const real = realpathSync(filePath);
+      if (seenReal.has(real)) continue;
+      seenReal.add(real);
+      if (paperclipReal && real === paperclipReal) continue;
+    } catch {
+      if (seenReal.has(filePath)) continue;
+      seenReal.add(filePath);
+    }
+    loadDotenv({ path: filePath, override: true, quiet: true });
+  }
 }
+
+loadAncestorDotEnvFiles();
 
 maybeRepairLegacyWorktreeConfigAndEnvFiles();
 
@@ -76,6 +110,9 @@ export interface Config {
   heartbeatSchedulerIntervalMs: number;
   companyDeletionEnabled: boolean;
   telemetryEnabled: boolean;
+  microsoftAuthTenantId: string | undefined;
+  microsoftAuthClientId: string | undefined;
+  microsoftAuthClientSecret: string | undefined;
 }
 
 export function loadConfig(): Config {
@@ -202,6 +239,27 @@ export function loadConfig(): Config {
     companyDeletionEnvRaw !== undefined
       ? companyDeletionEnvRaw === "true"
       : deploymentMode === "local_trusted";
+  const microsoftAuthTenantId =
+    process.env.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID?.trim() ||
+    process.env["AI-HARNESS_AUTH_MICROSOFT_TENANT_ID"]?.trim() ||
+    process.env.PAPERCLIP_AUTH_MICROSOFT_TENANT_ID?.trim() ||
+    process.env.MICROSOFT_TENANT_ID?.trim() ||
+    process.env.TENANT_ID?.trim() ||
+    undefined;
+  const microsoftAuthClientId =
+    process.env.AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID?.trim() ||
+    process.env["AI-HARNESS_AUTH_MICROSOFT_CLIENT_ID"]?.trim() ||
+    process.env.PAPERCLIP_AUTH_MICROSOFT_CLIENT_ID?.trim() ||
+    process.env.MICROSOFT_CLIENT_ID?.trim() ||
+    process.env.CLIENT_ID?.trim() ||
+    undefined;
+  const microsoftAuthClientSecret =
+    process.env.AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET?.trim() ||
+    process.env["AI-HARNESS_AUTH_MICROSOFT_CLIENT_SECRET"]?.trim() ||
+    process.env.PAPERCLIP_AUTH_MICROSOFT_CLIENT_SECRET?.trim() ||
+    process.env.MICROSOFT_CLIENT_SECRET?.trim() ||
+    process.env.CLIENT_SECRET?.trim() ||
+    undefined;
   const databaseBackupEnabled =
     process.env.PAPERCLIP_DB_BACKUP_ENABLED !== undefined
       ? process.env.PAPERCLIP_DB_BACKUP_ENABLED === "true"
@@ -269,5 +327,8 @@ export function loadConfig(): Config {
     heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
     companyDeletionEnabled,
     telemetryEnabled: fileConfig?.telemetry?.enabled ?? true,
+    microsoftAuthTenantId,
+    microsoftAuthClientId,
+    microsoftAuthClientSecret,
   };
 }

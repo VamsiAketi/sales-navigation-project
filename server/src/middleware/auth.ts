@@ -6,6 +6,8 @@ import { agentApiKeys, agents, companyMemberships, instanceUserRoles } from "@pa
 import { verifyLocalAgentJwt } from "../agent-auth-jwt.js";
 import type { DeploymentMode } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
+import type { MicrosoftSsoAutoProvisionSettings } from "../auth/microsoft-sso-provision.js";
+import { maybeProvisionMicrosoftSsoUser } from "../auth/microsoft-sso-provision.js";
 import { logger } from "./logger.js";
 import { boardAuthService } from "../services/board-auth.js";
 
@@ -16,6 +18,7 @@ function hashToken(token: string) {
 interface ActorMiddlewareOptions {
   deploymentMode: DeploymentMode;
   resolveSession?: (req: Request) => Promise<BetterAuthSessionResult | null>;
+  microsoftSsoAutoProvision?: MicrosoftSsoAutoProvisionSettings | null;
 }
 
 export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHandler {
@@ -59,10 +62,40 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
                 ),
               ),
           ]);
+          let companyIds = memberships.map((row) => row.companyId);
+          if (
+            companyIds.length === 0 &&
+            opts.microsoftSsoAutoProvision &&
+            opts.microsoftSsoAutoProvision.companyIds.length > 0
+          ) {
+            try {
+              const didProvision = await maybeProvisionMicrosoftSsoUser(
+                db,
+                userId,
+                session.user.email,
+                opts.microsoftSsoAutoProvision,
+              );
+              if (didProvision) {
+                companyIds = await db
+                  .select({ companyId: companyMemberships.companyId })
+                  .from(companyMemberships)
+                  .where(
+                    and(
+                      eq(companyMemberships.principalType, "user"),
+                      eq(companyMemberships.principalId, userId),
+                      eq(companyMemberships.status, "active"),
+                    ),
+                  )
+                  .then((rows) => rows.map((row) => row.companyId));
+              }
+            } catch (err) {
+              logger.warn({ err, userId }, "Microsoft SSO auto-provision failed");
+            }
+          }
           req.actor = {
             type: "board",
             userId,
-            companyIds: memberships.map((row) => row.companyId),
+            companyIds,
             isInstanceAdmin: Boolean(roleRow),
             runId: runIdHeader ?? undefined,
             source: "session",
