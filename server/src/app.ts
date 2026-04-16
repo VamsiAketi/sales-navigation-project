@@ -50,6 +50,7 @@ import { createPluginHostServiceCleanup } from "./services/plugin-host-service-c
 import { pluginRegistryService } from "./services/plugin-registry.js";
 import { createHostClientHandlers } from "@paperclipai/plugin-sdk";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
+import type { MicrosoftSsoAutoProvisionSettings } from "./auth/microsoft-sso-provision.js";
 
 type UiMode = "none" | "static" | "vite-dev";
 const FEEDBACK_EXPORT_FLUSH_INTERVAL_MS = 5_000;
@@ -88,6 +89,7 @@ export async function createApp(
     resolveSession?: (req: ExpressRequest) => Promise<BetterAuthSessionResult | null>;
     requestPasswordReset?: (input: { email: string; redirectTo?: string; callbackURL?: string }) => Promise<void>;
     changePassword?: (input: { userId: string; newPassword: string }) => Promise<void>;
+    microsoftSsoAutoProvision?: MicrosoftSsoAutoProvisionSettings | null;
   },
 ) {
   const app = express();
@@ -117,6 +119,7 @@ export async function createApp(
     actorMiddleware(db, {
       deploymentMode: opts.deploymentMode,
       resolveSession: opts.resolveSession,
+      microsoftSsoAutoProvision: opts.microsoftSsoAutoProvision ?? null,
     }),
   );
   app.get("/api/auth/get-session", async (req, res) => {

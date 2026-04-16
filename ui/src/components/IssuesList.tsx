@@ -133,7 +133,7 @@ function workflowStatusGroupLabel(value: string, projectStatuses: ProjectIssueSt
 
 /** Fixed column widths for list header + row trailing cells (sm+). */
 const LIST_TRAILING_GRID =
-  "grid shrink-0 grid-cols-[124px_200px_180px_140px_120px] items-center gap-3";
+  "grid shrink-0 grid-cols-[116px_184px_144px_108px_96px] items-center gap-3";
 
 /** Group keys with items: workflow order first (same as board), then any other statuses lexically. */
 function orderedStatusGroupEntries(

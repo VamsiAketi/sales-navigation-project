@@ -89,6 +89,15 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
     }
   }
 
+  if (config.deploymentMode === "authenticated") {
+    if (!config.microsoftAuthClientId || !config.microsoftAuthClientSecret) {
+      logger.warn(
+        "Microsoft OAuth is disabled: set AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID and AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET " +
+          "(tenant id alone is not enough). Use repo-root `.env` or `server/.env`, then restart the server.",
+      );
+    }
+  }
+
   const authConfig = {
     baseURL: baseUrl,
     secret,
@@ -154,6 +163,16 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         );
       },
     },
+    socialProviders:
+      config.microsoftAuthClientId && config.microsoftAuthClientSecret
+        ? {
+          microsoft: {
+            clientId: config.microsoftAuthClientId,
+            clientSecret: config.microsoftAuthClientSecret,
+            tenantId: config.microsoftAuthTenantId ?? "common",
+          },
+        }
+        : undefined,
     plugins: [
       emailOTP({
         expiresIn: 10 * 60,

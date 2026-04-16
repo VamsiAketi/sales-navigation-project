@@ -11,6 +11,17 @@ import { buildVisibleVersionLabel } from "@/components/Layout";
 type AuthMode = "sign_in" | "sign_up";
 const OTP_LENGTH = 6;
 
+function MicrosoftLogo({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <span className={`inline-grid grid-cols-2 grid-rows-2 gap-[1px] ${className}`} aria-hidden>
+      <span className="bg-[#f35325]" />
+      <span className="bg-[#81bc06]" />
+      <span className="bg-[#05a6f0]" />
+      <span className="bg-[#ffba08]" />
+    </span>
+  );
+}
+
 export function AuthPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -143,6 +154,15 @@ export function AuthPage() {
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Passkey sign-in failed");
+    },
+  });
+
+  const microsoftMutation = useMutation({
+    mutationFn: async () => {
+      await authApi.signInMicrosoft();
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Microsoft sign-in failed");
     },
   });
 
@@ -543,7 +563,7 @@ export function AuthPage() {
                       }}
                       className="w-full"
                     >
-                      <Lock className="mr-2 h-4 w-4" />
+                      <Lock className="mr-2 h-4 w-4 text-amber-500 dark:text-amber-400" />
                       Login using Password
                     </Button>
                     <Button
@@ -556,22 +576,72 @@ export function AuthPage() {
                       }}
                       className="w-full"
                     >
-                      <KeyRound className="mr-2 h-4 w-4" />
+                      <KeyRound className="mr-2 h-4 w-4 text-blue-600 dark:text-blue-400" />
                       {passkeyMutation.isPending ? "Opening Passkey..." : "Login with Passkey"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={microsoftMutation.isPending || passkeyMutation.isPending}
+                      onClick={() => {
+                        setError(null);
+                        microsoftMutation.mutate();
+                      }}
+                      className="w-full"
+                    >
+                      <MicrosoftLogo className="mr-2 h-4 w-4" />
+                      {microsoftMutation.isPending ? "Opening Microsoft..." : "Login with Microsoft"}
                     </Button>
                   </>
                 ) : (
                   <>
                     {!isResetMode && mode === "sign_in" && !signInFlowStarted && (
-                      <Button
-                        type="submit"
-                        disabled={email.trim().length === 0 || continueSignInMutation.isPending}
-                        className={`w-full ${
-                          email.trim().length === 0 && !continueSignInMutation.isPending ? "opacity-50" : ""
-                        }`}
-                      >
-                        {continueSignInMutation.isPending ? "Checking..." : "Continue"}
-                      </Button>
+                      <>
+                        <Button
+                          type="submit"
+                          disabled={email.trim().length === 0 || continueSignInMutation.isPending}
+                          className={`w-full ${
+                            email.trim().length === 0 && !continueSignInMutation.isPending ? "opacity-50" : ""
+                          }`}
+                        >
+                          {continueSignInMutation.isPending ? "Checking..." : "Continue"}
+                        </Button>
+                        <div className="pt-1">
+                          <div className="mb-3 flex items-center gap-3">
+                            <div className="h-px flex-1 bg-border" />
+                            <span className="text-xs text-muted-foreground">Or continue with</span>
+                            <div className="h-px flex-1 bg-border" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={passkeyMutation.isPending || microsoftMutation.isPending}
+                              onClick={() => {
+                                setError(null);
+                                passkeyMutation.mutate();
+                              }}
+                              className="h-11 rounded-full"
+                            >
+                              <KeyRound className="mr-2 h-4 w-4 text-blue-600 dark:text-blue-400" />
+                              {passkeyMutation.isPending ? "Opening..." : "Passkey"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={microsoftMutation.isPending || passkeyMutation.isPending}
+                              onClick={() => {
+                                setError(null);
+                                microsoftMutation.mutate();
+                              }}
+                              className="h-11 rounded-full"
+                            >
+                              <MicrosoftLogo className="mr-2 h-4 w-4" />
+                              {microsoftMutation.isPending ? "Opening..." : "Microsoft"}
+                            </Button>
+                          </div>
+                        </div>
+                      </>
                     )}
                     {(isResetMode || mode !== "sign_in" || (signInFlowStarted && showPasswordLogin)) && (
                       <Button
@@ -623,8 +693,8 @@ export function AuthPage() {
                           }}
                           className="w-full"
                         >
-                          <Mail className="mr-2 h-4 w-4" />
-                          Continue with Email OTP
+                          <Mail className="mr-2 h-4 w-4 text-sky-600 dark:text-sky-400" />
+                          Login with Email OTP
                         </Button>
                         <Button
                           type="button"
@@ -636,8 +706,21 @@ export function AuthPage() {
                           }}
                           className="w-full"
                         >
-                          <KeyRound className="mr-2 h-4 w-4" />
-                          {passkeyMutation.isPending ? "Opening Passkey..." : "Continue with Passkey"}
+                          <KeyRound className="mr-2 h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          {passkeyMutation.isPending ? "Opening Passkey..." : "Login with Passkey"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={microsoftMutation.isPending || passkeyMutation.isPending}
+                          onClick={() => {
+                            setError(null);
+                            microsoftMutation.mutate();
+                          }}
+                          className="w-full"
+                        >
+                          <MicrosoftLogo className="mr-2 h-4 w-4" />
+                          {microsoftMutation.isPending ? "Opening Microsoft..." : "Login with Microsoft"}
                         </Button>
                       </>
                     )}
