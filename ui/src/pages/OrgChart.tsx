@@ -1035,7 +1035,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   const activeIsAgent = activeNode ? activeNode.nodeType === "agent" : true;
 
   return (
-    <div className="flex flex-col h-full gap-2">
+    <div className="flex min-h-[68dvh] flex-col gap-2 md:h-full md:min-h-0">
       {/* Toolbar */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -1084,7 +1084,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
       >
         <div
           ref={containerRef}
-          className="relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50 dark:border-border/50 dark:bg-muted/20"
+          className="relative min-h-[24rem] w-full flex-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50 dark:border-border/50 dark:bg-muted/20 md:min-h-0"
           style={{ cursor: isPanning ? "grabbing" : "default" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
