@@ -127,12 +127,22 @@ export const issuesApi = {
     file: File,
     issueCommentId?: string | null,
   ) => {
-    const form = new FormData();
-    form.append("file", file);
-    if (issueCommentId) {
-      form.append("issueCommentId", issueCommentId);
-    }
-    return api.postForm<IssueAttachment>(`/companies/${companyId}/issues/${issueId}/attachments`, form);
+    const safeUpload = async () => {
+      // Clipboard-paste File objects can reference transient data that may be
+      // revoked after the paste event. Clone bytes first so FormData has a
+      // stable payload for async upload.
+      const buffer = await file.arrayBuffer();
+      const safeFile = new File([buffer], file.name, { type: file.type });
+
+      const form = new FormData();
+      form.append("file", safeFile);
+      if (issueCommentId) {
+        form.append("issueCommentId", issueCommentId);
+      }
+      return api.postForm<IssueAttachment>(`/companies/${companyId}/issues/${issueId}/attachments`, form);
+    };
+
+    return safeUpload();
   },
   deleteAttachment: (id: string) => api.delete<{ ok: true }>(`/attachments/${id}`),
   listApprovals: (id: string) => api.get<Approval[]>(`/issues/${id}/approvals`),
