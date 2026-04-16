@@ -22,6 +22,7 @@ import {
   joinPromptSections,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
+import { DEFAULT_CODEX_LOCAL_MODEL } from "../index.js";
 import { parseCodexJsonl, isCodexUnknownSessionError } from "./parse.js";
 import { pathExists, prepareManagedCodexHome, resolveManagedCodexHomeDir, resolveSharedCodexHomeDir } from "./codex-home.js";
 import { resolveCodexDesiredSkillNames } from "./skills.js";
@@ -221,7 +222,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     "You are agent {{agent.id}} ({{agent.name}}). Continue your Paperclip work.",
   );
   const command = asString(config.command, "codex");
-  const model = asString(config.model, "");
+  const model = asString(config.model, DEFAULT_CODEX_LOCAL_MODEL);
   const modelReasoningEffort = asString(
     config.modelReasoningEffort,
     asString(config.reasoningEffort, ""),
@@ -586,9 +587,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       sessionDisplayId: resolvedSessionId,
       provider: "openai",
       biller: resolveCodexBiller(effectiveEnv, billingType),
-      model,
+      model: attempt.parsed.model || model,
       billingType,
-      costUsd: null,
+      costUsd: attempt.parsed.costUsd,
       resultJson: {
         stdout: attempt.proc.stdout,
         stderr: attempt.proc.stderr,
