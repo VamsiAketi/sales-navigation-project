@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { activityLog, agents, companies, costEvents, issues, projects } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
+import { calculateModelCostCents } from "./model-pricing.js";
 
 export interface CostDateRange {
   from?: Date;
@@ -36,7 +37,7 @@ async function getMonthlySpendTotal(
   }
   const [row] = await db
     .select({
-      total: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+      total: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
     })
     .from(costEvents)
     .where(and(...conditions));
@@ -66,6 +67,15 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           biller: data.biller ?? data.provider,
           billingType: data.billingType ?? "unknown",
           cachedInputTokens: data.cachedInputTokens ?? 0,
+          modelCostCents:
+            typeof data.modelCostCents === "number"
+              ? data.modelCostCents
+              : calculateModelCostCents(
+                  data.model,
+                  data.inputTokens ?? 0,
+                  data.cachedInputTokens ?? 0,
+                  data.outputTokens ?? 0,
+                ),
         })
         .returning()
         .then((rows) => rows[0]);
@@ -109,22 +119,24 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
       if (range?.from) conditions.push(gte(costEvents.occurredAt, range.from));
       if (range?.to) conditions.push(lte(costEvents.occurredAt, range.to));
 
-      const [{ total }] = await db
+      const [{ modelTotal }] = await db
         .select({
-          total: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+          modelTotal: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
         })
         .from(costEvents)
         .where(and(...conditions));
 
-      const spendCents = Number(total);
+      const modelSpendCents = Number(modelTotal ?? 0);
+      const spendCents = modelSpendCents;
       const utilization =
         company.budgetMonthlyCents > 0
-          ? (spendCents / company.budgetMonthlyCents) * 100
+          ? (modelSpendCents / company.budgetMonthlyCents) * 100
           : 0;
 
       return {
         companyId,
         spendCents,
+        modelSpendCents,
         budgetCents: company.budgetMonthlyCents,
         utilizationPercent: Number(utilization.toFixed(2)),
       };
@@ -141,6 +153,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           agentName: agents.name,
           agentStatus: agents.status,
           costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+          modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
           inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
           cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
           outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
@@ -159,7 +172,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .leftJoin(agents, eq(costEvents.agentId, agents.id))
         .where(and(...conditions))
         .groupBy(costEvents.agentId, agents.name, agents.status)
-        .orderBy(desc(sql`coalesce(sum(${costEvents.costCents}), 0)::int`));
+        .orderBy(desc(sql`coalesce(sum(${costEvents.modelCostCents}), 0)::int`));
     },
 
     byProvider: async (companyId: string, range?: CostDateRange) => {
@@ -174,6 +187,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           billingType: costEvents.billingType,
           model: costEvents.model,
           costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+          modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
           inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
           cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
           outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
@@ -191,7 +205,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .from(costEvents)
         .where(and(...conditions))
         .groupBy(costEvents.provider, costEvents.biller, costEvents.billingType, costEvents.model)
-        .orderBy(desc(sql`coalesce(sum(${costEvents.costCents}), 0)::int`));
+        .orderBy(desc(sql`coalesce(sum(${costEvents.modelCostCents}), 0)::int`));
     },
 
     byBiller: async (companyId: string, range?: CostDateRange) => {
@@ -203,6 +217,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .select({
           biller: costEvents.biller,
           costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+          modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
           inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
           cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
           outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
@@ -222,7 +237,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .from(costEvents)
         .where(and(...conditions))
         .groupBy(costEvents.biller)
-        .orderBy(desc(sql`coalesce(sum(${costEvents.costCents}), 0)::int`));
+        .orderBy(desc(sql`coalesce(sum(${costEvents.modelCostCents}), 0)::int`));
     },
 
     /**
@@ -245,6 +260,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
               provider: costEvents.provider,
               biller: sql<string>`case when count(distinct ${costEvents.biller}) = 1 then min(${costEvents.biller}) else 'mixed' end`,
               costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+              modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
               inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
               cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
               outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
@@ -257,7 +273,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
               ),
             )
             .groupBy(costEvents.provider)
-            .orderBy(desc(sql`coalesce(sum(${costEvents.costCents}), 0)::int`));
+            .orderBy(desc(sql`coalesce(sum(${costEvents.modelCostCents}), 0)::int`));
 
           return rows.map((row) => ({
             provider: row.provider,
@@ -265,6 +281,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
             window: label as string,
             windowHours: hours,
             costCents: row.costCents,
+            modelCostCents: row.modelCostCents,
             inputTokens: row.inputTokens,
             cachedInputTokens: row.cachedInputTokens,
             outputTokens: row.outputTokens,
@@ -293,6 +310,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           billingType: costEvents.billingType,
           model: costEvents.model,
           costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+          modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
           inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
           cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
           outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
@@ -343,12 +361,14 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
       if (range?.to) conditions.push(lte(costEvents.occurredAt, range.to));
 
       const costCentsExpr = sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`;
+      const modelCostCentsExpr = sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`;
 
       return db
         .select({
           projectId: effectiveProjectId,
           projectName: projects.name,
           costCents: costCentsExpr,
+          modelCostCents: modelCostCentsExpr,
           inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
           cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
           outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
@@ -358,7 +378,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .innerJoin(projects, sql`${projects.id} = ${effectiveProjectId}`)
         .where(and(...conditions, sql`${effectiveProjectId} is not null`))
         .groupBy(effectiveProjectId, projects.name)
-        .orderBy(desc(costCentsExpr));
+        .orderBy(desc(modelCostCentsExpr));
     },
   };
 }

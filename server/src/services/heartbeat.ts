@@ -1978,13 +1978,14 @@ export function heartbeatService(db: Db) {
     const outputTokens = usage?.outputTokens ?? 0;
     const cachedInputTokens = usage?.cachedInputTokens ?? 0;
     const billingType = normalizeLedgerBillingType(result.billingType);
-    const reportedCostCents = normalizeBilledCostCents(result.costUsd, billingType);
+    const adapterLoggedCostCents = normalizeBilledCostCents(result.costUsd, billingType);
     const model = result.model ?? "unknown";
-    const fallbackCostCents =
-      reportedCostCents === 0 && billingType !== "subscription_included"
-        ? calculateModelCostCents(model, inputTokens, cachedInputTokens, outputTokens)
-        : 0;
-    const additionalCostCents = reportedCostCents > 0 ? reportedCostCents : fallbackCostCents;
+    const modelEstimateCents =
+      billingType === "subscription_included"
+        ? 0
+        : calculateModelCostCents(model, inputTokens, cachedInputTokens, outputTokens);
+    /** Operational spend for runtime totals / budgets (token+model estimate). Adapter-only cents live on cost_events.cost_cents. */
+    const operationalSpendCents = modelEstimateCents;
     const hasTokenUsage = inputTokens > 0 || outputTokens > 0 || cachedInputTokens > 0;
     const provider = result.provider ?? "unknown";
     const biller = resolveLedgerBiller(result);
@@ -2001,12 +2002,12 @@ export function heartbeatService(db: Db) {
         totalInputTokens: sql`${agentRuntimeState.totalInputTokens} + ${inputTokens}`,
         totalOutputTokens: sql`${agentRuntimeState.totalOutputTokens} + ${outputTokens}`,
         totalCachedInputTokens: sql`${agentRuntimeState.totalCachedInputTokens} + ${cachedInputTokens}`,
-        totalCostCents: sql`${agentRuntimeState.totalCostCents} + ${additionalCostCents}`,
+        totalCostCents: sql`${agentRuntimeState.totalCostCents} + ${operationalSpendCents}`,
         updatedAt: new Date(),
       })
       .where(eq(agentRuntimeState.agentId, agent.id));
 
-    if (additionalCostCents > 0 || hasTokenUsage) {
+    if (adapterLoggedCostCents > 0 || modelEstimateCents > 0 || hasTokenUsage) {
       const costs = costService(db, budgetHooks);
       await costs.createEvent(agent.companyId, {
         heartbeatRunId: run.id,
@@ -2020,7 +2021,8 @@ export function heartbeatService(db: Db) {
         inputTokens,
         cachedInputTokens,
         outputTokens,
-        costCents: additionalCostCents,
+        costCents: adapterLoggedCostCents,
+        modelCostCents: modelEstimateCents,
         occurredAt: new Date(),
       });
     }

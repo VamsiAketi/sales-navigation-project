@@ -35,6 +35,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const NO_COMPANY = "__none__";
 
+/**
+ * UI inference spend: prefer stored token/model estimate when it is non-zero;
+ * otherwise fall back to adapter/billed `cost_cents` (e.g. rows created before `model_cost_cents` existed).
+ */
+function repriceModelRow<T extends { costCents: number; modelCostCents?: number }>(
+  row: T,
+) {
+  const adapterCents = row.costCents;
+  const model = row.modelCostCents ?? 0;
+  return {
+    ...row,
+    costCents: model > 0 ? model : adapterCents,
+  };
+}
+
 function currentWeekRange(): { from: string; to: string } {
   const now = new Date();
   const day = now.getDay();
@@ -276,9 +291,13 @@ export function Costs() {
     });
   }
 
+  const repricedAgentModel = useMemo(() => {
+    return (spendData?.byAgentModel ?? []).map((row) => repriceModelRow(row));
+  }, [spendData?.byAgentModel]);
+
   const agentModelRows = useMemo(() => {
     const map = new Map<string, CostByAgentModel[]>();
-    for (const row of spendData?.byAgentModel ?? []) {
+    for (const row of repricedAgentModel) {
       const rows = map.get(row.agentId) ?? [];
       rows.push(row);
       map.set(row.agentId, rows);
@@ -287,7 +306,7 @@ export function Costs() {
       map.set(agentId, rows.slice().sort((a, b) => b.costCents - a.costCents));
     }
     return map;
-  }, [spendData?.byAgentModel]);
+  }, [repricedAgentModel]);
 
   const { data: providerData } = useQuery({
     queryKey: queryKeys.usageByProvider(companyId, from || undefined, to || undefined),
@@ -297,26 +316,10 @@ export function Costs() {
     staleTime: 10_000,
   });
 
-  const { data: billerData } = useQuery({
-    queryKey: queryKeys.usageByBiller(companyId, from || undefined, to || undefined),
-    queryFn: () => costsApi.byBiller(companyId, from || undefined, to || undefined),
-    enabled: !!selectedCompanyId && customReady && mainTab === "billers",
-    refetchInterval: 30_000,
-    staleTime: 10_000,
-  });
-
   const { data: weekData } = useQuery({
     queryKey: queryKeys.usageByProvider(companyId, weekRange.from, weekRange.to),
     queryFn: () => costsApi.byProvider(companyId, weekRange.from, weekRange.to),
     enabled: !!selectedCompanyId && (mainTab === "providers" || mainTab === "billers"),
-    refetchInterval: 30_000,
-    staleTime: 10_000,
-  });
-
-  const { data: weekBillerData } = useQuery({
-    queryKey: queryKeys.usageByBiller(companyId, weekRange.from, weekRange.to),
-    queryFn: () => costsApi.byBiller(companyId, weekRange.from, weekRange.to),
-    enabled: !!selectedCompanyId && mainTab === "billers",
     refetchInterval: 30_000,
     staleTime: 10_000,
   });
@@ -337,48 +340,91 @@ export function Costs() {
     staleTime: 60_000,
   });
 
+  const repricedProviderData = useMemo(() => {
+    return (providerData ?? []).map((row) => repriceModelRow(row));
+  }, [providerData]);
+
   const byProvider = useMemo(() => {
     const map = new Map<string, CostByProviderModel[]>();
-    for (const row of providerData ?? []) {
+    for (const row of repricedProviderData) {
       const rows = map.get(row.provider) ?? [];
       rows.push(row);
       map.set(row.provider, rows);
     }
     return map;
-  }, [providerData]);
+  }, [repricedProviderData]);
+
+  const repricedBillerRows = useMemo(() => {
+    const map = new Map<string, CostByBiller>();
+    for (const row of repricedProviderData) {
+      const existing = map.get(row.biller);
+      if (!existing) {
+        map.set(row.biller, {
+          biller: row.biller,
+          costCents: row.costCents,
+          modelCostCents: row.costCents,
+          inputTokens: row.inputTokens,
+          cachedInputTokens: row.cachedInputTokens,
+          outputTokens: row.outputTokens,
+          apiRunCount: row.apiRunCount,
+          subscriptionRunCount: row.subscriptionRunCount,
+          subscriptionCachedInputTokens: row.subscriptionCachedInputTokens,
+          subscriptionInputTokens: row.subscriptionInputTokens,
+          subscriptionOutputTokens: row.subscriptionOutputTokens,
+          providerCount: 1,
+          modelCount: 1,
+        });
+        continue;
+      }
+      existing.costCents += row.costCents;
+      existing.modelCostCents += row.costCents;
+      existing.inputTokens += row.inputTokens;
+      existing.cachedInputTokens += row.cachedInputTokens;
+      existing.outputTokens += row.outputTokens;
+      existing.apiRunCount += row.apiRunCount;
+      existing.subscriptionRunCount += row.subscriptionRunCount;
+      existing.subscriptionCachedInputTokens += row.subscriptionCachedInputTokens;
+      existing.subscriptionInputTokens += row.subscriptionInputTokens;
+      existing.subscriptionOutputTokens += row.subscriptionOutputTokens;
+      existing.providerCount += 1;
+      existing.modelCount += 1;
+    }
+    return Array.from(map.values()).sort((a, b) => b.costCents - a.costCents);
+  }, [repricedProviderData]);
 
   const byBiller = useMemo(() => {
     const map = new Map<string, CostByBiller[]>();
-    for (const row of billerData ?? []) {
-      const rows = map.get(row.biller) ?? [];
-      rows.push(row);
-      map.set(row.biller, rows);
+    for (const row of repricedBillerRows) {
+      map.set(row.biller, [row]);
     }
     return map;
-  }, [billerData]);
+  }, [repricedBillerRows]);
 
   const weekSpendByProvider = useMemo(() => {
     const map = new Map<string, number>();
     for (const row of weekData ?? []) {
-      map.set(row.provider, (map.get(row.provider) ?? 0) + row.costCents);
+      const repriced = repriceModelRow(row);
+      map.set(repriced.provider, (map.get(repriced.provider) ?? 0) + repriced.costCents);
     }
     return map;
   }, [weekData]);
 
   const weekSpendByBiller = useMemo(() => {
     const map = new Map<string, number>();
-    for (const row of weekBillerData ?? []) {
-      map.set(row.biller, (map.get(row.biller) ?? 0) + row.costCents);
+    for (const row of weekData ?? []) {
+      const repriced = repriceModelRow(row);
+      map.set(repriced.biller, (map.get(repriced.biller) ?? 0) + repriced.costCents);
     }
     return map;
-  }, [weekBillerData]);
+  }, [weekData]);
 
   const windowSpendByProvider = useMemo(() => {
     const map = new Map<string, CostWindowSpendRow[]>();
     for (const row of windowData ?? []) {
-      const rows = map.get(row.provider) ?? [];
-      rows.push(row);
-      map.set(row.provider, rows);
+      const repriced = repriceModelRow(row);
+      const rows = map.get(repriced.provider) ?? [];
+      rows.push(repriced);
+      map.set(repriced.provider, rows);
     }
     return map;
   }, [windowData]);
@@ -416,7 +462,10 @@ export function Costs() {
     if (preset !== "mtd") return map;
     const budget = spendData?.summary.budgetCents ?? 0;
     if (budget <= 0) return map;
-    const totalSpend = spendData?.summary.spendCents ?? 0;
+    const totalSpend = Array.from(byProvider.values()).reduce(
+      (sum, rows) => sum + rows.reduce((rowSum, row) => rowSum + row.costCents, 0),
+      0,
+    );
     const now = new Date();
     const daysElapsed = now.getDate();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -432,7 +481,7 @@ export function Costs() {
       map.set(providerKey, providerCostCents + burnRate * (daysInMonth - daysElapsed) > providerBudget);
     }
     return map;
-  }, [preset, spendData, byProvider]);
+  }, [preset, spendData?.summary.budgetCents, byProvider]);
 
   const providers = useMemo(() => Array.from(byProvider.keys()), [byProvider]);
   const billers = useMemo(() => Array.from(byBiller.keys()), [byBiller]);
@@ -513,6 +562,26 @@ export function Costs() {
     ];
   }, [byBiller]);
 
+  const agentCostById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of repricedAgentModel) {
+      map.set(row.agentId, (map.get(row.agentId) ?? 0) + row.costCents);
+    }
+    return map;
+  }, [repricedAgentModel]);
+
+  const summarySpendCents = useMemo(() => {
+    let total = 0;
+    for (const value of agentCostById.values()) total += value;
+    return total;
+  }, [agentCostById]);
+
+  const summaryUtilizationPercent = useMemo(() => {
+    const budgetCents = spendData?.summary.budgetCents ?? 0;
+    if (budgetCents <= 0) return 0;
+    return Number(((summarySpendCents / budgetCents) * 100).toFixed(2));
+  }, [spendData?.summary.budgetCents, summarySpendCents]);
+
   const inferenceTokenTotal =
     (spendData?.byAgent ?? []).reduce(
       (sum, row) => sum + row.inputTokens + row.cachedInputTokens + row.outputTokens,
@@ -581,7 +650,7 @@ export function Costs() {
           <div className="grid gap-3 lg:grid-cols-4">
             <MetricTile
               label="Inference spend"
-              value={formatCents(spendData?.summary.spendCents ?? 0)}
+              value={formatCents(summarySpendCents)}
               subtitle={`${formatTokens(inferenceTokenTotal)} tokens across request-scoped events`}
               icon={DollarSign}
             />
@@ -589,14 +658,14 @@ export function Costs() {
               label="Budget"
               value={activeBudgetIncidents.length > 0 ? String(activeBudgetIncidents.length) : (
                 spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
-                  ? `${spendData.summary.utilizationPercent}%`
+                  ? `${summaryUtilizationPercent}%`
                   : "Open"
               )}
               subtitle={
                 activeBudgetIncidents.length > 0
                   ? `${budgetData?.pausedAgentCount ?? 0} agents paused · ${budgetData?.pausedProjectCount ?? 0} projects paused`
                   : spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
-                    ? `${formatCents(spendData.summary.spendCents)} of ${formatCents(spendData.summary.budgetCents)}`
+                    ? `${formatCents(summarySpendCents)} of ${formatCents(spendData.summary.budgetCents)}`
                     : "No monthly cap configured"
               }
               icon={Coins}
@@ -665,7 +734,7 @@ export function Costs() {
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div>
                         <div className="text-3xl font-semibold tabular-nums">
-                          {formatCents(spendData?.summary.spendCents ?? 0)}
+                          {formatCents(summarySpendCents)}
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
                           {spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
@@ -686,17 +755,17 @@ export function Costs() {
                           <div
                             className={cn(
                               "h-full transition-[width,background-color] duration-150",
-                              spendData.summary.utilizationPercent > 90
+                              summaryUtilizationPercent > 90
                                 ? "bg-red-400"
-                                : spendData.summary.utilizationPercent > 70
+                                : summaryUtilizationPercent > 70
                                   ? "bg-yellow-400"
                                   : "bg-emerald-400",
                             )}
-                            style={{ width: `${Math.min(100, spendData.summary.utilizationPercent)}%` }}
+                            style={{ width: `${Math.min(100, summaryUtilizationPercent)}%` }}
                           />
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {spendData.summary.utilizationPercent}% of monthly budget consumed in this range.
+                          {summaryUtilizationPercent}% of monthly budget consumed in this range.
                         </div>
                       </div>
                     ) : null}
@@ -724,6 +793,7 @@ export function Costs() {
                     ) : (
                       spendData?.byAgent.map((row) => {
                         const modelRows = agentModelRows.get(row.agentId) ?? [];
+                        const agentCostCents = agentCostById.get(row.agentId) ?? 0;
                         const isExpanded = expandedAgents.has(row.agentId);
                         const hasBreakdown = modelRows.length > 0;
                         return (
@@ -744,7 +814,7 @@ export function Costs() {
                                 {row.agentStatus === "terminated" ? <StatusBadge status="terminated" /> : null}
                               </div>
                               <div className="text-right text-sm tabular-nums">
-                                <div className="font-medium">{formatCents(row.costCents)}</div>
+                                <div className="font-medium">{formatCents(agentCostCents)}</div>
                                 <div className="text-xs text-muted-foreground">
                                   in {formatTokens(row.inputTokens + row.cachedInputTokens)} · out {formatTokens(row.outputTokens)}
                                 </div>
@@ -763,7 +833,7 @@ export function Costs() {
                             {isExpanded && modelRows.length > 0 ? (
                               <div className="mt-3 space-y-2 border-l border-border pl-4">
                                 {modelRows.map((modelRow) => {
-                                  const sharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
+                                  const sharePct = agentCostCents > 0 ? Math.round((modelRow.costCents / agentCostCents) * 100) : 0;
                                   return (
                                     <div
                                       key={`${modelRow.provider}:${modelRow.model}:${modelRow.billingType}`}
@@ -966,7 +1036,7 @@ export function Costs() {
                           provider={provider}
                           rows={byProvider.get(provider) ?? []}
                           budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                          totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                          totalCompanySpendCents={summarySpendCents}
                           weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
                           windowRows={windowSpendByProvider.get(provider) ?? []}
                           showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
@@ -986,7 +1056,7 @@ export function Costs() {
                       provider={provider}
                       rows={byProvider.get(provider) ?? []}
                       budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                      totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                      totalCompanySpendCents={summarySpendCents}
                       weekSpendCents={weekSpendByProvider.get(provider) ?? 0}
                       windowRows={windowSpendByProvider.get(provider) ?? []}
                       showDeficitNotch={deficitNotchByProvider.get(provider) ?? false}
@@ -1018,14 +1088,14 @@ export function Costs() {
                       {billers.map((biller) => {
                         const row = (byBiller.get(biller) ?? [])[0];
                         if (!row) return null;
-                        const providerRows = (providerData ?? []).filter((entry) => entry.biller === biller);
+                        const providerRows = repricedProviderData.filter((entry) => entry.biller === biller);
                         return (
                           <BillerSpendCard
                             key={biller}
                             row={row}
                             weekSpendCents={weekSpendByBiller.get(biller) ?? 0}
                             budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                            totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                            totalCompanySpendCents={summarySpendCents}
                             providerRows={providerRows}
                           />
                         );
@@ -1037,14 +1107,14 @@ export function Costs() {
                 {billers.map((biller) => {
                   const row = (byBiller.get(biller) ?? [])[0];
                   if (!row) return null;
-                  const providerRows = (providerData ?? []).filter((entry) => entry.biller === biller);
+                  const providerRows = repricedProviderData.filter((entry) => entry.biller === biller);
                   return (
                     <TabsContent key={biller} value={biller} className="mt-4">
                       <BillerSpendCard
                         row={row}
                         weekSpendCents={weekSpendByBiller.get(biller) ?? 0}
                         budgetMonthlyCents={spendData?.summary.budgetCents ?? 0}
-                        totalCompanySpendCents={spendData?.summary.spendCents ?? 0}
+                        totalCompanySpendCents={summarySpendCents}
                         providerRows={providerRows}
                       />
                     </TabsContent>
