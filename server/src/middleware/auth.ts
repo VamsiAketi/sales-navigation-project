@@ -81,8 +81,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
           let companyIds = memberships.map((row) => row.companyId);
           if (
             companyIds.length === 0 &&
-            opts.microsoftSsoAutoProvision &&
-            opts.microsoftSsoAutoProvision.companyIds.length > 0
+            opts.microsoftSsoAutoProvision
           ) {
             try {
               const didProvision = await maybeProvisionMicrosoftSsoUser(
