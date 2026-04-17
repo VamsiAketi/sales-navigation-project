@@ -619,6 +619,7 @@ export function CompanySettings() {
       </div>
 
       {/* Danger Zone */}
+      {/*
       <div className="space-y-4">
         <div className="text-xs font-medium text-destructive uppercase tracking-wide">
           Danger Zone
@@ -670,6 +671,7 @@ export function CompanySettings() {
           </div>
         </div>
       </div>
+      */}
     </div>
   );
 }
