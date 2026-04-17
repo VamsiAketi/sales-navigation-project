@@ -7,6 +7,7 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { accessApi, type CompanyMember } from "../api/access";
 import { agentsApi } from "../api/agents";
+import { issuesApi } from "../api/issues";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -608,6 +609,15 @@ export function CompanyDirectory() {
     null;
   const selectedAgentMember =
     activeAgentMembers.find((m) => m.id === selectedAgentMemberId) ?? activeAgentMembers[0] ?? null;
+  const selectedHumanPrincipalId = selectedHumanMember?.principalId ?? null;
+
+  const { data: assignedIssuesForSelectedHuman } = useQuery({
+    queryKey: selectedCompanyId && selectedHumanPrincipalId
+      ? [...queryKeys.issues.list(selectedCompanyId), "offboarding-preview", selectedHumanPrincipalId]
+      : ["issues", "offboarding-preview", "none"],
+    queryFn: () => issuesApi.list(selectedCompanyId!, { assigneeUserId: selectedHumanPrincipalId! }),
+    enabled: Boolean(selectedCompanyId && selectedHumanPrincipalId && (deactivateDialogOpen || deleteDialogOpen)),
+  });
 
   const memberById = useMemo(() => {
     const map = new Map<string, CompanyMember>();
@@ -1957,6 +1967,25 @@ export function CompanyDirectory() {
               will lose active access to this company. You can reactivate them at any time.
             </DialogDescription>
           </DialogHeader>
+          {(assignedIssuesForSelectedHuman?.length ?? 0) > 0 && (
+            <div className="mt-3 rounded-xl border border-border/60 bg-muted/30 p-3">
+              <p className="text-xs font-medium text-foreground">
+                This user is currently assigned to {assignedIssuesForSelectedHuman!.length} ticket(s):
+              </p>
+              <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                {assignedIssuesForSelectedHuman!.map((issue) => (
+                  <Link
+                    key={issue.id}
+                    to={`/issues/${issue.id}`}
+                    className="block rounded-md border border-border/50 bg-background px-2.5 py-1.5 text-xs hover:bg-accent"
+                  >
+                    <span className="font-medium text-foreground">{issue.identifier}</span>{" "}
+                    <span className="text-muted-foreground">- {issue.title}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
           <DialogFooter className="mt-4 flex gap-2 justify-end">
             <DialogClose asChild>
               <Button variant="outline" size="sm">Cancel</Button>
@@ -1997,6 +2026,25 @@ export function CompanyDirectory() {
               will be removed from this company. This action cannot be undone from the UI.
             </DialogDescription>
           </DialogHeader>
+          {(assignedIssuesForSelectedHuman?.length ?? 0) > 0 && (
+            <div className="mt-3 rounded-xl border border-border/60 bg-muted/30 p-3">
+              <p className="text-xs font-medium text-foreground">
+                This user is currently assigned to {assignedIssuesForSelectedHuman!.length} ticket(s):
+              </p>
+              <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                {assignedIssuesForSelectedHuman!.map((issue) => (
+                  <Link
+                    key={issue.id}
+                    to={`/issues/${issue.id}`}
+                    className="block rounded-md border border-border/50 bg-background px-2.5 py-1.5 text-xs hover:bg-accent"
+                  >
+                    <span className="font-medium text-foreground">{issue.identifier}</span>{" "}
+                    <span className="text-muted-foreground">- {issue.title}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
           <DialogFooter className="mt-4 flex gap-2 justify-end">
             <DialogClose asChild>
               <Button variant="outline" size="sm">Cancel</Button>

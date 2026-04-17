@@ -202,7 +202,7 @@ const TimelineList = memo(function TimelineList({
                       comment.authorName
                         ?? (comment.authorUserId
                           ? (userMap?.get(comment.authorUserId) ?? comment.authorUserId.slice(0, 8))
-                          : "Unknown user")
+                          : "System")
                     }
                     size="sm"
                   />
