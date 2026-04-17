@@ -426,18 +426,26 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
 
           const mentionHref = option.kind === "project" && option.projectId
             ? buildProjectMentionHref(option.projectId, null)
-            : buildAgentMentionHref(
-                option.agentId ?? option.id.replace(/^agent:/, ""),
-                option.agentIcon ?? null,
-              );
-          const matchingMentions = Array.from(editable.querySelectorAll("a"))
+            : option.kind === "human" && option.userId
+              ? buildUserMentionHref(option.userId)
+              : buildAgentMentionHref(
+                  option.agentId ?? option.id.replace(/^agent:/, ""),
+                  option.agentIcon ?? null,
+                );
+          const allMentionLinks = Array.from(editable.querySelectorAll("a"))
+            .filter((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement);
+          const matchingMentions = allMentionLinks
             .filter((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement)
             .filter((link) => {
               const href = link.getAttribute("href") ?? "";
               return href === mentionHref && link.textContent === `@${option.name}`;
             });
+          const fallbackMentions = allMentionLinks.filter(
+            (link) => link.textContent === `@${option.name}`,
+          );
+          const mentionCandidates = matchingMentions.length > 0 ? matchingMentions : fallbackMentions;
           const containerRect = containerRef.current?.getBoundingClientRect();
-          const target = matchingMentions.sort((a, b) => {
+          const target = mentionCandidates.sort((a, b) => {
             const rectA = a.getBoundingClientRect();
             const rectB = b.getBoundingClientRect();
             const leftA = containerRect ? rectA.left - containerRect.left : rectA.left;
