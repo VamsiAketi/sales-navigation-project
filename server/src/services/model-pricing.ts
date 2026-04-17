@@ -30,6 +30,17 @@ const PRICING: Record<string, ModelPrice> = {
   "gpt-3.5-turbo": { inputPer1M: 0.50,  cachedInputPer1M: 0.50,  outputPer1M: 1.50  },
   "codex-mini":    { inputPer1M: 1.50,  cachedInputPer1M: 0.375, outputPer1M: 6.00  },
 
+  // GPT-5 / Codex-era ids (2026) — approximate fallback when adapters omit costUsd;
+  // longest-prefix match ensures gpt-5.3-codex-* beats gpt-5.
+  "gpt-5.3-codex-spark": { inputPer1M: 0.90,  cachedInputPer1M: 0.225, outputPer1M: 3.60 },
+  "gpt-5.3-codex":       { inputPer1M: 1.50,  cachedInputPer1M: 0.375, outputPer1M: 6.00 },
+  "gpt-5.4":             { inputPer1M: 2.50,  cachedInputPer1M: 0.625, outputPer1M: 10.00 },
+  "gpt-5.2":             { inputPer1M: 2.00,  cachedInputPer1M: 0.50,  outputPer1M: 8.00  },
+  "gpt-5.1":             { inputPer1M: 2.00,  cachedInputPer1M: 0.50,  outputPer1M: 8.00  },
+  "gpt-5-mini":          { inputPer1M: 0.40,  cachedInputPer1M: 0.10,  outputPer1M: 1.60 },
+  "gpt-5-nano":          { inputPer1M: 0.20,  cachedInputPer1M: 0.05,  outputPer1M: 0.80 },
+  "gpt-5":               { inputPer1M: 1.50,  cachedInputPer1M: 0.375, outputPer1M: 6.00 },
+
   // ── Anthropic ────────────────────────────────────────────────────────────
   "claude-opus-4":       { inputPer1M: 15.00, cachedInputPer1M: 1.50,  outputPer1M: 75.00 },
   "claude-sonnet-4":     { inputPer1M: 3.00,  cachedInputPer1M: 0.30,  outputPer1M: 15.00 },
