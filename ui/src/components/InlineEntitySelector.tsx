@@ -27,6 +27,8 @@ interface InlineEntitySelectorProps {
   triggerAriaInvalid?: boolean;
   /** Skip the Portal so the popover stays in the DOM tree (fixes scroll inside Dialogs). */
   disablePortal?: boolean;
+  /** If true, focus opens the dropdown. Set false to open only on click. */
+  openOnFocus?: boolean;
 }
 
 export function buildInlineEntityOptions(
@@ -57,6 +59,7 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
       triggerAriaRequired,
       triggerAriaInvalid,
       disablePortal,
+      openOnFocus = true,
     },
     ref,
   ) {
@@ -123,7 +126,7 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
             aria-invalid={triggerAriaInvalid}
             onPointerDown={() => { isPointerDownRef.current = true; }}
             onFocus={() => {
-              if (!isPointerDownRef.current) setOpen(true);
+              if (!isPointerDownRef.current && openOnFocus) setOpen(true);
               isPointerDownRef.current = false;
             }}
           >
