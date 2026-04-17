@@ -83,20 +83,35 @@ export async function maybeProvisionMicrosoftSsoUser(
   userEmail: string | null | undefined,
   settings: MicrosoftSsoAutoProvisionSettings,
 ): Promise<boolean> {
-  if (settings.companyIds.length === 0) return false;
   if (!(await userHasMicrosoftLinkedAccount(db, userId))) return false;
   if (!emailDomainAllowed(userEmail, settings.emailDomains)) return false;
+
+  let targetCompanyIds = settings.companyIds;
+  if (targetCompanyIds.length === 0) {
+    // Safe default for authenticated deployments: if there is exactly one company,
+    // auto-provision Microsoft users into it to avoid forcing company creation.
+    const existingCompanies = await db.select({ id: companies.id }).from(companies).limit(2);
+    if (existingCompanies.length === 1) {
+      targetCompanyIds = [existingCompanies[0]!.id];
+    } else {
+      logger.warn(
+        { userId, companyCount: existingCompanies.length },
+        "Microsoft SSO auto-provision skipped: no target company configured and company count is not exactly one",
+      );
+      return false;
+    }
+  }
 
   const existingCompanies = await db
     .select({ id: companies.id })
     .from(companies)
-    .where(inArray(companies.id, settings.companyIds));
+    .where(inArray(companies.id, targetCompanyIds));
   const validCompanyIds = new Set(existingCompanies.map((row) => row.id));
   const access = accessService(db);
 
   let provisionedAny = false;
 
-  for (const companyId of settings.companyIds) {
+  for (const companyId of targetCompanyIds) {
     if (!validCompanyIds.has(companyId)) {
       logger.warn({ companyId, userId }, "Microsoft SSO auto-provision: company id not found, skipping");
       continue;
@@ -151,7 +166,7 @@ export async function maybeProvisionMicrosoftSsoUser(
 
   if (provisionedAny) {
     logger.info(
-      { userId, companyIds: settings.companyIds.filter((id) => validCompanyIds.has(id)) },
+      { userId, companyIds: targetCompanyIds.filter((id) => validCompanyIds.has(id)) },
       "Microsoft SSO user auto-provisioned",
     );
   }

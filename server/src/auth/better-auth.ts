@@ -154,6 +154,11 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         updateEmailWithoutVerification: true,
       },
     },
+    account: {
+      accountLinking: {
+        enabled: true,
+      },
+    },
     emailVerification: {
       sendVerificationEmail: async (params: { user: { email?: string | null }; url: string }) => {
         void params.user;
