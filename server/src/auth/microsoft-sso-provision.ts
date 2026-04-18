@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { authAccounts, companies, companyMemberships } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
@@ -88,18 +88,23 @@ export async function maybeProvisionMicrosoftSsoUser(
 
   let targetCompanyIds = settings.companyIds;
   if (targetCompanyIds.length === 0) {
-    // Safe default for authenticated deployments: if there is exactly one company,
-    // auto-provision Microsoft users into it to avoid forcing company creation.
-    const existingCompanies = await db.select({ id: companies.id }).from(companies).limit(2);
-    if (existingCompanies.length === 1) {
-      targetCompanyIds = [existingCompanies[0]!.id];
-    } else {
+    // Default behavior: auto-provision into the current active company when no
+    // explicit company IDs are configured for Microsoft SSO.
+    const activeCompany = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(eq(companies.status, "active"))
+      .orderBy(desc(companies.updatedAt), desc(companies.createdAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (!activeCompany) {
       logger.warn(
-        { userId, companyCount: existingCompanies.length },
-        "Microsoft SSO auto-provision skipped: no target company configured and company count is not exactly one",
+        { userId },
+        "Microsoft SSO auto-provision skipped: no target company configured and no active company found",
       );
       return false;
     }
+    targetCompanyIds = [activeCompany.id];
   }
 
   const existingCompanies = await db

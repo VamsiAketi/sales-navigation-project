@@ -157,6 +157,9 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
     account: {
       accountLinking: {
         enabled: true,
+        // Microsoft tenant responses can omit explicit email-verification flags in
+        // some enterprise setups; trust Microsoft as a provider for linking.
+        trustedProviders: ["microsoft"],
       },
     },
     emailVerification: {
