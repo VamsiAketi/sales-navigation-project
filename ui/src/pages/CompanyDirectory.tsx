@@ -7,6 +7,7 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { accessApi, type CompanyMember } from "../api/access";
 import { agentsApi } from "../api/agents";
+import { issuesApi } from "../api/issues";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -318,6 +319,24 @@ function memberSecondaryLine(member: CompanyMember) {
   return member.agent?.role ?? "agent";
 }
 
+function initialsFromLabel(label: string) {
+  const name = label.trim();
+  if (!name) return "U";
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase() || "U";
+  }
+  return name.slice(0, 2).toUpperCase();
+}
+
+function boardAvatarColorFromName(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  // Match board avatar palette.
+  return `hsl(${hue}, 48%, 44%)`;
+}
+
 function nameToAvatarColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
@@ -451,6 +470,8 @@ export function CompanyDirectory() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [offboardingIssueReassignDrafts, setOffboardingIssueReassignDrafts] = useState<Record<string, string>>({});
+  const [offboardingSubmitPending, setOffboardingSubmitPending] = useState(false);
   const [humanInviteName, setHumanInviteName] = useState("");
   const [humanInviteEmail, setHumanInviteEmail] = useState("");
   const [humanInviteSubmitAttempted, setHumanInviteSubmitAttempted] = useState(false);
@@ -608,6 +629,136 @@ export function CompanyDirectory() {
     null;
   const selectedAgentMember =
     activeAgentMembers.find((m) => m.id === selectedAgentMemberId) ?? activeAgentMembers[0] ?? null;
+  const selectedHumanPrincipalId = selectedHumanMember?.principalId ?? null;
+  const offboardingReassignOptions = useMemo(
+    () =>
+      activeHumanMembers
+        .filter((candidate) => candidate.id !== selectedHumanMember?.id)
+        .map((candidate) => ({
+          id: candidate.principalId,
+          label: memberDisplayName(candidate),
+        })),
+    [activeHumanMembers, selectedHumanMember?.id],
+  );
+
+  const { data: assignedIssuesForSelectedHuman } = useQuery({
+    queryKey: selectedCompanyId && selectedHumanPrincipalId
+      ? [...queryKeys.issues.list(selectedCompanyId), "offboarding-preview", selectedHumanPrincipalId]
+      : ["issues", "offboarding-preview", "none"],
+    queryFn: () => issuesApi.list(selectedCompanyId!, { assigneeUserId: selectedHumanPrincipalId! }),
+    enabled: Boolean(selectedCompanyId && selectedHumanPrincipalId && (deactivateDialogOpen || deleteDialogOpen)),
+  });
+
+  useEffect(() => {
+    if (deactivateDialogOpen || deleteDialogOpen) return;
+    setOffboardingIssueReassignDrafts({});
+    setOffboardingSubmitPending(false);
+  }, [deactivateDialogOpen, deleteDialogOpen]);
+
+  async function applyOffboardingIssueReassignments() {
+    if (!selectedCompanyId) return 0;
+    const issueRows = assignedIssuesForSelectedHuman ?? [];
+    const issueById = new Map(issueRows.map((issue) => [issue.id, issue]));
+    const updates = Object.entries(offboardingIssueReassignDrafts)
+      .map(([issueId, assigneeUserId]) => ({
+        issueId,
+        assigneeUserId: assigneeUserId.trim(),
+      }))
+      .filter((entry) => entry.assigneeUserId.length > 0 && issueById.has(entry.issueId));
+    if (updates.length === 0) return 0;
+
+    await Promise.all(
+      updates.map((entry) =>
+        issuesApi.update(entry.issueId, {
+          assigneeUserId: entry.assigneeUserId,
+          assigneeAgentId: null,
+        }),
+      ),
+    );
+
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.issues.list(selectedCompanyId),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: [...queryKeys.issues.list(selectedCompanyId), "offboarding-preview", selectedHumanPrincipalId],
+    });
+    return updates.length;
+  }
+
+  function renderOffboardingIssuesPanel() {
+    const issues = assignedIssuesForSelectedHuman ?? [];
+    if (issues.length === 0) return null;
+    return (
+      <div className="mt-3 rounded-xl border border-border/60 bg-muted/30 p-3">
+        <p className="text-xs font-medium text-foreground">
+          This user is currently assigned to {issues.length} ticket(s).
+        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Optionally choose a replacement assignee for each ticket before you continue.
+        </p>
+        <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+          {issues.map((issue) => (
+            <div key={issue.id} className="grid gap-2 rounded-md border border-border/50 bg-background p-2 md:grid-cols-[1fr_220px]">
+              <Link
+                to={`/issues/${issue.id}`}
+                className="block rounded px-1 py-1 text-xs hover:bg-accent"
+              >
+                <span className="font-medium text-foreground">{issue.identifier}</span>{" "}
+                <span className="text-muted-foreground">- {issue.title}</span>
+              </Link>
+              <InlineEntitySelector
+                value={offboardingIssueReassignDrafts[issue.id] ?? ""}
+                options={offboardingReassignOptions}
+                placeholder="Reassign to"
+                noneLabel="Keep auto-assignee"
+                searchPlaceholder="Search humans..."
+                emptyMessage="No humans found."
+                openOnFocus={false}
+                renderTriggerValue={(option) =>
+                  option ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                        style={{ backgroundColor: boardAvatarColorFromName(option.label) }}
+                      >
+                        {initialsFromLabel(option.label)}
+                      </span>
+                      <span className="truncate">{option.label}</span>
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Keep auto-assignee</span>
+                  )
+                }
+                renderOption={(option) =>
+                  option.id ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                        style={{ backgroundColor: boardAvatarColorFromName(option.label) }}
+                      >
+                        {initialsFromLabel(option.label)}
+                      </span>
+                      <span className="truncate">{option.label}</span>
+                    </span>
+                  ) : (
+                    <span className="truncate text-muted-foreground">{option.label}</span>
+                  )
+                }
+                onChange={(next) =>
+                  setOffboardingIssueReassignDrafts((prev) => ({
+                    ...prev,
+                    [issue.id]: next,
+                  }))
+                }
+                className="h-9 w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                triggerAriaLabel={`Reassign ${issue.identifier}`}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const memberById = useMemo(() => {
     const map = new Map<string, CompanyMember>();
@@ -1940,7 +2091,7 @@ export function CompanyDirectory() {
 
       {/* Deactivate confirmation dialog */}
       <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
-        <DialogContent className="max-w-md rounded-2xl border-border/60">
+        <DialogContent className="max-w-3xl rounded-2xl border-border/60">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
@@ -1948,7 +2099,7 @@ export function CompanyDirectory() {
                   <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                 </svg>
               </span>
-              Deactivate human
+              Deactivate {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "user"}
             </DialogTitle>
             <DialogDescription className="pt-1 text-sm text-muted-foreground">
               <span className="font-medium text-foreground">
@@ -1957,6 +2108,7 @@ export function CompanyDirectory() {
               will lose active access to this company. You can reactivate them at any time.
             </DialogDescription>
           </DialogHeader>
+          {renderOffboardingIssuesPanel()}
           <DialogFooter className="mt-4 flex gap-2 justify-end">
             <DialogClose asChild>
               <Button variant="outline" size="sm">Cancel</Button>
@@ -1964,15 +2116,34 @@ export function CompanyDirectory() {
             <Button
               size="sm"
               className="bg-amber-500 hover:bg-amber-600 text-white border-0"
-              disabled={deactivateHumanMutation.isPending}
-              onClick={() => {
+              disabled={deactivateHumanMutation.isPending || offboardingSubmitPending}
+              onClick={async () => {
                 if (!selectedHumanMember) return;
-                deactivateHumanMutation.mutate(selectedHumanMember.id, {
-                  onSuccess: () => setDeactivateDialogOpen(false),
-                });
+                setOffboardingSubmitPending(true);
+                try {
+                  const reassignedCount = await applyOffboardingIssueReassignments();
+                  await deactivateHumanMutation.mutateAsync(selectedHumanMember.id);
+                  setDeactivateDialogOpen(false);
+                  setOffboardingIssueReassignDrafts({});
+                  if (reassignedCount > 0) {
+                    pushToast({
+                      title: "Tickets reassigned",
+                      body: `${reassignedCount} ticket(s) were reassigned before deactivation.`,
+                      tone: "success",
+                    });
+                  }
+                } catch (err) {
+                  pushToast({
+                    title: "Action failed",
+                    body: apiErrorMessage(err),
+                    tone: "error",
+                  });
+                } finally {
+                  setOffboardingSubmitPending(false);
+                }
               }}
             >
-              {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
+              {deactivateHumanMutation.isPending || offboardingSubmitPending ? "Deactivating…" : "Deactivate"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1980,7 +2151,7 @@ export function CompanyDirectory() {
 
       {/* Delete confirmation dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="max-w-md rounded-2xl border-border/60">
+        <DialogContent className="max-w-3xl rounded-2xl border-border/60">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
@@ -1988,7 +2159,7 @@ export function CompanyDirectory() {
                   <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
                 </svg>
               </span>
-              Remove human
+              Delete {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "user"}
             </DialogTitle>
             <DialogDescription className="pt-1 text-sm text-muted-foreground">
               <span className="font-medium text-foreground">
@@ -1997,6 +2168,7 @@ export function CompanyDirectory() {
               will be removed from this company. This action cannot be undone from the UI.
             </DialogDescription>
           </DialogHeader>
+          {renderOffboardingIssuesPanel()}
           <DialogFooter className="mt-4 flex gap-2 justify-end">
             <DialogClose asChild>
               <Button variant="outline" size="sm">Cancel</Button>
@@ -2004,15 +2176,34 @@ export function CompanyDirectory() {
             <Button
               size="sm"
               variant="destructive"
-              disabled={removeHumanMutation.isPending}
-              onClick={() => {
+              disabled={removeHumanMutation.isPending || offboardingSubmitPending}
+              onClick={async () => {
                 if (!selectedHumanMember) return;
-                removeHumanMutation.mutate(selectedHumanMember.id, {
-                  onSuccess: () => setDeleteDialogOpen(false),
-                });
+                setOffboardingSubmitPending(true);
+                try {
+                  const reassignedCount = await applyOffboardingIssueReassignments();
+                  await removeHumanMutation.mutateAsync(selectedHumanMember.id);
+                  setDeleteDialogOpen(false);
+                  setOffboardingIssueReassignDrafts({});
+                  if (reassignedCount > 0) {
+                    pushToast({
+                      title: "Tickets reassigned",
+                      body: `${reassignedCount} ticket(s) were reassigned before deletion.`,
+                      tone: "success",
+                    });
+                  }
+                } catch (err) {
+                  pushToast({
+                    title: "Action failed",
+                    body: apiErrorMessage(err),
+                    tone: "error",
+                  });
+                } finally {
+                  setOffboardingSubmitPending(false);
+                }
               }}
             >
-              {removeHumanMutation.isPending ? "Removing…" : "Remove"}
+              {removeHumanMutation.isPending || offboardingSubmitPending ? "Removing…" : "Remove"}
             </Button>
           </DialogFooter>
         </DialogContent>

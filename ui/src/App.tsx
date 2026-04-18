@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "@/lib/router";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import type { Location as RouterLocation } from "react-router-dom";
@@ -8,6 +9,7 @@ import { ExternalLink } from "lucide-react";
 import { Layout } from "./components/Layout";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { authApi } from "./api/auth";
+import { AUTH_UNAUTHORIZED_EVENT } from "./api/client";
 import { healthApi } from "./api/health";
 import { Dashboard } from "./pages/Dashboard";
 import { Companies } from "./pages/Companies";
@@ -102,6 +104,17 @@ function CloudAccessGate() {
     enabled: isAuthenticatedMode,
     retry: false,
   });
+
+  useEffect(() => {
+    if (!isAuthenticatedMode) return;
+    const handleUnauthorized = () => {
+      void sessionQuery.refetch();
+    };
+    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => {
+      window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    };
+  }, [isAuthenticatedMode, sessionQuery]);
 
   if (healthQuery.isLoading || (isAuthenticatedMode && sessionQuery.isLoading)) {
     return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;

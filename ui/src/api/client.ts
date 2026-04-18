@@ -1,4 +1,5 @@
 const BASE = "/api";
+export const AUTH_UNAUTHORIZED_EVENT = "paperclip:auth-unauthorized";
 
 export class ApiError extends Error {
   status: number;
@@ -26,6 +27,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const errorBody = await res.json().catch(() => null);
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(AUTH_UNAUTHORIZED_EVENT));
+    }
     throw new ApiError(
       (errorBody as { error?: string } | null)?.error ?? `Request failed: ${res.status}`,
       res.status,

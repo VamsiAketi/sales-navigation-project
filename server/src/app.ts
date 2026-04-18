@@ -2,7 +2,7 @@ import express, { Router, type Request as ExpressRequest } from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { authSessions, authUsers, instanceUserRoles, type Db } from "@paperclipai/db";
+import { authSessions, authUsers, companyMemberships, instanceUserRoles, type Db } from "@paperclipai/db";
 import { and, eq } from "drizzle-orm";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import type { StorageService } from "./storage/types.js";
@@ -54,6 +54,7 @@ import type { MicrosoftSsoAutoProvisionSettings } from "./auth/microsoft-sso-pro
 
 type UiMode = "none" | "static" | "vite-dev";
 const FEEDBACK_EXPORT_FLUSH_INTERVAL_MS = 5_000;
+const DEACTIVATED_LOGIN_MESSAGE = "This account is deactivated. Contact your administrator.";
 
 export function resolveViteHmrPort(serverPort: number): number {
   if (serverPort <= 55_535) {
@@ -323,6 +324,21 @@ export async function createApp(
     app.post("/api/auth/forgot-password", requestPasswordResetHandler);
   }
 
+  async function isUserDeactivatedForLogin(userId: string): Promise<boolean> {
+    const memberships = await db
+      .select({ status: companyMemberships.status })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.principalId, userId),
+        ),
+      );
+    if (memberships.length === 0) return false;
+    // Strict policy: any suspended membership marks the user as deactivated for sign-in.
+    return memberships.some((membership) => membership.status === "suspended");
+  }
+
   app.post("/api/auth/sign-in-method", async (req, res) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     if (!email) {
@@ -343,6 +359,10 @@ export async function createApp(
     // Privacy-safe default: treat unknown users like regular sign-in.
     if (!existingUser) {
       res.json({ mode: "otp_or_password" as const });
+      return;
+    }
+    if (await isUserDeactivatedForLogin(existingUser.id)) {
+      res.status(403).json({ message: DEACTIVATED_LOGIN_MESSAGE });
       return;
     }
 
@@ -379,6 +399,10 @@ export async function createApp(
       res.json({ status: true });
       return;
     }
+    if (await isUserDeactivatedForLogin(existingUser.id)) {
+      res.status(403).json({ message: DEACTIVATED_LOGIN_MESSAGE });
+      return;
+    }
     const mustChangePassword = await db
       .select({ id: instanceUserRoles.id })
       .from(instanceUserRoles)
@@ -387,6 +411,52 @@ export async function createApp(
     if (mustChangePassword) {
       // Do not send OTP until initial temporary password setup is completed.
       res.json({ status: true });
+      return;
+    }
+    req.body.email = email;
+    next();
+  });
+
+  app.post("/api/auth/sign-in/email", async (req, res, next) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!email || !db) {
+      next();
+      return;
+    }
+    const existingUser = await db
+      .select({ id: authUsers.id })
+      .from(authUsers)
+      .where(eq(authUsers.email, email))
+      .then((rows) => rows[0] ?? null);
+    if (!existingUser) {
+      next();
+      return;
+    }
+    if (await isUserDeactivatedForLogin(existingUser.id)) {
+      res.status(403).json({ message: DEACTIVATED_LOGIN_MESSAGE });
+      return;
+    }
+    req.body.email = email;
+    next();
+  });
+
+  app.post("/api/auth/sign-in/email-otp", async (req, res, next) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!email || !db) {
+      next();
+      return;
+    }
+    const existingUser = await db
+      .select({ id: authUsers.id })
+      .from(authUsers)
+      .where(eq(authUsers.email, email))
+      .then((rows) => rows[0] ?? null);
+    if (!existingUser) {
+      next();
+      return;
+    }
+    if (await isUserDeactivatedForLogin(existingUser.id)) {
+      res.status(403).json({ message: DEACTIVATED_LOGIN_MESSAGE });
       return;
     }
     req.body.email = email;
