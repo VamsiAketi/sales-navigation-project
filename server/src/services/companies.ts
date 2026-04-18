@@ -76,7 +76,7 @@ export function companyService(db: Db) {
     const rows = await database
       .select({
         companyId: costEvents.companyId,
-        spentMonthlyCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+        spentMonthlyCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
       })
       .from(costEvents)
       .where(
