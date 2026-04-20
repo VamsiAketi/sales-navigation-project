@@ -378,6 +378,29 @@ export function ProjectDetail() {
   }, [location.search]);
   const activeTab = activeRouteTab ?? pluginTabFromSearch;
 
+  const projectPathForTab = useCallback((projectRef: string, tab: ProjectTab | null) => {
+    if (isProjectPluginTab(tab)) {
+      return `/projects/${projectRef}?tab=${encodeURIComponent(tab)}`;
+    }
+    if (tab === "backlog") return `/projects/${projectRef}/backlog`;
+    if (tab === "overview") return `/projects/${projectRef}/overview`;
+    if (tab === "configuration") return `/projects/${projectRef}/configuration`;
+    if (tab === "workflow") return `/projects/${projectRef}/workflow`;
+    if (tab === "budget") return `/projects/${projectRef}/budget`;
+    if (tab === "archive") return `/projects/${projectRef}/archive`;
+    if (tab === "list") {
+      if (filter) return `/projects/${projectRef}/issues/${filter}`;
+      return `/projects/${projectRef}/issues`;
+    }
+    return `/projects/${projectRef}`;
+  }, [filter]);
+
+  const syncRouteToProject = useCallback((nextProject: { id: string; urlKey?: string | null; name?: string | null }) => {
+    const nextProjectRef = projectRouteRef(nextProject);
+    if (!nextProjectRef || nextProjectRef === routeProjectRef) return;
+    navigate(projectPathForTab(nextProjectRef, activeTab), { replace: true });
+  }, [activeTab, navigate, projectPathForTab, routeProjectRef]);
+
   const { data: project, isLoading, error } = useQuery({
     queryKey: [...queryKeys.projects.detail(routeProjectRef), lookupCompanyId ?? null],
     queryFn: () => projectsApi.get(routeProjectRef, lookupCompanyId),
@@ -422,7 +445,10 @@ export function ProjectDetail() {
   const updateProject = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       projectsApi.update(projectLookupRef, data, resolvedCompanyId ?? lookupCompanyId),
-    onSuccess: invalidateProject,
+    onSuccess: (updatedProject) => {
+      invalidateProject();
+      syncRouteToProject(updatedProject);
+    },
   });
 
   const archiveProject = useMutation({
@@ -475,44 +501,8 @@ export function ProjectDetail() {
   useEffect(() => {
     if (!project) return;
     if (routeProjectRef === canonicalProjectRef) return;
-    if (isProjectPluginTab(activeTab)) {
-      navigate(`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(activeTab)}`, { replace: true });
-      return;
-    }
-    if (activeTab === "backlog") {
-      navigate(`/projects/${canonicalProjectRef}/backlog`, { replace: true });
-      return;
-    }
-    if (activeTab === "overview") {
-      navigate(`/projects/${canonicalProjectRef}/overview`, { replace: true });
-      return;
-    }
-    if (activeTab === "configuration") {
-      navigate(`/projects/${canonicalProjectRef}/configuration`, { replace: true });
-      return;
-    }
-    if (activeTab === "workflow") {
-      navigate(`/projects/${canonicalProjectRef}/workflow`, { replace: true });
-      return;
-    }
-    if (activeTab === "budget") {
-      navigate(`/projects/${canonicalProjectRef}/budget`, { replace: true });
-      return;
-    }
-    if (activeTab === "archive") {
-      navigate(`/projects/${canonicalProjectRef}/archive`, { replace: true });
-      return;
-    }
-    if (activeTab === "list") {
-      if (filter) {
-        navigate(`/projects/${canonicalProjectRef}/issues/${filter}`, { replace: true });
-        return;
-      }
-      navigate(`/projects/${canonicalProjectRef}/issues`, { replace: true });
-      return;
-    }
-    navigate(`/projects/${canonicalProjectRef}`, { replace: true });
-  }, [project, routeProjectRef, canonicalProjectRef, activeTab, filter, navigate]);
+    navigate(projectPathForTab(canonicalProjectRef, activeTab), { replace: true });
+  }, [project, routeProjectRef, canonicalProjectRef, activeTab, navigate, projectPathForTab]);
 
   useEffect(() => {
     closePanel();
@@ -553,8 +543,9 @@ export function ProjectDetail() {
     fieldSaveRequestIds.current[field] = requestId;
     setFieldState(field, "saving");
     try {
-      await projectsApi.update(projectLookupRef, data, resolvedCompanyId ?? lookupCompanyId);
+      const updatedProject = await projectsApi.update(projectLookupRef, data, resolvedCompanyId ?? lookupCompanyId);
       invalidateProject();
+      syncRouteToProject(updatedProject);
       if (fieldSaveRequestIds.current[field] !== requestId) return;
       setFieldState(field, "saved");
       scheduleFieldReset(field, 1800);
@@ -564,7 +555,7 @@ export function ProjectDetail() {
       scheduleFieldReset(field, 3000);
       throw error;
     }
-  }, [invalidateProject, lookupCompanyId, projectLookupRef, resolvedCompanyId, scheduleFieldReset, setFieldState]);
+  }, [invalidateProject, lookupCompanyId, projectLookupRef, resolvedCompanyId, scheduleFieldReset, setFieldState, syncRouteToProject]);
 
   const projectBudgetSummary = useMemo(() => {
     const matched = budgetOverview?.policies.find(

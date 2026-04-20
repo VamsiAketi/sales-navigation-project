@@ -274,7 +274,17 @@ function PersonalDetailsTab({ name, email }: { name: string | null; email: strin
           value={email ?? ""}
           type="email"
           disabled={mutation.isPending}
-          onSave={(value) => mutation.mutateAsync({ email: value })}
+          onSave={async (value) => {
+            try {
+              await mutation.mutateAsync({ email: value });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message.toLowerCase() : "";
+              if (msg.includes("invalid email address")) {
+                throw new Error("Invalid email address");
+              }
+              throw err;
+            }
+          }}
         />
       </section>
     </div>
@@ -544,6 +554,7 @@ function AccountDetailsTab({ email }: { email: string | null }) {
 function NotificationPreferencesTab() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["user-notification-preferences"],
     queryFn: () => authApi.getNotificationPreferences(),
@@ -553,7 +564,8 @@ function NotificationPreferencesTab() {
   const mutation = useMutation({
     mutationFn: (patch: Parameters<typeof authApi.updateNotificationPreferences>[0]) =>
       authApi.updateNotificationPreferences(patch),
-    onSuccess: () => {
+    onSuccess: (updatedPreferences) => {
+      queryClient.setQueryData(["user-notification-preferences"], updatedPreferences);
       setSavedMessage("Notification preferences saved.");
       setErrorMessage(null);
     },
