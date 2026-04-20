@@ -652,7 +652,6 @@ export function ProjectProperties({
             <DraftInput
               value={project.name}
               onCommit={(name) => commitField("name", { name })}
-              immediate
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40"
               placeholder="Project name"
             />
