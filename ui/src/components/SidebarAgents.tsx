@@ -216,9 +216,9 @@ export function SidebarAgents() {
             className={cn(
               "group/nav flex flex-1 items-center transition-[background-color,color,border-color] duration-100 outline-none",
               sidebarNavCollapsibleGroupClass,
-              "mx-0 gap-2.5 py-2 pl-2 pr-2.5",
+              "mx-0 gap-2.5 border-l-[3px] border-transparent py-2 pl-2 pr-2.5",
               agentsSectionActive
-                ? "bg-[var(--sidebar-active-bg)] text-foreground"
+                ? "border-l-[var(--sidebar-active-bar)] bg-[var(--sidebar-active-bg)] text-foreground"
                 : "text-sidebar-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.06]",
             )}
           >
