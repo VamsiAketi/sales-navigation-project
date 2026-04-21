@@ -131,7 +131,8 @@ export function AuthPage() {
       setCanUseOtpAndPasskey(true);
       setShowPasswordLogin(false);
       setUseEmailCode(true);
-      setCodeSent(false);
+      // Move directly to OTP input screen while code is being sent.
+      setCodeSent(true);
       setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
       setEmailCode("");
       setCodeSuccess(null);
@@ -377,36 +378,13 @@ export function AuthPage() {
                 )}
               </div>
             )}
-            {!isResetMode && mode === "sign_in" && signInFlowStarted && canUseOtpAndPasskey && useEmailCode && !codeSent && (
-              <div className="space-y-3 rounded-xl border border-border bg-card/70 p-4">
-                <p className="text-xs text-muted-foreground">
-                  {sendCodeMutation.isPending
-                    ? "Sending OTP to your email..."
-                    : "Preparing OTP input..."}
-                </p>
-                <button
-                  type="button"
-                  className="w-full text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                  onClick={() => {
-                    setSignInFlowStarted(false);
-                    setCanUseOtpAndPasskey(false);
-                    setShowPasswordLogin(false);
-                    setUseEmailCode(false);
-                    setCodeSent(false);
-                    setOtpDigits(Array.from({ length: OTP_LENGTH }, () => ""));
-                    setEmailCode("");
-                    setCodeSuccess(null);
-                    setError(null);
-                  }}
-                >
-                  Use password instead
-                </button>
-              </div>
-            )}
-            {!isResetMode && mode === "sign_in" && signInFlowStarted && canUseOtpAndPasskey && useEmailCode && codeSent && (
+            {!isResetMode && mode === "sign_in" && signInFlowStarted && canUseOtpAndPasskey && useEmailCode && (
               <div className="space-y-3 rounded-xl border border-border bg-card/70 p-4">
                 <div>
                   <label className="mb-2 block text-xs text-muted-foreground">Verification code</label>
+                  {sendCodeMutation.isPending && (
+                    <p className="mb-2 text-xs text-muted-foreground">Sending OTP to your email...</p>
+                  )}
                   <div className="grid grid-cols-6 gap-2">
                     {otpDigits.map((digit, index) => (
                       <input
