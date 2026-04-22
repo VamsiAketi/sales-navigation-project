@@ -351,6 +351,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [assigneeUpdateError, setAssigneeUpdateError] = useState<string | null>(null);
   const [assigneeUpdating, setAssigneeUpdating] = useState(false);
+  const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   const [labelsOpen, setLabelsOpen] = useState(false);
@@ -495,6 +496,10 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   );
   const assigneePickerAllowsUsers = statusWorkflowMeta?.allowedActors !== "agent_only";
   const assigneePickerAllowsAgents = statusWorkflowMeta?.allowedActors !== "human_only";
+
+  useEffect(() => {
+    setStatusUpdateError(null);
+  }, [issue.id, issue.assigneeAgentId, issue.assigneeUserId, issue.status]);
   const currentProjectExecutionWorkspacePolicy =
     experimentalSettings?.enableIsolatedWorkspaces === true
       ? currentProject?.executionWorkspacePolicy ?? null
@@ -1058,11 +1063,29 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         <PropertyRow label="Status">
           <StatusIcon
             status={issue.status}
-            onChange={(status) => onUpdate({ status })}
+            onChange={(status) => {
+              setStatusUpdateError(null);
+              const movingOutOfBacklog = issue.status === "backlog" && status !== "backlog";
+              const hasAssignee = Boolean(issue.assigneeAgentId || issue.assigneeUserId);
+              const targetWorkflowStatus = projectStatuses.find((workflowStatus) => workflowStatus.value === status);
+              const hasDefaultAssignee = Boolean(
+                targetWorkflowStatus?.defaultAssigneeUserId || targetWorkflowStatus?.defaultAssigneeAgentId,
+              );
+              if (movingOutOfBacklog && !hasAssignee && !hasDefaultAssignee) {
+                setStatusUpdateError(
+                  "An Assignee is required when the task is not in backlog",
+                );
+                return;
+              }
+              void onUpdate({ status });
+            }}
             projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
             showLabel
           />
         </PropertyRow>
+        {statusUpdateError ? (
+          <p className="text-[11px] text-destructive">{statusUpdateError}</p>
+        ) : null}
 
         <PropertyRow label="Priority">
           <PriorityIcon
