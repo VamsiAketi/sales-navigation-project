@@ -35,11 +35,6 @@ export function companySkillRoutes(db: Db) {
   const svc = companySkillService(db);
   const allowedUploadExtensions = new Set([".csv", ".pdf", ".doc", ".docx", ".xls", ".xlsx"]);
 
-  function canCreateAgents(agent: { permissions: Record<string, unknown> | null | undefined }) {
-    if (!agent.permissions || typeof agent.permissions !== "object") return false;
-    return Boolean((agent.permissions as Record<string, unknown>).canCreateAgents);
-  }
-
   function asString(value: unknown): string | null {
     if (typeof value !== "string") return null;
     const trimmed = value.trim();
@@ -74,9 +69,9 @@ export function companySkillRoutes(db: Db) {
 
     if (req.actor.type === "board") {
       if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
-      const allowed = await access.canUser(companyId, req.actor.userId, "agents:create");
+      const allowed = await access.canUser(companyId, req.actor.userId, "skills.edit");
       if (!allowed) {
-        throw forbidden("Missing permission: agents:create");
+        throw forbidden("Missing permission: skills.edit");
       }
       return;
     }
@@ -90,17 +85,45 @@ export function companySkillRoutes(db: Db) {
       throw forbidden("Agent key cannot access another company");
     }
 
-    const allowedByGrant = await access.hasPermission(companyId, "agent", actorAgent.id, "agents:create");
-    if (allowedByGrant || canCreateAgents(actorAgent)) {
+    const allowedByGrant = await access.hasPermission(companyId, "agent", actorAgent.id, "skills.edit");
+    if (allowedByGrant) {
       return;
     }
 
-    throw forbidden("Missing permission: can create agents");
+    throw forbidden("Missing permission: skills.edit");
+  }
+
+  async function assertCanReadCompanySkills(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, "skills.read");
+      if (!allowed) {
+        throw forbidden("Missing permission: skills.read");
+      }
+      return;
+    }
+
+    if (!req.actor.agentId) {
+      throw forbidden("Agent authentication required");
+    }
+
+    const actorAgent = await agents.getById(req.actor.agentId);
+    if (!actorAgent || actorAgent.companyId !== companyId) {
+      throw forbidden("Agent key cannot access another company");
+    }
+
+    const allowedByGrant = await access.hasPermission(companyId, "agent", actorAgent.id, "skills.read");
+    if (allowedByGrant) {
+      return;
+    }
+
+    throw forbidden("Missing permission: skills.read");
   }
 
   router.get("/companies/:companyId/skills", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCanReadCompanySkills(req, companyId);
     const result = await svc.list(companyId);
     res.json(result);
   });
@@ -108,7 +131,7 @@ export function companySkillRoutes(db: Db) {
   router.get("/companies/:companyId/skills/:skillId", async (req, res) => {
     const companyId = req.params.companyId as string;
     const skillId = req.params.skillId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCanReadCompanySkills(req, companyId);
     const result = await svc.detail(companyId, skillId);
     if (!result) {
       res.status(404).json({ error: "Skill not found" });
@@ -120,7 +143,7 @@ export function companySkillRoutes(db: Db) {
   router.get("/companies/:companyId/skills/:skillId/update-status", async (req, res) => {
     const companyId = req.params.companyId as string;
     const skillId = req.params.skillId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCanReadCompanySkills(req, companyId);
     const result = await svc.updateStatus(companyId, skillId);
     if (!result) {
       res.status(404).json({ error: "Skill not found" });
@@ -133,7 +156,7 @@ export function companySkillRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     const skillId = req.params.skillId as string;
     const relativePath = String(req.query.path ?? "SKILL.md");
-    assertCompanyAccess(req, companyId);
+    await assertCanReadCompanySkills(req, companyId);
     const result = await svc.readFile(companyId, skillId, relativePath);
     if (!result) {
       res.status(404).json({ error: "Skill not found" });

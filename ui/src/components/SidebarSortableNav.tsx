@@ -30,6 +30,7 @@ import { PluginSlotOutlet } from "@/plugins/slots";
 import { useCompany } from "../context/CompanyContext";
 import { useSidebar } from "../context/SidebarContext";
 import { authApi } from "../api/auth";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import { SHOW_BETA_UI } from "../lib/show-beta-ui";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
@@ -98,7 +99,20 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+  const canReadCommandCenter = sidebarBadges?.canReadCommandCenter ?? true;
+  const canReadHybridOrg = sidebarBadges?.canReadHybridOrg ?? true;
+  const canReadSkills = sidebarBadges?.canReadSkills ?? true;
+  const canReadGoals = sidebarBadges?.canReadGoals ?? true;
+  const canReadCosts = sidebarBadges?.canReadCosts ?? true;
+  const canReadAttentionQueue = sidebarBadges?.canReadAttentionQueue ?? true;
+  const canReadTeams = sidebarBadges?.canReadTeams ?? true;
 
   const availableIds = useMemo((): string[] => {
     const ids: string[] = [...DEFAULT_PRIMARY_NAV_IDS];
@@ -136,6 +150,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
   const renderNavItem = (id: string) => {
     switch (id) {
       case "dashboard":
+        if (!canReadCommandCenter) return null;
         return (
           <SidebarNavItem
             to="/dashboard"
@@ -147,6 +162,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
           />
         );
       case "org":
+        if (!canReadHybridOrg) return null;
         return (
           <SidebarNavItem
             to="/org"
@@ -157,6 +173,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
           />
         );
       case "skills":
+        if (!canReadSkills) return null;
         return (
           <SidebarNavItem
             to="/skills"
@@ -167,6 +184,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
           />
         );
       case "costs":
+        if (!canReadCosts) return null;
         return (
           <SidebarNavItem
             to="/costs"
@@ -177,6 +195,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
           />
         );
       case "goals":
+        if (!canReadGoals) return null;
         return (
           <SidebarNavItem
             to="/goals"
@@ -187,6 +206,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
           />
         );
       case "inbox":
+        if (!canReadAttentionQueue) return null;
         return (
           <SidebarNavItem
             to="/inbox"
@@ -207,6 +227,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
           />
         );
       case "team":
+        if (!canReadTeams) return null;
         return (
           <SidebarNavItem
             to="/company/people"

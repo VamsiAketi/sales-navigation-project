@@ -16,6 +16,7 @@ import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { companiesApi } from "../api/companies";
 import { projectsApi } from "../api/projects";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -597,6 +598,13 @@ export function CompanyExport() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canExportHybridOrg = sidebarBadges?.canExportHybridOrg ?? true;
 
   const [exportData, setExportData] = useState<CompanyPortabilityExportPreviewResult | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -912,6 +920,16 @@ export function CompanyExport() {
 
   if (!selectedCompanyId) {
     return <EmptyState icon={Package} message="Select a company to export." />;
+  }
+  if (!canExportHybridOrg) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to export Hybrid Org Chart.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>hybrid_org.export</code> permission.
+        </div>
+      </div>
+    );
   }
 
   if (exportPreviewMutation.isPending && !exportData) {

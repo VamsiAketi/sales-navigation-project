@@ -1906,7 +1906,13 @@ export function accessRoutes(
       req.actor.userId,
       permissionKey
     );
-    if (!allowed) throw forbidden("Permission denied");
+    if (allowed) return;
+    // Backward-compatible fallback: legacy teams managers may still only have users:manage_permissions.
+    if (permissionKey === "teams.read" || permissionKey === "teams.edit") {
+      const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
+      if (legacyAllowed) return;
+    }
+    throw forbidden("Permission denied");
   }
 
   async function assertCanGenerateOpenClawInvitePrompt(
@@ -2015,7 +2021,7 @@ export function accessRoutes(
     validate(createCompanyInviteSchema),
     async (req, res) => {
       const companyId = req.params.companyId as string;
-      await assertCompanyPermission(req, companyId, "users:invite");
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
       const { token, created, normalizedAgentMessage } =
         await createCompanyInviteForCompany({
           req,
@@ -2060,7 +2066,7 @@ export function accessRoutes(
     validate(createHumanInviteSchema),
     async (req, res) => {
       const companyId = req.params.companyId as string;
-      await assertCompanyPermission(req, companyId, "users:invite");
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
 
       if (opts.deploymentMode !== "authenticated") {
         throw badRequest(
@@ -3098,7 +3104,7 @@ export function accessRoutes(
 
   router.get("/companies/:companyId/members", async (req, res) => {
     const companyId = req.params.companyId as string;
-    await assertCompanyPermission(req, companyId, "users:manage_permissions");
+    await assertCompanyPermission(req, companyId, "teams.read");
     const members = await access.listMembers(companyId);
 
     const userIds = members
@@ -3201,9 +3207,14 @@ export function accessRoutes(
     }
 
     res.json(
-      members.map((member) => ({
-        ...member,
-        grants: grantsByPrincipal.get(member.principalId) ?? [],
+      members.map((member) => {
+        const isOwner = (member.membershipRole ?? "").trim().toLowerCase() === "owner";
+        const grants = isOwner
+          ? PERMISSION_KEYS.map((permissionKey) => ({ permissionKey, scope: null }))
+          : (grantsByPrincipal.get(member.principalId) ?? []);
+        return {
+          ...member,
+          grants,
         user:
           member.principalType === "user"
             ? usersById.get(member.principalId) ?? null
@@ -3212,7 +3223,8 @@ export function accessRoutes(
           member.principalType === "agent"
             ? agentsById.get(member.principalId) ?? null
             : null
-      }))
+        };
+      })
     );
   });
 

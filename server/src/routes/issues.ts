@@ -90,6 +90,24 @@ export function issueRoutes(db: Db, storage: StorageService) {
     };
   }
 
+  async function assertCanReadAttentionQueue(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, "attention_queue.read");
+      if (!allowed) throw forbidden("Missing permission: attention_queue.read");
+      return;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const allowed = await access.hasPermission(
+      companyId,
+      "agent",
+      req.actor.agentId,
+      "attention_queue.read",
+    );
+    if (!allowed) throw forbidden("Missing permission: attention_queue.read");
+  }
+
   async function runSingleFileUpload(req: Request, res: Response) {
     await new Promise<void>((resolve, reject) => {
       upload.single("file")(req, res, (err: unknown) => {
@@ -291,6 +309,12 @@ export function issueRoutes(db: Db, storage: StorageService) {
     if (unreadForUserFilterRaw === "me" && (!unreadForUserId || req.actor.type !== "board")) {
       res.status(403).json({ error: "unreadForUserId=me requires board authentication" });
       return;
+    }
+    const inboxArchivedByUserId = req.query.inboxArchivedByUserId as string | undefined;
+    const usesAttentionQueueFilter =
+      Boolean(touchedByUserId) || Boolean(unreadForUserId) || Boolean(inboxArchivedByUserId);
+    if (usesAttentionQueueFilter) {
+      await assertCanReadAttentionQueue(req, companyId);
     }
 
     const result = await svc.list(companyId, {

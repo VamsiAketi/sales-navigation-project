@@ -334,6 +334,7 @@ export function ProjectProperties({
   archivePending,
   aboveSecrets,
 }: ProjectPropertiesProps) {
+  const canEditConfig = Boolean(onUpdate || onFieldUpdate);
   const { selectedCompanyId, selectedCompany } = useCompany();
   const companyPrefix = selectedCompany?.issuePrefix?.trim() ?? "";
   const companySettingsPath = companyPrefix ? `/${companyPrefix}/company/settings` : "/company/settings";
@@ -788,6 +789,7 @@ export function ProjectProperties({
                 value={boardRetentionDraft}
                 onChange={(e) => setBoardRetentionDraft(e.target.value)}
                 onBlur={() => {
+                  if (!canEditConfig) return;
                   const t = boardRetentionDraft.trim();
                   if (t === "") {
                     setBoardRetentionDraft(String(DEFAULT_BOARD_CLOSED_RETENTION_DAYS));
@@ -807,6 +809,8 @@ export function ProjectProperties({
                     commitField("board_closed_retention_days", { boardClosedRetentionDays: n });
                   }
                 }}
+                readOnly={!canEditConfig}
+                disabled={!canEditConfig}
               />
               <span className="text-xs text-muted-foreground">days (Done / Cancelled on board)</span>
             </div>
@@ -908,6 +912,7 @@ export function ProjectProperties({
                           setWorkspaceRepoUrl(codebase.repoUrl ?? "");
                           setWorkspaceError(null);
                         }}
+                        disabled={!canEditConfig}
                       >
                         Change repo
                       </Button>
@@ -916,6 +921,7 @@ export function ProjectProperties({
                         size="icon-xs"
                         onClick={clearRepoWorkspace}
                         aria-label="Clear repo"
+                        disabled={!canEditConfig}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -930,7 +936,7 @@ export function ProjectProperties({
                         if (!repoWorkspaceForSecretBinding) return;
                         setWorkspaceGitHubSecretId(repoWorkspaceForSecretBinding, e.target.value);
                       }}
-                      disabled={!repoWorkspaceForSecretBinding || updateWorkspace.isPending}
+                      disabled={!canEditConfig || !repoWorkspaceForSecretBinding || updateWorkspace.isPending}
                     >
                       <option value="">None</option>
                       {companySecrets.map((secret) => (
@@ -958,6 +964,7 @@ export function ProjectProperties({
                       setWorkspaceRepoUrl(codebase.repoUrl ?? "");
                       setWorkspaceError(null);
                     }}
+                    disabled={!canEditConfig}
                   >
                     Set repo
                   </Button>
@@ -1017,7 +1024,7 @@ export function ProjectProperties({
               </div>
             ) : null}
           </div>
-          {workspaceMode === "repo" && (
+          {canEditConfig && workspaceMode === "repo" && (
             <div className="space-y-1.5 rounded-md border border-border p-2">
               <input
                 className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"

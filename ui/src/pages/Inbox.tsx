@@ -13,6 +13,7 @@ import { agentsApi } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { projectsApi } from "../api/projects";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useGeneralSettings } from "../context/GeneralSettingsContext";
@@ -799,6 +800,13 @@ function JoinRequestInboxRow({
 export function Inbox() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadAttentionQueue = sidebarBadges?.canReadAttentionQueue ?? true;
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -1538,6 +1546,16 @@ export function Inbox() {
 
   if (!selectedCompanyId) {
     return <EmptyState icon={InboxIcon} message="Select a company to view inbox." />;
+  }
+  if (!canReadAttentionQueue) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to view Attention Queue.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>attention_queue.read</code> permission.
+        </div>
+      </div>
+    );
   }
 
   const hasRunFailures = failedRuns.length > 0;

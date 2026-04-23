@@ -421,6 +421,8 @@ export const JOIN_REQUEST_STATUSES = ["pending_approval", "approved", "rejected"
 export type JoinRequestStatus = (typeof JOIN_REQUEST_STATUSES)[number];
 
 export const PERMISSION_KEYS = [
+  "agents.read",
+  "agents.edit",
   "agents:create",
   "users:invite",
   "users:manage_permissions",
@@ -428,6 +430,19 @@ export const PERMISSION_KEYS = [
   "tasks:assign_scope",
   "joins:approve",
   "companies:create",
+  "command_center.read",
+  "hybrid_org.read",
+  "hybrid_org.edit",
+  "hybrid_org.import",
+  "hybrid_org.export",
+  "skills.read",
+  "skills.edit",
+  "goals.read",
+  "goals.write",
+  "costs.read",
+  "attention_queue.read",
+  "teams.read",
+  "teams.edit",
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 

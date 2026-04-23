@@ -428,6 +428,10 @@ export function ProjectDetail() {
     [pluginDetailSlots],
   );
   const activePluginTab = pluginTabItems.find((item) => item.value === activeTab) ?? null;
+  const isDefaultProjectLocked = useMemo(() => {
+    const normalized = (project?.name ?? "").trim().toLowerCase();
+    return normalized === "default project" || normalized === "onboarding" || normalized === "ai-admin project";
+  }, [project?.name]);
 
   useEffect(() => {
     if (!project?.companyId || project.companyId === selectedCompanyId) return;
@@ -790,13 +794,13 @@ export function ProjectDetail() {
         <div className="max-w-3xl space-y-6 pb-2">
           <ProjectProperties
             project={project}
-            onUpdate={(data) => updateProject.mutate(data)}
-            onFieldUpdate={updateProjectField}
+            onUpdate={isDefaultProjectLocked ? undefined : (data) => updateProject.mutate(data)}
+            onFieldUpdate={isDefaultProjectLocked ? undefined : updateProjectField}
             getFieldSaveState={(field) => fieldSaveStates[field] ?? "idle"}
-            onArchive={(archived) => archiveProject.mutate(archived)}
+            onArchive={isDefaultProjectLocked ? undefined : (archived) => archiveProject.mutate(archived)}
             archivePending={archiveProject.isPending}
             aboveSecrets={
-              project?.id ? (
+              project?.id && !isDefaultProjectLocked ? (
                 <>
                   <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <span className="min-w-0 text-sm leading-snug text-muted-foreground sm:max-w-md">
@@ -839,7 +843,11 @@ export function ProjectDetail() {
 
       {activeTab === "workflow" && project?.id && (
         <div className="max-w-5xl space-y-6 pb-2">
-          <ProjectIssueStatusSettings projectId={project.id} statuses={configStatuses} />
+          <ProjectIssueStatusSettings
+            projectId={project.id}
+            statuses={configStatuses}
+            readOnly={isDefaultProjectLocked}
+          />
         </div>
       )}
 

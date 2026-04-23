@@ -4,7 +4,10 @@ import { useNavigate } from "@/lib/router";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { agentsApi } from "../api/agents";
+import { goalsApi } from "../api/goals";
+import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
+import { selectDefaultCompanyGoalId } from "../lib/onboarding-launch";
 import {
   Dialog,
   DialogContent,
@@ -106,12 +109,28 @@ export function NewAgentDialog() {
 
   const ceoAgent = (agents ?? []).find((a) => a.role === "ceo");
 
-  function handleAskCeo() {
+  async function handleAskCeo() {
+    let defaultProjectId: string | undefined;
+    if (selectedCompanyId) {
+      try {
+        const goals = await goalsApi.list(selectedCompanyId);
+        const firstGoalId = selectDefaultCompanyGoalId(goals);
+        const projects = await projectsApi.list(selectedCompanyId);
+        const defaultProject =
+          projects.find((project) => firstGoalId && project.goalIds.includes(firstGoalId))
+          ?? projects[0]
+          ?? null;
+        defaultProjectId = defaultProject?.id;
+      } catch {
+        // Keep the dialog resilient; fall back to manual project selection.
+      }
+    }
     closeNewAgent();
     openNewIssue({
       assigneeAgentId: ceoAgent?.id,
       title: "Create a new agent",
       description: "(type in what kind of agent you want here)",
+      ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
     });
   }
 

@@ -17,6 +17,7 @@ import { agentsApi, type OrgNode } from "../api/agents";
 import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { authApi } from "../api/auth";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
@@ -473,6 +474,7 @@ interface OrgCardProps {
   onNavigate: () => void;
   companyId: string;
   sessionUserId: string | null | undefined;
+  canDrag: boolean;
 }
 
 function OrgCard({
@@ -486,12 +488,13 @@ function OrgCard({
   onNavigate,
   companyId,
   sessionUserId,
+  canDrag,
 }: OrgCardProps) {
   const isAgentNode = node.nodeType === "agent";
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: node.id,
-    disabled: false,
+    disabled: !canDrag,
   });
   const { setNodeRef: setDropRef } = useDroppable({
     id: node.id,
@@ -518,12 +521,14 @@ function OrgCard({
             ? "cursor-grab border-primary shadow-xl ring-2 ring-primary/30"
             : isInvalidTarget
               ? "cursor-not-allowed border-border/50 opacity-50 shadow-sm"
-              : "cursor-grab border-transparent shadow-[0_4px_6px_-1px_rgba(15,23,42,0.08),0_2px_4px_-2px_rgba(15,23,42,0.05)] hover:-translate-y-0.5 hover:shadow-[0_8px_16px_-4px_rgba(15,23,42,0.12)] dark:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.35)]",
+              : canDrag
+                ? "cursor-grab border-transparent shadow-[0_4px_6px_-1px_rgba(15,23,42,0.08),0_2px_4px_-2px_rgba(15,23,42,0.05)] hover:-translate-y-0.5 hover:shadow-[0_8px_16px_-4px_rgba(15,23,42,0.12)] dark:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.35)]"
+                : "cursor-pointer border-transparent shadow-[0_4px_6px_-1px_rgba(15,23,42,0.08),0_2px_4px_-2px_rgba(15,23,42,0.05)] dark:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.35)]",
       ].join(" ")}
       style={{ left: node.x, top: node.y, width: CARD_W, minHeight: CARD_H }}
       onClick={onNavigate}
-      {...listeners}
-      {...attributes}
+      {...(canDrag ? listeners : {})}
+      {...(canDrag ? attributes : {})}
     >
       <CardContent
         node={node}
@@ -631,6 +636,15 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
     staleTime: 60_000,
   });
   const sessionUserId = session?.user?.id ?? null;
+  const { data: sidebarBadges } = useQuery({
+    queryKey: queryKeys.sidebarBadges(companyId),
+    queryFn: () => sidebarBadgesApi.get(companyId),
+    staleTime: 10_000,
+  });
+  const canReadHybridOrg = sidebarBadges?.canReadHybridOrg ?? true;
+  const canEditHybridOrg = sidebarBadges?.canEditHybridOrg ?? true;
+  const canImportHybridOrg = sidebarBadges?.canImportHybridOrg ?? true;
+  const canExportHybridOrg = sidebarBadges?.canExportHybridOrg ?? true;
 
   const { memory, expandedSet, setExpandedNodeIds, toggleExpanded, setViewport } = useOrgChartViewMemory(companyId);
 
@@ -771,15 +785,22 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const handleDragStart = useCallback(({ active }: DragStartEvent) => {
+    if (!canEditHybridOrg) return;
     setActiveId(active.id as string);
-  }, []);
+  }, [canEditHybridOrg]);
 
   const handleDragOver = useCallback(({ over }: DragOverEvent) => {
+    if (!canEditHybridOrg) return;
     setOverId((over?.id as string) ?? null);
-  }, []);
+  }, [canEditHybridOrg]);
 
   const handleDragEnd = useCallback(
     ({ active, over }: DragEndEvent) => {
+      if (!canEditHybridOrg) {
+        setActiveId(null);
+        setOverId(null);
+        return;
+      }
       const draggedId = active.id as string;
       const targetId = over?.id as string | undefined;
 
@@ -855,6 +876,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
       childOrderMutation,
       orgIndex.parentById,
       orgIndex.nodeById,
+      canEditHybridOrg,
     ],
   );
 
@@ -1026,6 +1048,16 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   }, []);
 
   if (isLoading) return <PageSkeleton variant="org-chart" />;
+  if (!canReadHybridOrg) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to view Hybrid Org Chart.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>hybrid_org.read</code> permission.
+        </div>
+      </div>
+    );
+  }
   if (orgTree && orgTree.length === 0) {
     return <EmptyState icon={Network} message="No organizational hierarchy defined." />;
   }
@@ -1039,18 +1071,22 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
       {/* Toolbar */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <Link to="/company/import">
-            <Button variant="outline" size="sm">
-              <Upload className="mr-1.5 h-3.5 w-3.5" />
-              Import
-            </Button>
-          </Link>
-          <Link to="/company/export">
-            <Button variant="outline" size="sm">
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              Export
-            </Button>
-          </Link>
+          {canImportHybridOrg && (
+            <Link to="/company/import">
+              <Button variant="outline" size="sm">
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
+                Import
+              </Button>
+            </Link>
+          )}
+          {canExportHybridOrg && (
+            <Link to="/company/export">
+              <Button variant="outline" size="sm">
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Export
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Stats pills */}
@@ -1094,7 +1130,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
         >
           <DotGrid />
 
-          {activeId && <RootDropZone isOver={overId === ROOT_DROP_ZONE_ID} />}
+          {canEditHybridOrg && activeId && <RootDropZone isOver={overId === ROOT_DROP_ZONE_ID} />}
 
           {/* Search */}
           <div className="absolute top-3 left-3 z-10 w-[280px] max-w-[calc(100%-8rem)]">
@@ -1267,6 +1303,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
                   }}
                   companyId={companyId}
                   sessionUserId={sessionUserId}
+                  canDrag={canEditHybridOrg}
                 />
               );
             })}

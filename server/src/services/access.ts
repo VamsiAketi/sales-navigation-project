@@ -16,13 +16,53 @@ import {
   activityLog,
   principalPermissionGrants,
 } from "@paperclipai/db";
-import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
+import { PERMISSION_KEYS, type PermissionKey, type PrincipalType } from "@paperclipai/shared";
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
 type GrantInput = {
   permissionKey: PermissionKey;
   scope?: Record<string, unknown> | null;
 };
+
+const GRANT_READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
+  "agents:create": "agents.read",
+  "agents.edit": "agents.read",
+  "skills.edit": "skills.read",
+  "goals.write": "goals.read",
+  "hybrid_org.edit": "hybrid_org.read",
+  "hybrid_org.import": "hybrid_org.read",
+  "hybrid_org.export": "hybrid_org.read",
+  "teams.edit": "teams.read",
+  "users:invite": "teams.read",
+  "joins:approve": "teams.read",
+  "users:manage_permissions": "teams.read",
+};
+
+function normalizeGrantsWithReadDependencies(grants: GrantInput[]): GrantInput[] {
+  const byPermission = new Map<PermissionKey, GrantInput>();
+  for (const grant of grants) {
+    byPermission.set(grant.permissionKey, {
+      permissionKey: grant.permissionKey,
+      scope: grant.scope ?? null,
+    });
+  }
+
+  for (const [permissionKey, readPermissionKey] of Object.entries(
+    GRANT_READ_DEPENDENCIES,
+  ) as Array<[PermissionKey, PermissionKey]>) {
+    if (!byPermission.has(permissionKey)) continue;
+    if (!byPermission.has(readPermissionKey)) {
+      byPermission.set(readPermissionKey, {
+        permissionKey: readPermissionKey,
+        scope: null,
+      });
+    }
+  }
+
+  return PERMISSION_KEYS.filter((permissionKey) => byPermission.has(permissionKey)).map(
+    (permissionKey) => byPermission.get(permissionKey)!,
+  );
+}
 
 export function accessService(db: Db) {
   function makeDeletedEmailTombstone(userId: string, now: Date): string {
@@ -501,9 +541,13 @@ export function accessService(db: Db) {
             eq(principalPermissionGrants.principalId, member.principalId),
           ),
         );
-      if (grants.length > 0) {
+      const normalizedGrants =
+        (member.membershipRole ?? "").trim().toLowerCase() === "owner"
+          ? PERMISSION_KEYS.map((permissionKey) => ({ permissionKey, scope: null }))
+          : normalizeGrantsWithReadDependencies(grants);
+      if (normalizedGrants.length > 0) {
         await tx.insert(principalPermissionGrants).values(
-          grants.map((grant) => ({
+          normalizedGrants.map((grant) => ({
             companyId,
             principalType: member.principalType,
             principalId: member.principalId,

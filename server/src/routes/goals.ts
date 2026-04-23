@@ -1,19 +1,38 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import { createGoalSchema, updateGoalSchema } from "@paperclipai/shared";
 import { trackGoalCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
-import { goalService, logActivity } from "../services/index.js";
+import { accessService, goalService, logActivity } from "../services/index.js";
+import { forbidden } from "../errors.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
 
 export function goalRoutes(db: Db) {
   const router = Router();
   const svc = goalService(db);
+  const access = accessService(db);
+
+  async function assertGoalPermission(
+    req: Request,
+    companyId: string,
+    permissionKey: "goals.read" | "goals.write",
+  ) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, permissionKey);
+      if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
+      return;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, permissionKey);
+    if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
+  }
 
   router.get("/companies/:companyId/goals", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertGoalPermission(req, companyId, "goals.read");
     const result = await svc.list(companyId);
     res.json(result);
   });
@@ -25,13 +44,13 @@ export function goalRoutes(db: Db) {
       res.status(404).json({ error: "Goal not found" });
       return;
     }
-    assertCompanyAccess(req, goal.companyId);
+    await assertGoalPermission(req, goal.companyId, "goals.read");
     res.json(goal);
   });
 
   router.post("/companies/:companyId/goals", validate(createGoalSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertGoalPermission(req, companyId, "goals.write");
     const goal = await svc.create(companyId, req.body);
     const actor = getActorInfo(req);
     await logActivity(db, {
@@ -58,7 +77,7 @@ export function goalRoutes(db: Db) {
       res.status(404).json({ error: "Goal not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertGoalPermission(req, existing.companyId, "goals.write");
     const goal = await svc.update(id, req.body);
     if (!goal) {
       res.status(404).json({ error: "Goal not found" });
@@ -87,7 +106,7 @@ export function goalRoutes(db: Db) {
       res.status(404).json({ error: "Goal not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertGoalPermission(req, existing.companyId, "goals.write");
     const goal = await svc.remove(id);
     if (!goal) {
       res.status(404).json({ error: "Goal not found" });
