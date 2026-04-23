@@ -89,6 +89,12 @@ export function companySkillRoutes(db: Db) {
     if (allowedByGrant) {
       return;
     }
+    const allowedByLegacyAgentCapability = Boolean(
+      (actorAgent as unknown as { permissions?: { canCreateAgents?: boolean } }).permissions?.canCreateAgents,
+    );
+    if (allowedByLegacyAgentCapability) {
+      return;
+    }
 
     throw forbidden("Missing permission: skills.edit");
   }
