@@ -9,18 +9,18 @@ import {
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import {
+  accessService,
   budgetService,
   costService,
   financeService,
   companyService,
-  accessService,
   agentService,
   heartbeatService,
   logActivity,
 } from "../services/index.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
-import { fetchAllQuotaWindows } from "../services/quota-windows.js";
+import { assertBoard, assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
 import { badRequest, forbidden } from "../errors.js";
+import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 
 export function costRoutes(db: Db) {
   const router = Router();
@@ -259,6 +259,13 @@ export function costRoutes(db: Db) {
     await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const rows = await costs.byProject(companyId, range);
+    const actor = projectAuthActorFromRequest(req);
+    const allowedIds = await access.listProjectIdsVisibleToActor(companyId, actor);
+    if (allowedIds !== null) {
+      const allow = new Set(allowedIds);
+      res.json(rows.filter((row) => row.projectId != null && allow.has(row.projectId)));
+      return;
+    }
     res.json(rows);
   });
 
@@ -266,6 +273,19 @@ export function costRoutes(db: Db) {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    if (await access.companyUsesRestrictedProjectAccess(companyId)) {
+      const uid = req.actor.type === "board" ? req.actor.userId : undefined;
+      const manage =
+        uid && (await access.canUser(companyId, uid, "users:manage_permissions"));
+      const viaProject = await access.principalHasAnyProjectPermission(
+        companyId,
+        projectAuthActorFromRequest(req),
+        "budget:company_update",
+      );
+      if (!manage && !viaProject) {
+        throw forbidden("Permission denied");
+      }
+    }
     const company = await companies.update(companyId, { budgetMonthlyCents: req.body.budgetMonthlyCents });
     if (!company) {
       res.status(404).json({ error: "Company not found" });

@@ -106,6 +106,13 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "users:invite": "teams.read",
   "joins:approve": "teams.read",
   "users:manage_permissions": "teams.read",
+  "company_settings.general": "company_settings.read",
+  "company_settings.appearance": "company_settings.read",
+  "company_settings.security_access": "company_settings.read",
+  "company_settings.hiring": "company_settings.read",
+  "company_settings.invites": "company_settings.read",
+  "company_settings.secrets": "company_settings.read",
+  "company_settings.packages": "company_settings.read",
 };
 
 function normalizePermissionSelection(keys: PermissionKey[]): PermissionKey[] {
@@ -189,6 +196,33 @@ const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
   "teams.edit": {
     title: "Edit Teams",
   },
+  "audit_logs.read": {
+    title: "View Audit Logs",
+  },
+  "company_settings.read": {
+    title: "View Company Settings",
+  },
+  "company_settings.general": {
+    title: "Edit Company Settings: General",
+  },
+  "company_settings.appearance": {
+    title: "Edit Company Settings: Appearance",
+  },
+  "company_settings.security_access": {
+    title: "Edit Company Settings: Security & Access",
+  },
+  "company_settings.hiring": {
+    title: "Edit Company Settings: Hiring",
+  },
+  "company_settings.invites": {
+    title: "Edit Company Settings: Invites",
+  },
+  "company_settings.secrets": {
+    title: "Edit Company Settings: Secrets",
+  },
+  "company_settings.packages": {
+    title: "Edit Company Settings: Company Packages",
+  },
 };
 
 const PERMISSION_CATEGORY_DEFS: {
@@ -210,11 +244,6 @@ const PERMISSION_CATEGORY_DEFS: {
     id: "work",
     title: "Tasks & workflow",
     keys: ["tasks:assign", "tasks:assign_scope"],
-  },
-  {
-    id: "company",
-    title: "Company management",
-    keys: ["companies:create"],
   },
   {
     id: "command_center",
@@ -245,6 +274,30 @@ const PERMISSION_CATEGORY_DEFS: {
     id: "attention_queue",
     title: "Attention Queue",
     keys: ["attention_queue.read"],
+  },
+  {
+    id: "company",
+    title: "Company management",
+    keys: ["companies:create"],
+  },
+  {
+    id: "audit_logs",
+    title: "Audit Logs",
+    keys: ["audit_logs.read"],
+  },
+  {
+    id: "company_settings",
+    title: "Company Settings",
+    keys: [
+      "company_settings.read",
+      "company_settings.general",
+      "company_settings.appearance",
+      "company_settings.security_access",
+      "company_settings.hiring",
+      "company_settings.invites",
+      "company_settings.secrets",
+      "company_settings.packages",
+    ],
   },
 ];
 
@@ -335,7 +388,7 @@ function HumanPermissionsPanel({
                       disabled={disabled}
                       onCheckedChange={(on) => toggle(key, on === true)}
                       aria-label={ui.title}
-                      className="h-3.5 w-3.5"
+                      className="h-3.5 w-3.5 border-border/90 bg-background data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=unchecked]:border-muted-foreground/70"
                     />
                     <Label
                       htmlFor={sid}

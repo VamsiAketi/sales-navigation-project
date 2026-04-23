@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -7,9 +7,11 @@ import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { secretsApi } from "../api/secrets";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, Download, Upload } from "lucide-react";
+import type { CompanyProjectAccessMode } from "@paperclipai/shared";
+import { Settings, Check, Download, Upload, Shield } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -33,6 +35,20 @@ export function CompanySettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadCompanySettings = sidebarBadges?.canReadCompanySettings ?? true;
+  const canManageCompanySettingsGeneral = sidebarBadges?.canManageCompanySettingsGeneral ?? true;
+  const canManageCompanySettingsAppearance = sidebarBadges?.canManageCompanySettingsAppearance ?? true;
+  const canManageCompanySettingsSecurityAccess = sidebarBadges?.canManageCompanySettingsSecurityAccess ?? true;
+  const canManageCompanySettingsHiring = sidebarBadges?.canManageCompanySettingsHiring ?? true;
+  const canManageCompanySettingsInvites = sidebarBadges?.canManageCompanySettingsInvites ?? true;
+  const canManageCompanySettingsSecrets = sidebarBadges?.canManageCompanySettingsSecrets ?? true;
+  const canManageCompanySettingsPackages = sidebarBadges?.canManageCompanySettingsPackages ?? true;
   // General settings local state
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
@@ -47,6 +63,7 @@ export function CompanySettings() {
     setDescription(selectedCompany.description ?? "");
     setBrandColor(selectedCompany.brandColor ?? "");
     setLogoUrl(selectedCompany.logoUrl ?? "");
+    setProjectAccessDraft(selectedCompany.projectAccessMode ?? "open");
   }, [selectedCompany]);
 
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -56,6 +73,7 @@ export function CompanySettings() {
   const [newSecretName, setNewSecretName] = useState("");
   const [newSecretValue, setNewSecretValue] = useState("");
   const [newSecretDescription, setNewSecretDescription] = useState("");
+  const [projectAccessDraft, setProjectAccessDraft] = useState<CompanyProjectAccessMode>("open");
 
   const generalDirty =
     !!selectedCompany &&
@@ -65,9 +83,9 @@ export function CompanySettings() {
 
   const generalMutation = useMutation({
     mutationFn: (data: {
-      name: string;
-      description: string | null;
-      brandColor: string | null;
+      name?: string;
+      description?: string | null;
+      brandColor?: string | null;
     }) => companiesApi.update(selectedCompanyId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
@@ -82,6 +100,21 @@ export function CompanySettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     }
+  });
+
+  const projectAccessMutation = useMutation({
+    mutationFn: (mode: CompanyProjectAccessMode) =>
+      companiesApi.update(selectedCompanyId!, { projectAccessMode: mode }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      pushToast({ title: "Project access policy updated", tone: "success" });
+    },
+    onError: (err) => {
+      pushToast({
+        title: err instanceof Error ? err.message : "Could not update project access policy",
+        tone: "error",
+      });
+    },
   });
 
   const inviteMutation = useMutation({
@@ -245,13 +278,29 @@ export function CompanySettings() {
       </div>
     );
   }
+  if (!canReadCompanySettings) {
+    return (
+      <div className="text-sm text-muted-foreground">
+        Permission denied. You do not have access to Company Settings.
+      </div>
+    );
+  }
 
   function handleSaveGeneral() {
-    generalMutation.mutate({
-      name: companyName.trim(),
-      description: description.trim() || null,
-      brandColor: brandColor || null
-    });
+    const payload: {
+      name?: string;
+      description?: string | null;
+      brandColor?: string | null;
+    } = {};
+    if (canManageCompanySettingsGeneral) {
+      payload.name = companyName.trim();
+      payload.description = description.trim() || null;
+    }
+    if (canManageCompanySettingsAppearance) {
+      payload.brandColor = brandColor || null;
+    }
+    if (Object.keys(payload).length === 0) return;
+    generalMutation.mutate(payload);
   }
 
   return (
@@ -272,6 +321,7 @@ export function CompanySettings() {
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
               type="text"
               value={companyName}
+              disabled={!canManageCompanySettingsGeneral}
               onChange={(e) => setCompanyName(e.target.value)}
             />
           </Field>
@@ -284,6 +334,7 @@ export function CompanySettings() {
               type="text"
               value={description}
               placeholder="Optional company description"
+              disabled={!canManageCompanySettingsGeneral}
               onChange={(e) => setDescription(e.target.value)}
             />
           </Field>
@@ -314,6 +365,7 @@ export function CompanySettings() {
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                    disabled={!canManageCompanySettingsAppearance}
                     onChange={handleLogoFileChange}
                     className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
                   />
@@ -323,7 +375,7 @@ export function CompanySettings() {
                         size="sm"
                         variant="outline"
                         onClick={handleClearLogo}
-                        disabled={clearLogoMutation.isPending}
+                        disabled={clearLogoMutation.isPending || !canManageCompanySettingsAppearance}
                       >
                         {clearLogoMutation.isPending ? "Removing..." : "Remove logo"}
                       </Button>
@@ -355,12 +407,14 @@ export function CompanySettings() {
                   <input
                     type="color"
                     value={brandColor || "#6366f1"}
+                    disabled={!canManageCompanySettingsAppearance}
                     onChange={(e) => setBrandColor(e.target.value)}
                     className="h-8 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
                   />
                   <input
                     type="text"
                     value={brandColor}
+                    disabled={!canManageCompanySettingsAppearance}
                     onChange={(e) => {
                       const v = e.target.value;
                       if (v === "" || /^#[0-9a-fA-F]{0,6}$/.test(v)) {
@@ -374,6 +428,7 @@ export function CompanySettings() {
                     <Button
                       size="sm"
                       variant="ghost"
+                      disabled={!canManageCompanySettingsAppearance}
                       onClick={() => setBrandColor("")}
                       className="text-xs text-muted-foreground"
                     >
@@ -393,7 +448,11 @@ export function CompanySettings() {
           <Button
             size="sm"
             onClick={handleSaveGeneral}
-            disabled={generalMutation.isPending || !companyName.trim()}
+            disabled={
+              generalMutation.isPending ||
+              !companyName.trim() ||
+              (!canManageCompanySettingsGeneral && !canManageCompanySettingsAppearance)
+            }
           >
             {generalMutation.isPending ? "Saving..." : "Save changes"}
           </Button>
@@ -452,6 +511,7 @@ export function CompanySettings() {
                   })
                 }
                 disabled={
+                  !canManageCompanySettingsSecrets ||
                   createSecretMutation.isPending ||
                   newSecretName.trim().length === 0 ||
                   newSecretValue.length === 0
@@ -488,7 +548,7 @@ export function CompanySettings() {
                     size="sm"
                     variant="outline"
                     className="text-destructive"
-                    disabled={deleteSecretMutation.isPending}
+                    disabled={deleteSecretMutation.isPending || !canManageCompanySettingsSecrets}
                     onClick={() => {
                       const confirmed = window.confirm(`Delete secret "${secret.name}"?`);
                       if (!confirmed) return;
@@ -504,6 +564,55 @@ export function CompanySettings() {
         </div>
       </div>
 
+      {/* Security & project access */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Security &amp; access
+        </div>
+        <div className="space-y-4 rounded-md border border-border px-4 py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/30">
+              <Shield className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="min-w-0 space-y-2">
+              <div className="text-sm font-semibold text-foreground">Project-level permissions</div>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                <span className="font-medium text-foreground">Open</span> — any active company member can open all
+                projects (legacy behavior).{" "}
+                <span className="font-medium text-foreground">Restricted</span> — each project has an explicit access
+                matrix; configure grants under{" "}
+                <span className="font-medium text-foreground">Project → Access control</span>. Requires the company
+                permission <span className="font-mono text-xs">users:manage_permissions</span> to change this policy.
+              </p>
+            </div>
+          </div>
+          <Field
+            label="Project access mode"
+            hint="Applies to every project in this company. New projects still grant full access to their creator while restricted."
+          >
+            <select
+              className="w-full max-w-md rounded-md border border-border bg-background px-2.5 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+              value={projectAccessDraft}
+              disabled={!canManageCompanySettingsSecurityAccess}
+              onChange={(e) => {
+                const nextMode = e.target.value as CompanyProjectAccessMode;
+                setProjectAccessDraft(nextMode);
+                if (!canManageCompanySettingsSecurityAccess) return;
+                if (!selectedCompanyId) return;
+                if (nextMode === (selectedCompany?.projectAccessMode ?? "open")) return;
+                projectAccessMutation.mutate(nextMode);
+              }}
+            >
+              <option value="open">Open — all company members see all projects</option>
+              <option value="restricted">Restricted — per-project grants required</option>
+            </select>
+          </Field>
+          {projectAccessMutation.isPending ? (
+            <span className="text-xs text-muted-foreground">Saving project access policy…</span>
+          ) : null}
+        </div>
+      </div>
+
       {/* Hiring */}
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -514,7 +623,10 @@ export function CompanySettings() {
             label="Require board approval for new hires"
             hint="New agent hires stay pending until approved by board."
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
-            onChange={(v) => settingsMutation.mutate(v)}
+            onChange={(v) => {
+              if (!canManageCompanySettingsHiring) return;
+              settingsMutation.mutate(v);
+            }}
           />
         </div>
       </div>
@@ -535,7 +647,7 @@ export function CompanySettings() {
             <Button
               size="sm"
               onClick={() => inviteMutation.mutate()}
-              disabled={inviteMutation.isPending}
+              disabled={inviteMutation.isPending || !canManageCompanySettingsInvites}
             >
               {inviteMutation.isPending
                 ? "Generating..."
@@ -602,13 +714,13 @@ export function CompanySettings() {
             <a href="/org" className="underline hover:text-foreground">Hybrid Org Chart</a> header.
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" variant="outline" asChild>
+            <Button size="sm" variant="outline" asChild disabled={!canManageCompanySettingsPackages}>
               <a href="/company/export">
                 <Download className="mr-1.5 h-3.5 w-3.5" />
                 Export
               </a>
             </Button>
-            <Button size="sm" variant="outline" asChild>
+            <Button size="sm" variant="outline" asChild disabled={!canManageCompanySettingsPackages}>
               <a href="/company/import">
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
                 Import

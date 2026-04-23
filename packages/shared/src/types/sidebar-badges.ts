@@ -18,4 +18,13 @@ export interface SidebarBadges {
   canEditTeams?: boolean;
   canReadAgents?: boolean;
   canEditAgents?: boolean;
+  canReadAuditLogs?: boolean;
+  canReadCompanySettings?: boolean;
+  canManageCompanySettingsGeneral?: boolean;
+  canManageCompanySettingsAppearance?: boolean;
+  canManageCompanySettingsSecurityAccess?: boolean;
+  canManageCompanySettingsHiring?: boolean;
+  canManageCompanySettingsInvites?: boolean;
+  canManageCompanySettingsSecrets?: boolean;
+  canManageCompanySettingsPackages?: boolean;
 }

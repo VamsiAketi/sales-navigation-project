@@ -33,6 +33,7 @@ import {
   resolveCliAuthChallengeSchema,
   updateMemberOrgConfigSchema,
   updateMemberPermissionsSchema,
+  updateProjectPrincipalGrantsSchema,
   updateUserCompanyAccessSchema,
   PERMISSION_KEYS
 } from "@paperclipai/shared";
@@ -55,7 +56,7 @@ import {
   notifyHireApproved,
   sendHumanInviteEmail
 } from "../services/index.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertCompanyAccess, projectAuthActorFromRequest } from "./authz.js";
 import {
   claimBoardOwnership,
   inspectBoardClaimChallenge
@@ -1933,7 +1934,9 @@ export function accessRoutes(
     }
     if (req.actor.type !== "board") throw unauthorized();
     if (isLocalImplicit(req)) return;
-    const allowed = await access.canUser(companyId, req.actor.userId, "users:invite");
+    const allowed =
+      (await access.canUser(companyId, req.actor.userId, "company_settings.invites")) ||
+      (await access.canUser(companyId, req.actor.userId, "users:invite"));
     if (!allowed) throw forbidden("Permission denied");
   }
 
@@ -3432,6 +3435,62 @@ export function accessRoutes(
       if (!updated) throw notFound("Member not found");
       res.json(updated);
     }
+  );
+
+  router.get("/companies/:companyId/projects/:projectId/principal-permissions", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const projectId = req.params.projectId as string;
+    assertCompanyAccess(req, companyId);
+    const actor = projectAuthActorFromRequest(req);
+    const companyManage =
+      req.actor.type === "board"
+      && req.actor.userId
+      && (await access.canUser(companyId, req.actor.userId, "users:manage_permissions"));
+    const projectManage = await access.satisfiesProjectPermission(
+      companyId,
+      projectId,
+      "members:manage",
+      actor,
+    );
+    if (!companyManage && !projectManage) {
+      throw forbidden("Permission denied");
+    }
+    const rows = await access.listProjectPrincipalGrants(projectId, companyId);
+    res.json(rows);
+  });
+
+  router.patch(
+    "/companies/:companyId/projects/:projectId/principal-permissions",
+    validate(updateProjectPrincipalGrantsSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const projectId = req.params.projectId as string;
+      assertCompanyAccess(req, companyId);
+      const actor = projectAuthActorFromRequest(req);
+      const companyManage =
+        req.actor.type === "board"
+        && req.actor.userId
+        && (await access.canUser(companyId, req.actor.userId, "users:manage_permissions"));
+      const projectManage = await access.satisfiesProjectPermission(
+        companyId,
+        projectId,
+        "members:manage",
+        actor,
+      );
+      if (!companyManage && !projectManage) {
+        throw forbidden("Permission denied");
+      }
+      const ok = await access.setProjectPrincipalGrantsForPrincipal(
+        companyId,
+        projectId,
+        req.body.principalType,
+        req.body.principalId,
+        req.body.permissionKeys,
+        req.actor.type === "board" ? req.actor.userId ?? null : null,
+      );
+      if (!ok) throw notFound("Project not found");
+      res.json({ ok: true });
+    },
   );
 
   /* ── Member status (deactivate / reactivate) ──────────────────────────────── */

@@ -80,6 +80,23 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
   }
 
+  async function assertCompanySettingsPermission(
+    req: Request,
+    companyId: string,
+    permissionKey: "company_settings.general" | "company_settings.appearance" | "company_settings.security_access" | "company_settings.hiring" | "company_settings.invites" | "company_settings.secrets" | "company_settings.packages",
+  ) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, permissionKey);
+      if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
+      return;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, permissionKey);
+    if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
+  }
+
   router.get("/", async (req, res) => {
     assertBoard(req);
     const result = await svc.list();
@@ -337,6 +354,24 @@ export function companyRoutes(db: Db, storage?: StorageService) {
               ? body.feedbackDataSharingTermsVersion
               : DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION,
         };
+      }
+      if (body.name !== undefined || body.description !== undefined || body.status !== undefined) {
+        await assertCompanySettingsPermission(req, companyId, "company_settings.general");
+      }
+      if (body.brandColor !== undefined || body.logoAssetId !== undefined) {
+        await assertCompanySettingsPermission(req, companyId, "company_settings.appearance");
+      }
+      if (
+        body.projectAccessMode !== undefined ||
+        body.feedbackDataSharingEnabled !== undefined ||
+        body.feedbackDataSharingConsentAt !== undefined ||
+        body.feedbackDataSharingConsentByUserId !== undefined ||
+        body.feedbackDataSharingTermsVersion !== undefined
+      ) {
+        await assertCompanySettingsPermission(req, companyId, "company_settings.security_access");
+      }
+      if (body.requireBoardApprovalForNewAgents !== undefined) {
+        await assertCompanySettingsPermission(req, companyId, "company_settings.hiring");
       }
     }
 

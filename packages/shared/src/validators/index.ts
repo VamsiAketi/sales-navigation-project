@@ -25,6 +25,10 @@ export {
   type UpdateCompanyBranding,
 } from "./company.js";
 export {
+  updateProjectPrincipalGrantsSchema,
+  type UpdateProjectPrincipalGrants,
+} from "./project-permissions.js";
+export {
   feedbackDataSharingPreferenceSchema,
   feedbackTargetTypeSchema,
   feedbackTraceStatusSchema,

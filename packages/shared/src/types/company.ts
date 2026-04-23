@@ -1,4 +1,4 @@
-import type { CompanyStatus, PauseReason } from "../constants.js";
+import type { CompanyProjectAccessMode, CompanyStatus, PauseReason } from "../constants.js";
 
 export interface Company {
   id: string;
@@ -19,6 +19,7 @@ export interface Company {
   brandColor: string | null;
   logoAssetId: string | null;
   logoUrl: string | null;
+  projectAccessMode: CompanyProjectAccessMode;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,4 +1,11 @@
-import type { AgentAdapterType, JoinRequest, PermissionKey } from "@paperclipai/shared";
+import type {
+  AgentAdapterType,
+  JoinRequest,
+  PermissionKey,
+  PrincipalType,
+  ProjectPermissionKey,
+  ProjectPrincipalGrant,
+} from "@paperclipai/shared";
 import { api } from "./client";
 
 type InviteSummary = {
@@ -249,4 +256,23 @@ export const accessApi = {
 
   cancelCliAuthChallenge: (id: string, token: string) =>
     api.post<{ cancelled: boolean; status: string }>(`/cli-auth/challenges/${id}/cancel`, { token }),
+
+  listProjectPrincipalGrants: (companyId: string, projectId: string) =>
+    api.get<ProjectPrincipalGrant[]>(
+      `/companies/${companyId}/projects/${encodeURIComponent(projectId)}/principal-permissions`,
+    ),
+
+  updateProjectPrincipalGrants: (
+    companyId: string,
+    projectId: string,
+    input: {
+      principalType: PrincipalType;
+      principalId: string;
+      permissionKeys: ProjectPermissionKey[];
+    },
+  ) =>
+    api.patch<{ ok: true }>(
+      `/companies/${companyId}/projects/${encodeURIComponent(projectId)}/principal-permissions`,
+      input,
+    ),
 };

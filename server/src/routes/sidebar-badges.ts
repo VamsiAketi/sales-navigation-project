@@ -52,6 +52,15 @@ export function sidebarBadgeRoutes(db: Db) {
     let canEditTeams = false;
     let canReadAgents = false;
     let canEditAgents = false;
+    let canReadAuditLogs = false;
+    let canReadCompanySettings = false;
+    let canManageCompanySettingsGeneral = false;
+    let canManageCompanySettingsAppearance = false;
+    let canManageCompanySettingsSecurityAccess = false;
+    let canManageCompanySettingsHiring = false;
+    let canManageCompanySettingsInvites = false;
+    let canManageCompanySettingsSecrets = false;
+    let canManageCompanySettingsPackages = false;
     if (req.actor.type === "board") {
       canReadCommandCenter =
         req.actor.source === "local_implicit" ||
@@ -116,6 +125,42 @@ export function sidebarBadgeRoutes(db: Db) {
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "agents.edit")) ||
         (await access.canUser(companyId, req.actor.userId, "agents:create"));
+      canReadAuditLogs =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "audit_logs.read"));
+      canReadCompanySettings =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.read"));
+      canManageCompanySettingsGeneral =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.general"));
+      canManageCompanySettingsAppearance =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.appearance"));
+      canManageCompanySettingsSecurityAccess =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.security_access"));
+      canManageCompanySettingsHiring =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.hiring"));
+      canManageCompanySettingsInvites =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.invites"));
+      canManageCompanySettingsSecrets =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.secrets"));
+      canManageCompanySettingsPackages =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.packages"));
     } else if (req.actor.type === "agent" && req.actor.agentId) {
       canReadCommandCenter = await access.hasPermission(
         companyId,
@@ -221,6 +266,60 @@ export function sidebarBadgeRoutes(db: Db) {
           req.actor.agentId,
           "agents:create",
         ));
+      canReadAuditLogs = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "audit_logs.read",
+      );
+      canReadCompanySettings = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.read",
+      );
+      canManageCompanySettingsGeneral = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.general",
+      );
+      canManageCompanySettingsAppearance = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.appearance",
+      );
+      canManageCompanySettingsSecurityAccess = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.security_access",
+      );
+      canManageCompanySettingsHiring = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.hiring",
+      );
+      canManageCompanySettingsInvites = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.invites",
+      );
+      canManageCompanySettingsSecrets = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.secrets",
+      );
+      canManageCompanySettingsPackages = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.packages",
+      );
     }
     const summary = await dashboard.summary(companyId);
     const hasFailedRuns = badges.failedRuns > 0;
@@ -243,6 +342,15 @@ export function sidebarBadgeRoutes(db: Db) {
     badges.canEditTeams = canEditTeams;
     badges.canReadAgents = canReadAgents;
     badges.canEditAgents = canEditAgents;
+    badges.canReadAuditLogs = canReadAuditLogs;
+    badges.canReadCompanySettings = canReadCompanySettings;
+    badges.canManageCompanySettingsGeneral = canManageCompanySettingsGeneral;
+    badges.canManageCompanySettingsAppearance = canManageCompanySettingsAppearance;
+    badges.canManageCompanySettingsSecurityAccess = canManageCompanySettingsSecurityAccess;
+    badges.canManageCompanySettingsHiring = canManageCompanySettingsHiring;
+    badges.canManageCompanySettingsInvites = canManageCompanySettingsInvites;
+    badges.canManageCompanySettingsSecrets = canManageCompanySettingsSecrets;
+    badges.canManageCompanySettingsPackages = canManageCompanySettingsPackages;
 
     res.json(badges);
   });

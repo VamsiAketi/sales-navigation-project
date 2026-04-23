@@ -177,6 +177,8 @@ export type { SidebarBadges } from "./sidebar-badges.js";
 export type {
   CompanyMembership,
   PrincipalPermissionGrant,
+  ProjectPrincipalGrant,
+  ProjectAuthActor,
   Invite,
   JoinRequest,
   InstanceUserRoleGrant,

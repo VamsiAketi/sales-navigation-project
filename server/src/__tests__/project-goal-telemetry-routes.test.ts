@@ -43,6 +43,12 @@ vi.mock("../telemetry.js", () => ({
 }));
 
 vi.mock("../services/index.js", () => ({
+  accessService: () => ({
+    companyUsesRestrictedProjectAccess: vi.fn(async () => false),
+    satisfiesProjectPermission: vi.fn(async () => true),
+    listProjectIdsVisibleToActor: vi.fn(async () => null),
+    seedFullProjectGrantsForUser: vi.fn(async () => undefined),
+  }),
   goalService: () => mockGoalService,
   logActivity: mockLogActivity,
   projectIssueStatusService: () => ({

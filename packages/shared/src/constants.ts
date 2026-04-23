@@ -443,8 +443,36 @@ export const PERMISSION_KEYS = [
   "attention_queue.read",
   "teams.read",
   "teams.edit",
+  "audit_logs.read",
+  "company_settings.read",
+  "company_settings.general",
+  "company_settings.appearance",
+  "company_settings.security_access",
+  "company_settings.hiring",
+  "company_settings.invites",
+  "company_settings.secrets",
+  "company_settings.packages",
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
+
+/** Per-project principal capabilities (see `project_principal_grants`). */
+export const PROJECT_PERMISSION_KEYS = [
+  "project:read",
+  "project:settings",
+  "project:workspaces",
+  "project:statuses",
+  "project:archive",
+  "project:delete",
+  "issue:read",
+  "issue:write",
+  "members:manage",
+  "budget:company_update",
+  "costs:read",
+] as const;
+export type ProjectPermissionKey = (typeof PROJECT_PERMISSION_KEYS)[number];
+
+export const COMPANY_PROJECT_ACCESS_MODES = ["open", "restricted"] as const;
+export type CompanyProjectAccessMode = (typeof COMPANY_PROJECT_ACCESS_MODES)[number];
 
 // ---------------------------------------------------------------------------
 // Plugin System — see doc/plugins/PLUGIN_SPEC.md for the full specification

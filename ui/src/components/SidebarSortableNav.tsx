@@ -292,6 +292,14 @@ export function SidebarCompanyNavSection() {
     queryFn: () => authApi.getSession(),
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadAuditLogs = sidebarBadges?.canReadAuditLogs ?? true;
+  const canReadCompanySettings = sidebarBadges?.canReadCompanySettings ?? true;
 
   const availableIds = useMemo(() => [...COMPANY_NAV_IDS], []);
   const { orderedIds, persistOrder } = useCompanySidebarNavOrder(
@@ -324,6 +332,7 @@ export function SidebarCompanyNavSection() {
   const renderItem = (id: string) => {
     switch (id) {
       case "audit":
+        if (!canReadAuditLogs) return null;
         return (
           <SidebarNavItem
             to="/activity"
@@ -335,6 +344,7 @@ export function SidebarCompanyNavSection() {
           />
         );
       case "settings":
+        if (!canReadCompanySettings) return null;
         return (
           <SidebarNavItem
             to="/company/settings"

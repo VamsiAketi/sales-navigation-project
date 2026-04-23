@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import {
   SECRET_PROVIDERS,
@@ -9,11 +9,13 @@ import {
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
-import { logActivity, secretService } from "../services/index.js";
+import { accessService, logActivity, secretService } from "../services/index.js";
+import { forbidden } from "../errors.js";
 
 export function secretRoutes(db: Db) {
   const router = Router();
   const svc = secretService(db);
+  const access = accessService(db);
   const configuredDefaultProvider = process.env.PAPERCLIP_SECRETS_PROVIDER;
   const defaultProvider = (
     configuredDefaultProvider && SECRET_PROVIDERS.includes(configuredDefaultProvider as SecretProvider)
@@ -21,25 +23,30 @@ export function secretRoutes(db: Db) {
       : "local_encrypted"
   ) as SecretProvider;
 
-  router.get("/companies/:companyId/secret-providers", (req, res) => {
+  async function assertCanManageCompanySecrets(req: Request, companyId: string) {
     assertBoard(req);
-    const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+    const allowed = await access.canUser(companyId, req.actor.userId, "company_settings.secrets");
+    if (!allowed) throw forbidden("Missing permission: company_settings.secrets");
+  }
+
+  router.get("/companies/:companyId/secret-providers", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    await assertCanManageCompanySecrets(req, companyId);
     res.json(svc.listProviders());
   });
 
   router.get("/companies/:companyId/secrets", async (req, res) => {
-    assertBoard(req);
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCanManageCompanySecrets(req, companyId);
     const secrets = await svc.list(companyId);
     res.json(secrets);
   });
 
   router.post("/companies/:companyId/secrets", validate(createSecretSchema), async (req, res) => {
-    assertBoard(req);
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCanManageCompanySecrets(req, companyId);
 
     const created = await svc.create(
       companyId,
@@ -67,14 +74,13 @@ export function secretRoutes(db: Db) {
   });
 
   router.post("/secrets/:id/rotate", validate(rotateSecretSchema), async (req, res) => {
-    assertBoard(req);
     const id = req.params.id as string;
     const existing = await svc.getById(id);
     if (!existing) {
       res.status(404).json({ error: "Secret not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertCanManageCompanySecrets(req, existing.companyId);
 
     const rotated = await svc.rotate(
       id,
@@ -99,14 +105,13 @@ export function secretRoutes(db: Db) {
   });
 
   router.patch("/secrets/:id", validate(updateSecretSchema), async (req, res) => {
-    assertBoard(req);
     const id = req.params.id as string;
     const existing = await svc.getById(id);
     if (!existing) {
       res.status(404).json({ error: "Secret not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertCanManageCompanySecrets(req, existing.companyId);
 
     const updated = await svc.update(id, {
       name: req.body.name,
@@ -133,14 +138,13 @@ export function secretRoutes(db: Db) {
   });
 
   router.delete("/secrets/:id", async (req, res) => {
-    assertBoard(req);
     const id = req.params.id as string;
     const existing = await svc.getById(id);
     if (!existing) {
       res.status(404).json({ error: "Secret not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertCanManageCompanySecrets(req, existing.companyId);
 
     const removed = await svc.remove(id);
     if (!removed) {

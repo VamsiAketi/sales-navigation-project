@@ -74,6 +74,12 @@ const mockBudgetService = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/index.js", () => ({
+  accessService: () => ({
+    companyUsesRestrictedProjectAccess: vi.fn(async () => false),
+    listProjectIdsVisibleToActor: vi.fn(async () => null),
+    principalHasAnyProjectPermission: vi.fn(async () => true),
+    canUser: vi.fn(async () => true),
+  }),
   budgetService: () => mockBudgetService,
   costService: () => mockCostService,
   financeService: () => mockFinanceService,
