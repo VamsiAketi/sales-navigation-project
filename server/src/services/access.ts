@@ -7,22 +7,104 @@ import {
   authSessions,
   authUsers,
   boardApiKeys,
+  companies,
   companyMemberships,
   deletedUserEmails,
   instanceUserRoles,
   issues,
   issueComments,
   projectIssueStatuses,
+  projectPrincipalGrants,
+  projects,
   activityLog,
   principalPermissionGrants,
 } from "@paperclipai/db";
-import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
+import {
+  PERMISSION_KEYS,
+  PROJECT_PERMISSION_KEYS,
+  type PermissionKey,
+  type PrincipalType,
+  type ProjectAuthActor,
+  type ProjectPermissionKey,
+} from "@paperclipai/shared";
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
 type GrantInput = {
   permissionKey: PermissionKey;
   scope?: Record<string, unknown> | null;
 };
+const PROJECT_READ_PERMISSION = "project:read" as const;
+const PROJECT_READ_DEPENDENCIES: Partial<Record<ProjectPermissionKey, typeof PROJECT_READ_PERMISSION>> = {
+  "project:settings": PROJECT_READ_PERMISSION,
+  "project:workspaces": PROJECT_READ_PERMISSION,
+  "project:statuses": PROJECT_READ_PERMISSION,
+  "project:archive": PROJECT_READ_PERMISSION,
+  "project:delete": PROJECT_READ_PERMISSION,
+  "issue:read": PROJECT_READ_PERMISSION,
+  "issue:write": PROJECT_READ_PERMISSION,
+  "members:manage": PROJECT_READ_PERMISSION,
+  "budget:company_update": PROJECT_READ_PERMISSION,
+  "costs:read": PROJECT_READ_PERMISSION,
+};
+
+const GRANT_READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
+  "agents:create": "agents.read",
+  "agents.edit": "agents.read",
+  "skills.edit": "skills.read",
+  "goals.write": "goals.read",
+  "hybrid_org.edit": "hybrid_org.read",
+  "hybrid_org.import": "hybrid_org.read",
+  "hybrid_org.export": "hybrid_org.read",
+  "teams.edit": "teams.read",
+  "users:invite": "teams.read",
+  "joins:approve": "teams.read",
+  "users:manage_permissions": "teams.read",
+  "company_settings.general": "company_settings.read",
+  "company_settings.appearance": "company_settings.read",
+  "company_settings.security_access": "company_settings.read",
+  "company_settings.hiring": "company_settings.read",
+  "company_settings.invites": "company_settings.read",
+  "company_settings.secrets": "company_settings.read",
+  "company_settings.packages": "company_settings.read",
+};
+
+function normalizeGrantsWithReadDependencies(grants: GrantInput[]): GrantInput[] {
+  const byPermission = new Map<PermissionKey, GrantInput>();
+  for (const grant of grants) {
+    byPermission.set(grant.permissionKey, {
+      permissionKey: grant.permissionKey,
+      scope: grant.scope ?? null,
+    });
+  }
+
+  for (const [permissionKey, readPermissionKey] of Object.entries(
+    GRANT_READ_DEPENDENCIES,
+  ) as Array<[PermissionKey, PermissionKey]>) {
+    if (!byPermission.has(permissionKey)) continue;
+    if (!byPermission.has(readPermissionKey)) {
+      byPermission.set(readPermissionKey, {
+        permissionKey: readPermissionKey,
+        scope: null,
+      });
+    }
+  }
+
+  return PERMISSION_KEYS.filter((permissionKey) => byPermission.has(permissionKey)).map(
+    (permissionKey) => byPermission.get(permissionKey)!,
+  );
+}
+
+function normalizeProjectPermissionKeys(
+  keys: readonly ProjectPermissionKey[],
+): ProjectPermissionKey[] {
+  const next = new Set<ProjectPermissionKey>(keys);
+  for (const [actionKey, readKey] of Object.entries(PROJECT_READ_DEPENDENCIES) as Array<
+    [ProjectPermissionKey, ProjectPermissionKey]
+  >) {
+    if (next.has(actionKey)) next.add(readKey);
+  }
+  return PROJECT_PERMISSION_KEYS.filter((key) => next.has(key));
+}
 
 export function accessService(db: Db) {
   function makeDeletedEmailTombstone(userId: string, now: Date): string {
@@ -501,9 +583,13 @@ export function accessService(db: Db) {
             eq(principalPermissionGrants.principalId, member.principalId),
           ),
         );
-      if (grants.length > 0) {
+      const normalizedGrants =
+        (member.membershipRole ?? "").trim().toLowerCase() === "owner"
+          ? PERMISSION_KEYS.map((permissionKey) => ({ permissionKey, scope: null }))
+          : normalizeGrantsWithReadDependencies(grants);
+      if (normalizedGrants.length > 0) {
         await tx.insert(principalPermissionGrants).values(
-          grants.map((grant) => ({
+          normalizedGrants.map((grant) => ({
             companyId,
             principalType: member.principalType,
             principalId: member.principalId,
@@ -740,6 +826,254 @@ export function accessService(db: Db) {
     });
   }
 
+  async function companyUsesRestrictedProjectAccess(companyId: string): Promise<boolean> {
+    const row = await db
+      .select({ mode: companies.projectAccessMode })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .then((rows) => rows[0] ?? null);
+    return row?.mode === "restricted";
+  }
+
+  async function hasProjectGrant(
+    companyId: string,
+    projectId: string,
+    principalType: PrincipalType,
+    principalId: string,
+    permissionKey: ProjectPermissionKey,
+  ): Promise<boolean> {
+    const row = await db
+      .select({ id: projectPrincipalGrants.id })
+      .from(projectPrincipalGrants)
+      .where(
+        and(
+          eq(projectPrincipalGrants.companyId, companyId),
+          eq(projectPrincipalGrants.projectId, projectId),
+          eq(projectPrincipalGrants.principalType, principalType),
+          eq(projectPrincipalGrants.principalId, principalId),
+          eq(projectPrincipalGrants.permissionKey, permissionKey),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+    return Boolean(row);
+  }
+
+  async function satisfiesProjectPermission(
+    companyId: string,
+    projectId: string,
+    permission: ProjectPermissionKey,
+    actor: ProjectAuthActor,
+  ): Promise<boolean> {
+    if (!(await companyUsesRestrictedProjectAccess(companyId))) return true;
+    if (actor.kind === "none") return false;
+    if (actor.kind === "local_implicit_board") return true;
+    if (actor.kind === "user") {
+      if (actor.isInstanceAdmin) return true;
+      const membership = await getMembership(companyId, "user", actor.userId);
+      if (!membership || membership.status !== "active") return false;
+      if ((membership.membershipRole ?? "").trim().toLowerCase() === "owner") return true;
+      return hasProjectGrant(companyId, projectId, "user", actor.userId, permission);
+    }
+    if (actor.kind === "agent") {
+      const membership = await getMembership(companyId, "agent", actor.agentId);
+      if (!membership || membership.status !== "active") return false;
+      return hasProjectGrant(companyId, projectId, "agent", actor.agentId, permission);
+    }
+    return false;
+  }
+
+  /**
+   * When project access is restricted, returns project IDs the principal may see (`project:read`).
+   * Returns `null` when the full company project list is allowed (open mode or unrestricted actor).
+   */
+  async function listProjectIdsVisibleToActor(
+    companyId: string,
+    actor: ProjectAuthActor,
+  ): Promise<string[] | null> {
+    if (!(await companyUsesRestrictedProjectAccess(companyId))) return null;
+    if (actor.kind === "none") return [];
+    if (actor.kind === "local_implicit_board") return null;
+    if (actor.kind === "user" && actor.isInstanceAdmin) return null;
+    if (actor.kind === "user") {
+      const membership = await getMembership(companyId, "user", actor.userId);
+      if (!membership || membership.status !== "active") return [];
+      if ((membership.membershipRole ?? "").trim().toLowerCase() === "owner") return null;
+      const rows = await db
+        .select({ projectId: projectPrincipalGrants.projectId })
+        .from(projectPrincipalGrants)
+        .where(
+          and(
+            eq(projectPrincipalGrants.companyId, companyId),
+            eq(projectPrincipalGrants.principalType, "user"),
+            eq(projectPrincipalGrants.principalId, actor.userId),
+            eq(projectPrincipalGrants.permissionKey, "project:read"),
+          ),
+        );
+      return Array.from(new Set(rows.map((r) => r.projectId)));
+    }
+    if (actor.kind === "agent") {
+      const membership = await getMembership(companyId, "agent", actor.agentId);
+      if (!membership || membership.status !== "active") return [];
+      const rows = await db
+        .select({ projectId: projectPrincipalGrants.projectId })
+        .from(projectPrincipalGrants)
+        .where(
+          and(
+            eq(projectPrincipalGrants.companyId, companyId),
+            eq(projectPrincipalGrants.principalType, "agent"),
+            eq(projectPrincipalGrants.principalId, actor.agentId),
+            eq(projectPrincipalGrants.permissionKey, "project:read"),
+          ),
+        );
+      return Array.from(new Set(rows.map((r) => r.projectId)));
+    }
+    return [];
+  }
+
+  async function listProjectPrincipalGrants(projectId: string, companyId: string) {
+    return db
+      .select()
+      .from(projectPrincipalGrants)
+      .where(
+        and(
+          eq(projectPrincipalGrants.projectId, projectId),
+          eq(projectPrincipalGrants.companyId, companyId),
+        ),
+      )
+      .orderBy(projectPrincipalGrants.principalType, projectPrincipalGrants.principalId, projectPrincipalGrants.permissionKey);
+  }
+
+  async function setProjectPrincipalGrantsForPrincipal(
+    companyId: string,
+    projectId: string,
+    principalType: PrincipalType,
+    principalId: string,
+    permissionKeys: ProjectPermissionKey[],
+    grantedByUserId: string | null,
+  ): Promise<boolean> {
+    const projectRow = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
+      .then((rows) => rows[0] ?? null);
+    if (!projectRow) return false;
+
+    const normalizedPermissionKeys = normalizeProjectPermissionKeys(permissionKeys);
+    const effectivePermissionKeys =
+      principalType === "user"
+        ? await db
+            .select({ membershipRole: companyMemberships.membershipRole, status: companyMemberships.status })
+            .from(companyMemberships)
+            .where(
+              and(
+                eq(companyMemberships.companyId, companyId),
+                eq(companyMemberships.principalType, "user"),
+                eq(companyMemberships.principalId, principalId),
+              ),
+            )
+            .then((rows) => {
+              const row = rows[0] ?? null;
+              const isOwner =
+                row?.status === "active" &&
+                (row.membershipRole ?? "").trim().toLowerCase() === "owner";
+              return isOwner ? [...PROJECT_PERMISSION_KEYS] : normalizedPermissionKeys;
+            })
+        : normalizedPermissionKeys;
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(projectPrincipalGrants)
+        .where(
+          and(
+            eq(projectPrincipalGrants.projectId, projectId),
+            eq(projectPrincipalGrants.principalType, principalType),
+            eq(projectPrincipalGrants.principalId, principalId),
+          ),
+        );
+      const now = new Date();
+      if (effectivePermissionKeys.length > 0) {
+        await tx.insert(projectPrincipalGrants).values(
+          effectivePermissionKeys.map((permissionKey) => ({
+            companyId,
+            projectId,
+            principalType,
+            principalId,
+            permissionKey,
+            grantedByUserId,
+            createdAt: now,
+            updatedAt: now,
+          })),
+        );
+      }
+    });
+    return true;
+  }
+
+  async function seedFullProjectGrantsForUser(
+    companyId: string,
+    projectId: string,
+    userId: string,
+    grantedByUserId: string | null,
+  ) {
+    await setProjectPrincipalGrantsForPrincipal(
+      companyId,
+      projectId,
+      "user",
+      userId,
+      [...PROJECT_PERMISSION_KEYS],
+      grantedByUserId,
+    );
+  }
+
+  async function principalHasAnyProjectPermission(
+    companyId: string,
+    actor: ProjectAuthActor,
+    permission: ProjectPermissionKey,
+  ): Promise<boolean> {
+    if (!(await companyUsesRestrictedProjectAccess(companyId))) return true;
+    if (actor.kind === "none") return false;
+    if (actor.kind === "local_implicit_board") return true;
+    if (actor.kind === "user" && actor.isInstanceAdmin) return true;
+    if (actor.kind === "user") {
+      const membership = await getMembership(companyId, "user", actor.userId);
+      if (!membership || membership.status !== "active") return false;
+      if ((membership.membershipRole ?? "").trim().toLowerCase() === "owner") return true;
+      const row = await db
+        .select({ id: projectPrincipalGrants.id })
+        .from(projectPrincipalGrants)
+        .where(
+          and(
+            eq(projectPrincipalGrants.companyId, companyId),
+            eq(projectPrincipalGrants.principalType, "user"),
+            eq(projectPrincipalGrants.principalId, actor.userId),
+            eq(projectPrincipalGrants.permissionKey, permission),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      return Boolean(row);
+    }
+    if (actor.kind === "agent") {
+      const membership = await getMembership(companyId, "agent", actor.agentId);
+      if (!membership || membership.status !== "active") return false;
+      const row = await db
+        .select({ id: projectPrincipalGrants.id })
+        .from(projectPrincipalGrants)
+        .where(
+          and(
+            eq(projectPrincipalGrants.companyId, companyId),
+            eq(projectPrincipalGrants.principalType, "agent"),
+            eq(projectPrincipalGrants.principalId, actor.agentId),
+            eq(projectPrincipalGrants.permissionKey, permission),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      return Boolean(row);
+    }
+    return false;
+  }
+
   return {
     isInstanceAdmin,
     canUser,
@@ -759,5 +1093,12 @@ export function accessService(db: Db) {
     setPrincipalGrants,
     listPrincipalGrants,
     setPrincipalPermission,
+    companyUsesRestrictedProjectAccess,
+    satisfiesProjectPermission,
+    listProjectIdsVisibleToActor,
+    listProjectPrincipalGrants,
+    setProjectPrincipalGrantsForPrincipal,
+    seedFullProjectGrantsForUser,
+    principalHasAnyProjectPermission,
   };
 }

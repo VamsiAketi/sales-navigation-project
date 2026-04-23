@@ -421,6 +421,8 @@ export const JOIN_REQUEST_STATUSES = ["pending_approval", "approved", "rejected"
 export type JoinRequestStatus = (typeof JOIN_REQUEST_STATUSES)[number];
 
 export const PERMISSION_KEYS = [
+  "agents.read",
+  "agents.edit",
   "agents:create",
   "users:invite",
   "users:manage_permissions",
@@ -428,8 +430,49 @@ export const PERMISSION_KEYS = [
   "tasks:assign_scope",
   "joins:approve",
   "companies:create",
+  "command_center.read",
+  "hybrid_org.read",
+  "hybrid_org.edit",
+  "hybrid_org.import",
+  "hybrid_org.export",
+  "skills.read",
+  "skills.edit",
+  "goals.read",
+  "goals.write",
+  "costs.read",
+  "attention_queue.read",
+  "teams.read",
+  "teams.edit",
+  "audit_logs.read",
+  "company_settings.read",
+  "company_settings.general",
+  "company_settings.appearance",
+  "company_settings.security_access",
+  "company_settings.hiring",
+  "company_settings.invites",
+  "company_settings.secrets",
+  "company_settings.packages",
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
+
+/** Per-project principal capabilities (see `project_principal_grants`). */
+export const PROJECT_PERMISSION_KEYS = [
+  "project:read",
+  "project:settings",
+  "project:workspaces",
+  "project:statuses",
+  "project:archive",
+  "project:delete",
+  "issue:read",
+  "issue:write",
+  "members:manage",
+  "budget:company_update",
+  "costs:read",
+] as const;
+export type ProjectPermissionKey = (typeof PROJECT_PERMISSION_KEYS)[number];
+
+export const COMPANY_PROJECT_ACCESS_MODES = ["open", "restricted"] as const;
+export type CompanyProjectAccessMode = (typeof COMPANY_PROJECT_ACCESS_MODES)[number];
 
 // ---------------------------------------------------------------------------
 // Plugin System — see doc/plugins/PLUGIN_SPEC.md for the full specification

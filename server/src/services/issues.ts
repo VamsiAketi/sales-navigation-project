@@ -131,6 +131,8 @@ export interface IssueFilters {
   touchedByUserId?: string;
   unreadForUserId?: string;
   projectId?: string;
+  /** When set, issues are limited to these projects (used with company `project_access_mode = restricted`). */
+  visibleProjectIds?: string[];
   parentId?: string;
   labelId?: string;
   originKind?: string;
@@ -790,6 +792,9 @@ export function issueService(db: Db) {
         conditions.push(unreadForUserCondition(companyId, unreadForUserId));
       }
       if (filters?.projectId) conditions.push(eq(issues.projectId, filters.projectId));
+      if (filters?.visibleProjectIds && filters.visibleProjectIds.length > 0) {
+        conditions.push(inArray(issues.projectId, filters.visibleProjectIds));
+      }
       if (filters?.parentId) conditions.push(eq(issues.parentId, filters.parentId));
       if (filters?.originKind) conditions.push(eq(issues.originKind, filters.originKind));
       if (filters?.originId) conditions.push(eq(issues.originId, filters.originId));

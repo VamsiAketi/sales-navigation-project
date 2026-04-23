@@ -11,6 +11,7 @@ import { companySkillsApi } from "../api/companySkills";
 import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { ApiError } from "../api/client";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { activityApi } from "../api/activity";
@@ -567,6 +568,14 @@ export function AgentDetail() {
     enabled: canFetchAgent,
   });
   const resolvedCompanyId = agent?.companyId ?? selectedCompanyId;
+  const badgeCompanyId = routeCompanyId ?? resolvedCompanyId ?? null;
+  const { data: sidebarBadges } = useQuery({
+    queryKey: badgeCompanyId ? queryKeys.sidebarBadges(badgeCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(badgeCompanyId!),
+    enabled: Boolean(badgeCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadAgents = sidebarBadges?.canReadAgents ?? true;
   const canonicalAgentRef = agent ? agentRouteRef(agent) : routeAgentRef;
   const agentLookupRef = agent?.id ?? routeAgentRef;
   const resolvedAgentId = agent?.id ?? null;
@@ -806,6 +815,16 @@ export function AgentDetail() {
   );
 
   if (isLoading) return <PageSkeleton variant="detail" />;
+  if (!canReadAgents) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to view Agents.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>agents.read</code> permission.
+        </div>
+      </div>
+    );
+  }
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
   if (!agent) return null;
   if (!urlRunId && !urlTab) {

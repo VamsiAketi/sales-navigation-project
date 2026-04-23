@@ -33,6 +33,7 @@ import {
   resolveCliAuthChallengeSchema,
   updateMemberOrgConfigSchema,
   updateMemberPermissionsSchema,
+  updateProjectPrincipalGrantsSchema,
   updateUserCompanyAccessSchema,
   PERMISSION_KEYS
 } from "@paperclipai/shared";
@@ -55,7 +56,7 @@ import {
   notifyHireApproved,
   sendHumanInviteEmail
 } from "../services/index.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertCompanyAccess, projectAuthActorFromRequest } from "./authz.js";
 import {
   claimBoardOwnership,
   inspectBoardClaimChallenge
@@ -1906,7 +1907,13 @@ export function accessRoutes(
       req.actor.userId,
       permissionKey
     );
-    if (!allowed) throw forbidden("Permission denied");
+    if (allowed) return;
+    // Backward-compatible fallback: legacy teams managers may still only have users:manage_permissions.
+    if (permissionKey === "teams.read" || permissionKey === "teams.edit") {
+      const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
+      if (legacyAllowed) return;
+    }
+    throw forbidden("Permission denied");
   }
 
   async function assertCanGenerateOpenClawInvitePrompt(
@@ -1927,7 +1934,9 @@ export function accessRoutes(
     }
     if (req.actor.type !== "board") throw unauthorized();
     if (isLocalImplicit(req)) return;
-    const allowed = await access.canUser(companyId, req.actor.userId, "users:invite");
+    const allowed =
+      (await access.canUser(companyId, req.actor.userId, "company_settings.invites")) ||
+      (await access.canUser(companyId, req.actor.userId, "users:invite"));
     if (!allowed) throw forbidden("Permission denied");
   }
 
@@ -2015,7 +2024,7 @@ export function accessRoutes(
     validate(createCompanyInviteSchema),
     async (req, res) => {
       const companyId = req.params.companyId as string;
-      await assertCompanyPermission(req, companyId, "users:invite");
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
       const { token, created, normalizedAgentMessage } =
         await createCompanyInviteForCompany({
           req,
@@ -2060,7 +2069,7 @@ export function accessRoutes(
     validate(createHumanInviteSchema),
     async (req, res) => {
       const companyId = req.params.companyId as string;
-      await assertCompanyPermission(req, companyId, "users:invite");
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
 
       if (opts.deploymentMode !== "authenticated") {
         throw badRequest(
@@ -3098,7 +3107,7 @@ export function accessRoutes(
 
   router.get("/companies/:companyId/members", async (req, res) => {
     const companyId = req.params.companyId as string;
-    await assertCompanyPermission(req, companyId, "users:manage_permissions");
+    await assertCompanyPermission(req, companyId, "teams.read");
     const members = await access.listMembers(companyId);
 
     const userIds = members
@@ -3201,9 +3210,14 @@ export function accessRoutes(
     }
 
     res.json(
-      members.map((member) => ({
-        ...member,
-        grants: grantsByPrincipal.get(member.principalId) ?? [],
+      members.map((member) => {
+        const isOwner = (member.membershipRole ?? "").trim().toLowerCase() === "owner";
+        const grants = isOwner
+          ? PERMISSION_KEYS.map((permissionKey) => ({ permissionKey, scope: null }))
+          : (grantsByPrincipal.get(member.principalId) ?? []);
+        return {
+          ...member,
+          grants,
         user:
           member.principalType === "user"
             ? usersById.get(member.principalId) ?? null
@@ -3212,7 +3226,8 @@ export function accessRoutes(
           member.principalType === "agent"
             ? agentsById.get(member.principalId) ?? null
             : null
-      }))
+        };
+      })
     );
   });
 
@@ -3420,6 +3435,62 @@ export function accessRoutes(
       if (!updated) throw notFound("Member not found");
       res.json(updated);
     }
+  );
+
+  router.get("/companies/:companyId/projects/:projectId/principal-permissions", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const projectId = req.params.projectId as string;
+    assertCompanyAccess(req, companyId);
+    const actor = projectAuthActorFromRequest(req);
+    const companyManage =
+      req.actor.type === "board"
+      && req.actor.userId
+      && (await access.canUser(companyId, req.actor.userId, "users:manage_permissions"));
+    const projectManage = await access.satisfiesProjectPermission(
+      companyId,
+      projectId,
+      "members:manage",
+      actor,
+    );
+    if (!companyManage && !projectManage) {
+      throw forbidden("Permission denied");
+    }
+    const rows = await access.listProjectPrincipalGrants(projectId, companyId);
+    res.json(rows);
+  });
+
+  router.patch(
+    "/companies/:companyId/projects/:projectId/principal-permissions",
+    validate(updateProjectPrincipalGrantsSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const projectId = req.params.projectId as string;
+      assertCompanyAccess(req, companyId);
+      const actor = projectAuthActorFromRequest(req);
+      const companyManage =
+        req.actor.type === "board"
+        && req.actor.userId
+        && (await access.canUser(companyId, req.actor.userId, "users:manage_permissions"));
+      const projectManage = await access.satisfiesProjectPermission(
+        companyId,
+        projectId,
+        "members:manage",
+        actor,
+      );
+      if (!companyManage && !projectManage) {
+        throw forbidden("Permission denied");
+      }
+      const ok = await access.setProjectPrincipalGrantsForPrincipal(
+        companyId,
+        projectId,
+        req.body.principalType,
+        req.body.principalId,
+        req.body.permissionKeys,
+        req.actor.type === "board" ? req.actor.userId ?? null : null,
+      );
+      if (!ok) throw notFound("Project not found");
+      res.json({ ok: true });
+    },
   );
 
   /* ── Member status (deactivate / reactivate) ──────────────────────────────── */

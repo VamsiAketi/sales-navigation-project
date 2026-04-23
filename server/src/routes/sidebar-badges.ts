@@ -37,12 +37,320 @@ export function sidebarBadgeRoutes(db: Db) {
     const badges = await svc.get(companyId, {
       joinRequests: joinRequestCount,
     });
+    let canReadCommandCenter = false;
+    let canReadHybridOrg = false;
+    let canEditHybridOrg = false;
+    let canImportHybridOrg = false;
+    let canExportHybridOrg = false;
+    let canReadSkills = false;
+    let canEditSkills = false;
+    let canReadGoals = false;
+    let canWriteGoals = false;
+    let canReadCosts = false;
+    let canReadAttentionQueue = false;
+    let canReadTeams = false;
+    let canEditTeams = false;
+    let canReadAgents = false;
+    let canEditAgents = false;
+    let canReadAuditLogs = false;
+    let canReadCompanySettings = false;
+    let canManageCompanySettingsGeneral = false;
+    let canManageCompanySettingsAppearance = false;
+    let canManageCompanySettingsSecurityAccess = false;
+    let canManageCompanySettingsHiring = false;
+    let canManageCompanySettingsInvites = false;
+    let canManageCompanySettingsSecrets = false;
+    let canManageCompanySettingsPackages = false;
+    if (req.actor.type === "board") {
+      canReadCommandCenter =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "command_center.read"));
+      canReadHybridOrg =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "hybrid_org.read"));
+      canEditHybridOrg =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "hybrid_org.edit"));
+      canImportHybridOrg =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "hybrid_org.import"));
+      canExportHybridOrg =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "hybrid_org.export"));
+      canReadSkills =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "skills.read"));
+      canEditSkills =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "skills.edit"));
+      canReadGoals =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "goals.read"));
+      canWriteGoals =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "goals.write"));
+      canReadCosts =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "costs.read"));
+      canReadAttentionQueue =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "attention_queue.read"));
+      canReadTeams =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "teams.read")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:manage_permissions"));
+      canEditTeams =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "users:manage_permissions"));
+      canReadAgents =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "agents.read")) ||
+        (await access.canUser(companyId, req.actor.userId, "agents:create"));
+      canEditAgents =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "agents.edit")) ||
+        (await access.canUser(companyId, req.actor.userId, "agents:create"));
+      canReadAuditLogs =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "audit_logs.read"));
+      canReadCompanySettings =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.read"));
+      canManageCompanySettingsGeneral =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.general"));
+      canManageCompanySettingsAppearance =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.appearance"));
+      canManageCompanySettingsSecurityAccess =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.security_access"));
+      canManageCompanySettingsHiring =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.hiring"));
+      canManageCompanySettingsInvites =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.invites"));
+      canManageCompanySettingsSecrets =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.secrets"));
+      canManageCompanySettingsPackages =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "company_settings.packages"));
+    } else if (req.actor.type === "agent" && req.actor.agentId) {
+      canReadCommandCenter = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "command_center.read",
+      );
+      canReadHybridOrg = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "hybrid_org.read",
+      );
+      canEditHybridOrg = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "hybrid_org.edit",
+      );
+      canImportHybridOrg = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "hybrid_org.import",
+      );
+      canExportHybridOrg = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "hybrid_org.export",
+      );
+      canReadSkills = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "skills.read",
+      );
+      canEditSkills = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "skills.edit",
+      );
+      canReadGoals = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "goals.read",
+      );
+      canWriteGoals = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "goals.write",
+      );
+      canReadCosts = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "costs.read",
+      );
+      canReadAttentionQueue = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "attention_queue.read",
+      );
+      canReadTeams = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "teams.read",
+      );
+      canEditTeams = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "users:manage_permissions",
+      );
+      canReadAgents =
+        (await access.hasPermission(
+          companyId,
+          "agent",
+          req.actor.agentId,
+          "agents.read",
+        )) ||
+        (await access.hasPermission(
+          companyId,
+          "agent",
+          req.actor.agentId,
+          "agents:create",
+        ));
+      canEditAgents =
+        (await access.hasPermission(
+          companyId,
+          "agent",
+          req.actor.agentId,
+          "agents.edit",
+        )) ||
+        (await access.hasPermission(
+          companyId,
+          "agent",
+          req.actor.agentId,
+          "agents:create",
+        ));
+      canReadAuditLogs = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "audit_logs.read",
+      );
+      canReadCompanySettings = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.read",
+      );
+      canManageCompanySettingsGeneral = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.general",
+      );
+      canManageCompanySettingsAppearance = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.appearance",
+      );
+      canManageCompanySettingsSecurityAccess = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.security_access",
+      );
+      canManageCompanySettingsHiring = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.hiring",
+      );
+      canManageCompanySettingsInvites = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.invites",
+      );
+      canManageCompanySettingsSecrets = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.secrets",
+      );
+      canManageCompanySettingsPackages = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "company_settings.packages",
+      );
+    }
     const summary = await dashboard.summary(companyId);
     const hasFailedRuns = badges.failedRuns > 0;
     const alertsCount =
       (summary.agents.error > 0 && !hasFailedRuns ? 1 : 0) +
       (summary.costs.monthBudgetCents > 0 && summary.costs.monthUtilizationPercent >= 80 ? 1 : 0);
     badges.inbox = badges.failedRuns + alertsCount + joinRequestCount + badges.approvals;
+    badges.canReadCommandCenter = canReadCommandCenter;
+    badges.canReadHybridOrg = canReadHybridOrg;
+    badges.canEditHybridOrg = canEditHybridOrg;
+    badges.canImportHybridOrg = canImportHybridOrg;
+    badges.canExportHybridOrg = canExportHybridOrg;
+    badges.canReadSkills = canReadSkills;
+    badges.canEditSkills = canEditSkills;
+    badges.canReadGoals = canReadGoals;
+    badges.canWriteGoals = canWriteGoals;
+    badges.canReadCosts = canReadCosts;
+    badges.canReadAttentionQueue = canReadAttentionQueue;
+    badges.canReadTeams = canReadTeams;
+    badges.canEditTeams = canEditTeams;
+    badges.canReadAgents = canReadAgents;
+    badges.canEditAgents = canEditAgents;
+    badges.canReadAuditLogs = canReadAuditLogs;
+    badges.canReadCompanySettings = canReadCompanySettings;
+    badges.canManageCompanySettingsGeneral = canManageCompanySettingsGeneral;
+    badges.canManageCompanySettingsAppearance = canManageCompanySettingsAppearance;
+    badges.canManageCompanySettingsSecurityAccess = canManageCompanySettingsSecurityAccess;
+    badges.canManageCompanySettingsHiring = canManageCompanySettingsHiring;
+    badges.canManageCompanySettingsInvites = canManageCompanySettingsInvites;
+    badges.canManageCompanySettingsSecrets = canManageCompanySettingsSecrets;
+    badges.canManageCompanySettingsPackages = canManageCompanySettingsPackages;
 
     res.json(badges);
   });

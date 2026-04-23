@@ -33,10 +33,19 @@ import { Check, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
+import { ProjectAccessControlPanel } from "../components/ProjectAccessControlPanel";
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "backlog" | "overview" | "list" | "configuration" | "workflow" | "budget" | "archive";
+type ProjectBaseTab =
+  | "backlog"
+  | "overview"
+  | "list"
+  | "configuration"
+  | "access"
+  | "workflow"
+  | "budget"
+  | "archive";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -60,6 +69,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (tab === "backlog") return "backlog";
   if (tab === "overview") return "overview";
   if (tab === "configuration") return "configuration";
+  if (tab === "access") return "access";
   if (tab === "workflow") return "workflow";
   if (tab === "budget") return "budget";
   if (tab === "archive") return "archive";
@@ -385,6 +395,7 @@ export function ProjectDetail() {
     if (tab === "backlog") return `/projects/${projectRef}/backlog`;
     if (tab === "overview") return `/projects/${projectRef}/overview`;
     if (tab === "configuration") return `/projects/${projectRef}/configuration`;
+    if (tab === "access") return `/projects/${projectRef}/access`;
     if (tab === "workflow") return `/projects/${projectRef}/workflow`;
     if (tab === "budget") return `/projects/${projectRef}/budget`;
     if (tab === "archive") return `/projects/${projectRef}/archive`;
@@ -428,6 +439,10 @@ export function ProjectDetail() {
     [pluginDetailSlots],
   );
   const activePluginTab = pluginTabItems.find((item) => item.value === activeTab) ?? null;
+  const isDefaultProjectLocked = useMemo(() => {
+    const normalized = (project?.name ?? "").trim().toLowerCase();
+    return normalized === "default project" || normalized === "onboarding" || normalized === "ai-admin project";
+  }, [project?.name]);
 
   useEffect(() => {
     if (!project?.companyId || project.companyId === selectedCompanyId) return;
@@ -623,6 +638,12 @@ export function ProjectDetail() {
     if (cachedTab === "configuration") {
       return <Navigate to={`/projects/${canonicalProjectRef}/configuration`} replace />;
     }
+    if (
+      cachedTab === "access" &&
+      (companies.find((c) => c.id === project?.companyId)?.projectAccessMode ?? "open") === "restricted"
+    ) {
+      return <Navigate to={`/projects/${canonicalProjectRef}/access`} replace />;
+    }
     if (cachedTab === "workflow") {
       return <Navigate to={`/projects/${canonicalProjectRef}/workflow`} replace />;
     }
@@ -641,6 +662,8 @@ export function ProjectDetail() {
   if (isLoading) return <PageSkeleton variant="detail" />;
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
   if (!project) return null;
+  const isProjectIamEnabled =
+    (companies.find((c) => c.id === project.companyId)?.projectAccessMode ?? "open") === "restricted";
 
   const handleTabChange = (tab: ProjectTab) => {
     // Cache the active tab per project
@@ -659,6 +682,8 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/budget`);
     } else if (tab === "configuration") {
       navigate(`/projects/${canonicalProjectRef}/configuration`);
+    } else if (tab === "access" && isProjectIamEnabled) {
+      navigate(`/projects/${canonicalProjectRef}/access`);
     } else if (tab === "workflow") {
       navigate(`/projects/${canonicalProjectRef}/workflow`);
     } else if (tab === "archive") {
@@ -735,6 +760,7 @@ export function ProjectDetail() {
             { value: "list", label: "Tasks" },
             { value: "overview", label: "Overview" },
             { value: "configuration", label: "Configuration" },
+            ...(isProjectIamEnabled ? [{ value: "access" as const, label: "Access Enable" }] : []),
             { value: "workflow", label: "Workflow" },
             { value: "budget", label: "Budget" },
             ...pluginTabItems.map((item) => ({
@@ -786,17 +812,27 @@ export function ProjectDetail() {
         />
       )}
 
+      {activeTab === "access" && isProjectIamEnabled && resolvedCompanyId && project?.id ? (
+        <div className="max-w-4xl pb-2">
+          <ProjectAccessControlPanel
+            companyId={resolvedCompanyId}
+            projectId={project.id}
+            projectAccessMode={isProjectIamEnabled ? "restricted" : "open"}
+          />
+        </div>
+      ) : null}
+
       {activeTab === "configuration" && (
         <div className="max-w-3xl space-y-6 pb-2">
           <ProjectProperties
             project={project}
-            onUpdate={(data) => updateProject.mutate(data)}
-            onFieldUpdate={updateProjectField}
+            onUpdate={isDefaultProjectLocked ? undefined : (data) => updateProject.mutate(data)}
+            onFieldUpdate={isDefaultProjectLocked ? undefined : updateProjectField}
             getFieldSaveState={(field) => fieldSaveStates[field] ?? "idle"}
-            onArchive={(archived) => archiveProject.mutate(archived)}
+            onArchive={isDefaultProjectLocked ? undefined : (archived) => archiveProject.mutate(archived)}
             archivePending={archiveProject.isPending}
             aboveSecrets={
-              project?.id ? (
+              project?.id && !isDefaultProjectLocked ? (
                 <>
                   <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <span className="min-w-0 text-sm leading-snug text-muted-foreground sm:max-w-md">
@@ -839,7 +875,11 @@ export function ProjectDetail() {
 
       {activeTab === "workflow" && project?.id && (
         <div className="max-w-5xl space-y-6 pb-2">
-          <ProjectIssueStatusSettings projectId={project.id} statuses={configStatuses} />
+          <ProjectIssueStatusSettings
+            projectId={project.id}
+            statuses={configStatuses}
+            readOnly={isDefaultProjectLocked}
+          />
         </div>
       )}
 

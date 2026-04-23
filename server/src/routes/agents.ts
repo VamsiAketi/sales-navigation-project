@@ -185,9 +185,11 @@ export function agentRoutes(db: Db) {
     assertCompanyAccess(req, companyId);
     if (req.actor.type === "board") {
       if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return null;
-      const allowed = await access.canUser(companyId, req.actor.userId, "agents:create");
+      const allowed =
+        (await access.canUser(companyId, req.actor.userId, "agents.edit")) ||
+        (await access.canUser(companyId, req.actor.userId, "agents:create"));
       if (!allowed) {
-        throw forbidden("Missing permission: agents:create");
+        throw forbidden("Missing permission: agents.edit");
       }
       return null;
     }
@@ -196,33 +198,94 @@ export function agentRoutes(db: Db) {
     if (!actorAgent || actorAgent.companyId !== companyId) {
       throw forbidden("Agent key cannot access another company");
     }
-    const allowedByGrant = await access.hasPermission(companyId, "agent", actorAgent.id, "agents:create");
+    const allowedByGrant =
+      (await access.hasPermission(companyId, "agent", actorAgent.id, "agents.edit")) ||
+      (await access.hasPermission(companyId, "agent", actorAgent.id, "agents:create"));
     if (!allowedByGrant && !canCreateAgents(actorAgent)) {
-      throw forbidden("Missing permission: can create agents");
+      throw forbidden("Missing permission: agents.edit");
+    }
+    return actorAgent;
+  }
+
+  async function assertCanReadAgentsForCompany(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return null;
+      const allowed =
+        (await access.canUser(companyId, req.actor.userId, "agents.read")) ||
+        (await access.canUser(companyId, req.actor.userId, "agents.edit")) ||
+        (await access.canUser(companyId, req.actor.userId, "agents:create"));
+      if (!allowed) {
+        throw forbidden("Missing permission: agents.read");
+      }
+      return null;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const actorAgent = await svc.getById(req.actor.agentId);
+    if (!actorAgent || actorAgent.companyId !== companyId) {
+      throw forbidden("Agent key cannot access another company");
+    }
+    const allowedByGrant =
+      (await access.hasPermission(companyId, "agent", actorAgent.id, "agents.read")) ||
+      (await access.hasPermission(companyId, "agent", actorAgent.id, "agents.edit")) ||
+      (await access.hasPermission(companyId, "agent", actorAgent.id, "agents:create"));
+    if (!allowedByGrant) {
+      throw forbidden("Missing permission: agents.read");
     }
     return actorAgent;
   }
 
   async function assertCanReadConfigurations(req: Request, companyId: string) {
-    return assertCanCreateAgentsForCompany(req, companyId);
+    return assertCanReadAgentsForCompany(req, companyId);
   }
 
   async function actorCanReadConfigurationsForCompany(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
     if (req.actor.type === "board") {
       if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return true;
-      return access.canUser(companyId, req.actor.userId, "agents:create");
+      return (
+        (await access.canUser(companyId, req.actor.userId, "agents.read")) ||
+        (await access.canUser(companyId, req.actor.userId, "agents.edit")) ||
+        (await access.canUser(companyId, req.actor.userId, "agents:create"))
+      );
     }
     if (!req.actor.agentId) return false;
     const actorAgent = await svc.getById(req.actor.agentId);
     if (!actorAgent || actorAgent.companyId !== companyId) return false;
-    const allowedByGrant = await access.hasPermission(companyId, "agent", actorAgent.id, "agents:create");
+    const allowedByGrant =
+      (await access.hasPermission(companyId, "agent", actorAgent.id, "agents.read")) ||
+      (await access.hasPermission(companyId, "agent", actorAgent.id, "agents.edit")) ||
+      (await access.hasPermission(companyId, "agent", actorAgent.id, "agents:create"));
     return allowedByGrant || canCreateAgents(actorAgent);
+  }
+
+  async function assertCompanyPermission(
+    req: Request,
+    companyId: string,
+    permissionKey: "hybrid_org.read" | "hybrid_org.edit" | "hybrid_org.export",
+  ) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, permissionKey);
+      if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
+      return;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, permissionKey);
+    if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
   }
 
   async function assertCanUpdateAgent(req: Request, targetAgent: { id: string; companyId: string }) {
     assertCompanyAccess(req, targetAgent.companyId);
-    if (req.actor.type === "board") return;
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed =
+        (await access.canUser(targetAgent.companyId, req.actor.userId, "agents.edit")) ||
+        (await access.canUser(targetAgent.companyId, req.actor.userId, "agents:create"));
+      if (!allowed) throw forbidden("Missing permission: agents.edit");
+      return;
+    }
     if (!req.actor.agentId) throw forbidden("Agent authentication required");
 
     const actorAgent = await svc.getById(req.actor.agentId);
@@ -244,7 +307,15 @@ export function agentRoutes(db: Db) {
 
   async function assertCanReadAgent(req: Request, targetAgent: { companyId: string }) {
     assertCompanyAccess(req, targetAgent.companyId);
-    if (req.actor.type === "board") return;
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed =
+        (await access.canUser(targetAgent.companyId, req.actor.userId, "agents.read")) ||
+        (await access.canUser(targetAgent.companyId, req.actor.userId, "agents.edit")) ||
+        (await access.canUser(targetAgent.companyId, req.actor.userId, "agents:create"));
+      if (!allowed) throw forbidden("Missing permission: agents.read");
+      return;
+    }
     if (!req.actor.agentId) throw forbidden("Agent authentication required");
 
     const actorAgent = await svc.getById(req.actor.agentId);
@@ -927,7 +998,7 @@ export function agentRoutes(db: Db) {
 
   router.get("/companies/:companyId/org", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyPermission(req, companyId, "hybrid_org.read");
     const [tree, memberships, users] = await Promise.all([
       svc.orgForCompany(companyId),
       db
@@ -1098,7 +1169,7 @@ export function agentRoutes(db: Db) {
 
   router.patch("/companies/:companyId/org/child-order", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyPermission(req, companyId, "hybrid_org.edit");
     const { managerId, childIds } = req.body;
     if (
       (managerId !== null && typeof managerId !== "string") ||
@@ -1180,7 +1251,7 @@ export function agentRoutes(db: Db) {
 
   router.get("/companies/:companyId/org.svg", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyPermission(req, companyId, "hybrid_org.export");
     const style = (ORG_CHART_STYLES.includes(req.query.style as OrgChartStyle) ? req.query.style : "warmth") as OrgChartStyle;
     const tree = await svc.orgForCompany(companyId);
     const leanTree = tree.map((node) => toLeanOrgNode(node as Record<string, unknown>));
@@ -1192,7 +1263,7 @@ export function agentRoutes(db: Db) {
 
   router.get("/companies/:companyId/org.png", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyPermission(req, companyId, "hybrid_org.export");
     const style = (ORG_CHART_STYLES.includes(req.query.style as OrgChartStyle) ? req.query.style : "warmth") as OrgChartStyle;
     const tree = await svc.orgForCompany(companyId);
     const leanTree = tree.map((node) => toLeanOrgNode(node as Record<string, unknown>));

@@ -64,16 +64,38 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 
   async function assertCanManagePortability(req: Request, companyId: string, capability: "imports" | "exports") {
     assertCompanyAccess(req, companyId);
-    if (req.actor.type === "board") return;
+    const permissionKey = capability === "imports" ? "hybrid_org.import" : "hybrid_org.export";
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, permissionKey);
+      if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
+      return;
+    }
     if (!req.actor.agentId) throw forbidden("Agent authentication required");
-
     const actorAgent = await agents.getById(req.actor.agentId);
     if (!actorAgent || actorAgent.companyId !== companyId) {
       throw forbidden("Agent key cannot access another company");
     }
     if (actorAgent.role !== "ceo") {
-      throw forbidden(`Only CEO agents can manage company ${capability}`);
+      throw forbidden("Only CEO agents can manage company portability");
     }
+  }
+
+  async function assertCompanySettingsPermission(
+    req: Request,
+    companyId: string,
+    permissionKey: "company_settings.general" | "company_settings.appearance" | "company_settings.security_access" | "company_settings.hiring" | "company_settings.invites" | "company_settings.secrets" | "company_settings.packages",
+  ) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, permissionKey);
+      if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
+      return;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, permissionKey);
+    if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
   }
 
   router.get("/", async (req, res) => {
@@ -153,7 +175,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 
   router.post("/:companyId/export", validate(companyPortabilityExportSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCanManagePortability(req, companyId, "exports");
     const result = await portability.exportBundle(companyId, req.body);
     res.json(result);
   });
@@ -161,7 +183,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
   router.post("/import/preview", validate(companyPortabilityPreviewSchema), async (req, res) => {
     assertBoard(req);
     if (req.body.target.mode === "existing_company") {
-      assertCompanyAccess(req, req.body.target.companyId);
+      await assertCanManagePortability(req, req.body.target.companyId, "imports");
     }
     const preview = await portability.previewImport(req.body);
     res.json(preview);
@@ -170,7 +192,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
   router.post("/import", validate(companyPortabilityImportSchema), async (req, res) => {
     assertBoard(req);
     if (req.body.target.mode === "existing_company") {
-      assertCompanyAccess(req, req.body.target.companyId);
+      await assertCanManagePortability(req, req.body.target.companyId, "imports");
     }
     const actor = getActorInfo(req);
     const result = await portability.importBundle(req.body, req.actor.type === "board" ? req.actor.userId : null);
@@ -333,6 +355,24 @@ export function companyRoutes(db: Db, storage?: StorageService) {
               ? body.feedbackDataSharingTermsVersion
               : DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION,
         };
+      }
+      if (body.name !== undefined || body.description !== undefined || body.status !== undefined) {
+        await assertCompanySettingsPermission(req, companyId, "company_settings.general");
+      }
+      if (body.brandColor !== undefined || body.logoAssetId !== undefined) {
+        await assertCompanySettingsPermission(req, companyId, "company_settings.appearance");
+      }
+      if (
+        body.projectAccessMode !== undefined ||
+        body.feedbackDataSharingEnabled !== undefined ||
+        body.feedbackDataSharingConsentAt !== undefined ||
+        body.feedbackDataSharingConsentByUserId !== undefined ||
+        body.feedbackDataSharingTermsVersion !== undefined
+      ) {
+        await assertCompanySettingsPermission(req, companyId, "company_settings.security_access");
+      }
+      if (body.requireBoardApprovalForNewAgents !== undefined) {
+        await assertCompanySettingsPermission(req, companyId, "company_settings.hiring");
       }
     }
 

@@ -8,6 +8,7 @@ import type {
   MembershipStatus,
   PermissionKey,
   PrincipalType,
+  ProjectPermissionKey,
 } from "../constants.js";
 
 export interface CompanyMembership {
@@ -33,6 +34,25 @@ export interface PrincipalPermissionGrant {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface ProjectPrincipalGrant {
+  id: string;
+  companyId: string;
+  projectId: string;
+  principalType: PrincipalType;
+  principalId: string;
+  permissionKey: ProjectPermissionKey;
+  grantedByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Normalized actor for `accessService` project permission checks. */
+export type ProjectAuthActor =
+  | { kind: "none" }
+  | { kind: "local_implicit_board" }
+  | { kind: "user"; userId: string; isInstanceAdmin: boolean }
+  | { kind: "agent"; agentId: string };
 
 export interface Invite {
   id: string;

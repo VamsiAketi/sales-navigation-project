@@ -13,6 +13,7 @@ import { projectsApi } from "../api/projects";
 import { heartbeatsApi } from "../api/heartbeats";
 import { goalsApi } from "../api/goals";
 import { costsApi } from "../api/costs";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -506,6 +507,14 @@ export function Dashboard() {
   });
   const sessionResolved = sessionStatus !== "pending";
   const layoutUserId = session?.user?.id ?? null;
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadCommandCenter = sidebarBadges?.canReadCommandCenter ?? true;
+  const dashboardEnabled = Boolean(selectedCompanyId) && canReadCommandCenter;
 
   useEffect(() => {
     if (!selectedCompanyId || !sessionResolved) return;
@@ -534,13 +543,13 @@ export function Dashboard() {
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   const { data: members } = useQuery({
     queryKey: queryKeys.access.members(selectedCompanyId!),
     queryFn: () => accessApi.listMembers(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   useEffect(() => {
@@ -550,37 +559,37 @@ export function Dashboard() {
   const { data, isLoading, error } = useQuery({
     queryKey: queryKeys.dashboard(selectedCompanyId!),
     queryFn: () => dashboardApi.summary(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   const { data: activity } = useQuery({
     queryKey: queryKeys.activity(selectedCompanyId!),
     queryFn: () => activityApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   const { data: issues } = useQuery({
     queryKey: queryKeys.issues.list(selectedCompanyId!),
     queryFn: () => issuesApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(selectedCompanyId!),
     queryFn: () => projectsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   const { data: runs } = useQuery({
     queryKey: queryKeys.heartbeats(selectedCompanyId!),
     queryFn: () => heartbeatsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   const { data: goals } = useQuery({
     queryKey: queryKeys.goals.list(selectedCompanyId!),
     queryFn: () => goalsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   const { data: costData } = useQuery({
@@ -592,7 +601,7 @@ export function Dashboard() {
       ]);
       return { byAgent, byProject };
     },
-    enabled: !!selectedCompanyId,
+    enabled: dashboardEnabled,
   });
 
   const recentIssues = issues ? getRecentIssues(issues) : [];
@@ -713,6 +722,17 @@ export function Dashboard() {
     }
     return (
       <EmptyState icon={LayoutDashboard} message="Create or select a company to view the dashboard." />
+    );
+  }
+
+  if (!canReadCommandCenter) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to view Command Center.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>command_center.read</code> permission.
+        </div>
+      </div>
     );
   }
 

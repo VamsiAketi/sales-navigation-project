@@ -9,17 +9,37 @@ import {
   isUuidLike,
   updateProjectSchema,
   updateProjectWorkspaceSchema,
+  type ProjectPermissionKey,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { projectService, projectIssueStatusService, secretService, logActivity } from "../services/index.js";
-import { conflict, unprocessable } from "../errors.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import {
+  accessService,
+  projectService,
+  projectIssueStatusService,
+  secretService,
+  logActivity,
+} from "../services/index.js";
+import { conflict, forbidden, unprocessable } from "../errors.js";
+import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
 
 export function projectRoutes(db: Db) {
   const router = Router();
   const svc = projectService(db);
   const statusSvc = projectIssueStatusService(db);
   const secretsSvc = secretService(db);
+  const access = accessService(db);
+
+  async function requireProjectPermission(
+    req: Request,
+    companyId: string,
+    projectId: string,
+    permission: ProjectPermissionKey,
+  ) {
+    const actor = projectAuthActorFromRequest(req);
+    if (!(await access.satisfiesProjectPermission(companyId, projectId, permission, actor))) {
+      throw forbidden("Project permission denied");
+    }
+  }
 
   async function validateProjectSecretBindings(
     companyId: string,
@@ -84,7 +104,14 @@ export function projectRoutes(db: Db) {
   router.get("/companies/:companyId/projects", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    const actor = projectAuthActorFromRequest(req);
+    const allowedIds = await access.listProjectIdsVisibleToActor(companyId, actor);
     const result = await svc.list(companyId);
+    if (allowedIds !== null) {
+      const allow = new Set(allowedIds);
+      res.json(result.filter((p) => allow.has(p.id)));
+      return;
+    }
     res.json(result);
   });
 
@@ -96,6 +123,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, project.companyId);
+    await requireProjectPermission(req, project.companyId, project.id, "project:read");
     res.json(project);
   });
 
@@ -132,6 +160,17 @@ export function projectRoutes(db: Db) {
     }
     const hydratedProject = workspace ? await svc.getById(project.id) : project;
 
+    if (
+      req.actor.type === "board"
+      && req.actor.userId
+      && (await access.companyUsesRestrictedProjectAccess(companyId))
+    ) {
+      // Seed creator grants for every board session (including local_implicit). Implicit-trust
+      // sessions still bypass enforcement, but rows keep the Access UI truthful and match
+      // non-local behavior if that bypass is ever narrowed.
+      await access.seedFullProjectGrantsForUser(companyId, project.id, req.actor.userId, req.actor.userId);
+    }
+
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId,
@@ -158,6 +197,13 @@ export function projectRoutes(db: Db) {
     }
     assertCompanyAccess(req, existing.companyId);
     const body = { ...req.body };
+    const touchesArchive = Object.prototype.hasOwnProperty.call(body, "archivedAt");
+    await requireProjectPermission(
+      req,
+      existing.companyId,
+      id,
+      touchesArchive ? "project:archive" : "project:settings",
+    );
     if (typeof body.archivedAt === "string") {
       body.archivedAt = new Date(body.archivedAt);
     }
@@ -190,6 +236,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    await requireProjectPermission(req, existing.companyId, id, "project:read");
     const workspaces = await svc.listWorkspaces(id);
     res.json(workspaces);
   });
@@ -202,6 +249,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    await requireProjectPermission(req, existing.companyId, id, "project:workspaces");
     const workspace = await svc.createWorkspace(id, req.body);
     if (!workspace) {
       res.status(422).json({ error: "Invalid project workspace payload" });
@@ -240,6 +288,7 @@ export function projectRoutes(db: Db) {
         return;
       }
       assertCompanyAccess(req, existing.companyId);
+      await requireProjectPermission(req, existing.companyId, id, "project:workspaces");
       const workspaceExists = (await svc.listWorkspaces(id)).some((workspace) => workspace.id === workspaceId);
       if (!workspaceExists) {
         res.status(404).json({ error: "Project workspace not found" });
@@ -279,6 +328,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    await requireProjectPermission(req, existing.companyId, id, "project:workspaces");
     const workspace = await svc.removeWorkspace(id, workspaceId);
     if (!workspace) {
       res.status(404).json({ error: "Project workspace not found" });
@@ -310,6 +360,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
+    await requireProjectPermission(req, project.companyId, id, "project:read");
     // Seed defaults lazily if none exist yet (handles projects created before this migration)
     const statuses = await statusSvc.list(id);
     if (statuses.length === 0) {
@@ -325,6 +376,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
+    await requireProjectPermission(req, project.companyId, id, "project:statuses");
     const status = await statusSvc.create(id, project.companyId, req.body);
     res.status(201).json(status);
   });
@@ -335,6 +387,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
+    await requireProjectPermission(req, project.companyId, id, "project:statuses");
     const status = await statusSvc.update(statusId, id, req.body);
     res.json(status);
   });
@@ -344,6 +397,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
+    await requireProjectPermission(req, project.companyId, id, "project:statuses");
     const statuses = await statusSvc.reorder(id, req.body.orderedIds);
     res.json(statuses);
   });
@@ -354,6 +408,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
+    await requireProjectPermission(req, project.companyId, id, "project:statuses");
     const status = await statusSvc.remove(statusId, id);
     res.json(status);
   });
@@ -366,6 +421,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    await requireProjectPermission(req, existing.companyId, id, "project:delete");
     const project = await svc.remove(id);
     if (!project) {
       res.status(404).json({ error: "Project not found" });

@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { Db } from "@paperclipai/db";
 import { validate } from "../middleware/validate.js";
 import { activityService } from "../services/activity.js";
+import { accessService } from "../services/access.js";
+import { forbidden } from "../errors.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
 import { issueService } from "../services/index.js";
 import { sanitizeRecord } from "../redaction.js";
@@ -21,6 +23,7 @@ export function activityRoutes(db: Db) {
   const router = Router();
   const svc = activityService(db);
   const issueSvc = issueService(db);
+  const access = accessService(db);
 
   async function resolveIssueByRef(rawId: string) {
     if (/^[A-Z]+-\d+$/i.test(rawId)) {
@@ -32,6 +35,16 @@ export function activityRoutes(db: Db) {
   router.get("/companies/:companyId/activity", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source !== "local_implicit" && !req.actor.isInstanceAdmin) {
+        const allowed = await access.canUser(companyId, req.actor.userId, "audit_logs.read");
+        if (!allowed) throw forbidden("Missing permission: audit_logs.read");
+      }
+    } else if (req.actor.type === "agent") {
+      if (!req.actor.agentId) throw forbidden("Agent authentication required");
+      const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, "audit_logs.read");
+      if (!allowed) throw forbidden("Missing permission: audit_logs.read");
+    }
 
     const filters = {
       companyId,

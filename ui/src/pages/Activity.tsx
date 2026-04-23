@@ -6,6 +6,7 @@ import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { goalsApi } from "../api/goals";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -47,6 +48,13 @@ export function Activity() {
     queryFn: () => activityApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadAuditLogs = sidebarBadges?.canReadAuditLogs ?? true;
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -123,6 +131,15 @@ export function Activity() {
 
   if (!selectedCompanyId) {
     return <EmptyState icon={History} message="Select a company to view activity." />;
+  }
+
+  if (!canReadAuditLogs) {
+    return (
+      <EmptyState
+        icon={History}
+        message="Permission denied. You do not have access to Audit Log."
+      />
+    );
   }
 
   if (isLoading) {

@@ -8,11 +8,12 @@ import { useToast } from "../context/ToastContext";
 import { accessApi, type CompanyMember } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -93,79 +94,210 @@ const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
 const DEFAULT_INVITE_ROLE = "IT";
+const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
+  "agents:create": "agents.read",
+  "agents.edit": "agents.read",
+  "skills.edit": "skills.read",
+  "goals.write": "goals.read",
+  "hybrid_org.edit": "hybrid_org.read",
+  "hybrid_org.import": "hybrid_org.read",
+  "hybrid_org.export": "hybrid_org.read",
+  "teams.edit": "teams.read",
+  "users:invite": "teams.read",
+  "joins:approve": "teams.read",
+  "users:manage_permissions": "teams.read",
+  "company_settings.general": "company_settings.read",
+  "company_settings.appearance": "company_settings.read",
+  "company_settings.security_access": "company_settings.read",
+  "company_settings.hiring": "company_settings.read",
+  "company_settings.invites": "company_settings.read",
+  "company_settings.secrets": "company_settings.read",
+  "company_settings.packages": "company_settings.read",
+};
+
+function normalizePermissionSelection(keys: PermissionKey[]): PermissionKey[] {
+  const next = new Set(keys);
+  for (const [editKey, readKey] of Object.entries(READ_DEPENDENCIES) as Array<[PermissionKey, PermissionKey]>) {
+    if (next.has(editKey)) next.add(readKey);
+  }
+  return ALL_PERMISSION_KEYS.filter((key) => next.has(key));
+}
 
 function defaultPermissionsForRole(role: string | null | undefined): PermissionKey[] {
   const normalized = (role ?? "").trim().toLowerCase();
   if (normalized === "owner") return [...ALL_PERMISSION_KEYS];
-  return ALL_PERMISSION_KEYS.filter((key) => key !== "users:invite");
+  return normalizePermissionSelection(ALL_PERMISSION_KEYS.filter((key) => key !== "users:invite"));
 }
 
-const PERMISSION_UI: Record<PermissionKey, { title: string; description: string }> = {
+const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
+  "agents.read": {
+    title: "View agents",
+  },
+  "agents.edit": {
+    title: "Edit agents",
+  },
   "agents:create": {
     title: "Create agents",
-    description: "Bring new AI agents onboard and configure them for this company.",
   },
   "users:invite": {
     title: "Invite teammates",
-    description: "Send email invites so new people can join the company.",
   },
   "users:manage_permissions": {
     title: "Manage roles & access",
-    description: "Change what other members are allowed to do, including their permissions.",
   },
   "tasks:assign": {
     title: "Assign work",
-    description: "Assign or hand off tasks between people and agents.",
   },
   "tasks:assign_scope": {
     title: "Control assignment scope",
-    description: "Decide which tasks an agent is allowed to be assigned to.",
   },
   "joins:approve": {
     title: "Approve join requests",
-    description: "Review and approve requests from people who want to join.",
   },
   "companies:create": {
     title: "Create companies",
-    description: "Create new companies on this instance.",
   },
-};
-
-const PERMISSION_CATEGORY_ACCENTS: Record<string, string> = {
-  team: "from-muted-foreground/60 to-muted-foreground/30",
-  agents: "from-muted-foreground/60 to-muted-foreground/30",
-  work: "from-muted-foreground/60 to-muted-foreground/30",
+  "command_center.read": {
+    title: "View Command Center",
+  },
+  "hybrid_org.read": {
+    title: "View Hybrid Org Chart",
+  },
+  "hybrid_org.edit": {
+    title: "Edit Hybrid Org Chart",
+  },
+  "hybrid_org.import": {
+    title: "Import Hybrid Org Chart",
+  },
+  "hybrid_org.export": {
+    title: "Export Hybrid Org Chart",
+  },
+  "skills.read": {
+    title: "View Skills",
+  },
+  "skills.edit": {
+    title: "Edit Skills",
+  },
+  "goals.read": {
+    title: "View Goals",
+  },
+  "goals.write": {
+    title: "Edit Goals",
+  },
+  "costs.read": {
+    title: "View Costs",
+  },
+  "attention_queue.read": {
+    title: "View Attention Queue",
+  },
+  "teams.read": {
+    title: "View Teams",
+  },
+  "teams.edit": {
+    title: "Edit Teams",
+  },
+  "audit_logs.read": {
+    title: "View Audit Logs",
+  },
+  "company_settings.read": {
+    title: "View Company Settings",
+  },
+  "company_settings.general": {
+    title: "Edit Company Settings: General",
+  },
+  "company_settings.appearance": {
+    title: "Edit Company Settings: Appearance",
+  },
+  "company_settings.security_access": {
+    title: "Edit Company Settings: Security & Access",
+  },
+  "company_settings.hiring": {
+    title: "Edit Company Settings: Hiring",
+  },
+  "company_settings.invites": {
+    title: "Edit Company Settings: Invites",
+  },
+  "company_settings.secrets": {
+    title: "Edit Company Settings: Secrets",
+  },
+  "company_settings.packages": {
+    title: "Edit Company Settings: Company Packages",
+  },
 };
 
 const PERMISSION_CATEGORY_DEFS: {
   id: string;
   title: string;
-  subtitle: string;
   keys: readonly PermissionKey[];
 }[] = [
   {
     id: "team",
     title: "Team & access",
-    subtitle: "Invitations, join requests, and who can change roles.",
-    keys: ["users:invite", "joins:approve", "users:manage_permissions"],
+    keys: ["teams.read", "users:manage_permissions", "users:invite", "joins:approve"],
   },
   {
     id: "agents",
     title: "Agents",
-    subtitle: "Creating AI teammates.",
-    keys: ["agents:create"],
+    keys: ["agents.read", "agents.edit", "agents:create"],
   },
   {
     id: "work",
     title: "Tasks & workflow",
-    subtitle: "How work is routed on the board.",
     keys: ["tasks:assign", "tasks:assign_scope"],
   },
-    {
+  {
+    id: "command_center",
+    title: "Command Center",
+    keys: ["command_center.read"],
+  },
+  {
+    id: "hybrid_org",
+    title: "Hybrid Org Chart",
+    keys: ["hybrid_org.read", "hybrid_org.edit", "hybrid_org.import", "hybrid_org.export"],
+  },
+  {
+    id: "skills",
+    title: "Skills",
+    keys: ["skills.read", "skills.edit"],
+  },
+  {
+    id: "goals",
+    title: "Goals",
+    keys: ["goals.read", "goals.write"],
+  },
+  {
+    id: "costs",
+    title: "Costs",
+    keys: ["costs.read"],
+  },
+  {
+    id: "attention_queue",
+    title: "Attention Queue",
+    keys: ["attention_queue.read"],
+  },
+  {
     id: "company",
-    title: "Company Management",
-    subtitle: "Company Access Control",
+    title: "Company management",
     keys: ["companies:create"],
+  },
+  {
+    id: "audit_logs",
+    title: "Audit Logs",
+    keys: ["audit_logs.read"],
+  },
+  {
+    id: "company_settings",
+    title: "Company Settings",
+    keys: [
+      "company_settings.read",
+      "company_settings.general",
+      "company_settings.appearance",
+      "company_settings.security_access",
+      "company_settings.hiring",
+      "company_settings.invites",
+      "company_settings.secrets",
+      "company_settings.packages",
+    ],
   },
 ];
 
@@ -184,38 +316,62 @@ function HumanPermissionsPanel({
   disabled,
   intro,
 }: HumanPermissionsPanelProps) {
+  const { pushToast } = useToast();
   const enabledSet = useMemo(() => new Set(enabledKeys), [enabledKeys]);
+  const reverseReadDependencies = useMemo(() => {
+    const byReadPermission = new Map<PermissionKey, PermissionKey[]>();
+    for (const [actionPermission, readPermission] of Object.entries(
+      READ_DEPENDENCIES,
+    ) as Array<[PermissionKey, PermissionKey]>) {
+      const existing = byReadPermission.get(readPermission) ?? [];
+      existing.push(actionPermission);
+      byReadPermission.set(readPermission, existing);
+    }
+    return byReadPermission;
+  }, []);
 
   const toggle = (key: PermissionKey, on: boolean) => {
+    if (!on) {
+      const blockingPermissions = (reverseReadDependencies.get(key) ?? []).filter((permission) =>
+        enabledSet.has(permission),
+      );
+      if (blockingPermissions.length > 0) {
+        const firstBlockingPermission = blockingPermissions[0]!;
+        pushToast({
+          title: "Cannot remove view permission",
+          body: `"${PERMISSION_UI[key]?.title ?? key}" is required because "${PERMISSION_UI[firstBlockingPermission]?.title ?? firstBlockingPermission}" is enabled. Disable edit/action access first.`,
+          tone: "warn",
+          dedupeKey: `permission-dependency|${key}|${firstBlockingPermission}`,
+        });
+        return;
+      }
+    }
     const next = new Set(enabledKeys);
     if (on) next.add(key);
     else next.delete(key);
-    onKeysChange(ALL_PERMISSION_KEYS.filter((k) => next.has(k)));
+    onKeysChange(normalizePermissionSelection(ALL_PERMISSION_KEYS.filter((k) => next.has(k))));
   };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-border/40 bg-muted/20 p-3 ring-1 ring-border/25">
-        <div className="min-w-0 space-y-1">{intro}</div>
-      </div>
+    <div className="space-y-2">
+      {intro ? (
+        <div className="rounded-lg border border-border/40 bg-muted/20 px-2.5 py-2 ring-1 ring-border/25">
+          <div className="min-w-0 space-y-1">{intro}</div>
+        </div>
+      ) : null}
 
-      <div className="space-y-5">
+      <div className="space-y-2">
         {PERMISSION_CATEGORY_DEFS.map((cat) => (
-          <section key={cat.id} className="space-y-2">
-            <header className="flex gap-3 border-b border-border/60 pb-2">
-              <span
-                className={cn(
-                  "mt-0.5 h-9 w-1 shrink-0 rounded-full bg-gradient-to-b",
-                  PERMISSION_CATEGORY_ACCENTS[cat.id] ?? "from-muted-foreground/70 to-muted-foreground/30",
-                )}
-                aria-hidden
-              />
-              <div className="min-w-0 space-y-0.5">
-                <h3 className="text-sm font-semibold text-foreground">{cat.title}</h3>
-                <p className="text-xs text-muted-foreground">{cat.subtitle}</p>
+          <section key={cat.id} className="rounded-lg border border-border/50 bg-background/80 px-2.5 py-2">
+            <header className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{cat.title}</h3>
               </div>
+              <span className="rounded-full border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {cat.keys.length}
+              </span>
             </header>
-            <ul className="space-y-2">
+            <ul className="ml-1 mt-2 space-y-1 border-l border-border/70 pl-2.5">
               {cat.keys.map((key) => {
                 const checked = enabledSet.has(key);
                 const ui = PERMISSION_UI[key];
@@ -223,21 +379,23 @@ function HumanPermissionsPanel({
                 return (
                   <li
                     key={key}
-                    className="flex items-center gap-3 rounded-2xl border border-border/50 bg-background/80 px-3 py-2.5 shadow-xs transition-colors hover:border-primary/20 hover:bg-muted/30"
+                    className="group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-muted/35"
                   >
-                    <div className="min-w-0 flex-1">
-                      <Label htmlFor={sid} className="cursor-pointer text-sm font-medium leading-tight text-foreground">
-                        {ui.title}
-                      </Label>
-                      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{ui.description}</p>
-                    </div>
-                    <Switch
+                    <span className="h-px w-2 shrink-0 bg-border/80" aria-hidden />
+                    <Checkbox
                       id={sid}
                       checked={checked}
                       disabled={disabled}
-                      onCheckedChange={(on) => toggle(key, on)}
+                      onCheckedChange={(on) => toggle(key, on === true)}
                       aria-label={ui.title}
+                      className="h-3.5 w-3.5 border-border/90 bg-background data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=unchecked]:border-muted-foreground/70"
                     />
+                    <Label
+                      htmlFor={sid}
+                      className="min-w-0 flex-1 cursor-pointer truncate text-xs font-medium leading-tight text-foreground"
+                    >
+                        {ui.title}
+                    </Label>
                   </li>
                 );
               })}
@@ -502,6 +660,14 @@ export function CompanyDirectory() {
     queryFn: () => accessApi.listMembers(selectedCompanyId!),
     enabled: !!selectedCompanyId
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadTeams = sidebarBadges?.canReadTeams ?? true;
+  const canEditTeams = sidebarBadges?.canEditTeams ?? true;
   const membersPermissionDenied = isPermissionDeniedError(membersError);
 
   const { data: agentsList } = useQuery({
@@ -618,7 +784,7 @@ export function CompanyDirectory() {
   const permissionsForRole = (role: string | null | undefined): PermissionKey[] => {
     if (!role) return [];
     const override = humanRolePermissions[role];
-    if (override && override.length > 0) return override;
+    if (override && override.length > 0) return normalizePermissionSelection(override);
     return defaultPermissionsForRole(role);
   };
 
@@ -853,6 +1019,12 @@ export function CompanyDirectory() {
   const invalidateMembers = async () => {
     await queryClient.invalidateQueries({
       queryKey: queryKeys.access.members(selectedCompanyId!)
+    });
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.sidebarBadges(selectedCompanyId!)
+    });
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.dashboard(selectedCompanyId!)
     });
     await queryClient.invalidateQueries({
       queryKey: queryKeys.org(selectedCompanyId!)
@@ -1231,7 +1403,7 @@ export function CompanyDirectory() {
               <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
                 Manage humans and AI agents in one place. Edits save automatically.
               </p>
-              {!membersPermissionDenied && !membersLoading ? (
+              {canReadTeams && !membersPermissionDenied && !membersLoading ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
                     <UserRound className="size-3.5 opacity-90" aria-hidden />
@@ -1247,11 +1419,13 @@ export function CompanyDirectory() {
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:max-w-md xl:max-w-xl">
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" className="rounded-full shadow-sm" variant="default">
-                Invite Human
-              </Button>
-            </DialogTrigger>
+            {canEditTeams ? (
+              <DialogTrigger asChild>
+                <Button type="button" className="rounded-full shadow-sm" variant="default">
+                  Invite Human
+                </Button>
+              </DialogTrigger>
+            ) : null}
             <DialogContent className="flex max-h-[min(92dvh,44rem)] w-full max-w-2xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
               <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
                 <DialogHeader>
@@ -1408,12 +1582,13 @@ export function CompanyDirectory() {
                     className="rounded-full px-8 shadow-sm text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
                     style={{ backgroundColor: "#6569E1" }}
                     onClick={() => {
+                      if (!canEditTeams) return;
                       setHumanInviteSubmitAttempted(true);
                       if (!humanInviteName.trim() || !humanInviteEmail.trim()) return;
                       humanInviteMutation.mutate();
                     }}
                     disabled={
-                      humanInviteMutation.isPending || !selectedCompanyId
+                      humanInviteMutation.isPending || !selectedCompanyId || !canEditTeams
                     }
                   >
                     {humanInviteMutation.isPending ? "Creating..." : "Create invite"}
@@ -1422,14 +1597,16 @@ export function CompanyDirectory() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button
-            type="button"
-            variant="secondary"
-            className="rounded-full border-border/60"
-            onClick={() => setRolesDialogOpen(true)}
-          >
-            Manage roles
-          </Button>
+          {canEditTeams ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="rounded-full border-border/60"
+              onClick={() => setRolesDialogOpen(true)}
+            >
+              Manage roles
+            </Button>
+          ) : null}
 
           <div className="w-full min-w-0 sm:max-w-xs sm:flex-1 lg:max-w-sm">
             <Input
@@ -1568,11 +1745,11 @@ export function CompanyDirectory() {
                         </div>
                       ) : null}
                     </section>
-                    <section className="space-y-3 overflow-y-auto rounded-2xl border border-border/60 bg-muted/10 p-4">
+                    <section className="space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-muted/10 p-3">
                       <div className="text-sm font-medium text-foreground">
                         Role permissions{selectedManageHumanRole ? `: ${selectedManageHumanRole}` : ""}
                       </div>
-                      <div className="rounded-2xl border border-border/50 bg-background/60 p-4">
+                      <div className="rounded-lg border border-border/50 bg-background/60 p-2.5">
                         <HumanPermissionsPanel
                           idPrefix={`human-role-${selectedManageHumanRole || "none"}`}
                           enabledKeys={permissionsForRole(selectedManageHumanRole)}
@@ -1583,11 +1760,7 @@ export function CompanyDirectory() {
                               [selectedManageHumanRole]: keys,
                             }));
                           }}
-                          intro={
-                            <p className="text-xs leading-relaxed text-muted-foreground">
-                              Configure permission defaults for this role. Selecting this role for a human uses this access profile.
-                            </p>
-                          }
+                          intro={null}
                         />
                       </div>
                     </section>
@@ -1643,20 +1816,28 @@ export function CompanyDirectory() {
       ) : null}
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "agents")} className="gap-4">
-        {membersPermissionDenied ? (
+        {!canReadTeams ? (
           <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
-            <div className="font-medium text-foreground">You do not have permission to view Teams members.</div>
+            <div className="font-medium text-foreground">You do not have permission to view Teams.</div>
             <div className="mt-2">
-              Ask a company admin for the <code>users:manage_permissions</code> permission.
+              Ask a company admin for the <code>teams.read</code> permission.
             </div>
           </div>
         ) : null}
-        {!membersPermissionDenied && membersError ? (
+        {canReadTeams && membersPermissionDenied ? (
+          <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+            <div className="font-medium text-foreground">You do not have permission to view Teams members.</div>
+            <div className="mt-2">
+              Ask a company admin for the <code>teams.read</code> permission.
+            </div>
+          </div>
+        ) : null}
+        {canReadTeams && !membersPermissionDenied && membersError ? (
           <div className="rounded-2xl border border-destructive/35 bg-destructive/5 px-4 py-3 text-sm text-destructive ring-1 ring-destructive/15">
             {apiErrorMessage(membersError)}
           </div>
         ) : null}
-        {!membersPermissionDenied && !membersError ? (
+        {canReadTeams && !membersPermissionDenied && !membersError ? (
           <>
         <TabsList className="h-auto w-full justify-start gap-1 rounded-full border border-sidebar-border bg-sidebar/85 p-1.5 sm:w-auto">
           <TabsTrigger value="users" className="gap-2 rounded-full px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
@@ -1860,13 +2041,6 @@ export function CompanyDirectory() {
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-border/50 bg-muted/20 px-4 py-3 ring-1 ring-border/30">
-                      <div className="text-xs font-semibold text-foreground">Notes</div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        Assigning which agents a human manages is done by setting each agent’s “Reports to”.
-                      </div>
-                    </div>
-
                     <div className="rounded-2xl border border-border/50 bg-muted/10 px-4 py-4 ring-1 ring-border/30">
                       <div className="text-sm font-semibold text-foreground">Access & permissions</div>
                       <div className="mt-3">
@@ -1888,9 +2062,7 @@ export function CompanyDirectory() {
                             });
                           }}
                           intro={
-                            <p className="text-xs leading-relaxed text-muted-foreground">
-                              Changes save as soon as you flip a switch. Presets replace the current selection.
-                            </p>
+                            null
                           }
                         />
                       </div>
@@ -1902,32 +2074,6 @@ export function CompanyDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sidebar-border/70 bg-sidebar/35 px-5 py-3">
-                    <div className="text-xs text-muted-foreground">Autosave is on.</div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="rounded-xl"
-                      disabled={
-                        !humanIsDirty ||
-                        humanSaveMutation.isPending ||
-                        !selectedCompanyId ||
-                        selectedHumanManagerIsAgent
-                      }
-                      onClick={() => {
-                        if (!selectedHumanMember) return;
-                        if (selectedHumanManagerIsAgent) return;
-                        humanSaveMutation.mutate({
-                          memberId: selectedHumanMember.id,
-                          membershipRole: (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
-                          reportsToMembershipId: (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null
-                        });
-                      }}
-                    >
-                      Save now
-                    </Button>
-                  </div>
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
@@ -2052,26 +2198,6 @@ export function CompanyDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sidebar-border/70 bg-sidebar/35 px-5 py-3">
-                    <div className="text-xs text-muted-foreground">Autosave is on.</div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="rounded-xl"
-                      disabled={!agentIsDirty || agentSaveMutation.isPending || !selectedCompanyId}
-                      onClick={() => {
-                        if (!selectedAgentMember) return;
-                        agentSaveMutation.mutate({
-                          memberId: selectedAgentMember.id,
-                          principalId: selectedAgentMember.principalId,
-                          membershipRole: (memberRoleDrafts[selectedAgentMember.id] ?? "").trim() || null,
-                          reportsTo: (agentReportsDrafts[selectedAgentMember.id] ?? "").trim() || null
-                        });
-                      }}
-                    >
-                      Save now
-                    </Button>
-                  </div>
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">

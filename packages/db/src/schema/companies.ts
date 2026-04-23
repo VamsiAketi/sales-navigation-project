@@ -24,6 +24,11 @@ export const companies = pgTable(
     feedbackDataSharingTermsVersion: text("feedback_data_sharing_terms_version"),
     brandColor: text("brand_color"),
     logoAssetId: uuid("logo_asset_id"),
+    /**
+     * `open`: company members may access any company project (legacy).
+     * `restricted`: principals need explicit rows in `project_principal_grants` per project.
+     */
+    projectAccessMode: text("project_access_mode").notNull().default("open"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -1,5 +1,6 @@
 const BASE = "/api";
 export const AUTH_UNAUTHORIZED_EVENT = "paperclip:auth-unauthorized";
+export const PERMISSION_DENIED_EVENT = "paperclip:permission-denied";
 
 export class ApiError extends Error {
   status: number;
@@ -29,6 +30,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const errorBody = await res.json().catch(() => null);
     if (res.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent(AUTH_UNAUTHORIZED_EVENT));
+    }
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (
+      res.status === 403 &&
+      typeof window !== "undefined" &&
+      method !== "GET" &&
+      method !== "HEAD"
+    ) {
+      window.dispatchEvent(
+        new CustomEvent(PERMISSION_DENIED_EVENT, {
+          detail: {
+            method,
+            path,
+            message:
+              (errorBody as { error?: string } | null)?.error ??
+              "You do not have permission to perform this action.",
+          },
+        }),
+      );
     }
     throw new ApiError(
       (errorBody as { error?: string } | null)?.error ?? `Request failed: ${res.status}`,

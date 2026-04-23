@@ -3,4 +3,28 @@ export interface SidebarBadges {
   approvals: number;
   failedRuns: number;
   joinRequests: number;
+  canReadCommandCenter?: boolean;
+  canReadHybridOrg?: boolean;
+  canEditHybridOrg?: boolean;
+  canImportHybridOrg?: boolean;
+  canExportHybridOrg?: boolean;
+  canReadSkills?: boolean;
+  canEditSkills?: boolean;
+  canReadGoals?: boolean;
+  canWriteGoals?: boolean;
+  canReadCosts?: boolean;
+  canReadAttentionQueue?: boolean;
+  canReadTeams?: boolean;
+  canEditTeams?: boolean;
+  canReadAgents?: boolean;
+  canEditAgents?: boolean;
+  canReadAuditLogs?: boolean;
+  canReadCompanySettings?: boolean;
+  canManageCompanySettingsGeneral?: boolean;
+  canManageCompanySettingsAppearance?: boolean;
+  canManageCompanySettingsSecurityAccess?: boolean;
+  canManageCompanySettingsHiring?: boolean;
+  canManageCompanySettingsInvites?: boolean;
+  canManageCompanySettingsSecrets?: boolean;
+  canManageCompanySettingsPackages?: boolean;
 }

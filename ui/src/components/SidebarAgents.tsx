@@ -8,6 +8,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { heartbeatsApi } from "../api/heartbeats";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { useAgentOrder } from "../hooks/useAgentOrder";
@@ -147,6 +148,14 @@ export function SidebarAgents() {
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadAgents = sidebarBadges?.canReadAgents ?? true;
+  const canEditAgents = sidebarBadges?.canEditAgents ?? true;
 
   const { data: liveRuns } = useQuery({
     queryKey: queryKeys.liveRuns(selectedCompanyId!),
@@ -198,7 +207,7 @@ export function SidebarAgents() {
   const activeTab = agentMatch?.[2] ?? null;
   const agentsSectionActive = /^\/(?:[^/]+\/)?agents(?:\/|$)/.test(location.pathname);
 
-  if (sidebarCompact) return null;
+  if (sidebarCompact || !canReadAgents) return null;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -237,16 +246,18 @@ export function SidebarAgents() {
               />
               <span className="flex-1 truncate">Agents</span>
             </Link>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                openNewAgent();
-              }}
-              className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
-              aria-label="New agent"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
+            {canEditAgents ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openNewAgent();
+                }}
+                className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
+                aria-label="New agent"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

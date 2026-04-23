@@ -12,6 +12,7 @@ import type {
   CompanySkillUpdateStatus,
 } from "@paperclipai/shared";
 import { companySkillsApi } from "../api/companySkills";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
@@ -576,6 +577,7 @@ function SkillPane({
   installUpdatePending,
   onSave,
   savePending,
+  canEditSkills,
 }: {
   loading: boolean;
   detail: CompanySkillDetail | null | undefined;
@@ -595,6 +597,7 @@ function SkillPane({
   installUpdatePending: boolean;
   onSave: () => void;
   savePending: boolean;
+  canEditSkills: boolean;
 }) {
   const { pushToast } = useToast();
 
@@ -633,7 +636,7 @@ function SkillPane({
               <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{detail.description}</p>
             )}
           </div>
-          {detail.editable ? (
+          {detail.editable && canEditSkills ? (
             <button
               className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
               onClick={() => setEditMode(!editMode)}
@@ -812,7 +815,7 @@ function SkillPane({
                 </button>
               </div>
             )}
-            {editMode && file?.editable && (
+            {editMode && file?.editable && canEditSkills && (
               <>
                 <Button variant="ghost" size="sm" onClick={() => setEditMode(false)} disabled={savePending}>
                   Cancel
@@ -907,6 +910,14 @@ export function CompanySkills() {
     queryFn: () => companySkillsApi.list(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId),
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadSkills = sidebarBadges?.canReadSkills ?? true;
+  const canEditSkills = sidebarBadges?.canEditSkills ?? true;
 
   // Hide built-in Paperclip runtime skills from the UI list.
   const visibleSkills = useMemo(
@@ -993,6 +1004,15 @@ export function CompanySkills() {
     setDisplayedDetail(null);
     setDisplayedFile(null);
   }, [selectedSkillId]);
+
+  useEffect(() => {
+    if (canEditSkills) return;
+    setEditMode(false);
+    setAddOpen(false);
+    setSkillsShOpen(false);
+    setCreateOpen(false);
+    setCreatePathOpen(false);
+  }, [canEditSkills]);
 
   useEffect(() => {
     if (createPathOpen) {
@@ -1243,6 +1263,16 @@ export function CompanySkills() {
   if (!selectedCompanyId) {
     return <EmptyState icon={Boxes} message="Select a company to manage skills." />;
   }
+  if (!canReadSkills) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to view Skills.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>skills.read</code> permission.
+        </div>
+      </div>
+    );
+  }
 
   function handleImportSkillsSh() {
     const trimmedSource = skillsShSource.trim();
@@ -1340,9 +1370,11 @@ export function CompanySkills() {
             />
           </div>
           <DialogFooter showCloseButton>
-            <Button onClick={handleImportSkillsSh} disabled={importSkill.isPending || skillsShSource.trim().length === 0}>
-              {importSkill.isPending ? "Importing..." : "Import from Skills.sh"}
-            </Button>
+            {canEditSkills ? (
+              <Button onClick={handleImportSkillsSh} disabled={importSkill.isPending || skillsShSource.trim().length === 0}>
+                {importSkill.isPending ? "Importing..." : "Import from Skills.sh"}
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1503,23 +1535,25 @@ export function CompanySkills() {
             */}
           </div>
           <DialogFooter showCloseButton>
-            <Button
-              onClick={() => createPath.mutate()}
-              disabled={
-                createPath.isPending
-                || (createPathKind === "folder"
-                  ? createPathValue.trim().length === 0
-                  : !createUploadFile
-                    || createFileStem.trim().length === 0
-                    || createFileExtension.trim().replace(/^\./, "").length === 0)
-              }
-            >
-              {createPath.isPending
-                ? "Creating..."
-                : createPathKind === "file" && createUploadFile
-                  ? "Upload file"
-                  : "Create"}
-            </Button>
+            {canEditSkills ? (
+              <Button
+                onClick={() => createPath.mutate()}
+                disabled={
+                  createPath.isPending
+                  || (createPathKind === "folder"
+                    ? createPathValue.trim().length === 0
+                    : !createUploadFile
+                      || createFileStem.trim().length === 0
+                      || createFileExtension.trim().replace(/^\./, "").length === 0)
+                }
+              >
+                {createPath.isPending
+                  ? "Creating..."
+                  : createPathKind === "file" && createUploadFile
+                    ? "Upload file"
+                    : "Create"}
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1535,18 +1569,27 @@ export function CompanySkills() {
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => scanProjects.mutate()}
-                  disabled={scanProjects.isPending}
-                  title="Scan project workspaces for skills"
-                >
-                  <RefreshCw className={cn("h-4 w-4", scanProjects.isPending && "animate-spin")} />
-                </Button>
-                <Button variant="ghost" size="icon-sm" onClick={() => setAddOpen(true)} title="Add skill">
-                  <Plus className="h-4 w-4" />
-                </Button>
+                {canEditSkills ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => scanProjects.mutate()}
+                      disabled={scanProjects.isPending}
+                      title="Scan project workspaces for skills"
+                    >
+                      <RefreshCw className={cn("h-4 w-4", scanProjects.isPending && "animate-spin")} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setAddOpen(true)}
+                      title="Add skill"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : null}
               </div>
             </div>
 
@@ -1587,7 +1630,10 @@ export function CompanySkills() {
 
           {createOpen && (
             <NewSkillForm
-              onCreate={(payload) => createSkill.mutate(payload)}
+              onCreate={(payload) => {
+                if (!canEditSkills) return;
+                createSkill.mutate(payload);
+              }}
               isPending={createSkill.isPending}
               onCancel={() => setCreateOpen(false)}
             />
@@ -1618,7 +1664,7 @@ export function CompanySkills() {
               }}
               onSelectSkill={(currentSkillId) => setExpandedSkillId(currentSkillId)}
               onSelectPath={() => {}}
-              onOpenAddToSkill={(skillId, kind, parentPath) => {
+              onOpenAddToSkill={canEditSkills ? (skillId, kind, parentPath) => {
                 setCreatePathTargetSkillId(skillId);
                 setCreatePathKind(kind);
                 if (kind === "file") {
@@ -1629,7 +1675,7 @@ export function CompanySkills() {
                 navigate(skillRoute(skillId));
                 setExpandedSkillId(skillId);
                 setCreatePathOpen(true);
-              }}
+              } : undefined}
             />
           )}
         </aside>
@@ -1654,8 +1700,12 @@ export function CompanySkills() {
             checkUpdatesPending={updateStatusQuery.isFetching}
             onInstallUpdate={() => installUpdate.mutate()}
             installUpdatePending={installUpdate.isPending}
-            onSave={() => saveFile.mutate()}
+            onSave={() => {
+              if (!canEditSkills) return;
+              saveFile.mutate();
+            }}
             savePending={saveFile.isPending}
+            canEditSkills={canEditSkills}
           />
         </div>
       </div>

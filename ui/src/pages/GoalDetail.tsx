@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { goalsApi } from "../api/goals";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { projectsApi } from "../api/projects";
 import { assetsApi } from "../api/assets";
 import { usePanel } from "../context/PanelContext";
@@ -39,6 +40,14 @@ export function GoalDetail() {
     enabled: !!goalId
   });
   const resolvedCompanyId = goal?.companyId ?? selectedCompanyId;
+  const { data: sidebarBadges } = useQuery({
+    queryKey: resolvedCompanyId ? queryKeys.sidebarBadges(resolvedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(resolvedCompanyId!),
+    enabled: Boolean(resolvedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadGoals = sidebarBadges?.canReadGoals ?? true;
+  const canWriteGoals = sidebarBadges?.canWriteGoals ?? true;
 
   const { data: allGoals } = useQuery({
     queryKey: queryKeys.goals.list(resolvedCompanyId!),
@@ -103,7 +112,7 @@ export function GoalDetail() {
       openPanel(
         <GoalProperties
           goal={goal}
-          onUpdate={(data) => updateGoal.mutate(data)}
+          onUpdate={canWriteGoals ? (data) => updateGoal.mutate(data) : undefined}
         />
       );
     }
@@ -112,6 +121,16 @@ export function GoalDetail() {
 
   if (isLoading) return <PageSkeleton variant="detail" />;
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
+  if (!canReadGoals) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to view Goals.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>goals.read</code> permission.
+        </div>
+      </div>
+    );
+  }
   if (!goal) return null;
 
   return (
@@ -124,25 +143,33 @@ export function GoalDetail() {
           <StatusBadge status={goal.status} />
         </div>
 
-        <InlineEditor
-          value={goal.title}
-          onSave={(title) => updateGoal.mutate({ title })}
-          as="h2"
-          className="text-xl font-bold"
-        />
+        {canWriteGoals ? (
+          <InlineEditor
+            value={goal.title}
+            onSave={(title) => updateGoal.mutate({ title })}
+            as="h2"
+            className="text-xl font-bold"
+          />
+        ) : (
+          <h2 className="text-xl font-bold">{goal.title}</h2>
+        )}
 
-        <InlineEditor
-          value={goal.description ?? ""}
-          onSave={(description) => updateGoal.mutate({ description })}
-          as="p"
-          className="text-sm text-muted-foreground"
-          placeholder="Add a description..."
-          multiline
-          imageUploadHandler={async (file) => {
-            const asset = await uploadImage.mutateAsync(file);
-            return asset.contentPath;
-          }}
-        />
+        {canWriteGoals ? (
+          <InlineEditor
+            value={goal.description ?? ""}
+            onSave={(description) => updateGoal.mutate({ description })}
+            as="p"
+            className="text-sm text-muted-foreground"
+            placeholder="Add a description..."
+            multiline
+            imageUploadHandler={async (file) => {
+              const asset = await uploadImage.mutateAsync(file);
+              return asset.contentPath;
+            }}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">{goal.description ?? "No description."}</p>
+        )}
       </div>
 
       <Tabs defaultValue="children">
@@ -156,16 +183,18 @@ export function GoalDetail() {
         </TabsList>
 
         <TabsContent value="children" className="mt-4 space-y-3">
-          <div className="flex items-center justify-start">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => openNewGoal({ parentId: goalId })}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Sub Goal
-            </Button>
-          </div>
+          {canWriteGoals ? (
+            <div className="flex items-center justify-start">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openNewGoal({ parentId: goalId })}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Sub Goal
+              </Button>
+            </div>
+          ) : null}
           {childGoals.length === 0 ? (
             <p className="text-sm text-muted-foreground">No sub-goals.</p>
           ) : (

@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { PERMISSION_DENIED_EVENT } from "../api/client";
 
 export type ToastTone = "info" | "success" | "warn" | "error";
 
@@ -154,6 +155,31 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
     timersRef.current.clear();
   }, []);
+
+  useEffect(() => {
+    const handlePermissionDenied = (event: Event) => {
+      const detail =
+        event instanceof CustomEvent
+          ? (event.detail as { method?: string; path?: string; message?: string } | undefined)
+          : undefined;
+      const message = (detail?.message ?? "").trim();
+      const normalizedMessage = message.toLowerCase();
+      const hasSpecificMessage =
+        normalizedMessage.length > 0 &&
+        normalizedMessage !== "permission denied" &&
+        normalizedMessage !== "forbidden";
+      pushToast({
+        title: "Permission denied",
+        body: hasSpecificMessage
+          ? message
+          : "You do not have permission to perform this action. Contact your administrator.",
+        tone: "error",
+        dedupeKey: `permission-denied|${detail?.method ?? "UNKNOWN"}|${detail?.path ?? "unknown"}`,
+      });
+    };
+    window.addEventListener(PERMISSION_DENIED_EVENT, handlePermissionDenied);
+    return () => window.removeEventListener(PERMISSION_DENIED_EVENT, handlePermissionDenied);
+  }, [pushToast]);
 
   const value = useMemo<ToastContextValue>(
     () => ({

@@ -13,6 +13,7 @@ import { useToast } from "../context/ToastContext";
 import { authApi } from "../api/auth";
 import { companiesApi } from "../api/companies";
 import { agentsApi } from "../api/agents";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import { getAgentOrderStorageKey, writeAgentOrder } from "../lib/agent-order";
 import { getProjectOrderStorageKey, writeProjectOrder } from "../lib/project-order";
@@ -657,6 +658,13 @@ export function CompanyImport() {
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canImportHybridOrg = sidebarBadges?.canImportHybridOrg ?? true;
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
 
   // Source state
@@ -1086,6 +1094,16 @@ export function CompanyImport() {
 
   if (!selectedCompanyId) {
     return <EmptyState icon={Download} message="Select a company to import into." />;
+  }
+  if (!canImportHybridOrg) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to import Hybrid Org Chart.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>hybrid_org.import</code> permission.
+        </div>
+      </div>
+    );
   }
 
   return (

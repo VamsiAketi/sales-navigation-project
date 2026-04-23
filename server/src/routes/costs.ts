@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import {
   createCostEventSchema,
@@ -9,6 +9,7 @@ import {
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import {
+  accessService,
   budgetService,
   costService,
   financeService,
@@ -17,9 +18,9 @@ import {
   heartbeatService,
   logActivity,
 } from "../services/index.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
+import { badRequest, forbidden } from "../errors.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
-import { badRequest } from "../errors.js";
 
 export function costRoutes(db: Db) {
   const router = Router();
@@ -31,7 +32,21 @@ export function costRoutes(db: Db) {
   const finance = financeService(db);
   const budgets = budgetService(db, budgetHooks);
   const companies = companyService(db);
+  const access = accessService(db);
   const agents = agentService(db);
+
+  async function assertCostsReadAccess(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, "costs.read");
+      if (!allowed) throw forbidden("Missing permission: costs.read");
+      return;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, "costs.read");
+    if (!allowed) throw forbidden("Missing permission: costs.read");
+  }
 
   router.post("/companies/:companyId/cost-events", validate(createCostEventSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -114,7 +129,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/summary", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const summary = await costs.summary(companyId, range);
     res.json(summary);
@@ -122,7 +137,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/by-agent", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const rows = await costs.byAgent(companyId, range);
     res.json(rows);
@@ -130,7 +145,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/by-agent-model", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const rows = await costs.byAgentModel(companyId, range);
     res.json(rows);
@@ -138,7 +153,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/by-provider", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const rows = await costs.byProvider(companyId, range);
     res.json(rows);
@@ -146,7 +161,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/by-biller", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const rows = await costs.byBiller(companyId, range);
     res.json(rows);
@@ -154,7 +169,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/finance-summary", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const summary = await finance.summary(companyId, range);
     res.json(summary);
@@ -162,7 +177,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/finance-by-biller", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const rows = await finance.byBiller(companyId, range);
     res.json(rows);
@@ -170,7 +185,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/finance-by-kind", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const rows = await finance.byKind(companyId, range);
     res.json(rows);
@@ -178,7 +193,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/finance-events", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const limit = parseLimit(req.query);
     const rows = await finance.list(companyId, range, limit);
@@ -187,14 +202,14 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/window-spend", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const rows = await costs.windowSpend(companyId);
     res.json(rows);
   });
 
   router.get("/companies/:companyId/costs/quota-windows", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     assertBoard(req);
     // validate companyId resolves to a real company so the "__none__" sentinel
     // and any forged ids are rejected before we touch provider credentials
@@ -209,7 +224,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/budgets/overview", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const overview = await budgets.overview(companyId);
     res.json(overview);
   });
@@ -241,9 +256,16 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/costs/by-project", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
     const range = parseDateRange(req.query);
     const rows = await costs.byProject(companyId, range);
+    const actor = projectAuthActorFromRequest(req);
+    const allowedIds = await access.listProjectIdsVisibleToActor(companyId, actor);
+    if (allowedIds !== null) {
+      const allow = new Set(allowedIds);
+      res.json(rows.filter((row) => row.projectId != null && allow.has(row.projectId)));
+      return;
+    }
     res.json(rows);
   });
 
@@ -251,6 +273,19 @@ export function costRoutes(db: Db) {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    if (await access.companyUsesRestrictedProjectAccess(companyId)) {
+      const uid = req.actor.type === "board" ? req.actor.userId : undefined;
+      const manage =
+        uid && (await access.canUser(companyId, uid, "users:manage_permissions"));
+      const viaProject = await access.principalHasAnyProjectPermission(
+        companyId,
+        projectAuthActorFromRequest(req),
+        "budget:company_update",
+      );
+      if (!manage && !viaProject) {
+        throw forbidden("Permission denied");
+      }
+    }
     const company = await companies.update(companyId, { budgetMonthlyCents: req.body.budgetMonthlyCents });
     if (!company) {
       res.status(404).json({ error: "Company not found" });

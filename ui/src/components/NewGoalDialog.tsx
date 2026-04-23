@@ -5,6 +5,7 @@ import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { goalsApi } from "../api/goals";
 import { assetsApi } from "../api/assets";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import {
   Dialog,
@@ -57,6 +58,13 @@ export function NewGoalDialog() {
     queryFn: () => goalsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId && newGoalOpen,
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId) && newGoalOpen,
+    staleTime: 10_000,
+  });
+  const canWriteGoals = sidebarBadges?.canWriteGoals ?? true;
 
   const createGoal = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -85,7 +93,7 @@ export function NewGoalDialog() {
   }
 
   function handleSubmit() {
-    if (!selectedCompanyId || !title.trim()) return;
+    if (!selectedCompanyId || !title.trim() || !canWriteGoals) return;
     createGoal.mutate({
       title: title.trim(),
       description: description.trim() || undefined,
@@ -268,15 +276,17 @@ export function NewGoalDialog() {
 
         {/* Footer */}
         <div className="flex items-center justify-end px-4 py-2.5 border-t border-border">
-          <Button
-            size="sm"
-            className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
-            style={{ backgroundColor: "#6569E1" }}
-            disabled={!title.trim() || createGoal.isPending}
-            onClick={handleSubmit}
-          >
-            {createGoal.isPending ? "Creating…" : newGoalDefaults.parentId ? "Create sub-goal" : "Create goal"}
-          </Button>
+          {canWriteGoals ? (
+            <Button
+              size="sm"
+              className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+              style={{ backgroundColor: "#6569E1" }}
+              disabled={!title.trim() || createGoal.isPending}
+              onClick={handleSubmit}
+            >
+              {createGoal.isPending ? "Creating…" : newGoalDefaults.parentId ? "Create sub-goal" : "Create goal"}
+            </Button>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

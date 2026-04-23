@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { NavLink, useLocation } from "@/lib/router";
+import { useQuery } from "@tanstack/react-query";
 import {
   House,
   CircleDot,
@@ -8,6 +9,9 @@ import {
   Inbox,
 } from "lucide-react";
 import { useDialog } from "../context/DialogContext";
+import { useCompany } from "../context/CompanyContext";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
+import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 
 interface MobileBottomNavProps {
@@ -33,16 +37,25 @@ type MobileNavItem = MobileNavLinkItem | MobileNavActionItem;
 export function MobileBottomNav({ visible }: MobileBottomNavProps) {
   const location = useLocation();
   const { openNewIssue } = useDialog();
+  const { selectedCompanyId } = useCompany();
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadAgents = sidebarBadges?.canReadAgents ?? true;
 
   const items = useMemo<MobileNavItem[]>(
-    () => [
-      { type: "link", to: "/dashboard", label: "Home", icon: House },
-      { type: "link", to: "/issues", label: "Issues", icon: CircleDot },
-      { type: "action", label: "Create", icon: SquarePen, onClick: () => openNewIssue() },
-      { type: "link", to: "/agents/all", label: "Agents", icon: Users },
-      { type: "link", to: "/inbox", label: "Inbox", icon: Inbox },
-    ],
-    [openNewIssue],
+    () =>
+      [
+        { type: "link", to: "/dashboard", label: "Home", icon: House },
+        { type: "link", to: "/issues", label: "Issues", icon: CircleDot },
+        { type: "action", label: "Create", icon: SquarePen, onClick: () => openNewIssue() },
+        ...(canReadAgents ? ([{ type: "link", to: "/agents/all", label: "Agents", icon: Users }] as const) : []),
+        { type: "link", to: "/inbox", label: "Inbox", icon: Inbox },
+      ] satisfies MobileNavItem[],
+    [canReadAgents, openNewIssue],
   );
 
   return (
@@ -53,7 +66,12 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
       )}
       aria-label="Mobile navigation"
     >
-      <div className="grid h-16 grid-cols-5 px-1">
+      <div
+        className={cn(
+          "grid h-16 px-1",
+          items.length === 5 ? "grid-cols-5" : "grid-cols-4",
+        )}
+      >
         {items.map((item) => {
           if (item.type === "action") {
             const Icon = item.icon;

@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -83,6 +84,14 @@ export function Agents() {
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canReadAgents = sidebarBadges?.canReadAgents ?? true;
+  const canEditAgents = sidebarBadges?.canEditAgents ?? true;
 
   const { data: orgTree } = useQuery({
     queryKey: queryKeys.org(selectedCompanyId!),
@@ -128,6 +137,16 @@ export function Agents() {
 
   if (isLoading) {
     return <PageSkeleton variant="list" />;
+  }
+  if (!canReadAgents) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
+        <div className="font-medium text-foreground">You do not have permission to view Agents.</div>
+        <div className="mt-2">
+          Ask a company admin for the <code>agents.read</code> permission.
+        </div>
+      </div>
+    );
   }
 
   const filtered = filterAgents(agents ?? [], tab, showTerminated);
@@ -220,14 +239,16 @@ export function Agents() {
               </button>
             </div>
           )}
-          <Button
-            size="sm"
-            className="h-9 rounded-sm border-0 bg-[#0078d4] px-3 text-[13px] font-normal text-white shadow-none hover:bg-[#106ebe] dark:bg-[#0078d4] dark:hover:bg-[#106ebe]"
-            onClick={openNewAgent}
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            New Agent
-          </Button>
+          {canEditAgents ? (
+            <Button
+              size="sm"
+              className="h-9 rounded-sm border-0 bg-[#0078d4] px-3 text-[13px] font-normal text-white shadow-none hover:bg-[#106ebe] dark:bg-[#0078d4] dark:hover:bg-[#106ebe]"
+              onClick={openNewAgent}
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              New Agent
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -243,8 +264,8 @@ export function Agents() {
         <EmptyState
           icon={Bot}
           message="Create your first agent to get started."
-          action="New Agent"
-          onAction={openNewAgent}
+          action={canEditAgents ? "New Agent" : undefined}
+          onAction={canEditAgents ? openNewAgent : undefined}
         />
       )}
 

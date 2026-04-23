@@ -987,13 +987,14 @@ export function NewIssueDialog() {
       })),
     [orderedProjects],
   );
-
   const savedDraft = loadDraft();
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
   const canDiscardDraft = hasDraft || hasSavedDraft;
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
   const hasAssignee = Boolean(selectedAssigneeAgentId || selectedAssigneeUserId);
+  const isCreateAgentPreset = newIssueDefaults.title === "Create a new agent";
+  const isPresetTitle = Boolean(newIssueDefaults.title);
   const assigneeRequired = !isBoardPinnedHiddenProjectIssueStatusValue(status);
   const missingRequiredFields: string[] = [];
   if (!title.trim()) missingRequiredFields.push("Task title");
@@ -1182,16 +1183,20 @@ export function NewIssueDialog() {
         {/* Title */}
         <div className="px-4 pt-4 pb-2 shrink-0">
           <textarea
-            className="w-full text-lg font-semibold bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50"
+            className={cn(
+              "w-full text-lg font-semibold bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50",
+              isPresetTitle && "cursor-default",
+            )}
             placeholder="Task title"
             rows={1}
             value={title}
             onChange={(e) => {
+              if (isPresetTitle) return;
               setTitle(e.target.value);
               e.target.style.height = "auto";
               e.target.style.height = `${e.target.scrollHeight}px`;
             }}
-            readOnly={createIssue.isPending}
+            readOnly={createIssue.isPending || isPresetTitle}
             onKeyDown={(e) => {
               if (
                 e.key === "Enter" &&
@@ -1380,7 +1385,7 @@ export function NewIssueDialog() {
           </div>
         )}
 
-        {supportsAssigneeOverrides && (
+        {false && supportsAssigneeOverrides && !isCreateAgentPreset && (
           <div className="px-4 pb-2 shrink-0">
             <button
               className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"

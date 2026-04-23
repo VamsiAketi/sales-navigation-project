@@ -526,6 +526,7 @@ interface ApproverUser {
 interface Props {
   projectId: string;
   statuses: ProjectIssueStatus[];
+  readOnly?: boolean;
 }
 
 /* ── Approver picker for Human Approval rows ── */
@@ -746,12 +747,12 @@ function StatusRow({
               <Input
                 id={`wf-human-name-${status.id}`}
                 value={nameLocked ? status.name : localName}
-                readOnly={nameLocked}
-                disabled={nameLocked}
+              readOnly={nameLocked || workflowDisabled}
+              disabled={nameLocked || workflowDisabled}
                 title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
                 onChange={(e) => setLocalName(e.target.value)}
                 onBlur={() => {
-                  if (nameLocked) return;
+                if (nameLocked || workflowDisabled) return;
                   if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
                 }}
                 onKeyDown={(e) => {
@@ -763,9 +764,15 @@ function StatusRow({
             <div className="flex flex-wrap items-center gap-0.5 border-t border-border/40 px-3 py-2 dark:border-border/25">
               <button
                 type="button"
-                {...attributes}
-                {...listeners}
-                className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
+                {...(!workflowDisabled ? attributes : {})}
+                {...(!workflowDisabled ? listeners : {})}
+                disabled={workflowDisabled}
+                className={cn(
+                  "flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+                  workflowDisabled
+                    ? "cursor-not-allowed opacity-50"
+                    : "cursor-grab hover:bg-background/80 hover:text-foreground active:cursor-grabbing",
+                )}
                 aria-label="Drag to reorder columns"
               >
                 <GripVertical className="h-4 w-4" />
@@ -781,6 +788,7 @@ function StatusRow({
                 variant="ghost"
                 size="icon-sm"
                 className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                disabled={workflowDisabled}
                 onClick={() => onToggleActive(status.id, !status.isActive)}
                 title={status.isActive ? "Hide from Board" : "Show on Board"}
               >
@@ -791,7 +799,7 @@ function StatusRow({
                 variant="ghost"
                 size="icon-sm"
                 className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                disabled={deleteDisabled}
+                disabled={deleteDisabled || workflowDisabled}
                 onClick={() => onDelete(status.id)}
                 title={
                   deleteDisabled
@@ -878,12 +886,12 @@ function StatusRow({
             <Input
               id={`wf-col-name-${status.id}`}
               value={nameLocked ? status.name : localName}
-              readOnly={nameLocked}
-              disabled={nameLocked}
+              readOnly={nameLocked || workflowDisabled}
+              disabled={nameLocked || workflowDisabled}
               title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
               onChange={(e) => setLocalName(e.target.value)}
               onBlur={() => {
-                if (nameLocked) return;
+                if (nameLocked || workflowDisabled) return;
                 if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
               }}
               onKeyDown={(e) => {
@@ -895,25 +903,40 @@ function StatusRow({
           <div className="flex flex-wrap items-center gap-0.5 border-t border-border/40 px-3 py-2 dark:border-border/25">
             <button
               type="button"
-              {...attributes}
-              {...listeners}
-              className="flex h-9 w-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground active:cursor-grabbing"
+              {...(!workflowDisabled ? attributes : {})}
+              {...(!workflowDisabled ? listeners : {})}
+              disabled={workflowDisabled}
+              className={cn(
+                "flex h-9 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+                workflowDisabled
+                  ? "cursor-not-allowed opacity-50"
+                  : "cursor-grab hover:bg-background/80 hover:text-foreground active:cursor-grabbing",
+              )}
               aria-label="Drag to reorder columns"
             >
               <GripVertical className="h-4 w-4" />
             </button>
-            <ColorSwatchPicker
-              value={localColor}
-              onChange={(color) => {
-                setLocalColor(color);
-                onColorChange(status.id, color);
-              }}
-            />
+            {workflowDisabled ? (
+              <div
+                className="inline-flex h-6 w-6 rounded-full border-2 shrink-0 opacity-60"
+                style={{ borderColor: localColor, backgroundColor: `${localColor}55` }}
+                title="Color editing is disabled"
+              />
+            ) : (
+              <ColorSwatchPicker
+                value={localColor}
+                onChange={(color) => {
+                  setLocalColor(color);
+                  onColorChange(status.id, color);
+                }}
+              />
+            )}
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
               className="h-9 w-9 text-muted-foreground hover:text-foreground"
+              disabled={workflowDisabled}
               onClick={() => onToggleActive(status.id, !status.isActive)}
               title={status.isActive ? "Hide from Board" : "Show on Board"}
             >
@@ -924,7 +947,7 @@ function StatusRow({
               variant="ghost"
               size="icon-sm"
               className="h-9 w-9 text-muted-foreground hover:text-destructive"
-              disabled={deleteDisabled}
+              disabled={deleteDisabled || workflowDisabled}
               onClick={() => onDelete(status.id)}
               title={
                 deleteDisabled
@@ -1018,12 +1041,12 @@ function BacklogWorkflowStatusRow({
           <Input
             id={`wf-backlog-name-${status.id}`}
             value={nameLocked ? status.name : localName}
-            readOnly={nameLocked}
-            disabled={nameLocked}
+            readOnly={nameLocked || workflowDisabled}
+            disabled={nameLocked || workflowDisabled}
             title={nameLocked ? "Backlog and Done display names cannot be changed" : undefined}
             onChange={(e) => setLocalName(e.target.value)}
             onBlur={() => {
-              if (nameLocked) return;
+              if (nameLocked || workflowDisabled) return;
               if (localName.trim() && localName.trim() !== status.name) onRename(status.id, localName.trim());
             }}
             onKeyDown={(e) => {
@@ -1043,13 +1066,21 @@ function BacklogWorkflowStatusRow({
           >
             <Pin className="h-4 w-4" aria-hidden />
           </div>
-          <ColorSwatchPicker
-            value={localColor}
-            onChange={(color) => {
-              setLocalColor(color);
-              onColorChange(status.id, color);
-            }}
-          />
+          {workflowDisabled ? (
+            <div
+              className="inline-flex h-6 w-6 rounded-full border-2 shrink-0 opacity-60"
+              style={{ borderColor: localColor, backgroundColor: `${localColor}55` }}
+              title="Color editing is disabled"
+            />
+          ) : (
+            <ColorSwatchPicker
+              value={localColor}
+              onChange={(color) => {
+                setLocalColor(color);
+                onColorChange(status.id, color);
+              }}
+            />
+          )}
           <Button
             type="button"
             variant="ghost"
@@ -1065,7 +1096,7 @@ function BacklogWorkflowStatusRow({
             variant="ghost"
             size="icon-sm"
             className="h-9 w-9 text-muted-foreground hover:text-destructive"
-            disabled={deleteDisabled}
+            disabled={deleteDisabled || workflowDisabled}
             onClick={() => onDelete(status.id)}
             title={
               deleteDisabled
@@ -1110,7 +1141,7 @@ function BacklogWorkflowStatusRow({
 
 /* ── Main component ── */
 
-export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
+export function ProjectIssueStatusSettings({ projectId, statuses, readOnly = false }: Props) {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   const { pushToast } = useToast();
@@ -1195,6 +1226,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
   const [approvalSelectedIds, setApprovalSelectedIds] = useState<string[]>([]);
 
   function handleDragEnd(event: DragEndEvent) {
+    if (readOnly) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = orderedNonBacklogIds.indexOf(active.id as string);
@@ -1384,7 +1416,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
               setApprovalSearch("");
               setAddApprovalDialogOpen(true);
             }}
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || readOnly}
           >
             <UserCheck className="h-4 w-4" />
             Add approval step
@@ -1395,6 +1427,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
             variant="default"
             className="h-9 gap-2"
             onClick={() => setShowAddForm((v) => !v)}
+            disabled={readOnly}
           >
             <Plus className="h-4 w-4" />
             Add status
@@ -1404,7 +1437,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
 
       <CardContent className="space-y-4 py-6">
       {/* Workflow map: re-enable with <ProjectWorkflowMap statuses={statuses} /> and import from ./ProjectWorkflowMap */}
-      {showAddForm && (
+      {showAddForm && !readOnly && (
         <div className="rounded-lg border border-border/60 bg-muted/15 p-4 space-y-3 dark:bg-muted/10">
           <p className="text-xs font-semibold text-foreground">New status</p>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -1473,7 +1506,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
                 allUsers={allUsers}
                 agents={workflowAgents}
                 onWorkflowPatch={(id, patch) => updateMutation.mutate({ id, data: patch })}
-                workflowDisabled={updateMutation.isPending}
+                workflowDisabled={updateMutation.isPending || readOnly}
               />
             </div>
           ) : null}
@@ -1493,7 +1526,7 @@ export function ProjectIssueStatusSettings({ projectId, statuses }: Props) {
                 allUsers={allUsers}
                 agents={workflowAgents}
                 onWorkflowPatch={(id, patch) => updateMutation.mutate({ id, data: patch })}
-                workflowDisabled={updateMutation.isPending}
+                workflowDisabled={updateMutation.isPending || readOnly}
               />
             ))}
           </SortableContext>
