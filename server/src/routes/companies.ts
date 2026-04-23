@@ -76,9 +76,9 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     if (!actorAgent || actorAgent.companyId !== companyId) {
       throw forbidden("Agent key cannot access another company");
     }
-    if (actorAgent.role === "ceo") return;
-    const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, permissionKey);
-    if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
+    if (actorAgent.role !== "ceo") {
+      throw forbidden("Only CEO agents can manage company portability");
+    }
   }
 
   async function assertCompanySettingsPermission(
