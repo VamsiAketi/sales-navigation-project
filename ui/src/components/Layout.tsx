@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent} from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Settings, Info, Plus } from "lucide-react";
+import { BookOpen, ChevronsLeft, ChevronsRight, Moon, Sun, User, Info, Plus } from "lucide-react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
 import { CompanyRail } from "./CompanyRail";
 import { Sidebar } from "./Sidebar";
@@ -158,7 +158,7 @@ function SidebarFooterBar({
             </a>
           </Button>
           {tail}
-          <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "size-[34px] shrink-0")} asChild>
+          {/* <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "size-[34px] shrink-0")} asChild>
             <Link
               to={instanceSettingsTarget}
               aria-label="Instance settings"
@@ -167,7 +167,7 @@ function SidebarFooterBar({
             >
               <Settings className="h-4 w-4" />
             </Link>
-          </Button>
+          </Button> */}
         </div>
       </div>
     );
@@ -242,7 +242,7 @@ function SidebarFooterBar({
             </TooltipContent>
           </Tooltip>
         )}
-        <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "size-[34px] shrink-0")} asChild>
+        {/* <Button variant="ghost" size="icon-sm" className={cn(azureSidebarIcon.chrome, "size-[34px] shrink-0")} asChild>
           <Link
             to={instanceSettingsTarget}
             aria-label="Instance settings"
@@ -251,7 +251,7 @@ function SidebarFooterBar({
           >
             <Settings className="h-4 w-4" />
           </Link>
-        </Button>
+        </Button> */}
       </div>
     </div>
   );
@@ -644,7 +644,7 @@ export function Layout() {
                     {versionLabel}
                   </span>
                 )}
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
+                {/* <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
                   <Link
                     to={instanceSettingsTarget}
                     aria-label="Instance settings"
@@ -655,7 +655,7 @@ export function Layout() {
                   >
                     <Settings className="h-4 w-4" />
                   </Link>
-                </Button>
+                </Button> */}
                 <Button
                   type="button"
                   variant="ghost"
