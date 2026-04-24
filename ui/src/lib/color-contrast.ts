@@ -89,12 +89,11 @@ export function pickTextColorForSolidBg(hexColor: string): string {
 /**
  * Pick a readable text color for a semi-transparent pill background.
  *
- * Composites `rgba(hexColor, alpha)` over the current page background
- * (dark or light mode) and then picks the text color with better
- * WCAG contrast ratio.
+ * Returns the foreground design token so light/dark switches repaint
+ * immediately via CSS variable updates (without requiring a React rerender).
  */
 export function pickTextColorForPillBg(hexColor: string, alpha = 0.22): string {
   void hexColor;
   void alpha;
-  return isDarkMode() ? TEXT_LIGHT : TEXT_DARK;
+  return "hsl(var(--foreground))";
 }
