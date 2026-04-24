@@ -33,6 +33,7 @@ import { MentionAwareLinkNode, mentionAwareLinkNodeReplacement } from "../lib/me
 import { mentionDeletionPlugin } from "../lib/mention-deletion";
 import { projectStatusSwatchClass } from "../lib/status-colors";
 import { cn } from "../lib/utils";
+import { displayBrandSafe } from "../lib/displayBrandSafe";
 
 /* ---- Mention types ---- */
 
@@ -111,7 +112,7 @@ const CODE_BLOCK_LANGUAGES: Record<string, string> = {
   yaml: "YAML",
   yml: "YAML",
   // Used by onboarding to append agent-only bootstrap text; hidden in UI via CSS unless editing.
-  "paperclip-agent-only": "Paperclip (agent only)",
+  "paperclip-agent-only": displayBrandSafe("Paperclip (agent only)"),
 };
 
 const FALLBACK_CODE_BLOCK_DESCRIPTOR: CodeBlockEditorDescriptor = {

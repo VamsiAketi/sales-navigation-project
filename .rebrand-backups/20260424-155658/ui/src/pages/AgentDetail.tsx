@@ -107,7 +107,6 @@ import {
   arraysEqual,
   isReadOnlyUnmanagedSkillEntry,
 } from "../lib/agent-skills-state";
-import { displayBrandSafe } from "../lib/displayBrandSafe";
 
 const runStatusIcons: Record<string, { icon: typeof CheckCircle2; color: string }> = {
   succeeded: { icon: CheckCircle2, color: "text-green-600 dark:text-green-400" },
@@ -1989,7 +1988,7 @@ function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      {displayBrandSafe("Managed: Paperclip stores and serves the instructions bundle. External: you provide a path on disk where the instructions live.")}
+                      Managed: Paperclip stores and serves the instructions bundle. External: you provide a path on disk where the instructions live.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -2044,7 +2043,7 @@ function PromptsTab({
                       <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={4}>
-                      {displayBrandSafe("The absolute directory on disk where the instructions bundle lives. In managed mode this is set by Paperclip automatically.")}
+                      The absolute directory on disk where the instructions bundle lives. In managed mode this is set by Paperclip automatically.
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -2576,9 +2575,9 @@ function AgentSkillsTab({
   const unsupportedSkillMessage = useMemo(() => {
     if (skillSnapshot?.mode !== "unsupported") return null;
     if (agent.adapterType === "openclaw_gateway") {
-      return displayBrandSafe("Paperclip cannot manage OpenClaw skills here. Visit your OpenClaw instance to manage this agent's skills.");
+      return "Paperclip cannot manage OpenClaw skills here. Visit your OpenClaw instance to manage this agent's skills.";
     }
-    return displayBrandSafe("Paperclip cannot manage skills for this adapter yet. Manage them in the adapter directly.");
+    return "Paperclip cannot manage skills for this adapter yet. Manage them in the adapter directly.";
   }, [agent.adapterType, skillSnapshot?.mode]);
   const hasUnsavedChanges = !arraysEqual(skillDraft, lastSavedSkills);
   const saveStatusLabel = syncSkills.isPending
@@ -3752,21 +3751,21 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
         <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2">
           <div className="text-xs font-medium text-muted-foreground">Invocation</div>
           {typeof adapterInvokePayload.adapterType === "string" && (
-            <div className="text-xs"><span className="text-muted-foreground">Adapter: </span>{displayBrandSafe(adapterInvokePayload.adapterType)}</div>
+            <div className="text-xs"><span className="text-muted-foreground">Adapter: </span>{adapterInvokePayload.adapterType}</div>
           )}
           {typeof adapterInvokePayload.cwd === "string" && (
-            <div className="text-xs break-all"><span className="text-muted-foreground">Working dir: </span><span className="font-mono">{displayBrandSafe(adapterInvokePayload.cwd)}</span></div>
+            <div className="text-xs break-all"><span className="text-muted-foreground">Working dir: </span><span className="font-mono">{adapterInvokePayload.cwd}</span></div>
           )}
           {typeof adapterInvokePayload.command === "string" && (
             <div className="text-xs break-all">
               <span className="text-muted-foreground">Command: </span>
               <span className="font-mono">
-                {displayBrandSafe([
+                {[
                   adapterInvokePayload.command,
                   ...(Array.isArray(adapterInvokePayload.commandArgs)
                     ? adapterInvokePayload.commandArgs.filter((v): v is string => typeof v === "string")
                     : []),
-                ].join(" "))}
+                ].join(" ")}
               </span>
             </div>
           )}
@@ -3778,7 +3777,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
                   .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
                   .map((note, idx) => (
                     <li key={`${idx}-${note}`} className="text-xs break-all font-mono">
-                      {displayBrandSafe(note)}
+                      {note}
                     </li>
                   ))}
               </ul>
@@ -3789,8 +3788,8 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
               <div className="text-xs text-muted-foreground mb-1">Prompt</div>
               <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap">
                 {typeof adapterInvokePayload.prompt === "string"
-                  ? displayBrandSafe(redactPathText(adapterInvokePayload.prompt, censorUsernameInLogs))
-                  : displayBrandSafe(JSON.stringify(redactPathValue(adapterInvokePayload.prompt, censorUsernameInLogs), null, 2) ?? "")}
+                  ? redactPathText(adapterInvokePayload.prompt, censorUsernameInLogs)
+                  : JSON.stringify(redactPathValue(adapterInvokePayload.prompt, censorUsernameInLogs), null, 2)}
               </pre>
             </div>
           )}
@@ -3798,7 +3797,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
             <div>
               <div className="text-xs text-muted-foreground mb-1">Context</div>
               <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap">
-                {displayBrandSafe(JSON.stringify(redactPathValue(adapterInvokePayload.context, censorUsernameInLogs), null, 2) ?? "")}
+                {JSON.stringify(redactPathValue(adapterInvokePayload.context, censorUsernameInLogs), null, 2)}
               </pre>
             </div>
           )}
@@ -3806,7 +3805,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
             <div>
               <div className="text-xs text-muted-foreground mb-1">Environment</div>
               <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap font-mono">
-                {displayBrandSafe(formatEnvForDisplay(adapterInvokePayload.env, censorUsernameInLogs))}
+                {formatEnvForDisplay(adapterInvokePayload.env, censorUsernameInLogs)}
               </pre>
             </div>
           )}
@@ -3870,7 +3869,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
         />
         {logError && (
           <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-xs text-red-700 dark:text-red-300">
-            {displayBrandSafe(logError)}
+            {logError}
           </div>
         )}
         <div ref={logEndRef} />
@@ -3882,14 +3881,14 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
           {run.error && (
             <div className="text-xs text-red-600 dark:text-red-200">
               <span className="text-red-700 dark:text-red-300">Error: </span>
-              {displayBrandSafe(redactPathText(run.error, censorUsernameInLogs))}
+              {redactPathText(run.error, censorUsernameInLogs)}
             </div>
           )}
           {run.stderrExcerpt && run.stderrExcerpt.trim() && (
             <div>
               <div className="text-xs text-red-700 dark:text-red-300 mb-1">stderr excerpt</div>
               <pre className="bg-red-50 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap text-red-800 dark:text-red-100">
-                {displayBrandSafe(redactPathText(run.stderrExcerpt, censorUsernameInLogs))}
+                {redactPathText(run.stderrExcerpt, censorUsernameInLogs)}
               </pre>
             </div>
           )}
@@ -3897,7 +3896,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
             <div>
               <div className="text-xs text-red-700 dark:text-red-300 mb-1">adapter result JSON</div>
               <pre className="bg-red-50 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap text-red-800 dark:text-red-100">
-                {displayBrandSafe(JSON.stringify(redactPathValue(run.resultJson, censorUsernameInLogs), null, 2) ?? "")}
+                {JSON.stringify(redactPathValue(run.resultJson, censorUsernameInLogs), null, 2)}
               </pre>
             </div>
           )}
@@ -3905,7 +3904,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
             <div>
               <div className="text-xs text-red-700 dark:text-red-300 mb-1">stdout excerpt</div>
               <pre className="bg-red-50 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap text-red-800 dark:text-red-100">
-                {displayBrandSafe(redactPathText(run.stdoutExcerpt, censorUsernameInLogs))}
+                {redactPathText(run.stdoutExcerpt, censorUsernameInLogs)}
               </pre>
             </div>
           )}
@@ -3932,9 +3931,9 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
                   </span>
                   <span className={cn("break-all", color)}>
                     {evt.message
-                      ? displayBrandSafe(redactPathText(evt.message, censorUsernameInLogs))
+                      ? redactPathText(evt.message, censorUsernameInLogs)
                       : evt.payload
-                        ? displayBrandSafe(JSON.stringify(redactPathValue(evt.payload, censorUsernameInLogs)) ?? "")
+                        ? JSON.stringify(redactPathValue(evt.payload, censorUsernameInLogs))
                         : ""}
                   </span>
                 </div>

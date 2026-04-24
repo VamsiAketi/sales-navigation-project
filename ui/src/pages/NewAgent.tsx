@@ -29,6 +29,7 @@ import {
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { pickFirstCreatedAgentId, pickFirstCreatedOwnerMemberId } from "../lib/org-defaults";
+import { displayBrandSafe } from "../lib/displayBrandSafe";
 
 const SUPPORTED_ADVANCED_ADAPTER_TYPES = new Set<CreateConfigValues["adapterType"]>([
   "claude_local",
@@ -319,7 +320,7 @@ export function NewAgent() {
             <div>
               <h2 className="text-sm font-medium">Company skills</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Optional skills from the company library. Built-in Paperclip runtime skills are added automatically.
+                {displayBrandSafe("Optional skills from the company library. Built-in Paperclip runtime skills are added automatically.")}
               </p>
             </div>
             {availableSkills.length === 0 ? (
