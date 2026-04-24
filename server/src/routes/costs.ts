@@ -280,7 +280,7 @@ export function costRoutes(db: Db) {
       const viaProject = await access.principalHasAnyProjectPermission(
         companyId,
         projectAuthActorFromRequest(req),
-        "budget:company_update",
+        "project:edit Budget",
       );
       if (!manage && !viaProject) {
         throw forbidden("Permission denied");

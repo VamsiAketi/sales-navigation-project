@@ -94,16 +94,13 @@ function pickPresetIdForKeys(keys: Set<ProjectPermissionKey>): string {
 }
 
 const PROJECT_READ_DEPENDENCIES: Partial<Record<ProjectPermissionKey, ProjectPermissionKey>> = {
-  "project:settings": "project:read",
-  "project:workspaces": "project:read",
-  "project:statuses": "project:read",
+  "project:edit tickets": "project:read",
+  "project:hide tickets": "project:read",
+  "project:edit configuration": "project:read",
+  "project:edit Workflow": "project:read",
+  "project:edit Budget": "project:read",
   "project:archive": "project:read",
-  "project:delete": "project:read",
-  "issue:read": "project:read",
-  "issue:write": "project:read",
   "members:manage": "project:read",
-  "budget:company_update": "project:read",
-  "costs:read": "project:read",
 };
 
 function normalizeProjectPermissionSelection(

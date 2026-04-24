@@ -1,7 +1,25 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Check, Loader2, UserRound, Users } from "lucide-react";
+import {
+  Activity,
+  ArrowUpDown,
+  Boxes,
+  Bot,
+  Check,
+  DollarSign,
+  FolderKanban,
+  History,
+  Inbox,
+  LayoutDashboard,
+  Loader2,
+  Network,
+  Settings2,
+  Shield,
+  Target,
+  UserRound,
+  Users
+} from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
@@ -32,48 +50,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
+type TeamSortKey = "displayName" | "principal" | "type" | "role" | "reportsTo" | "status";
+type TeamTypeFilter = "human" | "agent";
 
-const HUMAN_ROLE_OPTIONS = [
-  "owner",
-  "Director",
-  "CEO",
-  "COO",
-  "CTO",
-  "CFO",
-  "Chief of Staff",
-  "VP Sales",
-  "Sales",
-  "VP Marketing",
-  "Marketing",
-  "Growth",
-  "Partnerships",
-  "Customer Success",
-  "Account Management",
-  "Recruiting",
-  "HR",
-  "Legal",
-  "Finance",
-  "IT",
-  "Procurement",
-  "VP Engineering",
-  "Head of Engineering",
-  "Engineering Manager",
-  "Product Manager",
-  "Product Ops",
-  "Designer",
-  "Operations",
-  "SRE",
-  "DevOps",
-  "QA",
-  "Security",
-  "Data",
-  "Support"
-] as const;
+const HUMAN_ROLE_OPTIONS = ["owner", "Admin", "Manager", "Contributor", "Reader"] as const;
 
 const AGENT_ROLE_OPTIONS = [
   "SREEngineer",
@@ -93,7 +78,7 @@ const AGENT_ROLE_OPTIONS = [
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
-const DEFAULT_INVITE_ROLE = "IT";
+const DEFAULT_INVITE_ROLE = "Manager";
 const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "agents:create": "agents.read",
   "agents.edit": "agents.read",
@@ -126,8 +111,89 @@ function normalizePermissionSelection(keys: PermissionKey[]): PermissionKey[] {
 function defaultPermissionsForRole(role: string | null | undefined): PermissionKey[] {
   const normalized = (role ?? "").trim().toLowerCase();
   if (normalized === "owner") return [...ALL_PERMISSION_KEYS];
-  return normalizePermissionSelection(ALL_PERMISSION_KEYS.filter((key) => key !== "users:invite"));
+  const template = COMPANY_ROLE_PERMISSION_PRESETS[normalized];
+  if (!template) return normalizePermissionSelection(COMPANY_ROLE_PERMISSION_PRESETS.manager ?? []);
+  return normalizePermissionSelection(template);
 }
+
+const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
+  owner: [...ALL_PERMISSION_KEYS],
+  admin: [
+    "agents.read",
+    "users:invite",
+    "users:manage_permissions",
+    "tasks:assign",
+    "tasks:assign_scope",
+    "joins:approve",
+    "companies:create",
+    "command_center.read",
+    "hybrid_org.read",
+    "hybrid_org.edit",
+    "hybrid_org.import",
+    "hybrid_org.export",
+    "skills.read",
+    "goals.read",
+    "costs.read",
+    "attention_queue.read",
+    "teams.read",
+    "teams.edit",
+    "audit_logs.read",
+    "company_settings.read",
+    "company_settings.general",
+    "company_settings.appearance",
+    "company_settings.security_access",
+    "company_settings.hiring",
+    "company_settings.invites",
+    "company_settings.secrets",
+    "company_settings.packages",
+  ],
+  manager: [
+    "agents.read",
+    "agents.edit",
+    "agents:create",
+    "tasks:assign",
+    "tasks:assign_scope",
+    "joins:approve",
+    "command_center.read",
+    "hybrid_org.read",
+    "hybrid_org.import",
+    "hybrid_org.export",
+    "skills.read",
+    "skills.edit",
+    "goals.read",
+    "goals.write",
+    "costs.read",
+    "attention_queue.read",
+    "teams.read",
+    "teams.edit",
+    "company_settings.read",
+  ],
+  contributor: [
+    "agents.read",
+    "agents.edit",
+    "tasks:assign",
+    "command_center.read",
+    "hybrid_org.read",
+    "skills.read",
+    "skills.edit",
+    "goals.read",
+    "goals.write",
+    "attention_queue.read",
+    "teams.read",
+  ],
+  reader: [
+    "agents.read",
+    "command_center.read",
+    "hybrid_org.read",
+    "skills.read",
+    "goals.read",
+    "costs.read",
+    "attention_queue.read",
+    "teams.read",
+    "audit_logs.read",
+    "company_settings.read",
+  ],
+};
 
 const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
   "agents.read": {
@@ -352,6 +418,37 @@ function HumanPermissionsPanel({
     onKeysChange(normalizePermissionSelection(ALL_PERMISSION_KEYS.filter((k) => next.has(k))));
   };
 
+  const categoryIcon = (categoryId: string) => {
+    switch (categoryId) {
+      case "team":
+        return { icon: Users, iconClassName: azureSidebarIcon.team };
+      case "agents":
+        return { icon: Bot, iconClassName: azureSidebarIcon.agents };
+      case "work":
+        return { icon: FolderKanban, iconClassName: azureSidebarIcon.tasks };
+      case "command_center":
+        return { icon: LayoutDashboard, iconClassName: azureSidebarIcon.dashboard };
+      case "hybrid_org":
+        return { icon: Network, iconClassName: azureSidebarIcon.org };
+      case "skills":
+        return { icon: Boxes, iconClassName: azureSidebarIcon.skills };
+      case "goals":
+        return { icon: Target, iconClassName: azureSidebarIcon.goals };
+      case "costs":
+        return { icon: DollarSign, iconClassName: azureSidebarIcon.costs };
+      case "attention_queue":
+        return { icon: Inbox, iconClassName: azureSidebarIcon.inbox };
+      case "audit_logs":
+        return { icon: History, iconClassName: azureSidebarIcon.audit };
+      case "company":
+        return { icon: Users, iconClassName: azureSidebarIcon.team };
+      case "company_settings":
+        return { icon: Settings2, iconClassName: azureSidebarIcon.settings };
+      default:
+        return { icon: Shield, iconClassName: "text-muted-foreground" };
+    }
+  };
+
   return (
     <div className="space-y-2">
       {intro ? (
@@ -365,7 +462,13 @@ function HumanPermissionsPanel({
           <section key={cat.id} className="rounded-lg border border-border/50 bg-background/80 px-2.5 py-2">
             <header className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{cat.title}</h3>
+                <h3 className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {(() => {
+                    const { icon: Icon, iconClassName } = categoryIcon(cat.id);
+                    return <Icon className={cn("size-3.5", iconClassName)} aria-hidden />;
+                  })()}
+                  {cat.title}
+                </h3>
               </div>
               <span className="rounded-full border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {cat.keys.length}
@@ -598,21 +701,14 @@ export function CompanyDirectory() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
 
-  const routeTab = searchParams.get("tab");
   const requestedHumanMemberId = searchParams.get("memberId")?.trim() || null;
-  const initialTab: "users" | "agents" =
-    routeTab === "agents" || routeTab === "agent"
-      ? "agents"
-      : routeTab === "users" || routeTab === "user" || routeTab === "humans" || routeTab === "human"
-        ? "users"
-        : "users";
-
-  const [activeTab, setActiveTab] = useState<"users" | "agents">(initialTab);
   const [search, setSearch] = useState("");
+  const [teamSortKey, setTeamSortKey] = useState<TeamSortKey>("displayName");
+  const [teamSortDirection, setTeamSortDirection] = useState<"asc" | "desc">("asc");
+  const [teamTypeFilter, setTeamTypeFilter] = useState<TeamTypeFilter>("human");
   const [selectedHumanMemberId, setSelectedHumanMemberId] = useState<string | null>(
     requestedHumanMemberId,
   );
-  const [selectedAgentMemberId, setSelectedAgentMemberId] = useState<string | null>(null);
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
   const [memberManagerDrafts, setMemberManagerDrafts] = useState<Record<string, string>>({});
   const [agentReportsDrafts, setAgentReportsDrafts] = useState<Record<string, string>>({});
@@ -626,6 +722,7 @@ export function CompanyDirectory() {
   const [humanRolePermissions, setHumanRolePermissions] = useState<Record<string, PermissionKey[]>>({});
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [humanDetailsDialogOpen, setHumanDetailsDialogOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [offboardingIssueReassignDrafts, setOffboardingIssueReassignDrafts] = useState<Record<string, string>>({});
@@ -643,6 +740,7 @@ export function CompanyDirectory() {
     temporaryPassword: string;
   } | null>(null);
   const [humanInviteCredentialsCopied, setHumanInviteCredentialsCopied] = useState(false);
+  const normalizedManagerRoleByCompanyRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!requestedHumanMemberId) return;
@@ -679,7 +777,7 @@ export function CompanyDirectory() {
   useEffect(() => {
     if (!selectedCompanyId) return;
     const prefs = readCompanyRolePrefs(selectedCompanyId);
-    setCustomHumanRoles(prefs.human);
+    setCustomHumanRoles([]);
     setCustomAgentRoles(prefs.agent);
     setHumanRolePermissions(readHumanRolePermissions(selectedCompanyId));
   }, [selectedCompanyId]);
@@ -734,6 +832,64 @@ export function CompanyDirectory() {
     });
   }, [activeAgentMembers, search]);
 
+  function compareText(a: string, b: string) {
+    return a.localeCompare(b, undefined, { sensitivity: "base" });
+  }
+
+  function getHumanSortValue(member: CompanyMember, key: TeamSortKey): string {
+    if (key === "displayName") return memberDisplayName(member);
+    if (key === "principal") return member.user?.email ?? member.principalId;
+    if (key === "type") return "Human";
+    if (key === "role") return member.membershipRole ?? "";
+    if (key === "reportsTo") return memberManagerDrafts[member.id] ?? member.reportsToMembershipId ?? "";
+    return member.status ?? "";
+  }
+
+  function getAgentSortValue(member: CompanyMember, key: TeamSortKey): string {
+    if (key === "displayName") return memberDisplayName(member);
+    if (key === "principal") return member.user?.email ?? "";
+    if (key === "type") return "Agent";
+    if (key === "role") return memberRoleDrafts[member.id] ?? member.membershipRole ?? "";
+    if (key === "reportsTo") return agentReportsDrafts[member.id] ?? "";
+    return member.status ?? "active";
+  }
+
+  const sortedHumanMembers = useMemo(() => {
+    const direction = teamSortDirection === "asc" ? 1 : -1;
+    return [...filteredHumanMembers].sort((a, b) =>
+      compareText(getHumanSortValue(a, teamSortKey), getHumanSortValue(b, teamSortKey)) * direction,
+    );
+  }, [filteredHumanMembers, teamSortDirection, teamSortKey, memberManagerDrafts]);
+
+  const sortedAgentMembers = useMemo(() => {
+    const direction = teamSortDirection === "asc" ? 1 : -1;
+    return [...filteredAgentMembers].sort((a, b) =>
+      compareText(getAgentSortValue(a, teamSortKey), getAgentSortValue(b, teamSortKey)) * direction,
+    );
+  }, [filteredAgentMembers, teamSortDirection, teamSortKey, memberRoleDrafts, agentReportsDrafts]);
+
+  const toggleTeamSort = (key: TeamSortKey) => {
+    if (teamSortKey === key) {
+      setTeamSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setTeamSortKey(key);
+    setTeamSortDirection("asc");
+  };
+
+  const hasActiveTeamFilters =
+    search.trim().length > 0 ||
+    teamSortKey !== "displayName" ||
+    teamSortDirection !== "asc";
+
+  const visibleTeamRows = useMemo(
+    () =>
+      teamTypeFilter === "human"
+        ? sortedHumanMembers.map((member) => ({ kind: "human" as const, member }))
+        : sortedAgentMembers.map((member) => ({ kind: "agent" as const, member })),
+    [teamTypeFilter, sortedHumanMembers, sortedAgentMembers],
+  );
+
   const persistedHumanRoles = useMemo(
     () =>
       Array.from(
@@ -759,8 +915,8 @@ export function CompanyDirectory() {
   );
 
   const manageHumanRoleOptions = useMemo(
-    () => Array.from(new Set([...HUMAN_ROLE_OPTIONS, ...persistedHumanRoles, ...customHumanRoles].map(normalizeRoleLabel))),
-    [customHumanRoles, persistedHumanRoles],
+    () => [...HUMAN_ROLE_OPTIONS] as string[],
+    [],
   );
   const inviteHumanRoleOptions = useMemo(
     () => manageHumanRoleOptions.filter((role) => role.toLowerCase() !== "owner"),
@@ -789,13 +945,9 @@ export function CompanyDirectory() {
   };
 
   const selectedHumanMember =
-    activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ??
-    activeHumanMembers.find((m) => m.status === "active") ??
-    activeHumanMembers[0] ??
-    null;
-  const selectedAgentMember =
-    activeAgentMembers.find((m) => m.id === selectedAgentMemberId) ?? activeAgentMembers[0] ?? null;
+    selectedHumanMemberId ? activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ?? null : null;
   const selectedHumanPrincipalId = selectedHumanMember?.principalId ?? null;
+
   const offboardingReassignOptions = useMemo(
     () =>
       activeHumanMembers
@@ -932,6 +1084,12 @@ export function CompanyDirectory() {
     return map;
   }, [companyMembers]);
 
+  const memberByPrincipalId = useMemo(() => {
+    const map = new Map<string, CompanyMember>();
+    for (const m of companyMembers ?? []) map.set(m.principalId, m);
+    return map;
+  }, [companyMembers]);
+
   const memberPrincipalTypeById = useMemo(() => {
     const map = new Map<string, CompanyMember["principalType"]>();
     for (const m of companyMembers ?? []) map.set(m.id, m.principalType);
@@ -969,13 +1127,6 @@ export function CompanyDirectory() {
     return invalid;
   }, [selectedHumanMember?.id, childrenByMemberId]);
 
-  const invalidManagersForSelectedAgent = useMemo(() => {
-    if (!selectedAgentMember) return new Set<string>();
-    const invalid = descendantsOf(selectedAgentMember.principalId, agentChildrenByPrincipalId);
-    invalid.add(selectedAgentMember.principalId);
-    return invalid;
-  }, [selectedAgentMember?.principalId, agentChildrenByPrincipalId]);
-
   useEffect(() => {
     setBreadcrumbs([
       { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
@@ -986,18 +1137,10 @@ export function CompanyDirectory() {
   useEffect(() => {
     if (activeHumanMembers.length === 0) {
       setSelectedHumanMemberId(null);
-    } else if (!selectedHumanMemberId || !activeHumanMembers.some((m) => m.id === selectedHumanMemberId)) {
-      setSelectedHumanMemberId(activeHumanMembers[0]!.id);
+    } else if (selectedHumanMemberId && !activeHumanMembers.some((m) => m.id === selectedHumanMemberId)) {
+      setSelectedHumanMemberId(null);
     }
   }, [activeHumanMembers, selectedHumanMemberId]);
-
-  useEffect(() => {
-    if (activeAgentMembers.length === 0) {
-      setSelectedAgentMemberId(null);
-    } else if (!selectedAgentMemberId || !activeAgentMembers.some((m) => m.id === selectedAgentMemberId)) {
-      setSelectedAgentMemberId(activeAgentMembers[0]!.id);
-    }
-  }, [activeAgentMembers, selectedAgentMemberId]);
 
   useEffect(() => {
     const nextRoleDrafts: Record<string, string> = {};
@@ -1033,6 +1176,67 @@ export function CompanyDirectory() {
       queryKey: queryKeys.agents.list(selectedCompanyId!)
     });
   };
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    if (normalizedManagerRoleByCompanyRef.current[selectedCompanyId]) return;
+
+    const membersToConvert = activeHumanMembers.filter((member) => {
+      const role = normalizeRoleLabel(member.membershipRole ?? "");
+      return role.toLowerCase() !== "owner" && role.toLowerCase() !== "manager";
+    });
+
+    if (membersToConvert.length === 0) {
+      normalizedManagerRoleByCompanyRef.current[selectedCompanyId] = true;
+      return;
+    }
+
+    let cancelled = false;
+    const managerGrants = permissionsForRole("Manager").map((permissionKey) => ({
+      permissionKey,
+      scope: null as Record<string, unknown> | null,
+    }));
+
+    (async () => {
+      try {
+        await Promise.all(
+          membersToConvert.map((member) =>
+            accessApi.updateMemberOrgConfig(selectedCompanyId, member.id, {
+              membershipRole: "Manager",
+              reportsToMembershipId: member.reportsToMembershipId ?? null,
+            }),
+          ),
+        );
+        await Promise.all(
+          membersToConvert.map((member) =>
+            accessApi.updateMemberPermissions(selectedCompanyId, member.id, managerGrants),
+          ),
+        );
+        if (!cancelled) {
+          await invalidateMembers();
+          pushToast({
+            title: "Roles updated",
+            body: "All non-owner users were converted to Manager.",
+            tone: "success",
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          pushToast({
+            title: "Role update failed",
+            body: apiErrorMessage(error),
+            tone: "error",
+          });
+        }
+      } finally {
+        normalizedManagerRoleByCompanyRef.current[selectedCompanyId] = true;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompanyId, activeHumanMembers]);
 
   const humanInviteMutation = useMutation({
     mutationFn: () =>
@@ -1169,17 +1373,7 @@ export function CompanyDirectory() {
     return roleDraft !== roleNow || mgrDraft !== mgrNow;
   }
 
-  function computeAgentDirty(member: CompanyMember | null) {
-    if (!member) return false;
-    const roleDraft = (memberRoleDrafts[member.id] ?? "").trim();
-    const reportsDraft = (agentReportsDrafts[member.id] ?? "").trim();
-    const roleNow = (member.membershipRole ?? "").trim();
-    const reportsNow = (agentByPrincipalId.get(member.principalId)?.reportsTo ?? "").trim();
-    return roleDraft !== roleNow || reportsDraft !== reportsNow;
-  }
-
   const humanIsDirty = computeDirty(selectedHumanMember);
-  const agentIsDirty = computeAgentDirty(selectedAgentMember);
   const selectedHumanManagerId = selectedHumanMember
     ? (memberManagerDrafts[selectedHumanMember.id] ?? "").trim()
     : "";
@@ -1194,6 +1388,85 @@ export function CompanyDirectory() {
     if (!serverMember) return;
     setMemberRoleDrafts((prev) => ({ ...prev, [memberId]: serverMember.membershipRole ?? "" }));
     setMemberManagerDrafts((prev) => ({ ...prev, [memberId]: serverMember.reportsToMembershipId ?? "" }));
+  }
+
+  function saveHumanRowEdits(member: CompanyMember, nextRole: string, nextManagerId: string) {
+    if (!selectedCompanyId) return;
+    const managerPrincipalType = nextManagerId ? memberPrincipalTypeById.get(nextManagerId) : null;
+    if (nextManagerId && managerPrincipalType === "agent") {
+      setMemberSaveState(member.id, "error");
+      setMemberSaveErrors((prev) => ({
+        ...prev,
+        [member.id]: "Humans can only report to another human.",
+      }));
+      return;
+    }
+
+    setMemberSaveState(member.id, "saving");
+    humanSaveMutation.mutate(
+      {
+        memberId: member.id,
+        membershipRole: nextRole.trim() || null,
+        reportsToMembershipId: nextManagerId.trim() || null,
+      },
+      {
+        onSuccess: () => {
+          setMemberSaveState(member.id, "saved");
+          setMemberSaveErrors((prev) => {
+            if (!prev[member.id]) return prev;
+            const { [member.id]: _drop, ...rest } = prev;
+            return rest;
+          });
+          humanPermissionMutation.mutate({
+            memberId: member.id,
+            grants: permissionsForRole(nextRole).map((permissionKey) => ({
+              permissionKey,
+              scope: null,
+            })),
+          });
+          window.setTimeout(() => setMemberSaveState(member.id, "idle"), 800);
+        },
+        onError: (err) => {
+          setMemberSaveState(member.id, "error");
+          setMemberSaveErrors((prev) => ({ ...prev, [member.id]: apiErrorMessage(err) }));
+          revertDraftsToServer(member.id);
+        },
+      },
+    );
+  }
+
+  function saveAgentRowEdits(member: CompanyMember, nextRole: string, nextReportsTo: string) {
+    if (!selectedCompanyId) return;
+    setMemberSaveState(member.id, "saving");
+    agentSaveMutation.mutate(
+      {
+        memberId: member.id,
+        principalId: member.principalId,
+        membershipRole: nextRole.trim() || null,
+        reportsTo: nextReportsTo.trim() || null,
+      },
+      {
+        onSuccess: () => {
+          setMemberSaveState(member.id, "saved");
+          setMemberSaveErrors((prev) => {
+            if (!prev[member.id]) return prev;
+            const { [member.id]: _drop, ...rest } = prev;
+            return rest;
+          });
+          window.setTimeout(() => setMemberSaveState(member.id, "idle"), 800);
+        },
+        onError: (err) => {
+          setMemberSaveState(member.id, "error");
+          setMemberSaveErrors((prev) => ({ ...prev, [member.id]: apiErrorMessage(err) }));
+          const serverMember = memberById.get(member.id) ?? null;
+          setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: serverMember?.membershipRole ?? "" }));
+          setAgentReportsDrafts((prev) => ({
+            ...prev,
+            [member.id]: agentByPrincipalId.get(member.principalId)?.reportsTo ?? "",
+          }));
+        },
+      },
+    );
   }
 
   // Autosave (debounced) for selected human
@@ -1268,60 +1541,6 @@ export function CompanyDirectory() {
     });
   }, [selectedCompanyId, selectedHumanMember?.id, selectedHumanRoleDraft]);
 
-  // Autosave (debounced) for selected agent
-  useEffect(() => {
-    if (!selectedCompanyId || !selectedAgentMember) return;
-    if (!agentIsDirty) {
-      if (getMemberSaveState(selectedAgentMember.id) !== "saving") setMemberSaveState(selectedAgentMember.id, "idle");
-      return;
-    }
-
-    setMemberSaveState(selectedAgentMember.id, agentSaveMutation.isPending ? "saving" : "dirty");
-
-    const handle = window.setTimeout(() => {
-      setMemberSaveState(selectedAgentMember.id, "saving");
-      agentSaveMutation.mutate(
-        {
-          memberId: selectedAgentMember.id,
-          principalId: selectedAgentMember.principalId,
-          membershipRole: (memberRoleDrafts[selectedAgentMember.id] ?? "").trim() || null,
-          reportsTo: (agentReportsDrafts[selectedAgentMember.id] ?? "").trim() || null
-        },
-        {
-          onSuccess: () => {
-            setMemberSaveState(selectedAgentMember.id, "saved");
-            setMemberSaveErrors((prev) => {
-              if (!prev[selectedAgentMember.id]) return prev;
-              const { [selectedAgentMember.id]: _drop, ...rest } = prev;
-              return rest;
-            });
-            window.setTimeout(() => {
-              if (!computeAgentDirty(selectedAgentMember)) setMemberSaveState(selectedAgentMember.id, "idle");
-            }, 900);
-          },
-          onError: (err) => {
-            setMemberSaveState(selectedAgentMember.id, "error");
-            setMemberSaveErrors((prev) => ({ ...prev, [selectedAgentMember.id]: apiErrorMessage(err) }));
-            const serverMember = memberById.get(selectedAgentMember.id) ?? null;
-            setMemberRoleDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: serverMember?.membershipRole ?? "" }));
-            setAgentReportsDrafts((prev) => ({
-              ...prev,
-              [selectedAgentMember.id]: agentByPrincipalId.get(selectedAgentMember.principalId)?.reportsTo ?? ""
-            }));
-          }
-        }
-      );
-    }, 650);
-
-    return () => window.clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    selectedCompanyId,
-    selectedAgentMember?.id,
-    memberRoleDrafts[selectedAgentMember?.id ?? ""],
-    agentReportsDrafts[selectedAgentMember?.id ?? ""]
-  ]);
-
   function SaveStatusPill({ state }: { state: SaveState }) {
     if (state === "idle") return null;
     const label =
@@ -1392,40 +1611,7 @@ export function CompanyDirectory() {
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-3xl border border-sidebar-border/80 bg-sidebar/55 px-6 pb-6 pt-8 shadow-sm">
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted">
-              <Users className="size-7 text-muted-foreground" aria-hidden />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">Teams</h1>
-              <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Manage humans and AI agents in one place. Edits save automatically.
-              </p>
-              {canReadTeams && !membersPermissionDenied && !membersLoading ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                    <UserRound className="size-3.5 opacity-90" aria-hidden />
-                    {activeHumanMembers.length} humans
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
-                    <Bot className="size-3.5 opacity-90" aria-hidden />
-                    {activeAgentMembers.length} agents
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:max-w-md xl:max-w-xl">
-          <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-            {canEditTeams ? (
-              <DialogTrigger asChild>
-                <Button type="button" className="rounded-full shadow-sm" variant="default">
-                  Invite Human
-                </Button>
-              </DialogTrigger>
-            ) : null}
+      <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogContent className="flex max-h-[min(92dvh,44rem)] w-full max-w-2xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
               <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
                 <DialogHeader>
@@ -1596,29 +1782,7 @@ export function CompanyDirectory() {
                 </div>
               </div>
             </DialogContent>
-          </Dialog>
-          {canEditTeams ? (
-            <Button
-              type="button"
-              variant="secondary"
-              className="rounded-full border-border/60"
-              onClick={() => setRolesDialogOpen(true)}
-            >
-              Manage roles
-            </Button>
-          ) : null}
-
-          <div className="w-full min-w-0 sm:max-w-xs sm:flex-1 lg:max-w-sm">
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email, role…"
-              className="h-10 rounded-2xl border-border/60 bg-background/80 shadow-inner"
-            />
-          </div>
-          </div>
-        </div>
-      </div>
+      </Dialog>
 
       {rolesDialogOpen ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
@@ -1627,7 +1791,7 @@ export function CompanyDirectory() {
             onClick={() => setRolesDialogOpen(false)}
             aria-hidden
           />
-          <div className="relative z-[81] flex h-[88vh] w-[92vw] max-h-[88vh] max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl">
+          <div className="relative z-[81] flex h-[84vh] w-[78vw] max-h-[84vh] max-w-[1100px] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl">
             <div className="shrink-0 border-b border-border/60 px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
@@ -1815,7 +1979,7 @@ export function CompanyDirectory() {
         </div>
       ) : null}
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "agents")} className="gap-4">
+      <div className="space-y-4">
         {!canReadTeams ? (
           <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
             <div className="font-medium text-foreground">You do not have permission to view Teams.</div>
@@ -1839,381 +2003,463 @@ export function CompanyDirectory() {
         ) : null}
         {canReadTeams && !membersPermissionDenied && !membersError ? (
           <>
-        <TabsList className="h-auto w-full justify-start gap-1 rounded-full border border-sidebar-border bg-sidebar/85 p-1.5 sm:w-auto">
-          <TabsTrigger value="users" className="gap-2 rounded-full px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
-            <UserRound className="size-4 text-muted-foreground opacity-90" aria-hidden />
-            Humans{" "}
-            <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeHumanMembers.length})`}</span>
-          </TabsTrigger>
-          <TabsTrigger value="agents" className="gap-2 rounded-full px-4 py-2 font-medium data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground data-[state=active]:shadow-sm">
-            <Bot className="size-4 text-muted-foreground opacity-90" aria-hidden />
-            Agents{" "}
-            <span className="text-xs text-muted-foreground">{membersLoading ? "" : `(${activeAgentMembers.length})`}</span>
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="users" className="mt-4">
-          <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/45 shadow-sm">
-              <div className="border-b border-sidebar-border/70 bg-sidebar/40 px-4 py-3">
-                <div className="text-sm font-semibold text-foreground">Humans</div>
-                <div className="text-xs text-muted-foreground">
-                  {membersLoading ? "Loading…" : `${filteredHumanMembers.length} shown`}
+        <div className="mt-4">
+          <div className="grid items-stretch gap-4">
+            <div className="flex h-[72vh] min-h-[36rem] flex-col overflow-hidden rounded-md border border-border/70 bg-background shadow-sm">
+              <div className="z-30 border-b border-border/70 bg-muted/35 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Users className="size-4 text-muted-foreground" aria-hidden />
+                      Teams
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      Manage humans and AI agents in one place. Edits save automatically.
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTeamTypeFilter("human")}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          teamTypeFilter === "human"
+                            ? "border-primary/50 bg-primary/10 text-primary"
+                            : "border-border bg-background text-foreground hover:bg-muted",
+                        )}
+                      >
+                        <UserRound className="size-3.5 text-muted-foreground" aria-hidden />
+                        {activeHumanMembers.length} humans
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTeamTypeFilter("agent")}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          teamTypeFilter === "agent"
+                            ? "border-primary/50 bg-primary/10 text-primary"
+                            : "border-border bg-background text-foreground hover:bg-muted",
+                        )}
+                      >
+                        <Bot className="size-3.5 text-muted-foreground" aria-hidden />
+                        {activeAgentMembers.length} agent{activeAgentMembers.length === 1 ? "" : "s"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                    <div className="w-full min-w-0 sm:w-64">
+                      <Input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search name, email, role..."
+                        className="h-9 rounded-lg border-border/60 bg-background"
+                      />
+                    </div>
+                    {canEditTeams ? (
+                      <Button
+                        type="button"
+                        className="h-9 rounded-md border border-indigo-500 bg-indigo-500 px-4 text-white hover:border-indigo-600 hover:bg-indigo-600"
+                        variant="default"
+                        onClick={() => setInviteDialogOpen(true)}
+                      >
+                        Invite Human
+                      </Button>
+                    ) : null}
+                    {canEditTeams ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-9 rounded-md border border-border/70 bg-background px-4 text-foreground hover:bg-muted"
+                        onClick={() => setRolesDialogOpen(true)}
+                      >
+                        Manage roles
+                      </Button>
+                    ) : null}
+                    {hasActiveTeamFilters ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-9 rounded-full px-3 text-xs"
+                        onClick={() => {
+                          setSearch("");
+                          setTeamSortKey("displayName");
+                          setTeamSortDirection("asc");
+                          setTeamTypeFilter("human");
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-              <div className="flex-1 space-y-1 overflow-y-auto p-2">
-                {!membersLoading && filteredHumanMembers.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
+              <div className="flex-1 overflow-y-auto">
+                <div
+                  className={cn(
+                    "sticky top-0 z-20 grid gap-2 border-b border-border/70 bg-background px-3 py-2 text-xs font-bold text-foreground/90",
+                    teamTypeFilter === "agent"
+                      ? "grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)]"
+                      : "grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)_minmax(13rem,1.2fr)]",
+                  )}
+                >
+                <button
+                  type="button"
+                  onClick={() => toggleTeamSort("displayName")}
+                  className={cn(
+                    "inline-flex w-full justify-self-start items-center justify-start gap-1 rounded-md py-1 text-left transition-colors hover:text-foreground",
+                    teamSortKey === "displayName" && "text-primary",
+                  )}
+                >
+                  Name <ArrowUpDown className="size-3" aria-hidden />
+                </button>
+                {teamTypeFilter === "agent" ? null : (
+                  <button
+                    type="button"
+                    onClick={() => toggleTeamSort("principal")}
+                    className={cn(
+                      "inline-flex w-full justify-self-start items-center justify-start gap-1 rounded-md py-1 text-left transition-colors hover:text-foreground",
+                      teamSortKey === "principal" && "text-primary",
+                    )}
+                  >
+                    Email <ArrowUpDown className="size-3" aria-hidden />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleTeamSort("role")}
+                  className={cn(
+                    "inline-flex w-full justify-self-start items-center justify-start gap-1 rounded-md py-1 text-left transition-colors hover:text-foreground",
+                    teamSortKey === "role" && "text-primary",
+                  )}
+                >
+                  Role <ArrowUpDown className="size-3" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleTeamSort("reportsTo")}
+                  className={cn(
+                    "inline-flex w-full justify-self-start items-center justify-start gap-1 rounded-md py-1 text-left transition-colors hover:text-foreground",
+                    teamSortKey === "reportsTo" && "text-primary",
+                  )}
+                >
+                  Reports to <ArrowUpDown className="size-3" aria-hidden />
+                </button>
+                {teamTypeFilter === "agent" ? null : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => toggleTeamSort("status")}
+                      className={cn(
+                        "inline-flex w-full justify-self-start items-center justify-start gap-1 rounded-md py-1 text-left transition-colors hover:text-foreground",
+                        teamSortKey === "status" && "text-primary",
+                      )}
+                    >
+                      Status <ArrowUpDown className="size-3" aria-hidden />
+                    </button>
+                    <span className="inline-flex w-full justify-self-start items-center justify-start py-1">Actions</span>
+                  </>
+                )}
+                </div>
+                {!membersLoading && visibleTeamRows.length === 0 && (
+                  <div className="flex flex-col items-center justify-center gap-2 border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
                     <UserRound className="size-9 text-muted-foreground" aria-hidden />
-                    <p className="text-sm text-muted-foreground">No matching humans.</p>
+                    <p className="text-sm text-muted-foreground">No matching members.</p>
                   </div>
                 )}
-                {filteredHumanMembers.map((member) => {
-                  const selected = selectedHumanMember?.id === member.id;
-                  const isSuspended = member.status === "suspended";
-                  return (
-                    <button
-                      key={member.id}
-                      type="button"
-                      onClick={() => setSelectedHumanMemberId(member.id)}
-                      className={cn(
-                        "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
-                        selected
-                          ? "bg-sidebar-accent/70 text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border"
-                          : "hover:bg-muted/55",
-                        isSuspended && "opacity-60",
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        <DirectoryMemberAvatar member={member} size="sm" className="shrink-0 self-center" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</span>
-                            {isSuspended && (
-                              <span className="shrink-0 inline-flex items-center rounded-full border border-orange-200 bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300">
-                                Deactivated
-                              </span>
-                            )}
-                          </div>
-                          <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
-                          <div className="mt-1 text-[11px] font-medium text-muted-foreground">
-                            {member.membershipRole ?? "member"}
-                          </div>
-                        </div>
-                        <SaveStatusPill state={getMemberSaveState(member.id)} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/35 shadow-sm">
-              {selectedHumanMember ? (
-                <>
-                  <div className="border-b border-sidebar-border/70 bg-sidebar/45 px-5 py-5">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                      <DirectoryMemberAvatar member={selectedHumanMember} size="lg" className="shrink-0 shadow-md" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate text-lg font-semibold text-foreground">
-                            {memberDisplayName(selectedHumanMember)}
-                          </span>
-                          {selectedHumanMember.status === "suspended" && (
-                            <span className="shrink-0 inline-flex items-center rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-800 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300">
-                              Deactivated
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 truncate text-sm text-muted-foreground">
-                          {memberSecondaryLine(selectedHumanMember)}
-                        </div>
-                      </div>
-                      <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
-                        <SaveStatusPill state={getMemberSaveState(selectedHumanMember.id)} />
-                        {selectedHumanMember.status === "suspended" ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="rounded-full"
-                            disabled={
-                              !selectedHumanMember ||
-                              !selectedCompanyId ||
-                              reactivateHumanMutation.isPending ||
-                              removeHumanMutation.isPending
-                            }
-                            onClick={() => {
-                              if (!selectedHumanMember) return;
-                              reactivateHumanMutation.mutate(selectedHumanMember.id);
-                            }}
-                          >
-                            {reactivateHumanMutation.isPending ? "Reactivating…" : "Reactivate"}
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="rounded-full"
-                            disabled={
-                              !selectedHumanMember ||
-                              !selectedCompanyId ||
-                              deactivateHumanMutation.isPending ||
-                              removeHumanMutation.isPending
-                            }
-                            onClick={() => {
-                              if (!selectedHumanMember) return;
-                              setDeactivateDialogOpen(true);
-                            }}
-                          >
-                            {deactivateHumanMutation.isPending ? "Deactivating…" : "Deactivate"}
-                          </Button>
+                {visibleTeamRows.map((row) => {
+                  const member = row.member;
+                  if (row.kind === "human") {
+                    const selected = selectedHumanMember?.id === member.id;
+                    const isSuspended = member.status === "suspended";
+                    const roleValue = (memberRoleDrafts[member.id] ?? member.membershipRole ?? "").trim();
+                    const reportsToValue = (memberManagerDrafts[member.id] ?? member.reportsToMembershipId ?? "").trim();
+                    const rowInvalidManagers = descendantsOf(member.id, childrenByMemberId);
+                    rowInvalidManagers.add(member.id);
+                    return (
+                      <div
+                        key={member.id}
+                        onClick={() => {
+                          setSelectedHumanMemberId(member.id);
+                        }}
+                        className={cn(
+                          "grid w-full cursor-pointer grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)_minmax(13rem,1.2fr)] items-center gap-2 border-b border-border/60 px-3 py-2 text-left transition-colors",
+                          selected ? "bg-[#e5f1fb] text-foreground dark:bg-accent/45" : "hover:bg-muted/40",
+                          isSuspended && "opacity-70",
                         )}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          className="rounded-full"
-                          disabled={
-                            !selectedHumanMember ||
-                            !selectedCompanyId ||
-                            deactivateHumanMutation.isPending ||
-                            reactivateHumanMutation.isPending ||
-                            removeHumanMutation.isPending
-                          }
-                          onClick={() => {
-                            if (!selectedHumanMember) return;
-                            setDeleteDialogOpen(true);
-                          }}
+                      >
+                        <span className="min-w-0 inline-flex items-center gap-2">
+                          <DirectoryMemberAvatar member={member} size="xs" className="shrink-0" />
+                          <span className="truncate text-sm font-medium">{memberDisplayName(member)}</span>
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {member.user?.email ?? member.principalId}
+                        </span>
+                        <span onClick={(event) => event.stopPropagation()} className="min-w-0">
+                          <InlineEntitySelector
+                            value={roleValue}
+                            options={manageHumanRoleOptions.map((role) => ({ id: role, label: role }))}
+                            placeholder="Role"
+                            noneLabel="None"
+                            searchPlaceholder="Search roles..."
+                            emptyMessage="No roles found."
+                            onChange={(next) => {
+                              setSelectedHumanMemberId(member.id);
+                              const nextRole = next.trim();
+                              setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: nextRole }));
+                              saveHumanRowEdits(member, nextRole, reportsToValue);
+                            }}
+                            className="h-8 w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                          />
+                        </span>
+                        <span onClick={(event) => event.stopPropagation()} className="min-w-0">
+                          <InlineEntitySelector
+                            value={reportsToValue}
+                            options={activeHumanMembers
+                              .filter((candidate) => candidate.id !== member.id && !rowInvalidManagers.has(candidate.id))
+                              .map((candidate) => ({
+                                id: candidate.id,
+                                label: memberDisplayName(candidate),
+                              searchText: `${memberDisplayName(candidate)} ${candidate.user?.email ?? ""}`,
+                              }))}
+                            placeholder="Reports to"
+                            noneLabel="None"
+                            searchPlaceholder="Search humans..."
+                            emptyMessage="No humans found."
+                            onChange={(next) => {
+                              setSelectedHumanMemberId(member.id);
+                              const nextManager = next.trim();
+                              setMemberManagerDrafts((prev) => ({ ...prev, [member.id]: nextManager }));
+                              saveHumanRowEdits(member, roleValue, nextManager);
+                            }}
+                            className="h-8 w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                          />
+                        </span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center justify-start text-xs",
+                            isSuspended ? "font-medium text-orange-700 dark:text-orange-300" : "text-muted-foreground",
+                          )}
                         >
-                          {removeHumanMutation.isPending ? "Deleting…" : "Delete"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 px-5 py-5">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <RolePicker
-                        member={selectedHumanMember}
-                        label="Role"
-                        options={manageHumanRoleOptions}
-                        onAddCustomOption={(role) =>
-                          setCustomHumanRoles((prev) => (prev.includes(role) ? prev : [...prev, role]))
-                        }
-                      />
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Reports to</div>
-                        <InlineEntitySelector
-                          value={memberManagerDrafts[selectedHumanMember.id] ?? ""}
-                          options={activeHumanMembers
-                            .filter((candidate) =>
-                              candidate.id !== selectedHumanMember.id &&
-                              !invalidManagersForSelectedHuman.has(candidate.id),
-                            )
-                            .map((candidate) => ({
-                              id: candidate.id,
-                              label: memberDisplayName(candidate),
-                            }))}
-                          placeholder="Reports to"
-                          noneLabel="None"
-                          searchPlaceholder="Search humans..."
-                          emptyMessage="No humans found."
-                          onChange={(next) => {
-                            setMemberSaveErrors((prev) => {
-                              if (!prev[selectedHumanMember.id]) return prev;
-                              const { [selectedHumanMember.id]: _drop, ...rest } = prev;
-                              return rest;
-                            });
-                            setMemberManagerDrafts((prev) => ({ ...prev, [selectedHumanMember.id]: next }));
-                          }}
-                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
-                        />
-                        {memberSaveErrors[selectedHumanMember.id] && (
-                          <div className="text-[11px] text-destructive">
-                            {memberSaveErrors[selectedHumanMember.id]}
-                          </div>
-                        )}
-                        <div className="text-[11px] text-muted-foreground">
-                          Humans can only report to humans. Options that would create a cycle are disabled.
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-border/50 bg-muted/10 px-4 py-4 ring-1 ring-border/30">
-                      <div className="text-sm font-semibold text-foreground">Access & permissions</div>
-                      <div className="mt-3">
-                        <HumanPermissionsPanel
-                          idPrefix={`member-${selectedHumanMember.id}`}
-                          enabledKeys={ALL_PERMISSION_KEYS.filter((k) =>
-                            selectedHumanMember.grants.some((g) => g.permissionKey === k),
+                          {isSuspended ? "Deactivated" : "Active"}
+                        </span>
+                        <span onClick={(event) => event.stopPropagation()} className="inline-flex w-full items-center justify-start gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 rounded-md border-border/70 px-2 text-[11px]"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedHumanMemberId(member.id);
+                              setHumanDetailsDialogOpen(true);
+                            }}
+                          >
+                            Edit Permissions
+                          </Button>
+                          {isSuspended ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 rounded-md border-emerald-300 bg-emerald-50 px-2 text-[11px] text-emerald-800 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+                              disabled={!selectedCompanyId || reactivateHumanMutation.isPending || removeHumanMutation.isPending}
+                              onClick={() =>
+                                reactivateHumanMutation.mutate(member.id, {
+                                  onError: (err) => {
+                                    pushToast({
+                                      title: "Action failed",
+                                      body: apiErrorMessage(err),
+                                      tone: "error",
+                                    });
+                                  },
+                                })
+                              }
+                            >
+                              Activate
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 rounded-md border-amber-300 bg-amber-50 px-2 text-[11px] text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
+                              disabled={!selectedCompanyId || deactivateHumanMutation.isPending || removeHumanMutation.isPending}
+                              onClick={() => {
+                                setSelectedHumanMemberId(member.id);
+                                setDeactivateDialogOpen(true);
+                              }}
+                            >
+                              Deactivate
+                            </Button>
                           )}
-                          disabled={humanPermissionMutation.isPending || !selectedCompanyId}
-                          onKeysChange={(keys) => {
-                            if (!selectedHumanMember || !selectedCompanyId) return;
-                            const nextGrants = keys.map((permissionKey) => ({
-                              permissionKey,
-                              scope: null,
-                            }));
-                            humanPermissionMutation.mutate({
-                              memberId: selectedHumanMember.id,
-                              grants: nextGrants,
-                            });
-                          }}
-                          intro={
-                            null
-                          }
-                        />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 rounded-full border-rose-200 px-2 text-[11px] text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                            disabled={!selectedCompanyId || deactivateHumanMutation.isPending || reactivateHumanMutation.isPending || removeHumanMutation.isPending}
+                            onClick={() => {
+                              setSelectedHumanMemberId(member.id);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </span>
                       </div>
-                      {humanPermissionMutation.isError ? (
-                        <div className="mt-3 text-xs text-destructive">
-                          {apiErrorMessage(humanPermissionMutation.error)}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
+                    );
+                  }
 
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-muted">
-                    <UserRound className="size-8 text-muted-foreground" aria-hidden />
-                  </div>
-                  <p className="text-sm font-medium text-foreground">No human selected</p>
-                  <p className="max-w-xs text-xs text-muted-foreground">Choose someone from the list to edit their role, reporting line, and access.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="agents" className="mt-4">
-          <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/45 shadow-sm">
-              <div className="border-b border-sidebar-border/70 bg-sidebar/40 px-4 py-3">
-                <div className="text-sm font-semibold text-foreground">Agents</div>
-                <div className="text-xs text-muted-foreground">
-                  {membersLoading ? "Loading…" : `${filteredAgentMembers.length} shown`}
-                </div>
-              </div>
-              <div className="flex-1 space-y-1 overflow-y-auto p-2">
-                {!membersLoading && filteredAgentMembers.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
-                    <Bot className="size-9 text-muted-foreground" aria-hidden />
-                    <p className="text-sm text-muted-foreground">No matching agents.</p>
-                  </div>
-                )}
-                {filteredAgentMembers.map((member) => {
-                  const selected = selectedAgentMember?.id === member.id;
+                  const roleValue = (memberRoleDrafts[member.id] ?? member.membershipRole ?? "").trim();
+                  const reportsToValue = (agentReportsDrafts[member.id] ?? agentByPrincipalId.get(member.principalId)?.reportsTo ?? "").trim();
+                  const rowInvalidManagers = descendantsOf(member.principalId, agentChildrenByPrincipalId);
+                  rowInvalidManagers.add(member.principalId);
                   return (
-                    <button
+                    <div
                       key={member.id}
-                      type="button"
-                      onClick={() => setSelectedAgentMemberId(member.id)}
-                      className={cn(
-                        "w-full rounded-2xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60",
-                        selected
-                          ? "bg-sidebar-accent/70 text-sidebar-accent-foreground shadow-sm ring-1 ring-sidebar-border"
-                          : "hover:bg-muted/55",
-                      )}
+                      className="grid w-full grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)] items-center gap-2 border-b border-border/60 px-3 py-2 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
                     >
-                      <div className="flex items-start gap-3">
-                        <DirectoryMemberAvatar member={member} size="sm" className="mt-0.5 shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium text-foreground">{memberDisplayName(member)}</div>
-                          <div className="truncate text-xs text-muted-foreground">{memberSecondaryLine(member)}</div>
-                          <div className="mt-1 text-[11px] font-medium text-muted-foreground">
-                            {member.membershipRole ?? "agent"}
-                          </div>
-                        </div>
-                        <SaveStatusPill state={getMemberSaveState(member.id)} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex h-full min-h-[36rem] flex-col overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/35 shadow-sm">
-              {selectedAgentMember ? (
-                <>
-                  <div className="border-b border-sidebar-border/70 bg-sidebar/45 px-5 py-5">
-                    <div className="flex flex-wrap items-start gap-4">
-                      <DirectoryMemberAvatar member={selectedAgentMember} size="lg" className="shrink-0 shadow-md" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-lg font-semibold text-foreground">{memberDisplayName(selectedAgentMember)}</div>
-                        <div className="mt-0.5 truncate text-sm text-muted-foreground">{memberSecondaryLine(selectedAgentMember)}</div>
-                      </div>
-                      <SaveStatusPill state={getMemberSaveState(selectedAgentMember.id)} />
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 px-5 py-5">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <RolePicker
-                        member={selectedAgentMember}
-                        label="Role label"
-                        options={assignableAgentRoleOptions}
-                        onAddCustomOption={(role) =>
-                          setCustomAgentRoles((prev) => (prev.includes(role) ? prev : [...prev, role]))
-                        }
-                      />
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Reports to</div>
+                      <span className="min-w-0 inline-flex items-center gap-2">
+                        <DirectoryMemberAvatar member={member} size="xs" className="shrink-0" />
+                        <span className="truncate text-sm font-medium">{memberDisplayName(member)}</span>
+                      </span>
+                      <span onClick={(event) => event.stopPropagation()} className="min-w-0">
                         <InlineEntitySelector
-                          value={agentReportsDrafts[selectedAgentMember.id] ?? ""}
+                          value={roleValue}
+                          options={assignableAgentRoleOptions.map((role) => ({ id: role, label: role }))}
+                          placeholder="Role"
+                          noneLabel="None"
+                          searchPlaceholder="Search roles..."
+                          emptyMessage="No roles found."
+                          onChange={(next) => {
+                            const nextRole = next.trim();
+                            setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: nextRole }));
+                            saveAgentRowEdits(member, nextRole, reportsToValue);
+                          }}
+                          className="h-8 w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                        />
+                      </span>
+                      <span onClick={(event) => event.stopPropagation()} className="min-w-0">
+                        <InlineEntitySelector
+                          value={reportsToValue}
                           options={activeAgentMembers
                             .filter((candidate) =>
-                              candidate.id !== selectedAgentMember.id &&
-                              !invalidManagersForSelectedAgent.has(candidate.principalId),
+                              candidate.id !== member.id &&
+                              !rowInvalidManagers.has(candidate.principalId),
                             )
                             .map((candidate) => ({
                               id: candidate.principalId,
                               label: memberDisplayName(candidate),
+                              searchText: `${memberDisplayName(candidate)} ${candidate.user?.email ?? ""}`,
                             }))}
                           placeholder="Reports to"
                           noneLabel="None"
                           searchPlaceholder="Search agents..."
                           emptyMessage="No agents found."
                           onChange={(next) => {
-                            setMemberSaveErrors((prev) => {
-                              if (!prev[selectedAgentMember.id]) return prev;
-                              const { [selectedAgentMember.id]: _drop, ...rest } = prev;
-                              return rest;
-                            });
-                            setAgentReportsDrafts((prev) => ({ ...prev, [selectedAgentMember.id]: next }));
+                            const nextManager = next.trim();
+                            setAgentReportsDrafts((prev) => ({ ...prev, [member.id]: nextManager }));
+                            saveAgentRowEdits(member, roleValue, nextManager);
                           }}
-                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                          className="h-8 w-full justify-between rounded-md border-border/60 bg-background text-xs"
                         />
-                        {memberSaveErrors[selectedAgentMember.id] && (
-                          <div className="text-[11px] text-destructive">
-                            {memberSaveErrors[selectedAgentMember.id]}
-                          </div>
-                        )}
-                        <div className="text-[11px] text-muted-foreground">
-                          Options that would create a cycle are disabled.
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+        </div>
+          </>
+        ) : null}
+      </div>
+
+      {humanDetailsDialogOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="absolute inset-0"
+            onClick={() => setHumanDetailsDialogOpen(false)}
+            aria-hidden
+          />
+          <div className="relative z-[81] flex h-[88vh] w-[46vw] max-h-[88vh] max-w-[46vw] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl">
+            {selectedHumanMember ? (
+              <>
+                <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
+                  <h2 className="text-base font-semibold text-foreground">Manage Permissions</h2>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHumanDetailsDialogOpen(false)}
+                  >
+                    Close
+                  </Button>
+                </div>
+                <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[260px_1fr]">
+                  <aside className="border-r border-border/60 bg-muted/25 p-4">
+                    <div className="rounded-xl border border-border/60 bg-background p-3">
+                      <div className="flex flex-col items-center text-center">
+                        <DirectoryMemberAvatar member={selectedHumanMember} size="lg" className="mb-2" />
+                        <div className="text-sm font-semibold text-foreground">{memberDisplayName(selectedHumanMember)}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {selectedHumanMember.user?.email ?? selectedHumanMember.principalId}
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Role</span>
+                          <span className="font-medium text-foreground">{selectedHumanMember.membershipRole ?? "member"}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Status</span>
+                          <span className="font-medium text-foreground">
+                            {selectedHumanMember.status === "suspended" ? "Deactivated" : "Active"}
+                          </span>
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-muted">
-                    <Bot className="size-8 text-muted-foreground" aria-hidden />
-                  </div>
-                  <p className="text-sm font-medium text-foreground">No agent selected</p>
-                  <p className="max-w-xs text-xs text-muted-foreground">Pick an agent from the list to edit their role label and reporting line.</p>
+                  </aside>
+                  <section className="min-h-0 overflow-y-auto p-4">
+                    <HumanPermissionsPanel
+                      idPrefix={`member-${selectedHumanMember.id}`}
+                      enabledKeys={ALL_PERMISSION_KEYS.filter((k) =>
+                        selectedHumanMember.grants.some((g) => g.permissionKey === k),
+                      )}
+                      disabled={humanPermissionMutation.isPending || !selectedCompanyId}
+                      onKeysChange={(keys) => {
+                        if (!selectedCompanyId) return;
+                        const nextGrants = keys.map((permissionKey) => ({
+                          permissionKey,
+                          scope: null,
+                        }));
+                        humanPermissionMutation.mutate({
+                          memberId: selectedHumanMember.id,
+                          grants: nextGrants,
+                        });
+                      }}
+                      intro={null}
+                    />
+                    {humanPermissionMutation.isError ? (
+                      <div className="mt-3 text-xs text-destructive">
+                        {apiErrorMessage(humanPermissionMutation.error)}
+                      </div>
+                    ) : null}
+                  </section>
                 </div>
-              )}
-            </div>
+                <div className="border-t border-border/60 px-5 py-3" />
+              </>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-muted">
+                  <UserRound className="size-8 text-muted-foreground" aria-hidden />
+                </div>
+                <p className="text-sm font-medium text-foreground">No human selected</p>
+              </div>
+            )}
           </div>
-        </TabsContent>
-          </>
-        ) : null}
-      </Tabs>
+        </div>
+      ) : null}
 
       {/* Deactivate confirmation dialog */}
       <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
@@ -2241,7 +2487,8 @@ export function CompanyDirectory() {
             </DialogClose>
             <Button
               size="sm"
-              className="bg-amber-500 hover:bg-amber-600 text-white border-0"
+              variant="outline"
+              className="rounded-md border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
               disabled={deactivateHumanMutation.isPending || offboardingSubmitPending}
               onClick={async () => {
                 if (!selectedHumanMember) return;

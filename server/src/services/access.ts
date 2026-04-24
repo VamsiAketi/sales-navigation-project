@@ -35,16 +35,13 @@ type GrantInput = {
 };
 const PROJECT_READ_PERMISSION = "project:read" as const;
 const PROJECT_READ_DEPENDENCIES: Partial<Record<ProjectPermissionKey, typeof PROJECT_READ_PERMISSION>> = {
-  "project:settings": PROJECT_READ_PERMISSION,
-  "project:workspaces": PROJECT_READ_PERMISSION,
-  "project:statuses": PROJECT_READ_PERMISSION,
+  "project:edit tickets": PROJECT_READ_PERMISSION,
+  "project:hide tickets": PROJECT_READ_PERMISSION,
+  "project:edit configuration": PROJECT_READ_PERMISSION,
+  "project:edit Workflow": PROJECT_READ_PERMISSION,
+  "project:edit Budget": PROJECT_READ_PERMISSION,
   "project:archive": PROJECT_READ_PERMISSION,
-  "project:delete": PROJECT_READ_PERMISSION,
-  "issue:read": PROJECT_READ_PERMISSION,
-  "issue:write": PROJECT_READ_PERMISSION,
   "members:manage": PROJECT_READ_PERMISSION,
-  "budget:company_update": PROJECT_READ_PERMISSION,
-  "costs:read": PROJECT_READ_PERMISSION,
 };
 
 const GRANT_READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {

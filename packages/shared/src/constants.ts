@@ -458,16 +458,13 @@ export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 /** Per-project principal capabilities (see `project_principal_grants`). */
 export const PROJECT_PERMISSION_KEYS = [
   "project:read",
-  "project:settings",
-  "project:workspaces",
-  "project:statuses",
+  "project:edit tickets",
+  "project:hide tickets",
+  "project:edit configuration",
+  "project:edit Workflow",
+  "project:edit Budget",
   "project:archive",
-  "project:delete",
-  "issue:read",
-  "issue:write",
   "members:manage",
-  "budget:company_update",
-  "costs:read",
 ] as const;
 export type ProjectPermissionKey = (typeof PROJECT_PERMISSION_KEYS)[number];
 
