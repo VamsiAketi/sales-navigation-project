@@ -1675,6 +1675,51 @@ export function accessRoutes(
     if (!allowed) throw forbidden("Instance admin required");
   }
 
+  async function assertMemberCanBeDeactivatedOrDeleted(
+    companyId: string,
+    memberId: string,
+  ) {
+    const target = await db
+      .select({
+        id: companyMemberships.id,
+        principalType: companyMemberships.principalType,
+        membershipRole: companyMemberships.membershipRole,
+        status: companyMemberships.status,
+      })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.id, memberId),
+          eq(companyMemberships.companyId, companyId),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+    if (!target) return;
+    if (target.principalType !== "user") return;
+
+    const isOwner = (target.membershipRole ?? "").trim().toLowerCase() === "owner";
+    if (!isOwner) return;
+
+    const activeOwnerCount = await db
+      .select({ id: companyMemberships.id })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.companyId, companyId),
+          eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.status, "active"),
+          eq(companyMemberships.membershipRole, "owner"),
+        ),
+      )
+      .then((rows) => rows.length);
+
+    if (target.status === "active" && activeOwnerCount <= 1) {
+      throw badRequest("Cannot deactivate or delete the last active owner. Transfer ownership first.");
+    }
+
+    throw badRequest("Owner accounts cannot be deactivated or deleted. Transfer ownership first.");
+  }
+
   router.get("/board-claim/:token", async (req, res) => {
     const token = (req.params.token as string).trim();
     const code =
@@ -3507,6 +3552,10 @@ export function accessRoutes(
         return;
       }
 
+      if (status === "suspended") {
+        await assertMemberCanBeDeactivatedOrDeleted(companyId, memberId);
+      }
+
       const updated = await access.updateMemberStatus(companyId, memberId, status);
       if (!updated) throw notFound("Member not found");
       res.json(updated);
@@ -3520,6 +3569,7 @@ export function accessRoutes(
       const companyId = req.params.companyId as string;
       const memberId  = req.params.memberId  as string;
       await assertCompanyPermission(req, companyId, "users:manage_permissions");
+      await assertMemberCanBeDeactivatedOrDeleted(companyId, memberId);
 
       const deleted = await access.softDeleteMember(companyId, memberId);
       if (!deleted) throw notFound("Member not found");

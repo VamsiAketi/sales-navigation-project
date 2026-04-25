@@ -163,12 +163,25 @@ export function issueRoutes(db: Db, storage: StorageService) {
   async function assertIssueProjectPermission(
     req: Request,
     issue: { companyId: string; projectId: string | null },
-    permission: ProjectPermissionKey,
+    permission: ProjectPermissionKey | "issue:read" | "issue:write",
   ) {
     assertCompanyAccess(req, issue.companyId);
     if (!issue.projectId) return;
+    const normalizedPermission: ProjectPermissionKey =
+      permission === "issue:read"
+        ? "project:read"
+        : permission === "issue:write"
+          ? "project:edit tickets"
+          : permission;
     const actor = projectAuthActorFromRequest(req);
-    if (!(await access.satisfiesProjectPermission(issue.companyId, issue.projectId, permission, actor))) {
+    if (
+      !(await access.satisfiesProjectPermission(
+        issue.companyId,
+        issue.projectId,
+        normalizedPermission,
+        actor,
+      ))
+    ) {
       throw forbidden("Project permission denied");
     }
   }

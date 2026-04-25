@@ -202,7 +202,7 @@ export function projectRoutes(db: Db) {
       req,
       existing.companyId,
       id,
-      touchesArchive ? "project:archive" : "project:settings",
+      touchesArchive ? "project:archive" : "project:edit configuration",
     );
     if (typeof body.archivedAt === "string") {
       body.archivedAt = new Date(body.archivedAt);
@@ -249,7 +249,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
-    await requireProjectPermission(req, existing.companyId, id, "project:workspaces");
+    await requireProjectPermission(req, existing.companyId, id, "project:edit configuration");
     const workspace = await svc.createWorkspace(id, req.body);
     if (!workspace) {
       res.status(422).json({ error: "Invalid project workspace payload" });
@@ -288,7 +288,7 @@ export function projectRoutes(db: Db) {
         return;
       }
       assertCompanyAccess(req, existing.companyId);
-      await requireProjectPermission(req, existing.companyId, id, "project:workspaces");
+      await requireProjectPermission(req, existing.companyId, id, "project:edit configuration");
       const workspaceExists = (await svc.listWorkspaces(id)).some((workspace) => workspace.id === workspaceId);
       if (!workspaceExists) {
         res.status(404).json({ error: "Project workspace not found" });
@@ -328,7 +328,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
-    await requireProjectPermission(req, existing.companyId, id, "project:workspaces");
+    await requireProjectPermission(req, existing.companyId, id, "project:edit configuration");
     const workspace = await svc.removeWorkspace(id, workspaceId);
     if (!workspace) {
       res.status(404).json({ error: "Project workspace not found" });
@@ -376,7 +376,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
-    await requireProjectPermission(req, project.companyId, id, "project:statuses");
+    await requireProjectPermission(req, project.companyId, id, "project:edit Workflow");
     const status = await statusSvc.create(id, project.companyId, req.body);
     res.status(201).json(status);
   });
@@ -387,7 +387,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
-    await requireProjectPermission(req, project.companyId, id, "project:statuses");
+    await requireProjectPermission(req, project.companyId, id, "project:edit Workflow");
     const status = await statusSvc.update(statusId, id, req.body);
     res.json(status);
   });
@@ -397,7 +397,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
-    await requireProjectPermission(req, project.companyId, id, "project:statuses");
+    await requireProjectPermission(req, project.companyId, id, "project:edit Workflow");
     const statuses = await statusSvc.reorder(id, req.body.orderedIds);
     res.json(statuses);
   });
@@ -408,7 +408,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
-    await requireProjectPermission(req, project.companyId, id, "project:statuses");
+    await requireProjectPermission(req, project.companyId, id, "project:edit Workflow");
     const status = await statusSvc.remove(statusId, id);
     res.json(status);
   });
@@ -421,7 +421,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
-    await requireProjectPermission(req, existing.companyId, id, "project:delete");
+    await requireProjectPermission(req, existing.companyId, id, "project:archive");
     const project = await svc.remove(id);
     if (!project) {
       res.status(404).json({ error: "Project not found" });
