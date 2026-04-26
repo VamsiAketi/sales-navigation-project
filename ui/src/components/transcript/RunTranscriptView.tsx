@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { TranscriptEntry } from "../../adapters";
 import { MarkdownBody } from "../MarkdownBody";
 import { cn, formatTokens } from "../../lib/utils";
+import { displayBrandSafe } from "../../lib/displayBrandSafe";
 import {
   Check,
   ChevronDown,
@@ -135,21 +136,21 @@ function stripWrappedShell(command: string): string {
 }
 
 function formatUnknown(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return displayBrandSafe(value);
   if (value === null || value === undefined) return "";
   try {
-    return JSON.stringify(value, null, 2);
+    return displayBrandSafe(JSON.stringify(value, null, 2) ?? "");
   } catch {
-    return String(value);
+    return displayBrandSafe(String(value));
   }
 }
 
 function formatToolPayload(value: unknown): string {
   if (typeof value === "string") {
     try {
-      return JSON.stringify(JSON.parse(value), null, 2);
+      return displayBrandSafe(JSON.stringify(JSON.parse(value), null, 2) ?? "");
     } catch {
-      return value;
+      return displayBrandSafe(value);
     }
   }
   return formatUnknown(value);
@@ -298,7 +299,10 @@ function parseSystemActivity(text: string): { activityId?: string; name: string;
 
 function shouldHideNiceModeStderr(text: string): boolean {
   const normalized = compactWhitespace(text).toLowerCase();
-  return normalized.startsWith("[paperclip] skipping saved session resume");
+  return (
+    normalized.startsWith("[paperclip] skipping saved session resume") ||
+    normalized.startsWith(displayBrandSafe("[paperclip] skipping saved session resume").toLowerCase())
+  );
 }
 
 function groupCommandBlocks(blocks: TranscriptBlock[]): TranscriptBlock[] {
@@ -603,7 +607,7 @@ function TranscriptMessageBlock({
           compact ? "text-xs leading-5 text-foreground/85" : "text-sm",
         )}
       >
-        {block.text}
+        {displayBrandSafe(block.text)}
       </MarkdownBody>
       {block.streaming && (
         <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium italic text-muted-foreground">
@@ -635,7 +639,7 @@ function TranscriptThinkingBlock({
         className,
       )}
     >
-      {block.text}
+      {displayBrandSafe(block.text)}
     </MarkdownBody>
   );
 }
@@ -1063,14 +1067,14 @@ function TranscriptEventRow({
         <div className="min-w-0 flex-1">
           {block.label === "result" && block.tone !== "error" ? (
             <div className={cn("whitespace-pre-wrap break-words text-sky-700 dark:text-sky-300", compact ? "text-[11px]" : "text-xs")}>
-              {block.text}
+              {displayBrandSafe(block.text)}
             </div>
           ) : (
             <div className={cn("whitespace-pre-wrap break-words", compact ? "text-[11px]" : "text-xs")}>
               <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70">
                 {block.label}
               </span>
-              {block.text ? <span className="ml-2">{block.text}</span> : null}
+              {block.text ? <span className="ml-2">{displayBrandSafe(block.text)}</span> : null}
             </div>
           )}
           {block.detail && (
@@ -1112,7 +1116,7 @@ function TranscriptStderrGroup({
           {block.lines.map((line, i) => (
             <span key={`${line.ts}-${i}`}>
               <span className="select-none text-amber-500/50 dark:text-amber-400/40">{i > 0 ? "\n" : ""}</span>
-              {line.text}
+              {displayBrandSafe(line.text)}
             </span>
           ))}
         </pre>
@@ -1152,7 +1156,7 @@ function TranscriptStdoutRow({
           "mt-2 overflow-x-auto whitespace-pre-wrap break-words font-mono text-foreground/80",
           density === "compact" ? "text-[11px]" : "text-xs",
         )}>
-          {block.text}
+          {displayBrandSafe(block.text)}
         </pre>
       )}
     </div>

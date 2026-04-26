@@ -6,6 +6,7 @@ import { DEFAULT_BOARD_CLOSED_RETENTION_DAYS } from "@paperclipai/shared";
 import { StatusBadge } from "./StatusBadge";
 import { ProjectStatusPicker } from "./ProjectStatusPicker";
 import { cn, formatDate } from "../lib/utils";
+import { displayBrandSafe } from "../lib/displayBrandSafe";
 import { goalsApi } from "../api/goals";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { projectsApi } from "../api/projects";
@@ -974,7 +975,7 @@ export function ProjectProperties({
 
             {hasAdditionalLegacyWorkspaces && (
               <div className="text-[11px] text-muted-foreground">
-                Additional legacy workspace records exist on this project. Paperclip is using the primary workspace as the codebase view.
+                {displayBrandSafe("Additional legacy workspace records exist on this project. Paperclip is using the primary workspace as the codebase view.")}
               </div>
             )}
 
@@ -1257,7 +1258,7 @@ export function ProjectProperties({
                               })}
                             immediate
                             className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
-                            placeholder=".paperclip/worktrees"
+                            placeholder={displayBrandSafe(".paperclip/worktrees")}
                           />
                         </div>
                         <div>

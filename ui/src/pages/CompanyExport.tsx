@@ -29,6 +29,7 @@ import { useAgentOrder } from "../hooks/useAgentOrder";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { buildPortableSidebarOrder } from "../lib/company-portability-sidebar";
 import { getPortableFileDataUrl, getPortableFileText, isPortableImageFile } from "../lib/portable-files";
+import { displayBrandSafe } from "../lib/displayBrandSafe";
 import {
   Download,
   Package,
@@ -430,7 +431,7 @@ function generateReadmeFromSelection(
 
   lines.push("## What's Inside");
   lines.push("");
-  lines.push("This is an [Agent Company](https://paperclip.ing) package.");
+  lines.push(displayBrandSafe("This is an [Agent Company](https://paperclip.ing) package."));
   lines.push("");
 
   const counts: Array<[string, number]> = [];
@@ -474,13 +475,13 @@ function generateReadmeFromSelection(
   lines.push("## Getting Started");
   lines.push("");
   lines.push("```bash");
-  lines.push("pnpm paperclipai company import this-github-url-or-folder");
+  lines.push(displayBrandSafe("pnpm paperclipai company import this-github-url-or-folder"));
   lines.push("```");
   lines.push("");
-  lines.push("See [Paperclip](https://paperclip.ing) for more information.");
+  lines.push(displayBrandSafe("See [Paperclip](https://paperclip.ing) for more information."));
   lines.push("");
   lines.push("---");
-  lines.push(`Exported from [Paperclip](https://paperclip.ing) on ${new Date().toISOString().split("T")[0]}`);
+  lines.push(displayBrandSafe(`Exported from [Paperclip](https://paperclip.ing) on ${new Date().toISOString().split("T")[0]}`));
   lines.push("");
 
   return lines.join("\n");

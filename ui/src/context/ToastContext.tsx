@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { PERMISSION_DENIED_EVENT } from "../api/client";
+import { displayBrandSafe } from "../lib/displayBrandSafe";
 
 export type ToastTone = "info" | "success" | "warn" | "error";
 
@@ -125,14 +126,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       clearTimer(id);
 
       setToasts((prev) => {
+        const safeInput = displayBrandSafe(input);
         const nextToast: ToastItem = {
           id,
-          title: input.title,
-          body: input.body,
+          title: safeInput.title,
+          body: safeInput.body,
           tone,
           ttlMs,
-          action: input.action,
-          secondaryAction: input.secondaryAction,
+          action: safeInput.action,
+          secondaryAction: safeInput.secondaryAction,
           createdAt: now,
         };
 

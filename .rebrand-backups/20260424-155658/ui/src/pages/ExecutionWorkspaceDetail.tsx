@@ -14,7 +14,6 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, formatDateTime, issueUrl, projectRouteRef, projectWorkspaceUrl } from "../lib/utils";
-import { displayBrandSafe } from "../lib/displayBrandSafe";
 
 type WorkspaceFormState = {
   name: string;
@@ -477,7 +476,7 @@ export function ExecutionWorkspaceDetail() {
               </div>
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <Field label="Provision command" hint={displayBrandSafe("Runs when Paperclip prepares this execution workspace")}>
+                <Field label="Provision command" hint="Runs when Paperclip prepares this execution workspace">
                   <textarea
                     className="min-h-28 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none"
                     value={form.provisionCommand}

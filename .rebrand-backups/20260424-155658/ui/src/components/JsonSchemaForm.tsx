@@ -8,7 +8,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { displayBrandSafe } from "@/lib/displayBrandSafe";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -495,7 +494,7 @@ const SecretField = React.memo(({
       label={label}
       description={
         description ||
-        displayBrandSafe("This secret is stored securely via the Paperclip secret provider.")
+        "This secret is stored securely via the Paperclip secret provider."
       }
       required={isRequired}
       error={error}

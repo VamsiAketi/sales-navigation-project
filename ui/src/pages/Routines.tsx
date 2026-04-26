@@ -13,6 +13,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { projectStatusSwatchClass } from "../lib/status-colors";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { cn } from "../lib/utils";
+import { displayBrandSafe } from "../lib/displayBrandSafe";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
@@ -536,7 +537,7 @@ export function Routines() {
 
           <div className="shrink-0 flex flex-col gap-3 border-t border-border/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-muted-foreground">
-              After creation, Paperclip takes you straight to trigger setup for schedules, webhooks, or internal runs.
+              {displayBrandSafe("After creation, Paperclip takes you straight to trigger setup for schedules, webhooks, or internal runs.")}
             </div>
             <div className="flex flex-col gap-2 sm:items-end">
               <Button

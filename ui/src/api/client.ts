@@ -1,3 +1,5 @@
+import { displayBrandSafe } from "../lib/displayBrandSafe";
+
 const BASE = "/api";
 export const AUTH_UNAUTHORIZED_EVENT = "paperclip:auth-unauthorized";
 export const PERMISSION_DENIED_EVENT = "paperclip:permission-denied";
@@ -43,15 +45,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
           detail: {
             method,
             path,
-            message:
+            message: displayBrandSafe(
               (errorBody as { error?: string } | null)?.error ??
-              "You do not have permission to perform this action.",
+                "You do not have permission to perform this action.",
+            ),
           },
         }),
       );
     }
     throw new ApiError(
-      (errorBody as { error?: string } | null)?.error ?? `Request failed: ${res.status}`,
+      displayBrandSafe((errorBody as { error?: string } | null)?.error ?? `Request failed: ${res.status}`),
       res.status,
       errorBody,
     );

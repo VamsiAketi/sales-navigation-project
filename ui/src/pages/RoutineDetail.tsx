@@ -44,6 +44,7 @@ import { RunButton } from "../components/AgentActionButtons";
 import { projectStatusSwatchClass } from "../lib/status-colors";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
 import { cn } from "../lib/utils";
+import { displayBrandSafe } from "../lib/displayBrandSafe";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -742,7 +743,7 @@ export function RoutineDetail() {
         <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 space-y-3 text-sm">
           <div>
             <p className="font-medium">{secretMessage.title}</p>
-            <p className="text-xs text-muted-foreground">Save this now. Paperclip will not show the secret value again.</p>
+            <p className="text-xs text-muted-foreground">{displayBrandSafe("Save this now. Paperclip will not show the secret value again.")}</p>
           </div>
           <div className="space-y-2">
             <div className="flex items-center gap-2">
