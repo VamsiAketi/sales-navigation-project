@@ -10,6 +10,7 @@ import {
   agentRuntimeState,
   agentTaskSessions,
   agentWakeupRequests,
+  costEvents,
   heartbeatRunEvents,
   heartbeatRuns,
   issues,
@@ -900,6 +901,60 @@ export function heartbeatService(db: Db) {
   };
   const budgets = budgetService(db, budgetHooks);
 
+  type RunCostTotals = {
+    costCents: number;
+    modelCostCents: number;
+  };
+
+  function usageJsonWithRunCosts(
+    usageJson: Record<string, unknown> | null | undefined,
+    totals: RunCostTotals | undefined,
+  ): Record<string, unknown> | null {
+    if (!totals) return usageJson ?? null;
+    const usage = parseObject(usageJson) ?? {};
+    const operationalCostCents = totals.modelCostCents;
+    return {
+      ...usage,
+      costCents: totals.costCents,
+      modelCostCents: totals.modelCostCents,
+      operationalCostCents,
+      operationalCostUsd: operationalCostCents / 100,
+    };
+  }
+
+  async function listRunCostTotalsByRunId(
+    companyId: string,
+    runIds: string[],
+  ): Promise<Map<string, RunCostTotals>> {
+    if (runIds.length === 0) return new Map();
+    const rows = await db
+      .select({
+        heartbeatRunId: costEvents.heartbeatRunId,
+        costCents: sql<number>`COALESCE(SUM(${costEvents.costCents}), 0)`,
+        modelCostCents: sql<number>`COALESCE(SUM(${costEvents.modelCostCents}), 0)`,
+      })
+      .from(costEvents)
+      .where(
+        and(
+          eq(costEvents.companyId, companyId),
+          inArray(costEvents.heartbeatRunId, runIds),
+        ),
+      )
+      .groupBy(costEvents.heartbeatRunId);
+
+    return new Map(
+      rows
+        .filter((row) => typeof row.heartbeatRunId === "string" && row.heartbeatRunId.length > 0)
+        .map((row) => [
+          row.heartbeatRunId as string,
+          {
+            costCents: Number(row.costCents) || 0,
+            modelCostCents: Number(row.modelCostCents) || 0,
+          },
+        ]),
+    );
+  }
+
   async function getAgent(agentId: string) {
     return db
       .select()
@@ -909,11 +964,17 @@ export function heartbeatService(db: Db) {
   }
 
   async function getRun(runId: string) {
-    return db
+    const run = await db
       .select()
       .from(heartbeatRuns)
       .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0] ?? null);
+    if (!run) return null;
+    const costTotalsByRunId = await listRunCostTotalsByRunId(run.companyId, [run.id]);
+    return {
+      ...run,
+      usageJson: usageJsonWithRunCosts(run.usageJson, costTotalsByRunId.get(run.id)),
+    };
   }
 
   async function getRuntimeState(agentId: string) {
@@ -1906,7 +1967,7 @@ export function heartbeatService(db: Db) {
         ? `Process lost -- child pid ${run.processPid} is no longer running`
         : "Process lost -- server may have restarted";
 
-      let finalizedRun = await setRunStatus(run.id, "failed", {
+      const finalizedRun = await setRunStatus(run.id, "failed", {
         error: shouldRetry ? `${baseMessage}; retrying once` : baseMessage,
         errorCode: "process_lost",
         finishedAt: now,
@@ -1915,7 +1976,6 @@ export function heartbeatService(db: Db) {
         finishedAt: now,
         error: shouldRetry ? `${baseMessage}; retrying once` : baseMessage,
       });
-      if (!finalizedRun) finalizedRun = await getRun(run.id);
       if (!finalizedRun) continue;
 
       let retriedRun: typeof heartbeatRuns.$inferSelect | null = null;
@@ -2006,6 +2066,22 @@ export function heartbeatService(db: Db) {
         updatedAt: new Date(),
       })
       .where(eq(agentRuntimeState.agentId, agent.id));
+
+    const usageJsonRecord = parseObject(run.usageJson) ?? {};
+    await db
+      .update(heartbeatRuns)
+      .set({
+        usageJson: {
+          ...usageJsonRecord,
+          // Persist run-level cost fields so run detail UIs can render cost even when adapters only report tokens.
+          costCents: adapterLoggedCostCents,
+          modelCostCents: modelEstimateCents,
+          operationalCostCents: operationalSpendCents,
+          operationalCostUsd: operationalSpendCents / 100,
+          billingType,
+        },
+      })
+      .where(eq(heartbeatRuns.id, run.id));
 
     if (adapterLoggedCostCents > 0 || modelEstimateCents > 0 || hasTokenUsage) {
       const costs = costService(db, budgetHooks);
@@ -2578,11 +2654,11 @@ export function heartbeatService(db: Db) {
             : sanitizedChunk;
 
         publishLiveEvent({
-          companyId: run.companyId,
+          companyId: currentRun.companyId,
           type: "heartbeat.run.log",
           payload: {
-            runId: run.id,
-            agentId: run.agentId,
+            runId: currentRun.id,
+            agentId: currentRun.agentId,
             ts,
             stream,
             chunk: payloadChunk,
@@ -2718,7 +2794,7 @@ export function heartbeatService(db: Db) {
         onLog,
         onMeta: onAdapterMeta,
         onSpawn: async (meta) => {
-          await persistRunProcessMetadata(run.id, meta);
+          await persistRunProcessMetadata(currentRun.id, meta);
         },
         authToken: authToken ?? undefined,
       });
@@ -3874,8 +3950,10 @@ export function heartbeatService(db: Db) {
         .orderBy(desc(heartbeatRuns.createdAt));
 
       const rows = limit ? await query.limit(limit) : await query;
+      const costTotalsByRunId = await listRunCostTotalsByRunId(companyId, rows.map((row) => row.id));
       return rows.map((row) => ({
         ...row,
+        usageJson: usageJsonWithRunCosts(row.usageJson, costTotalsByRunId.get(row.id)),
         resultJson: summarizeHeartbeatRunResultJson(row.resultJson),
       }));
     },

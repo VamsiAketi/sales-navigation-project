@@ -103,7 +103,15 @@ function readRunCostUsd(payload: Record<string, unknown> | null): number {
   if (!payload) return 0;
   for (const key of ["costUsd", "cost_usd", "total_cost_usd"] as const) {
     const value = payload[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  }
+  for (const key of ["operationalCostUsd", "operational_cost_usd"] as const) {
+    const value = payload[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  }
+  for (const key of ["costCents", "modelCostCents", "operationalCostCents", "cost_cents", "model_cost_cents", "operational_cost_cents"] as const) {
+    const value = payload[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value / 100;
   }
   return 0;
 }
