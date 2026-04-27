@@ -45,17 +45,19 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
     staleTime: 10_000,
   });
   const canReadAgents = sidebarBadges?.canReadAgents ?? true;
+  const canReadTasks = sidebarBadges?.canReadTasks ?? true;
+  const canCreateTasks = sidebarBadges?.canCreateTasks ?? true;
 
   const items = useMemo<MobileNavItem[]>(
     () =>
       [
         { type: "link", to: "/dashboard", label: "Home", icon: House },
-        { type: "link", to: "/issues", label: "Issues", icon: CircleDot },
-        { type: "action", label: "Create", icon: SquarePen, onClick: () => openNewIssue() },
+        ...(canReadTasks ? ([{ type: "link", to: "/issues", label: "Issues", icon: CircleDot }] as const) : []),
+        ...(canCreateTasks ? ([{ type: "action", label: "Create", icon: SquarePen, onClick: () => openNewIssue() }] as const) : []),
         ...(canReadAgents ? ([{ type: "link", to: "/agents/all", label: "Agents", icon: Users }] as const) : []),
         { type: "link", to: "/inbox", label: "Inbox", icon: Inbox },
       ] satisfies MobileNavItem[],
-    [canReadAgents, openNewIssue],
+    [canCreateTasks, canReadAgents, canReadTasks, openNewIssue],
   );
 
   return (

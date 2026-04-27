@@ -27,6 +27,7 @@ import {
   type ProjectAuthActor,
   type ProjectPermissionKey,
 } from "@paperclipai/shared";
+import { isOwnerMembershipRole, normalizeMembershipRole } from "../lib/membership-role.js";
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
 type GrantInput = {
@@ -47,6 +48,9 @@ const PROJECT_READ_DEPENDENCIES: Partial<Record<ProjectPermissionKey, typeof PRO
 const GRANT_READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "agents:create": "agents.read",
   "agents.edit": "agents.read",
+  "tasks.create": "tasks.read",
+  "tasks:assign": "tasks.read",
+  "tasks:assign_scope": "tasks.read",
   "skills.edit": "skills.read",
   "goals.write": "goals.read",
   "hybrid_org.edit": "hybrid_org.read",
@@ -580,10 +584,9 @@ export function accessService(db: Db) {
             eq(principalPermissionGrants.principalId, member.principalId),
           ),
         );
-      const normalizedGrants =
-        (member.membershipRole ?? "").trim().toLowerCase() === "owner"
-          ? PERMISSION_KEYS.map((permissionKey) => ({ permissionKey, scope: null }))
-          : normalizeGrantsWithReadDependencies(grants);
+      const normalizedGrants = isOwnerMembershipRole(member.membershipRole)
+        ? PERMISSION_KEYS.map((permissionKey) => ({ permissionKey, scope: null }))
+        : normalizeGrantsWithReadDependencies(grants);
       if (normalizedGrants.length > 0) {
         await tx.insert(principalPermissionGrants).values(
           normalizedGrants.map((grant) => ({
@@ -669,12 +672,13 @@ export function accessService(db: Db) {
     membershipRole: string | null = "member",
     status: "pending" | "active" | "suspended" = "active",
   ) {
+    const normalizedMembershipRole = normalizeMembershipRole(membershipRole);
     const existing = await getMembership(companyId, principalType, principalId);
     if (existing) {
-      if (existing.status !== status || existing.membershipRole !== membershipRole) {
+      if (existing.status !== status || existing.membershipRole !== normalizedMembershipRole) {
         const updated = await db
           .update(companyMemberships)
-          .set({ status, membershipRole, updatedAt: new Date() })
+          .set({ status, membershipRole: normalizedMembershipRole, updatedAt: new Date() })
           .where(eq(companyMemberships.id, existing.id))
           .returning()
           .then((rows) => rows[0] ?? null);
@@ -690,7 +694,7 @@ export function accessService(db: Db) {
         principalType,
         principalId,
         status,
-        membershipRole,
+        membershipRole: normalizedMembershipRole,
       })
       .returning()
       .then((rows) => rows[0]);
@@ -868,7 +872,7 @@ export function accessService(db: Db) {
       if (actor.isInstanceAdmin) return true;
       const membership = await getMembership(companyId, "user", actor.userId);
       if (!membership || membership.status !== "active") return false;
-      if ((membership.membershipRole ?? "").trim().toLowerCase() === "owner") return true;
+      if (isOwnerMembershipRole(membership.membershipRole)) return true;
       return hasProjectGrant(companyId, projectId, "user", actor.userId, permission);
     }
     if (actor.kind === "agent") {
@@ -894,7 +898,7 @@ export function accessService(db: Db) {
     if (actor.kind === "user") {
       const membership = await getMembership(companyId, "user", actor.userId);
       if (!membership || membership.status !== "active") return [];
-      if ((membership.membershipRole ?? "").trim().toLowerCase() === "owner") return null;
+      if (isOwnerMembershipRole(membership.membershipRole)) return null;
       const rows = await db
         .select({ projectId: projectPrincipalGrants.projectId })
         .from(projectPrincipalGrants)
@@ -970,9 +974,7 @@ export function accessService(db: Db) {
             )
             .then((rows) => {
               const row = rows[0] ?? null;
-              const isOwner =
-                row?.status === "active" &&
-                (row.membershipRole ?? "").trim().toLowerCase() === "owner";
+              const isOwner = row?.status === "active" && isOwnerMembershipRole(row.membershipRole);
               return isOwner ? [...PROJECT_PERMISSION_KEYS] : normalizedPermissionKeys;
             })
         : normalizedPermissionKeys;
@@ -1034,7 +1036,7 @@ export function accessService(db: Db) {
     if (actor.kind === "user") {
       const membership = await getMembership(companyId, "user", actor.userId);
       if (!membership || membership.status !== "active") return false;
-      if ((membership.membershipRole ?? "").trim().toLowerCase() === "owner") return true;
+      if (isOwnerMembershipRole(membership.membershipRole)) return true;
       const row = await db
         .select({ id: projectPrincipalGrants.id })
         .from(projectPrincipalGrants)

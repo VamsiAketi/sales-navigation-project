@@ -8,6 +8,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import {
   CommandDialog,
@@ -86,6 +87,13 @@ export function CommandPalette() {
     () => allProjects.filter((p) => !p.archivedAt),
     [allProjects],
   );
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: !!selectedCompanyId && open,
+    staleTime: 10_000,
+  });
+  const canCreateTasks = sidebarBadges?.canCreateTasks ?? true;
 
   function go(path: string) {
     setOpen(false);
@@ -121,16 +129,18 @@ export function CommandPalette() {
         <CommandEmpty>No results found.</CommandEmpty>
 
         <CommandGroup heading="Actions">
-          <CommandItem
-            onSelect={() => {
-              setOpen(false);
-              openNewIssue();
-            }}
-          >
-            <SquarePen className="mr-2 h-4 w-4" />
-            Create new issue
-            <span className="ml-auto text-xs text-muted-foreground">C</span>
-          </CommandItem>
+          {canCreateTasks ? (
+            <CommandItem
+              onSelect={() => {
+                setOpen(false);
+                openNewIssue();
+              }}
+            >
+              <SquarePen className="mr-2 h-4 w-4" />
+              Create new issue
+              <span className="ml-auto text-xs text-muted-foreground">C</span>
+            </CommandItem>
+          ) : null}
           <CommandItem
             onSelect={() => {
               setOpen(false);

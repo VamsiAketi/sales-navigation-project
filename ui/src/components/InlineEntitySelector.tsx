@@ -162,7 +162,7 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
         >
           <input
             ref={inputRef}
-            className="w-full border-b border-border bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground/60"
+            className="w-full border-b border-border bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/60"
             placeholder={searchPlaceholder}
             value={query}
             onChange={(event) => {
@@ -212,7 +212,7 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
                     key={option.id || "__none__"}
                     type="button"
                     className={cn(
-                      "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm touch-manipulation",
+                      "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs touch-manipulation",
                       isHighlighted && "bg-accent",
                     )}
                     onMouseEnter={() => setHighlightedIndex(index)}

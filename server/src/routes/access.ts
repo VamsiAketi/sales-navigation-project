@@ -62,6 +62,7 @@ import {
   inspectBoardClaimChallenge
 } from "../board-claim.js";
 import { LOCAL_BOARD_USER_EMAIL } from "../local-board-defaults.js";
+import { isOwnerMembershipRole, membershipRoleLabel, normalizeMembershipRole } from "../lib/membership-role.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -1697,7 +1698,7 @@ export function accessRoutes(
     if (!target) return;
     if (target.principalType !== "user") return;
 
-    const isOwner = (target.membershipRole ?? "").trim().toLowerCase() === "owner";
+    const isOwner = isOwnerMembershipRole(target.membershipRole);
     if (!isOwner) return;
 
     const activeOwnerCount = await db
@@ -3256,12 +3257,14 @@ export function accessRoutes(
 
     res.json(
       members.map((member) => {
-        const isOwner = (member.membershipRole ?? "").trim().toLowerCase() === "owner";
+        const isOwner = isOwnerMembershipRole(member.membershipRole);
         const grants = isOwner
           ? PERMISSION_KEYS.map((permissionKey) => ({ permissionKey, scope: null }))
           : (grantsByPrincipal.get(member.principalId) ?? []);
         return {
           ...member,
+          membershipRole: normalizeMembershipRole(member.membershipRole),
+          membershipRoleLabel: membershipRoleLabel(member.membershipRole),
           grants,
         user:
           member.principalType === "user"
@@ -3345,8 +3348,8 @@ export function accessRoutes(
 
       const nextRole =
         req.body.membershipRole === undefined
-          ? member.membershipRole
-          : req.body.membershipRole;
+          ? normalizeMembershipRole(member.membershipRole)
+          : normalizeMembershipRole(req.body.membershipRole);
       const requestedReportsTo =
         req.body.reportsToMembershipId === undefined
           ? member.reportsToMembershipId
@@ -3460,7 +3463,11 @@ export function accessRoutes(
         return memberUpdated;
       });
 
-      res.json(updated);
+      res.json({
+        ...updated,
+        membershipRole: normalizeMembershipRole(updated.membershipRole),
+        membershipRoleLabel: membershipRoleLabel(updated.membershipRole),
+      });
     }
   );
 

@@ -79,9 +79,15 @@ const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
 const DEFAULT_INVITE_ROLE = "Manager";
+const LEGACY_PERMISSION_MIGRATIONS: Partial<Record<PermissionKey, PermissionKey>> = {
+  "teams.edit": "users:manage_permissions",
+};
 const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "agents:create": "agents.read",
   "agents.edit": "agents.read",
+  "tasks.create": "tasks.read",
+  "tasks:assign": "tasks.read",
+  "tasks:assign_scope": "tasks.read",
   "skills.edit": "skills.read",
   "goals.write": "goals.read",
   "hybrid_org.edit": "hybrid_org.read",
@@ -101,7 +107,10 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
 };
 
 function normalizePermissionSelection(keys: PermissionKey[]): PermissionKey[] {
-  const next = new Set(keys);
+  const next = new Set<PermissionKey>();
+  for (const key of keys) {
+    next.add(LEGACY_PERMISSION_MIGRATIONS[key] ?? key);
+  }
   for (const [editKey, readKey] of Object.entries(READ_DEPENDENCIES) as Array<[PermissionKey, PermissionKey]>) {
     if (next.has(editKey)) next.add(readKey);
   }
@@ -122,6 +131,8 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "agents.read",
     "users:invite",
     "users:manage_permissions",
+    "tasks.read",
+    "tasks.create",
     "tasks:assign",
     "tasks:assign_scope",
     "joins:approve",
@@ -151,6 +162,8 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "agents.read",
     "agents.edit",
     "agents:create",
+    "tasks.read",
+    "tasks.create",
     "tasks:assign",
     "tasks:assign_scope",
     "joins:approve",
@@ -171,6 +184,8 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
   contributor: [
     "agents.read",
     "agents.edit",
+    "tasks.read",
+    "tasks.create",
     "tasks:assign",
     "command_center.read",
     "hybrid_org.read",
@@ -182,6 +197,7 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "teams.read",
   ],
   reader: [
+    "tasks.read",
     "agents.read",
     "command_center.read",
     "hybrid_org.read",
@@ -210,6 +226,12 @@ const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
   },
   "users:manage_permissions": {
     title: "Manage roles & access",
+  },
+  "tasks.read": {
+    title: "View tasks",
+  },
+  "tasks.create": {
+    title: "Create tasks",
   },
   "tasks:assign": {
     title: "Assign work",
@@ -309,7 +331,7 @@ const PERMISSION_CATEGORY_DEFS: {
   {
     id: "work",
     title: "Tasks & workflow",
-    keys: ["tasks:assign", "tasks:assign_scope"],
+    keys: ["tasks.read", "tasks.create", "tasks:assign", "tasks:assign_scope"],
   },
   {
     id: "command_center",
@@ -382,7 +404,6 @@ function HumanPermissionsPanel({
   disabled,
   intro,
 }: HumanPermissionsPanelProps) {
-  const { pushToast } = useToast();
   const enabledSet = useMemo(() => new Set(enabledKeys), [enabledKeys]);
   const reverseReadDependencies = useMemo(() => {
     const byReadPermission = new Map<PermissionKey, PermissionKey[]>();
@@ -402,13 +423,6 @@ function HumanPermissionsPanel({
         enabledSet.has(permission),
       );
       if (blockingPermissions.length > 0) {
-        const firstBlockingPermission = blockingPermissions[0]!;
-        pushToast({
-          title: "Cannot remove view permission",
-          body: `"${PERMISSION_UI[key]?.title ?? key}" is required because "${PERMISSION_UI[firstBlockingPermission]?.title ?? firstBlockingPermission}" is enabled. Disable edit/action access first.`,
-          tone: "warn",
-          dedupeKey: `permission-dependency|${key}|${firstBlockingPermission}`,
-        });
         return;
       }
     }
@@ -479,6 +493,9 @@ function HumanPermissionsPanel({
                 const checked = enabledSet.has(key);
                 const ui = PERMISSION_UI[key];
                 const sid = `${idPrefix}-${key}`;
+                const isReadPermissionLocked =
+                  checked &&
+                  (reverseReadDependencies.get(key) ?? []).some((permission) => enabledSet.has(permission));
                 return (
                   <li
                     key={key}
@@ -488,7 +505,7 @@ function HumanPermissionsPanel({
                     <Checkbox
                       id={sid}
                       checked={checked}
-                      disabled={disabled}
+                      disabled={disabled || isReadPermissionLocked}
                       onCheckedChange={(on) => toggle(key, on === true)}
                       aria-label={ui.title}
                       className="h-3.5 w-3.5 border-border/90 bg-background data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=unchecked]:border-muted-foreground/70"
@@ -514,6 +531,12 @@ function normalizeRoleLabel(input: string) {
   const normalized = input.trim().replace(/\s+/g, " ");
   if (normalized.toLowerCase() === "owner") return "owner";
   return normalized;
+}
+
+function roleDisplayLabel(role: string | null | undefined) {
+  const normalized = normalizeRoleLabel(role ?? "");
+  if (!normalized) return "";
+  return normalized === "owner" ? "Owner" : normalized;
 }
 
 function readCompanyRolePrefs(companyId: string) {
@@ -1587,7 +1610,10 @@ export function CompanyDirectory() {
       }
       return base;
     }, [options, customOptions]);
-    const roleOptions: InlineEntityOption[] = merged.map((role) => ({ id: role, label: role }));
+    const roleOptions: InlineEntityOption[] = merged.map((role) => ({
+      id: normalizeRoleLabel(role),
+      label: roleDisplayLabel(role),
+    }));
     return (
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">{label}</div>
@@ -1663,7 +1689,10 @@ export function CompanyDirectory() {
                         <Label className="text-xs text-muted-foreground">Role</Label>
                         <InlineEntitySelector
                           value={humanInviteRole}
-                          options={inviteHumanRoleOptions.map((role) => ({ id: role, label: role }))}
+                          options={inviteHumanRoleOptions.map((role) => ({
+                            id: normalizeRoleLabel(role),
+                            label: roleDisplayLabel(role),
+                          }))}
                           placeholder="Role"
                           noneLabel="None"
                           includeNoneOption={false}
@@ -1854,7 +1883,10 @@ export function CompanyDirectory() {
                         <div className="text-xs text-muted-foreground">Select role to manage</div>
                         <InlineEntitySelector
                           value={selectedManageHumanRole}
-                          options={manageHumanRoleOptions.map((role) => ({ id: role, label: role }))}
+                          options={manageHumanRoleOptions.map((role) => ({
+                            id: normalizeRoleLabel(role),
+                            label: roleDisplayLabel(role),
+                          }))}
                           placeholder="Select role"
                           noneLabel="None"
                           includeNoneOption={false}
@@ -1879,7 +1911,7 @@ export function CompanyDirectory() {
                               )}
                               onClick={() => setSelectedManageHumanRole(role)}
                             >
-                              {role}
+                              {roleDisplayLabel(role)}
                             </button>
                           );
                         })}
@@ -2098,7 +2130,7 @@ export function CompanyDirectory() {
                     "sticky top-0 z-20 grid gap-2 border-b border-border/70 bg-background px-3 py-2 text-xs font-bold text-foreground/90",
                     teamTypeFilter === "agent"
                       ? "grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)]"
-                      : "grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)_minmax(13rem,1.2fr)]",
+                      : "grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)]",
                   )}
                 >
                 <button
@@ -2155,7 +2187,6 @@ export function CompanyDirectory() {
                     >
                       Status <ArrowUpDown className="size-3" aria-hidden />
                     </button>
-                    <span className="inline-flex w-full justify-self-start items-center justify-start py-1">Actions</span>
                   </>
                 )}
                 </div>
@@ -2179,9 +2210,10 @@ export function CompanyDirectory() {
                         key={member.id}
                         onClick={() => {
                           setSelectedHumanMemberId(member.id);
+                          setHumanDetailsDialogOpen(true);
                         }}
                         className={cn(
-                          "grid w-full cursor-pointer grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)_minmax(13rem,1.2fr)] items-center gap-2 border-b border-border/60 px-3 py-2 text-left transition-colors",
+                          "grid w-full cursor-pointer grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)] items-center gap-2 border-b border-border/60 px-3 py-2 text-left transition-colors",
                           selected ? "bg-[#e5f1fb] text-foreground dark:bg-accent/45" : "hover:bg-muted/40",
                           isSuspended && "opacity-70",
                         )}
@@ -2196,7 +2228,10 @@ export function CompanyDirectory() {
                         <span onClick={(event) => event.stopPropagation()} className="min-w-0">
                           <InlineEntitySelector
                             value={roleValue}
-                            options={manageHumanRoleOptions.map((role) => ({ id: role, label: role }))}
+                            options={manageHumanRoleOptions.map((role) => ({
+                              id: normalizeRoleLabel(role),
+                              label: roleDisplayLabel(role),
+                            }))}
                             placeholder="Role"
                             noneLabel="None"
                             searchPlaceholder="Search roles..."
@@ -2207,7 +2242,7 @@ export function CompanyDirectory() {
                               setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: nextRole }));
                               saveHumanRowEdits(member, nextRole, reportsToValue);
                             }}
-                            className="h-8 w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                            className="h-8 w-[150px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                           />
                         </span>
                         <span onClick={(event) => event.stopPropagation()} className="min-w-0">
@@ -2230,7 +2265,7 @@ export function CompanyDirectory() {
                               setMemberManagerDrafts((prev) => ({ ...prev, [member.id]: nextManager }));
                               saveHumanRowEdits(member, roleValue, nextManager);
                             }}
-                            className="h-8 w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                            className="h-8 w-[140px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                           />
                         </span>
                         <span
@@ -2240,70 +2275,6 @@ export function CompanyDirectory() {
                           )}
                         >
                           {isSuspended ? "Deactivated" : "Active"}
-                        </span>
-                        <span onClick={(event) => event.stopPropagation()} className="inline-flex w-full items-center justify-start gap-1.5">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 rounded-md border-border/70 px-2 text-[11px]"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setSelectedHumanMemberId(member.id);
-                              setHumanDetailsDialogOpen(true);
-                            }}
-                          >
-                            Edit Permissions
-                          </Button>
-                          {isSuspended ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-7 rounded-md border-emerald-300 bg-emerald-50 px-2 text-[11px] text-emerald-800 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
-                              disabled={!selectedCompanyId || reactivateHumanMutation.isPending || removeHumanMutation.isPending}
-                              onClick={() =>
-                                reactivateHumanMutation.mutate(member.id, {
-                                  onError: (err) => {
-                                    pushToast({
-                                      title: "Action failed",
-                                      body: apiErrorMessage(err),
-                                      tone: "error",
-                                    });
-                                  },
-                                })
-                              }
-                            >
-                              Activate
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-7 rounded-md border-amber-300 bg-amber-50 px-2 text-[11px] text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
-                              disabled={!selectedCompanyId || deactivateHumanMutation.isPending || removeHumanMutation.isPending}
-                              onClick={() => {
-                                setSelectedHumanMemberId(member.id);
-                                setDeactivateDialogOpen(true);
-                              }}
-                            >
-                              Deactivate
-                            </Button>
-                          )}
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 rounded-full border-rose-200 px-2 text-[11px] text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
-                            disabled={!selectedCompanyId || deactivateHumanMutation.isPending || reactivateHumanMutation.isPending || removeHumanMutation.isPending}
-                            onClick={() => {
-                              setSelectedHumanMemberId(member.id);
-                              setDeleteDialogOpen(true);
-                            }}
-                          >
-                            Delete
-                          </Button>
                         </span>
                       </div>
                     );
@@ -2325,7 +2296,10 @@ export function CompanyDirectory() {
                       <span onClick={(event) => event.stopPropagation()} className="min-w-0">
                         <InlineEntitySelector
                           value={roleValue}
-                          options={assignableAgentRoleOptions.map((role) => ({ id: role, label: role }))}
+                          options={assignableAgentRoleOptions.map((role) => ({
+                            id: normalizeRoleLabel(role),
+                            label: roleDisplayLabel(role),
+                          }))}
                           placeholder="Role"
                           noneLabel="None"
                           searchPlaceholder="Search roles..."
@@ -2335,7 +2309,7 @@ export function CompanyDirectory() {
                             setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: nextRole }));
                             saveAgentRowEdits(member, nextRole, reportsToValue);
                           }}
-                          className="h-8 w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                          className="h-8 w-[150px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                         />
                       </span>
                       <span onClick={(event) => event.stopPropagation()} className="min-w-0">
@@ -2360,7 +2334,7 @@ export function CompanyDirectory() {
                             setAgentReportsDrafts((prev) => ({ ...prev, [member.id]: nextManager }));
                             saveAgentRowEdits(member, roleValue, nextManager);
                           }}
-                          className="h-8 w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                          className="h-8 w-[140px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                         />
                       </span>
                     </div>
@@ -2409,7 +2383,9 @@ export function CompanyDirectory() {
                       <div className="mt-3 space-y-2 text-xs">
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Role</span>
-                          <span className="font-medium text-foreground">{selectedHumanMember.membershipRole ?? "member"}</span>
+                          <span className="font-medium text-foreground">
+                            {roleDisplayLabel(selectedHumanMember.membershipRole) || "member"}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Status</span>
@@ -2418,15 +2394,73 @@ export function CompanyDirectory() {
                           </span>
                         </div>
                       </div>
+                      <div className="pt-2 space-y-2">
+                        {selectedHumanMember.status === "suspended" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-full justify-start rounded-md border-border/70 bg-background px-2 text-xs font-medium text-foreground hover:bg-muted"
+                            disabled={!selectedCompanyId || reactivateHumanMutation.isPending || removeHumanMutation.isPending}
+                            onClick={() =>
+                              reactivateHumanMutation.mutate(selectedHumanMember.id, {
+                                onError: (err) => {
+                                  pushToast({
+                                    title: "Action failed",
+                                    body: apiErrorMessage(err),
+                                    tone: "error",
+                                  });
+                                },
+                              })
+                            }
+                          >
+                            Activate user
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-full justify-start rounded-md border-border/70 bg-background px-2 text-xs font-medium text-foreground hover:bg-muted"
+                            disabled={!selectedCompanyId || deactivateHumanMutation.isPending || removeHumanMutation.isPending}
+                            onClick={() => {
+                              setHumanDetailsDialogOpen(false);
+                              setDeactivateDialogOpen(true);
+                            }}
+                          >
+                            Deactivate user
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-full justify-start rounded-md border-destructive/40 bg-background px-2 text-xs font-medium text-destructive hover:bg-destructive/10"
+                          disabled={!selectedCompanyId || deactivateHumanMutation.isPending || reactivateHumanMutation.isPending || removeHumanMutation.isPending}
+                          onClick={() => {
+                            setHumanDetailsDialogOpen(false);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          Delete user
+                        </Button>
+                      </div>
                     </div>
                   </aside>
                   <section className="min-h-0 overflow-y-auto p-4">
                     <HumanPermissionsPanel
                       idPrefix={`member-${selectedHumanMember.id}`}
-                      enabledKeys={ALL_PERMISSION_KEYS.filter((k) =>
-                        selectedHumanMember.grants.some((g) => g.permissionKey === k),
-                      )}
-                      disabled={humanPermissionMutation.isPending || !selectedCompanyId}
+                      enabledKeys={
+                        humanPermissionMutation.isPending &&
+                        humanPermissionMutation.variables?.memberId === selectedHumanMember.id
+                          ? normalizePermissionSelection(
+                              humanPermissionMutation.variables.grants.map((grant) => grant.permissionKey),
+                            )
+                          : normalizePermissionSelection(
+                              selectedHumanMember.grants.map((grant) => grant.permissionKey as PermissionKey),
+                            )
+                      }
+                      disabled={!selectedCompanyId}
                       onKeysChange={(keys) => {
                         if (!selectedCompanyId) return;
                         const nextGrants = keys.map((permissionKey) => ({

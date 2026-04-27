@@ -7,6 +7,7 @@ import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { heartbeatsApi } from "../api/heartbeats";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -110,6 +111,13 @@ export function Issues() {
     queryFn: () => issuesApi.list(selectedCompanyId!, { participantAgentId }),
     enabled: !!selectedCompanyId,
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const canReadTasks = sidebarBadges?.canReadTasks ?? true;
+  const canCreateTasks = sidebarBadges?.canCreateTasks ?? true;
 
   const issues = useMemo(() => {
     let list = issuesRaw ?? [];
@@ -165,6 +173,9 @@ export function Issues() {
   if (!selectedCompanyId) {
     return <EmptyState icon={CircleDot} message="Select a company to view issues." />;
   }
+  if (!canReadTasks) {
+    return <EmptyState icon={CircleDot} message="You do not have permission to view tasks." />;
+  }
 
   return (
     <IssuesList
@@ -181,6 +192,7 @@ export function Issues() {
       initialSearch={initialSearch}
       onSearchChange={handleSearchChange}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+      canCreateTask={canCreateTasks}
       searchFilters={participantAgentId ? { participantAgentId } : undefined}
       filterStatusOptions={globalProjectStatuses}
     />

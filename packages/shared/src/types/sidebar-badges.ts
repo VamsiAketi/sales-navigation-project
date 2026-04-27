@@ -4,6 +4,8 @@ export interface SidebarBadges {
   failedRuns: number;
   joinRequests: number;
   canReadCommandCenter?: boolean;
+  canReadTasks?: boolean;
+  canCreateTasks?: boolean;
   canReadHybridOrg?: boolean;
   canEditHybridOrg?: boolean;
   canImportHybridOrg?: boolean;

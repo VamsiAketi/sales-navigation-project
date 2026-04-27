@@ -426,6 +426,8 @@ export const PERMISSION_KEYS = [
   "agents:create",
   "users:invite",
   "users:manage_permissions",
+  "tasks.read",
+  "tasks.create",
   "tasks:assign",
   "tasks:assign_scope",
   "joins:approve",
