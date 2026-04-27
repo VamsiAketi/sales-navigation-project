@@ -466,17 +466,20 @@ export function NewIssueDialog() {
         agentIcon: agent.icon,
       });
     }
-    for (const project of orderedProjects) {
+    const activeUsers = [...(members ?? [])]
+      .filter((member) => member.principalType === "user" && member.user)
+      .map((member) => member.user!)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const user of activeUsers) {
       options.push({
-        id: `project:${project.id}`,
-        name: project.name,
-        kind: "project",
-        projectId: project.id,
-        projectStatus: project.status,
+        id: `user:${user.id}`,
+        name: user.name,
+        kind: "human",
+        userId: user.id,
       });
     }
     return options;
-  }, [agents, orderedProjects]);
+  }, [agents, members]);
 
   const { data: assigneeAdapterModels } = useQuery({
     queryKey:
