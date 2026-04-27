@@ -103,6 +103,7 @@ export type UpdateMemberPermissions = z.infer<typeof updateMemberPermissionsSche
 
 export const updateMemberOrgConfigSchema = z.object({
   membershipRole: z.string().trim().min(1).max(120).nullable().optional(),
+  title: z.string().trim().min(1).max(120).nullable().optional(),
   reportsToMembershipId: z.string().uuid().nullable().optional(),
   managedAgentMemberIds: z.array(z.string().uuid()).max(500).optional(),
 });

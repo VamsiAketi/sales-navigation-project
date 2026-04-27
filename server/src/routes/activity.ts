@@ -5,7 +5,7 @@ import { validate } from "../middleware/validate.js";
 import { activityService } from "../services/activity.js";
 import { accessService } from "../services/access.js";
 import { forbidden } from "../errors.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { assertBoard, assertCompanyAccess, projectAuthActorFromRequest } from "./authz.js";
 import { issueService } from "../services/index.js";
 import { sanitizeRecord } from "../redaction.js";
 
@@ -51,6 +51,10 @@ export function activityRoutes(db: Db) {
       agentId: req.query.agentId as string | undefined,
       entityType: req.query.entityType as string | undefined,
       entityId: req.query.entityId as string | undefined,
+      visibleProjectIds: await access.listProjectIdsVisibleToActor(
+        companyId,
+        projectAuthActorFromRequest(req),
+      ),
     };
     const result = await svc.list(filters);
     res.json(result);

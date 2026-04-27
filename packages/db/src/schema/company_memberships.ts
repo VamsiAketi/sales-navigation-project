@@ -10,6 +10,7 @@ export const companyMemberships = pgTable(
     principalId: text("principal_id").notNull(),
     status: text("status").notNull().default("active"),
     membershipRole: text("membership_role"),
+    title: text("title"),
     reportsToMembershipId: uuid("reports_to_membership_id").references(
       (): AnyPgColumn => companyMemberships.id,
     ),

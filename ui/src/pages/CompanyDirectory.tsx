@@ -18,7 +18,8 @@ import {
   Shield,
   Target,
   UserRound,
-  Users
+  Users,
+  X
 } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -53,9 +54,10 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
+import { authApi } from "../api/auth";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
-type TeamSortKey = "displayName" | "principal" | "type" | "role" | "reportsTo" | "status";
+type TeamSortKey = "displayName" | "principal" | "type" | "role" | "title" | "reportsTo" | "status";
 type TeamTypeFilter = "human" | "agent";
 
 const HUMAN_ROLE_OPTIONS = ["owner", "Admin", "Manager", "Contributor", "Reader"] as const;
@@ -76,7 +78,20 @@ const AGENT_ROLE_OPTIONS = [
 ] as const;
 
 const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
+const COMPANY_TITLE_STORAGE_PREFIX = "paperclip.companyTitles";
 const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
+const DEFAULT_TITLE_OPTIONS = [
+  "CEO",
+  "COO",
+  "CTO",
+  "CFO",
+  "VP Eng",
+  "VP Product",
+  "Director",
+  "Manager",
+  "Lead",
+  "Intern",
+] as const;
 const ALL_PERMISSION_KEYS = [...PERMISSION_KEYS] as PermissionKey[];
 const DEFAULT_INVITE_ROLE = "Manager";
 const LEGACY_PERMISSION_MIGRATIONS: Partial<Record<PermissionKey, PermissionKey>> = {
@@ -94,6 +109,9 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "hybrid_org.import": "hybrid_org.read",
   "hybrid_org.export": "hybrid_org.read",
   "teams.edit": "teams.read",
+  "teams.title_create": "teams.read",
+  "teams.title_assign": "teams.read",
+  "teams.title_manage": "teams.read",
   "users:invite": "teams.read",
   "joins:approve": "teams.read",
   "users:manage_permissions": "teams.read",
@@ -148,6 +166,9 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "attention_queue.read",
     "teams.read",
     "teams.edit",
+    "teams.title_create",
+    "teams.title_assign",
+    "teams.title_manage",
     "audit_logs.read",
     "company_settings.read",
     "company_settings.general",
@@ -179,6 +200,7 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "attention_queue.read",
     "teams.read",
     "teams.edit",
+    "teams.title_assign",
     "company_settings.read",
   ],
   contributor: [
@@ -284,6 +306,15 @@ const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
   "teams.edit": {
     title: "Edit Teams",
   },
+  "teams.title_create": {
+    title: "Create titles",
+  },
+  "teams.title_assign": {
+    title: "Assign titles",
+  },
+  "teams.title_manage": {
+    title: "Manage titles",
+  },
   "audit_logs.read": {
     title: "View Audit Logs",
   },
@@ -321,7 +352,15 @@ const PERMISSION_CATEGORY_DEFS: {
   {
     id: "team",
     title: "Team & access",
-    keys: ["teams.read", "users:manage_permissions", "users:invite", "joins:approve"],
+    keys: [
+      "teams.read",
+      "users:manage_permissions",
+      "users:invite",
+      "joins:approve",
+      "teams.title_create",
+      "teams.title_assign",
+      "teams.title_manage",
+    ],
   },
   {
     id: "agents",
@@ -539,6 +578,10 @@ function roleDisplayLabel(role: string | null | undefined) {
   return normalized === "owner" ? "Owner" : normalized;
 }
 
+function normalizeTitleLabel(input: string) {
+  return input.trim().replace(/\s+/g, " ");
+}
+
 function readCompanyRolePrefs(companyId: string) {
   try {
     const raw = window.localStorage.getItem(`${COMPANY_ROLE_STORAGE_PREFIX}:${companyId}`);
@@ -555,6 +598,29 @@ function readCompanyRolePrefs(companyId: string) {
 function writeCompanyRolePrefs(companyId: string, roles: { human: string[]; agent: string[] }) {
   try {
     window.localStorage.setItem(`${COMPANY_ROLE_STORAGE_PREFIX}:${companyId}`, JSON.stringify(roles));
+  } catch {
+    // ignore storage failures (private mode, etc.)
+  }
+}
+
+function readCompanyTitlePrefs(companyId: string) {
+  try {
+    const raw = window.localStorage.getItem(`${COMPANY_TITLE_STORAGE_PREFIX}:${companyId}`);
+    if (!raw) return [] as string[];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [] as string[];
+    return parsed
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => normalizeTitleLabel(value))
+      .filter((value) => value.length > 0);
+  } catch {
+    return [] as string[];
+  }
+}
+
+function writeCompanyTitlePrefs(companyId: string, titles: string[]) {
+  try {
+    window.localStorage.setItem(`${COMPANY_TITLE_STORAGE_PREFIX}:${companyId}`, JSON.stringify(titles));
   } catch {
     // ignore storage failures (private mode, etc.)
   }
@@ -733,12 +799,15 @@ export function CompanyDirectory() {
     requestedHumanMemberId,
   );
   const [memberRoleDrafts, setMemberRoleDrafts] = useState<Record<string, string>>({});
+  const [memberTitleDrafts, setMemberTitleDrafts] = useState<Record<string, string>>({});
   const [memberManagerDrafts, setMemberManagerDrafts] = useState<Record<string, string>>({});
   const [agentReportsDrafts, setAgentReportsDrafts] = useState<Record<string, string>>({});
   const [memberSaveStates, setMemberSaveStates] = useState<Record<string, SaveState>>({});
   const [memberSaveErrors, setMemberSaveErrors] = useState<Record<string, string>>({});
   const [customHumanRoles, setCustomHumanRoles] = useState<string[]>([]);
   const [customAgentRoles, setCustomAgentRoles] = useState<string[]>([]);
+  const [customTitles, setCustomTitles] = useState<string[]>([]);
+  const [newTitle, setNewTitle] = useState("");
   const [newHumanRole, setNewHumanRole] = useState("");
   const [newAgentRole, setNewAgentRole] = useState("");
   const [selectedManageHumanRole, setSelectedManageHumanRole] = useState<string>(HUMAN_ROLE_OPTIONS[0] ?? "owner");
@@ -789,6 +858,11 @@ export function CompanyDirectory() {
   });
   const canReadTeams = sidebarBadges?.canReadTeams ?? true;
   const canEditTeams = sidebarBadges?.canEditTeams ?? true;
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: authApi.getSession,
+    staleTime: 10_000,
+  });
   const membersPermissionDenied = isPermissionDeniedError(membersError);
 
   const { data: agentsList } = useQuery({
@@ -802,6 +876,7 @@ export function CompanyDirectory() {
     const prefs = readCompanyRolePrefs(selectedCompanyId);
     setCustomHumanRoles([]);
     setCustomAgentRoles(prefs.agent);
+    setCustomTitles(readCompanyTitlePrefs(selectedCompanyId));
     setHumanRolePermissions(readHumanRolePermissions(selectedCompanyId));
   }, [selectedCompanyId]);
 
@@ -809,6 +884,11 @@ export function CompanyDirectory() {
     if (!selectedCompanyId) return;
     writeCompanyRolePrefs(selectedCompanyId, { human: customHumanRoles, agent: customAgentRoles });
   }, [selectedCompanyId, customHumanRoles, customAgentRoles]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    writeCompanyTitlePrefs(selectedCompanyId, customTitles);
+  }, [selectedCompanyId, customTitles]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
@@ -832,6 +912,23 @@ export function CompanyDirectory() {
       ),
     [companyMembers]
   );
+  const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+  const currentUserMember = useMemo(
+    () =>
+      currentUserId
+        ? activeHumanMembers.find((member) => member.principalId === currentUserId) ?? null
+        : null,
+    [activeHumanMembers, currentUserId],
+  );
+  const currentUserPermissionSet = useMemo(
+    () => new Set((currentUserMember?.grants ?? []).map((grant) => grant.permissionKey as PermissionKey)),
+    [currentUserMember?.grants],
+  );
+  const canCreateTitles = currentUserPermissionSet.has("teams.title_create");
+  const canAssignTitles = currentUserPermissionSet.has("teams.title_assign");
+  const canManageTitles = currentUserPermissionSet.has("teams.title_manage");
+  const hasTitleAccess = canCreateTitles || canAssignTitles || canManageTitles;
+  const canOpenRolesAndTitlesDialog = canEditTeams || canCreateTitles || canAssignTitles || canManageTitles;
 
   const filteredHumanMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -840,7 +937,8 @@ export function CompanyDirectory() {
       const name = memberDisplayName(m).toLowerCase();
       const email = (m.user?.email ?? "").toLowerCase();
       const role = (m.membershipRole ?? "").toLowerCase();
-      return name.includes(q) || email.includes(q) || role.includes(q);
+      const title = (m.title ?? "").toLowerCase();
+      return name.includes(q) || email.includes(q) || role.includes(q) || title.includes(q);
     });
   }, [activeHumanMembers, search]);
 
@@ -851,7 +949,8 @@ export function CompanyDirectory() {
       const name = memberDisplayName(m).toLowerCase();
       const agentRole = (m.agent?.role ?? "").toLowerCase();
       const orgRole = (m.membershipRole ?? "").toLowerCase();
-      return name.includes(q) || agentRole.includes(q) || orgRole.includes(q);
+      const title = (m.title ?? "").toLowerCase();
+      return name.includes(q) || agentRole.includes(q) || orgRole.includes(q) || title.includes(q);
     });
   }, [activeAgentMembers, search]);
 
@@ -864,6 +963,7 @@ export function CompanyDirectory() {
     if (key === "principal") return member.user?.email ?? member.principalId;
     if (key === "type") return "Human";
     if (key === "role") return member.membershipRole ?? "";
+    if (key === "title") return memberTitleDrafts[member.id] ?? member.title ?? "";
     if (key === "reportsTo") return memberManagerDrafts[member.id] ?? member.reportsToMembershipId ?? "";
     return member.status ?? "";
   }
@@ -873,6 +973,7 @@ export function CompanyDirectory() {
     if (key === "principal") return member.user?.email ?? "";
     if (key === "type") return "Agent";
     if (key === "role") return memberRoleDrafts[member.id] ?? member.membershipRole ?? "";
+    if (key === "title") return memberTitleDrafts[member.id] ?? member.title ?? "";
     if (key === "reportsTo") return agentReportsDrafts[member.id] ?? "";
     return member.status ?? "active";
   }
@@ -882,14 +983,14 @@ export function CompanyDirectory() {
     return [...filteredHumanMembers].sort((a, b) =>
       compareText(getHumanSortValue(a, teamSortKey), getHumanSortValue(b, teamSortKey)) * direction,
     );
-  }, [filteredHumanMembers, teamSortDirection, teamSortKey, memberManagerDrafts]);
+  }, [filteredHumanMembers, teamSortDirection, teamSortKey, memberManagerDrafts, memberTitleDrafts]);
 
   const sortedAgentMembers = useMemo(() => {
     const direction = teamSortDirection === "asc" ? 1 : -1;
     return [...filteredAgentMembers].sort((a, b) =>
       compareText(getAgentSortValue(a, teamSortKey), getAgentSortValue(b, teamSortKey)) * direction,
     );
-  }, [filteredAgentMembers, teamSortDirection, teamSortKey, memberRoleDrafts, agentReportsDrafts]);
+  }, [filteredAgentMembers, teamSortDirection, teamSortKey, memberRoleDrafts, agentReportsDrafts, memberTitleDrafts]);
 
   const toggleTeamSort = (key: TeamSortKey) => {
     if (teamSortKey === key) {
@@ -948,6 +1049,17 @@ export function CompanyDirectory() {
   const assignableAgentRoleOptions = useMemo(
     () => Array.from(new Set([...AGENT_ROLE_OPTIONS, ...persistedAgentRoles, ...customAgentRoles])),
     [customAgentRoles, persistedAgentRoles],
+  );
+  const availableTitleOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...DEFAULT_TITLE_OPTIONS.map((title) => normalizeTitleLabel(title)),
+          ...customTitles.map((title) => normalizeTitleLabel(title)),
+          ...(companyMembers ?? []).map((member) => normalizeTitleLabel(member.title ?? "")),
+        ].filter((title) => title.length > 0)),
+      ),
+    [companyMembers, customTitles],
   );
 
   useEffect(() => {
@@ -1167,17 +1279,21 @@ export function CompanyDirectory() {
 
   useEffect(() => {
     const nextRoleDrafts: Record<string, string> = {};
+    const nextTitleDrafts: Record<string, string> = {};
     const nextManagerDrafts: Record<string, string> = {};
     const nextAgentReportsDrafts: Record<string, string> = {};
     for (const member of activeHumanMembers) {
       nextRoleDrafts[member.id] = member.membershipRole ?? "";
+      nextTitleDrafts[member.id] = member.title ?? "";
       nextManagerDrafts[member.id] = member.reportsToMembershipId ?? "";
     }
     for (const member of activeAgentMembers) {
       nextRoleDrafts[member.id] = member.membershipRole ?? "";
+      nextTitleDrafts[member.id] = member.title ?? "";
       nextAgentReportsDrafts[member.id] = agentByPrincipalId.get(member.principalId)?.reportsTo ?? "";
     }
     setMemberRoleDrafts(nextRoleDrafts);
+    setMemberTitleDrafts(nextTitleDrafts);
     setMemberManagerDrafts(nextManagerDrafts);
     setAgentReportsDrafts(nextAgentReportsDrafts);
   }, [activeHumanMembers, activeAgentMembers, agentByPrincipalId]);
@@ -1336,9 +1452,15 @@ export function CompanyDirectory() {
   }, [inviteDialogOpen]);
 
   const humanSaveMutation = useMutation({
-    mutationFn: (input: { memberId: string; membershipRole: string | null; reportsToMembershipId: string | null }) =>
+    mutationFn: (input: {
+      memberId: string;
+      membershipRole?: string | null;
+      title?: string | null;
+      reportsToMembershipId?: string | null;
+    }) =>
       accessApi.updateMemberOrgConfig(selectedCompanyId!, input.memberId, {
         membershipRole: input.membershipRole,
+        title: input.title,
         reportsToMembershipId: input.reportsToMembershipId
       }),
     onSuccess: invalidateMembers
@@ -1390,10 +1512,12 @@ export function CompanyDirectory() {
   function computeDirty(member: CompanyMember | null) {
     if (!member) return false;
     const roleDraft = (memberRoleDrafts[member.id] ?? "").trim();
+    const titleDraft = (memberTitleDrafts[member.id] ?? "").trim();
     const mgrDraft = (memberManagerDrafts[member.id] ?? "").trim();
     const roleNow = (member.membershipRole ?? "").trim();
+    const titleNow = (member.title ?? "").trim();
     const mgrNow = (member.reportsToMembershipId ?? "").trim();
-    return roleDraft !== roleNow || mgrDraft !== mgrNow;
+    return roleDraft !== roleNow || titleDraft !== titleNow || mgrDraft !== mgrNow;
   }
 
   const humanIsDirty = computeDirty(selectedHumanMember);
@@ -1410,10 +1534,11 @@ export function CompanyDirectory() {
     const serverMember = memberById.get(memberId) ?? null;
     if (!serverMember) return;
     setMemberRoleDrafts((prev) => ({ ...prev, [memberId]: serverMember.membershipRole ?? "" }));
+    setMemberTitleDrafts((prev) => ({ ...prev, [memberId]: serverMember.title ?? "" }));
     setMemberManagerDrafts((prev) => ({ ...prev, [memberId]: serverMember.reportsToMembershipId ?? "" }));
   }
 
-  function saveHumanRowEdits(member: CompanyMember, nextRole: string, nextManagerId: string) {
+  function saveHumanRowEdits(member: CompanyMember, nextRole: string, nextTitle: string, nextManagerId: string) {
     if (!selectedCompanyId) return;
     const managerPrincipalType = nextManagerId ? memberPrincipalTypeById.get(nextManagerId) : null;
     if (nextManagerId && managerPrincipalType === "agent") {
@@ -1430,6 +1555,7 @@ export function CompanyDirectory() {
       {
         memberId: member.id,
         membershipRole: nextRole.trim() || null,
+        title: normalizeTitleLabel(nextTitle) || null,
         reportsToMembershipId: nextManagerId.trim() || null,
       },
       {
@@ -1453,6 +1579,33 @@ export function CompanyDirectory() {
           setMemberSaveState(member.id, "error");
           setMemberSaveErrors((prev) => ({ ...prev, [member.id]: apiErrorMessage(err) }));
           revertDraftsToServer(member.id);
+        },
+      },
+    );
+  }
+
+  function saveHumanTitleEdit(member: CompanyMember, nextTitle: string) {
+    if (!selectedCompanyId) return;
+    setMemberSaveState(member.id, "saving");
+    humanSaveMutation.mutate(
+      {
+        memberId: member.id,
+        title: normalizeTitleLabel(nextTitle) || null,
+      },
+      {
+        onSuccess: () => {
+          setMemberSaveState(member.id, "saved");
+          setMemberSaveErrors((prev) => {
+            if (!prev[member.id]) return prev;
+            const { [member.id]: _drop, ...rest } = prev;
+            return rest;
+          });
+          window.setTimeout(() => setMemberSaveState(member.id, "idle"), 800);
+        },
+        onError: (err) => {
+          setMemberSaveState(member.id, "error");
+          setMemberSaveErrors((prev) => ({ ...prev, [member.id]: apiErrorMessage(err) }));
+          setMemberTitleDrafts((prev) => ({ ...prev, [member.id]: member.title ?? "" }));
         },
       },
     );
@@ -1495,6 +1648,7 @@ export function CompanyDirectory() {
   // Autosave (debounced) for selected human
   useEffect(() => {
     if (!selectedCompanyId || !selectedHumanMember) return;
+    if (!canEditTeams) return;
     if (selectedHumanManagerIsAgent) {
       setMemberSaveState(selectedHumanMember.id, "error");
       setMemberSaveErrors((prev) => ({
@@ -1516,6 +1670,7 @@ export function CompanyDirectory() {
         {
           memberId: selectedHumanMember.id,
           membershipRole: (memberRoleDrafts[selectedHumanMember.id] ?? "").trim() || null,
+          title: normalizeTitleLabel(memberTitleDrafts[selectedHumanMember.id] ?? "") || null,
           reportsToMembershipId: (memberManagerDrafts[selectedHumanMember.id] ?? "").trim() || null
         },
         {
@@ -1543,8 +1698,10 @@ export function CompanyDirectory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     selectedCompanyId,
+    canEditTeams,
     selectedHumanMember?.id,
     memberRoleDrafts[selectedHumanMember?.id ?? ""],
+    memberTitleDrafts[selectedHumanMember?.id ?? ""],
     memberManagerDrafts[selectedHumanMember?.id ?? ""],
     selectedHumanManagerIsAgent,
   ]);
@@ -1940,6 +2097,68 @@ export function CompanyDirectory() {
                           </Button>
                         </div>
                       ) : null}
+
+                      {canCreateTitles || canManageTitles ? (
+                        <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
+                          <div className="text-sm font-medium text-foreground">Manage titles</div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={newTitle}
+                              onChange={(e) => setNewTitle(e.target.value)}
+                              placeholder="Add a title (e.g. Team Lead)"
+                              className="h-10 rounded-lg border-border/60"
+                            />
+                            <Button
+                              type="button"
+                              className="rounded-full"
+                              onClick={() => {
+                                if (!canCreateTitles) return;
+                                const next = normalizeTitleLabel(newTitle);
+                                if (!next) return;
+                                setNewTitle("");
+                                setCustomTitles((prev) => (prev.includes(next) ? prev : [...prev, next]));
+                              }}
+                              disabled={!canCreateTitles || !normalizeTitleLabel(newTitle)}
+                            >
+                              Add
+                            </Button>
+                          </div>
+                          {availableTitleOptions.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {availableTitleOptions.map((title) => (
+                                <span
+                                  key={title}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs",
+                                    customTitles.includes(title)
+                                      ? "border-primary/40 bg-primary/10 text-foreground"
+                                      : "border-border bg-background text-muted-foreground",
+                                  )}
+                                >
+                                  {title}
+                                  {customTitles.includes(title) ? (
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/15 hover:text-foreground"
+                                      aria-label={`Remove ${title}`}
+                                      onClick={() => {
+                                        if (!canManageTitles) return;
+                                        setCustomTitles((prev) => prev.filter((candidate) => candidate !== title));
+                                      }}
+                                      disabled={!canManageTitles}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  ) : null}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          <p className="text-[11px] text-muted-foreground">
+                            Use Add to create title suggestions and x to remove custom ones.
+                          </p>
+                        </div>
+                      ) : null}
                     </section>
                     <section className="space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-muted/10 p-3">
                       <div className="text-sm font-medium text-foreground">
@@ -2082,7 +2301,7 @@ export function CompanyDirectory() {
                       <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search name, email, role..."
+                        placeholder="Search name, email, role, title..."
                         className="h-9 rounded-lg border-border/60 bg-background"
                       />
                     </div>
@@ -2096,14 +2315,14 @@ export function CompanyDirectory() {
                         Invite Human
                       </Button>
                     ) : null}
-                    {canEditTeams ? (
+                    {canOpenRolesAndTitlesDialog ? (
                       <Button
                         type="button"
                         variant="secondary"
                         className="h-9 rounded-md border border-border/70 bg-background px-4 text-foreground hover:bg-muted"
                         onClick={() => setRolesDialogOpen(true)}
                       >
-                        Manage roles
+                        {hasTitleAccess ? "Manage roles & titles" : "Manage roles"}
                       </Button>
                     ) : null}
                     {hasActiveTeamFilters ? (
@@ -2130,7 +2349,7 @@ export function CompanyDirectory() {
                     "sticky top-0 z-20 grid gap-2 border-b border-border/70 bg-background px-3 py-2 text-xs font-bold text-foreground/90",
                     teamTypeFilter === "agent"
                       ? "grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)]"
-                      : "grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)]",
+                      : "grid-cols-[minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)]",
                   )}
                 >
                 <button
@@ -2143,6 +2362,18 @@ export function CompanyDirectory() {
                 >
                   Name <ArrowUpDown className="size-3" aria-hidden />
                 </button>
+                {teamTypeFilter === "agent" ? null : (
+                  <button
+                    type="button"
+                    onClick={() => toggleTeamSort("title")}
+                    className={cn(
+                      "inline-flex w-full justify-self-start items-center justify-start gap-1 rounded-md py-1 text-left transition-colors hover:text-foreground",
+                      teamSortKey === "title" && "text-primary",
+                    )}
+                  >
+                    Title <ArrowUpDown className="size-3" aria-hidden />
+                  </button>
+                )}
                 {teamTypeFilter === "agent" ? null : (
                   <button
                     type="button"
@@ -2213,7 +2444,7 @@ export function CompanyDirectory() {
                           setHumanDetailsDialogOpen(true);
                         }}
                         className={cn(
-                          "grid w-full cursor-pointer grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)] items-center gap-2 border-b border-border/60 px-3 py-2 text-left transition-colors",
+                          "grid w-full cursor-pointer grid-cols-[minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(8rem,0.9fr)_minmax(7rem,0.7fr)] items-center gap-2 border-b border-border/60 px-3 py-2 text-left transition-colors",
                           selected ? "bg-[#e5f1fb] text-foreground dark:bg-accent/45" : "hover:bg-muted/40",
                           isSuspended && "opacity-70",
                         )}
@@ -2221,6 +2452,32 @@ export function CompanyDirectory() {
                         <span className="min-w-0 inline-flex items-center gap-2">
                           <DirectoryMemberAvatar member={member} size="xs" className="shrink-0" />
                           <span className="truncate text-sm font-medium">{memberDisplayName(member)}</span>
+                        </span>
+                        <span onClick={(event) => event.stopPropagation()} className="min-w-0">
+                          {canAssignTitles ? (
+                            <InlineEntitySelector
+                              value={(memberTitleDrafts[member.id] ?? member.title ?? "").trim()}
+                              options={availableTitleOptions.map((title) => ({
+                                id: title,
+                                label: title,
+                              }))}
+                              placeholder="Title"
+                              noneLabel="None"
+                              searchPlaceholder="Search titles..."
+                              emptyMessage="No titles found."
+                              onChange={(next) => {
+                                setSelectedHumanMemberId(member.id);
+                                const nextTitle = normalizeTitleLabel(next);
+                                setMemberTitleDrafts((prev) => ({ ...prev, [member.id]: nextTitle }));
+                                saveHumanTitleEdit(member, nextTitle);
+                              }}
+                              className="h-8 w-[150px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                            />
+                          ) : (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {(memberTitleDrafts[member.id] ?? member.title ?? "").trim() || "None"}
+                            </span>
+                          )}
                         </span>
                         <span className="truncate text-xs text-muted-foreground">
                           {member.user?.email ?? member.principalId}
@@ -2240,7 +2497,7 @@ export function CompanyDirectory() {
                               setSelectedHumanMemberId(member.id);
                               const nextRole = next.trim();
                               setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: nextRole }));
-                              saveHumanRowEdits(member, nextRole, reportsToValue);
+                              saveHumanRowEdits(member, nextRole, memberTitleDrafts[member.id] ?? member.title ?? "", reportsToValue);
                             }}
                             className="h-8 w-[150px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                           />
@@ -2263,7 +2520,7 @@ export function CompanyDirectory() {
                               setSelectedHumanMemberId(member.id);
                               const nextManager = next.trim();
                               setMemberManagerDrafts((prev) => ({ ...prev, [member.id]: nextManager }));
-                              saveHumanRowEdits(member, roleValue, nextManager);
+                              saveHumanRowEdits(member, roleValue, memberTitleDrafts[member.id] ?? member.title ?? "", nextManager);
                             }}
                             className="h-8 w-[140px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                           />
@@ -2385,6 +2642,12 @@ export function CompanyDirectory() {
                           <span className="text-muted-foreground">Role</span>
                           <span className="font-medium text-foreground">
                             {roleDisplayLabel(selectedHumanMember.membershipRole) || "member"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Title</span>
+                          <span className="font-medium text-foreground">
+                            {(selectedHumanMember.title ?? "").trim() || "None"}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">

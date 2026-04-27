@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { activityLog, heartbeatRuns, issues } from "@paperclipai/db";
 
@@ -7,6 +7,7 @@ export interface ActivityFilters {
   agentId?: string;
   entityType?: string;
   entityId?: string;
+  visibleProjectIds?: string[] | null;
 }
 
 export function activityService(db: Db) {
@@ -23,6 +24,29 @@ export function activityService(db: Db) {
       }
       if (filters.entityId) {
         conditions.push(eq(activityLog.entityId, filters.entityId));
+      }
+
+      let projectVisibilityCondition:
+        | ReturnType<typeof and>
+        | ReturnType<typeof or>
+        | ReturnType<typeof sql>
+        | undefined;
+      if (filters.visibleProjectIds !== null && filters.visibleProjectIds !== undefined) {
+        if (filters.visibleProjectIds.length === 0) {
+          projectVisibilityCondition = sql`${activityLog.entityType} not in ('issue', 'project')`;
+        } else {
+          projectVisibilityCondition = or(
+            and(
+              eq(activityLog.entityType, "issue"),
+              inArray(issues.projectId, filters.visibleProjectIds),
+            ),
+            and(
+              eq(activityLog.entityType, "project"),
+              inArray(activityLog.entityId, filters.visibleProjectIds),
+            ),
+            sql`${activityLog.entityType} not in ('issue', 'project')`,
+          );
+        }
       }
 
       return db
@@ -42,6 +66,7 @@ export function activityService(db: Db) {
               sql`${activityLog.entityType} != 'issue'`,
               isNull(issues.hiddenAt),
             ),
+            ...(projectVisibilityCondition ? [projectVisibilityCondition] : []),
           ),
         )
         .orderBy(desc(activityLog.createdAt))

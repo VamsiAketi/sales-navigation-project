@@ -272,11 +272,6 @@ const defaultDotColor = "#a3a3a3";
 /** Soft lavender connectors (reference org chart). */
 const ORG_EDGE_STROKE = "#a5b4fc";
 
-function formatMembershipRole(role: string): string {
-  const trimmed = (role || "member").trim() || "member";
-  return trimmed.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function humanStatusDotColor(status: string): string {
   if (status === "active") return "#facc15";
   if (status === "suspended") return "#94a3b8";
@@ -387,6 +382,7 @@ function HumanOrgAvatar({
 function CardContent({
   node,
   agent,
+  humanTitle,
   isAgentNode,
   companyId,
   sessionUserId,
@@ -400,6 +396,7 @@ function CardContent({
     image?: string | null;
   };
   agent: Agent | undefined;
+  humanTitle?: string | null;
   isAgentNode: boolean;
   companyId: string;
   sessionUserId: string | null | undefined;
@@ -440,7 +437,7 @@ function CardContent({
           <span className="truncate text-xs leading-snug text-muted-foreground">
             {isAgentNode
               ? (agent?.title ?? roleLabel(node.role))
-              : formatMembershipRole(node.role)}
+              : (humanTitle?.trim() || "Member")}
           </span>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
@@ -466,6 +463,7 @@ function CardContent({
 interface OrgCardProps {
   node: LayoutNode;
   agent: Agent | undefined;
+  humanTitle?: string | null;
   isDropTarget: boolean;
   isInvalidTarget: boolean;
   isExpanded: boolean;
@@ -480,6 +478,7 @@ interface OrgCardProps {
 function OrgCard({
   node,
   agent,
+  humanTitle,
   isDropTarget,
   isInvalidTarget,
   isExpanded,
@@ -533,6 +532,7 @@ function OrgCard({
       <CardContent
         node={node}
         agent={agent}
+        humanTitle={humanTitle}
         isAgentNode={isAgentNode}
         companyId={companyId}
         sessionUserId={sessionUserId}
@@ -661,6 +661,15 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
     queryKey: queryKeys.access.members(companyId),
     queryFn: () => accessApi.listMembers(companyId),
   });
+  const humanMemberByMembershipId = useMemo(
+    () =>
+      new Map(
+        (members ?? [])
+          .filter((member) => member.principalType === "user")
+          .map((member) => [member.id, member] as const),
+      ),
+    [members],
+  );
 
   const agentMap = useMemo(() => {
     const m = new Map<string, Agent>();
@@ -1286,6 +1295,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
                   key={node.id}
                   node={node}
                   agent={agent}
+                  humanTitle={node.nodeType === "human" ? (humanMemberByMembershipId.get(node.id)?.title ?? null) : null}
                   isDropTarget={isDropTarget}
                   isInvalidTarget={!!activeId && invalid}
                   isExpanded={expanded}
@@ -1319,6 +1329,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
               <CardContent
                 node={activeNode}
                 agent={activeAgent}
+                humanTitle={activeNode.nodeType === "human" ? (humanMemberByMembershipId.get(activeNode.id)?.title ?? null) : null}
                 isAgentNode={activeIsAgent}
                 companyId={companyId}
                 sessionUserId={sessionUserId}
