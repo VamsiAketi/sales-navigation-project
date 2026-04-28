@@ -378,6 +378,21 @@ export function projectRoutes(db: Db) {
     assertCompanyAccess(req, project.companyId);
     await requireProjectPermission(req, project.companyId, id, "project:edit Workflow");
     const status = await statusSvc.create(id, project.companyId, req.body);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "project.status_created",
+      entityType: "project",
+      entityId: id,
+      details: {
+        statusId: status.id,
+        name: status.name,
+      },
+    });
     res.status(201).json(status);
   });
 
@@ -389,6 +404,21 @@ export function projectRoutes(db: Db) {
     assertCompanyAccess(req, project.companyId);
     await requireProjectPermission(req, project.companyId, id, "project:edit Workflow");
     const status = await statusSvc.update(statusId, id, req.body);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "project.status_updated",
+      entityType: "project",
+      entityId: id,
+      details: {
+        statusId,
+        changedKeys: Object.keys(req.body).sort(),
+      },
+    });
     res.json(status);
   });
 
@@ -399,6 +429,20 @@ export function projectRoutes(db: Db) {
     assertCompanyAccess(req, project.companyId);
     await requireProjectPermission(req, project.companyId, id, "project:edit Workflow");
     const statuses = await statusSvc.reorder(id, req.body.orderedIds);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "project.statuses_reordered",
+      entityType: "project",
+      entityId: id,
+      details: {
+        orderedIds: req.body.orderedIds,
+      },
+    });
     res.json(statuses);
   });
 
@@ -410,6 +454,21 @@ export function projectRoutes(db: Db) {
     assertCompanyAccess(req, project.companyId);
     await requireProjectPermission(req, project.companyId, id, "project:edit Workflow");
     const status = await statusSvc.remove(statusId, id);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: project.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "project.status_deleted",
+      entityType: "project",
+      entityId: id,
+      details: {
+        statusId: status.id,
+        name: status.name,
+      },
+    });
     res.json(status);
   });
 

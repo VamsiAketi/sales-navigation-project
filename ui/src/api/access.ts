@@ -120,6 +120,8 @@ export type CompanyMember = {
   principalId: string;
   status: "pending" | "active" | "suspended";
   membershipRole: string | null;
+  membershipRoleLabel?: string | null;
+  title: string | null;
   reportsToMembershipId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -180,6 +182,7 @@ export const accessApi = {
     memberId: string,
     input: {
       membershipRole?: string | null;
+      title?: string | null;
       reportsToMembershipId?: string | null;
       managedAgentMemberIds?: string[];
     },

@@ -28,6 +28,7 @@ import { useCompanyPageMemory } from "../hooks/useCompanyPageMemory";
 import { healthApi } from "../api/health";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { projectsApi } from "../api/projects";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { shouldSyncCompanySelectionFromRoute } from "../lib/company-selection";
 import { sidebarNavItemTextClass } from "./SidebarSection";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
@@ -315,6 +316,13 @@ export function Layout() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canCreateTasks = sidebarBadges?.canCreateTasks ?? true;
 
   useEffect(() => {
     if (companiesLoading || onboardingTriggered.current) return;
@@ -408,8 +416,9 @@ export function Layout() {
     return project?.id ?? projectRef;
   }, [breadcrumbProjectRef, companyProjects, routeProjectId]);
   const openGlobalNewIssue = useCallback(() => {
+    if (!canCreateTasks) return;
     openNewIssue({ projectId: resolvedGlobalProjectId });
-  }, [openNewIssue, resolvedGlobalProjectId]);
+  }, [canCreateTasks, openNewIssue, resolvedGlobalProjectId]);
 
   useCompanyPageMemory();
 
@@ -776,20 +785,22 @@ export function Layout() {
         </div>
       </div>
       {isMobile && <MobileBottomNav visible={mobileNavVisible} />}
-      <Button
-        type="button"
-        size="icon"
-        className={cn(
-          "fixed right-4 z-30 h-12 w-12 rounded-full text-white shadow-sm transition hover:brightness-105 active:brightness-95",
-          isMobile ? "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]" : "bottom-6 right-6",
-        )}
-        style={{ backgroundColor: "#6569E1" }}
-        onClick={openGlobalNewIssue}
-        aria-label="Create new task"
-        title="Create new task"
-      >
-        <Plus className="h-5 w-5" />
-      </Button>
+      {canCreateTasks ? (
+        <Button
+          type="button"
+          size="icon"
+          className={cn(
+            "fixed right-4 z-30 h-12 w-12 rounded-full text-white shadow-sm transition hover:brightness-105 active:brightness-95",
+            isMobile ? "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]" : "bottom-6 right-6",
+          )}
+          style={{ backgroundColor: "#6569E1" }}
+          onClick={openGlobalNewIssue}
+          aria-label="Create new task"
+          title="Create new task"
+        >
+          <Plus className="h-5 w-5" />
+        </Button>
+      ) : null}
       <CommandPalette />
       <NewIssueDialog />
       <NewProjectDialog />

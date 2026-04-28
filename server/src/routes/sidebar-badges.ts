@@ -38,6 +38,8 @@ export function sidebarBadgeRoutes(db: Db) {
       joinRequests: joinRequestCount,
     });
     let canReadCommandCenter = false;
+    let canReadTasks = false;
+    let canCreateTasks = false;
     let canReadHybridOrg = false;
     let canEditHybridOrg = false;
     let canImportHybridOrg = false;
@@ -66,6 +68,14 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "command_center.read"));
+      canReadTasks =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "tasks.read"));
+      canCreateTasks =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "tasks.create"));
       canReadHybridOrg =
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
@@ -167,6 +177,18 @@ export function sidebarBadgeRoutes(db: Db) {
         "agent",
         req.actor.agentId,
         "command_center.read",
+      );
+      canReadTasks = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "tasks.read",
+      );
+      canCreateTasks = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "tasks.create",
       );
       canReadHybridOrg = await access.hasPermission(
         companyId,
@@ -328,6 +350,8 @@ export function sidebarBadgeRoutes(db: Db) {
       (summary.costs.monthBudgetCents > 0 && summary.costs.monthUtilizationPercent >= 80 ? 1 : 0);
     badges.inbox = badges.failedRuns + alertsCount + joinRequestCount + badges.approvals;
     badges.canReadCommandCenter = canReadCommandCenter;
+    badges.canReadTasks = canReadTasks;
+    badges.canCreateTasks = canCreateTasks;
     badges.canReadHybridOrg = canReadHybridOrg;
     badges.canEditHybridOrg = canEditHybridOrg;
     badges.canImportHybridOrg = canImportHybridOrg;

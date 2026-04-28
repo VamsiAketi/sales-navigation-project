@@ -333,6 +333,7 @@ interface IssuesListProps {
   };
   onSearchChange?: (search: string) => void;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
+  canCreateTask?: boolean;
   projectStatuses?: ProjectIssueStatus[];
   forceListView?: boolean;
   /** When set, only these issue statuses are shown; `viewState.statuses` is ignored for filtering. */
@@ -558,6 +559,7 @@ export function IssuesList({
   searchFilters,
   onSearchChange,
   onUpdateIssue,
+  canCreateTask = true,
   projectStatuses,
   forceListView = false,
   fixedStatusFilter,
@@ -1447,10 +1449,12 @@ export function IssuesList({
           )}
 
         </div>
-        <Button size="sm" className="ml-auto h-9 px-3" onClick={() => openNewIssue(newIssueDefaults())}>
-          <Plus className="h-4 w-4 sm:mr-1" />
-          <span>New Task</span>
-        </Button>
+        {canCreateTask ? (
+          <Button size="sm" className="ml-auto h-9 px-3" onClick={() => openNewIssue(newIssueDefaults())}>
+            <Plus className="h-4 w-4 sm:mr-1" />
+            <span>New Task</span>
+          </Button>
+        ) : null}
         </div>
       </div>
 
@@ -1474,9 +1478,11 @@ export function IssuesList({
                 ? "No Done or Cancelled tasks past the board retention window."
                 : "No tasks match the current filters or search."
           }
-          action={viewState.showHidden || pastBoardClosedRetentionDays ? undefined : "Create Task"}
+          action={viewState.showHidden || pastBoardClosedRetentionDays || !canCreateTask ? undefined : "Create Task"}
           onAction={
-            viewState.showHidden || pastBoardClosedRetentionDays ? undefined : () => openNewIssue(newIssueDefaults())
+            viewState.showHidden || pastBoardClosedRetentionDays || !canCreateTask
+              ? undefined
+              : () => openNewIssue(newIssueDefaults())
           }
         />
       )}
@@ -1579,14 +1585,16 @@ export function IssuesList({
                     {group.label}
                   </span>
                 </CollapsibleTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="ml-auto text-muted-foreground"
-                  onClick={() => openNewIssue(newIssueDefaults(group.key))}
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
+                {canCreateTask ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="ml-auto text-muted-foreground"
+                    onClick={() => openNewIssue(newIssueDefaults(group.key))}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                ) : null}
               </div>
             )}
             <CollapsibleContent>

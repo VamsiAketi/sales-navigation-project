@@ -62,6 +62,7 @@ import {
   inspectBoardClaimChallenge
 } from "../board-claim.js";
 import { LOCAL_BOARD_USER_EMAIL } from "../local-board-defaults.js";
+import { isOwnerMembershipRole, membershipRoleLabel, normalizeMembershipRole } from "../lib/membership-role.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -1697,7 +1698,7 @@ export function accessRoutes(
     if (!target) return;
     if (target.principalType !== "user") return;
 
-    const isOwner = (target.membershipRole ?? "").trim().toLowerCase() === "owner";
+    const isOwner = isOwnerMembershipRole(target.membershipRole);
     if (!isOwner) return;
 
     const activeOwnerCount = await db
@@ -3256,12 +3257,14 @@ export function accessRoutes(
 
     res.json(
       members.map((member) => {
-        const isOwner = (member.membershipRole ?? "").trim().toLowerCase() === "owner";
+        const isOwner = isOwnerMembershipRole(member.membershipRole);
         const grants = isOwner
           ? PERMISSION_KEYS.map((permissionKey) => ({ permissionKey, scope: null }))
           : (grantsByPrincipal.get(member.principalId) ?? []);
         return {
           ...member,
+          membershipRole: normalizeMembershipRole(member.membershipRole),
+          membershipRoleLabel: membershipRoleLabel(member.membershipRole),
           grants,
         user:
           member.principalType === "user"
@@ -3333,7 +3336,15 @@ export function accessRoutes(
     async (req, res) => {
       const companyId = req.params.companyId as string;
       const memberId = req.params.memberId as string;
-      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+      assertCompanyAccess(req, companyId);
+      if (req.actor.type !== "board" || !req.actor.userId) {
+        throw forbidden("Board access required");
+      }
+      const actorUserId = req.actor.userId;
+      const [canManageOrgConfig, canAssignTitle] = await Promise.all([
+        access.canUser(companyId, actorUserId, "users:manage_permissions"),
+        access.canUser(companyId, actorUserId, "teams.title_assign"),
+      ]);
 
       const allMembers = await db
         .select()
@@ -3345,12 +3356,29 @@ export function accessRoutes(
 
       const nextRole =
         req.body.membershipRole === undefined
-          ? member.membershipRole
-          : req.body.membershipRole;
+          ? normalizeMembershipRole(member.membershipRole)
+          : normalizeMembershipRole(req.body.membershipRole);
+      const requestedTitle =
+        req.body.title === undefined
+          ? member.title
+          : req.body.title;
       const requestedReportsTo =
         req.body.reportsToMembershipId === undefined
           ? member.reportsToMembershipId
           : req.body.reportsToMembershipId;
+
+      const roleUpdateRequested = req.body.membershipRole !== undefined;
+      const reportsToUpdateRequested = req.body.reportsToMembershipId !== undefined;
+      const managerTargetsUpdateRequested = req.body.managedAgentMemberIds !== undefined;
+      const titleUpdateRequested = req.body.title !== undefined;
+
+      if ((roleUpdateRequested || reportsToUpdateRequested || managerTargetsUpdateRequested) && !canManageOrgConfig) {
+        throw forbidden("Permission denied");
+      }
+
+      if (titleUpdateRequested && !(canAssignTitle || canManageOrgConfig)) {
+        throw forbidden("Permission denied");
+      }
 
       if (requestedReportsTo === member.id) {
         throw badRequest("Member cannot report to itself");
@@ -3423,6 +3451,7 @@ export function accessRoutes(
           .update(companyMemberships)
           .set({
             membershipRole: nextRole ?? null,
+            title: requestedTitle ?? null,
             reportsToMembershipId: requestedReportsTo ?? null,
             updatedAt: new Date(),
           })
@@ -3460,7 +3489,11 @@ export function accessRoutes(
         return memberUpdated;
       });
 
-      res.json(updated);
+      res.json({
+        ...updated,
+        membershipRole: normalizeMembershipRole(updated.membershipRole),
+        membershipRoleLabel: membershipRoleLabel(updated.membershipRole),
+      });
     }
   );
 
@@ -3534,6 +3567,24 @@ export function accessRoutes(
         req.actor.type === "board" ? req.actor.userId ?? null : null,
       );
       if (!ok) throw notFound("Project not found");
+      await logActivity(db, {
+        companyId,
+        actorType: req.actor.type === "agent" ? "agent" : "user",
+        actorId:
+          req.actor.type === "agent"
+            ? req.actor.agentId ?? "unknown-agent"
+            : req.actor.userId ?? "local-board",
+        agentId: req.actor.type === "agent" ? req.actor.agentId : null,
+        runId: req.actor.type === "agent" ? req.actor.runId ?? null : null,
+        action: "project.permissions_updated",
+        entityType: "project",
+        entityId: projectId,
+        details: {
+          principalType: req.body.principalType,
+          principalId: req.body.principalId,
+          permissionKeys: req.body.permissionKeys,
+        },
+      });
       res.json({ ok: true });
     },
   );
