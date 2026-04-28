@@ -58,6 +58,15 @@ type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 type TeamSortKey = "displayName" | "principal" | "type" | "role" | "reportsTo" | "status";
 type TeamTypeFilter = "human" | "agent";
 
+function parseTeamTypeFilterFromTab(tab: string | null): TeamTypeFilter | null {
+  const normalized = (tab ?? "").trim().toLowerCase();
+  if (normalized === "agent" || normalized === "agents") return "agent";
+  if (normalized === "human" || normalized === "humans" || normalized === "user" || normalized === "users") {
+    return "human";
+  }
+  return null;
+}
+
 const HUMAN_ROLE_OPTIONS = ["owner", "Admin", "Manager", "Contributor", "Reader"] as const;
 
 const AGENT_ROLE_OPTIONS = [
@@ -701,11 +710,17 @@ export function CompanyDirectory() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
 
+  const requestedTeamTypeFilter = useMemo(
+    () => parseTeamTypeFilterFromTab(searchParams.get("tab")),
+    [searchParams],
+  );
   const requestedHumanMemberId = searchParams.get("memberId")?.trim() || null;
   const [search, setSearch] = useState("");
   const [teamSortKey, setTeamSortKey] = useState<TeamSortKey>("displayName");
   const [teamSortDirection, setTeamSortDirection] = useState<"asc" | "desc">("asc");
-  const [teamTypeFilter, setTeamTypeFilter] = useState<TeamTypeFilter>("human");
+  const [teamTypeFilter, setTeamTypeFilter] = useState<TeamTypeFilter>(
+    requestedTeamTypeFilter ?? "human",
+  );
   const [selectedHumanMemberId, setSelectedHumanMemberId] = useState<string | null>(
     requestedHumanMemberId,
   );
@@ -746,6 +761,11 @@ export function CompanyDirectory() {
     if (!requestedHumanMemberId) return;
     setSelectedHumanMemberId(requestedHumanMemberId);
   }, [requestedHumanMemberId]);
+
+  useEffect(() => {
+    if (!requestedTeamTypeFilter) return;
+    setTeamTypeFilter(requestedTeamTypeFilter);
+  }, [requestedTeamTypeFilter]);
 
   const {
     data: companyMembers,

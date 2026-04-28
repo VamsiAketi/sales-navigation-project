@@ -907,6 +907,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const touchStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const hasInitialized = useRef(false);
 
   useEffect(() => {
@@ -999,6 +1000,32 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
 
   const handleMouseUp = useCallback(() => setIsPanning(false), []);
 
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      if ((e.target as HTMLElement).closest("[data-org-card]")) return;
+      const touch = e.touches[0];
+      setIsPanning(true);
+      touchStart.current = { x: touch.clientX, y: touch.clientY, panX: pan.x, panY: pan.y };
+    },
+    [pan],
+  );
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isPanning || e.touches.length !== 1 || !touchStart.current) return;
+    const touch = e.touches[0];
+    e.preventDefault();
+    setPan({
+      x: touchStart.current.panX + (touch.clientX - touchStart.current.x),
+      y: touchStart.current.panY + (touch.clientY - touchStart.current.y),
+    });
+  }, [isPanning]);
+
+  const handleTouchEnd = useCallback(() => {
+    setIsPanning(false);
+    touchStart.current = null;
+  }, []);
+
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       if (e.ctrlKey) return;
@@ -1009,7 +1036,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.06 : 0.94;
-      const newZoom = Math.min(Math.max(zoom * factor, 0.2), 2);
+      const newZoom = Math.min(Math.max(zoom * factor, 0.05), 2);
       const scale = newZoom / zoom;
       setPan({ x: mouseX - scale * (mouseX - pan.x), y: mouseY - scale * (mouseY - pan.y) });
       setZoom(newZoom);
@@ -1033,7 +1060,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
 
       const factor = e.deltaY < 0 ? 1.12 : 0.88;
       setZoom((prevZoom) => {
-        const nextZoom = Math.min(Math.max(prevZoom * factor, 0.2), 2);
+        const nextZoom = Math.min(Math.max(prevZoom * factor, 0.05), 2);
         const scale = nextZoom / prevZoom;
         setPan((prev) => ({
           x: mouseX - scale * (mouseX - prev.x),
@@ -1121,12 +1148,16 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
         <div
           ref={containerRef}
           className="relative min-h-[24rem] w-full flex-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50 dark:border-border/50 dark:bg-muted/20 md:min-h-0"
-          style={{ cursor: isPanning ? "grabbing" : "default" }}
+          style={{ cursor: isPanning ? "grabbing" : "default", touchAction: "none" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
         >
           <DotGrid />
 
@@ -1201,7 +1232,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
               type="button"
               className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               onClick={() => {
-                const newZoom = Math.max(zoom * 0.8, 0.2);
+                const newZoom = Math.max(zoom * 0.8, 0.05);
                 const container = containerRef.current;
                 if (container) {
                   const cx = container.clientWidth / 2;
