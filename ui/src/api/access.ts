@@ -212,6 +212,19 @@ export const accessApi = {
       { grants },
     ),
 
+  /**
+   * Omit body or pass `{}` for a random invite-style password. Pass `{ newPassword }` to set explicitly.
+   */
+  setMemberPassword: (
+    companyId: string,
+    memberId: string,
+    body?: { newPassword?: string },
+  ) =>
+    api.post<{ ok: true; temporaryPassword?: string }>(
+      `/companies/${companyId}/members/${encodeURIComponent(memberId)}/set-password`,
+      body ?? {},
+    ),
+
   removeMember: (companyId: string, memberId: string) =>
     api.delete<CompanyMember>(
       `/companies/${companyId}/members/${encodeURIComponent(memberId)}`,
