@@ -431,7 +431,6 @@ export const PERMISSION_KEYS = [
   "tasks:assign",
   "tasks:assign_scope",
   "joins:approve",
-  "companies:create",
   "command_center.read",
   "hybrid_org.read",
   "hybrid_org.edit",
