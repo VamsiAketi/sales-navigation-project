@@ -333,6 +333,7 @@ interface IssuesListProps {
   };
   onSearchChange?: (search: string) => void;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
+  canCreateTask?: boolean;
   projectStatuses?: ProjectIssueStatus[];
   forceListView?: boolean;
   /** When set, only these issue statuses are shown; `viewState.statuses` is ignored for filtering. */
@@ -558,6 +559,7 @@ export function IssuesList({
   searchFilters,
   onSearchChange,
   onUpdateIssue,
+  canCreateTask = true,
   projectStatuses,
   forceListView = false,
   fixedStatusFilter,
@@ -1447,10 +1449,12 @@ export function IssuesList({
           )}
 
         </div>
-        <Button size="sm" className="ml-auto h-9 px-3" onClick={() => openNewIssue(newIssueDefaults())}>
-          <Plus className="h-4 w-4 sm:mr-1" />
-          <span>New Task</span>
-        </Button>
+        {canCreateTask ? (
+          <Button size="sm" className="ml-auto h-9 px-3" onClick={() => openNewIssue(newIssueDefaults())}>
+            <Plus className="h-4 w-4 sm:mr-1" />
+            <span>New Task</span>
+          </Button>
+        ) : null}
         </div>
       </div>
 
