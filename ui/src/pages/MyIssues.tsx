@@ -3,6 +3,7 @@ import { useLocation } from "@/lib/router";
 import { createIssueDetailPath, mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { issuesApi } from "../api/issues";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -29,9 +30,18 @@ export function MyIssues() {
     queryFn: () => issuesApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const canReadTasks = sidebarBadges?.canReadTasks ?? true;
 
   if (!selectedCompanyId) {
     return <EmptyState icon={ListTodo} message="Select a company to view your tasks." />;
+  }
+  if (!canReadTasks) {
+    return <EmptyState icon={ListTodo} message="You do not have permission to view tasks." />;
   }
 
   if (isLoading) {

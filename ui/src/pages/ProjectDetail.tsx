@@ -760,7 +760,7 @@ export function ProjectDetail() {
             { value: "list", label: "Tasks" },
             { value: "overview", label: "Overview" },
             { value: "configuration", label: "Configuration" },
-            ...(isProjectIamEnabled ? [{ value: "access" as const, label: "Access Enable" }] : []),
+            ...(isProjectIamEnabled ? [{ value: "access" as const, label: "Access Control" }] : []),
             { value: "workflow", label: "Workflow" },
             { value: "budget", label: "Budget" },
             ...pluginTabItems.map((item) => ({

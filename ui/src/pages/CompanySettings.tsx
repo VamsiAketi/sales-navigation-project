@@ -577,9 +577,9 @@ export function CompanySettings() {
             <div className="min-w-0 space-y-2">
               <div className="text-sm font-semibold text-foreground">Project-level permissions</div>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                <span className="font-medium text-foreground">Open</span> — any active company member can open all
+                <span className="font-medium text-foreground">Open</span>, any active company member can open all
                 projects (legacy behavior).{" "}
-                <span className="font-medium text-foreground">Restricted</span> — each project has an explicit access
+                <span className="font-medium text-foreground">Restricted</span>, each project has an explicit access
                 matrix; configure grants under{" "}
                 <span className="font-medium text-foreground">Project → Access control</span>. Requires the company
                 permission <span className="font-mono text-xs">users:manage_permissions</span> to change this policy.
@@ -603,8 +603,8 @@ export function CompanySettings() {
                 projectAccessMutation.mutate(nextMode);
               }}
             >
-              <option value="open">Open — all company members see all projects</option>
-              <option value="restricted">Restricted — per-project grants required</option>
+              <option value="open">Open, all company members see all projects</option>
+              <option value="restricted">Restricted, per-project grants required</option>
             </select>
           </Field>
           {projectAccessMutation.isPending ? (

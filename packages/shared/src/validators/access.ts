@@ -103,11 +103,26 @@ export type UpdateMemberPermissions = z.infer<typeof updateMemberPermissionsSche
 
 export const updateMemberOrgConfigSchema = z.object({
   membershipRole: z.string().trim().min(1).max(120).nullable().optional(),
+  title: z.string().trim().min(1).max(120).nullable().optional(),
   reportsToMembershipId: z.string().uuid().nullable().optional(),
   managedAgentMemberIds: z.array(z.string().uuid()).max(500).optional(),
 });
 
 export type UpdateMemberOrgConfig = z.infer<typeof updateMemberOrgConfigSchema>;
+
+export const setMemberPasswordSchema = z.preprocess(
+  (val) => (val === undefined || val === null ? {} : val),
+  z.union([
+    /** Generate a random password using the same rules as human invites. */
+    z.object({}).strict(),
+    /** Set an explicit password (legacy / automation). */
+    z.object({
+      newPassword: z.string().min(8).max(256),
+    }),
+  ]),
+);
+
+export type SetMemberPassword = z.infer<typeof setMemberPasswordSchema>;
 
 export const updateMemberStatusSchema = z.object({
   status: z.enum(MEMBERSHIP_STATUSES).refine((status) => status !== "pending", {

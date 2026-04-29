@@ -272,11 +272,6 @@ const defaultDotColor = "#a3a3a3";
 /** Soft lavender connectors (reference org chart). */
 const ORG_EDGE_STROKE = "#a5b4fc";
 
-function formatMembershipRole(role: string): string {
-  const trimmed = (role || "member").trim() || "member";
-  return trimmed.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function humanStatusDotColor(status: string): string {
   if (status === "active") return "#facc15";
   if (status === "suspended") return "#94a3b8";
@@ -387,6 +382,7 @@ function HumanOrgAvatar({
 function CardContent({
   node,
   agent,
+  humanTitle,
   isAgentNode,
   companyId,
   sessionUserId,
@@ -400,6 +396,7 @@ function CardContent({
     image?: string | null;
   };
   agent: Agent | undefined;
+  humanTitle?: string | null;
   isAgentNode: boolean;
   companyId: string;
   sessionUserId: string | null | undefined;
@@ -440,7 +437,7 @@ function CardContent({
           <span className="truncate text-xs leading-snug text-muted-foreground">
             {isAgentNode
               ? (agent?.title ?? roleLabel(node.role))
-              : formatMembershipRole(node.role)}
+              : (humanTitle?.trim() || "Member")}
           </span>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800/80 dark:text-slate-300">
@@ -466,6 +463,7 @@ function CardContent({
 interface OrgCardProps {
   node: LayoutNode;
   agent: Agent | undefined;
+  humanTitle?: string | null;
   isDropTarget: boolean;
   isInvalidTarget: boolean;
   isExpanded: boolean;
@@ -480,6 +478,7 @@ interface OrgCardProps {
 function OrgCard({
   node,
   agent,
+  humanTitle,
   isDropTarget,
   isInvalidTarget,
   isExpanded,
@@ -533,6 +532,7 @@ function OrgCard({
       <CardContent
         node={node}
         agent={agent}
+        humanTitle={humanTitle}
         isAgentNode={isAgentNode}
         companyId={companyId}
         sessionUserId={sessionUserId}
@@ -661,6 +661,15 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
     queryKey: queryKeys.access.members(companyId),
     queryFn: () => accessApi.listMembers(companyId),
   });
+  const humanMemberByMembershipId = useMemo(
+    () =>
+      new Map(
+        (members ?? [])
+          .filter((member) => member.principalType === "user")
+          .map((member) => [member.id, member] as const),
+      ),
+    [members],
+  );
 
   const agentMap = useMemo(() => {
     const m = new Map<string, Agent>();
@@ -907,6 +916,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const touchStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const hasInitialized = useRef(false);
 
   useEffect(() => {
@@ -999,6 +1009,32 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
 
   const handleMouseUp = useCallback(() => setIsPanning(false), []);
 
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      if ((e.target as HTMLElement).closest("[data-org-card]")) return;
+      const touch = e.touches[0];
+      setIsPanning(true);
+      touchStart.current = { x: touch.clientX, y: touch.clientY, panX: pan.x, panY: pan.y };
+    },
+    [pan],
+  );
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isPanning || e.touches.length !== 1 || !touchStart.current) return;
+    const touch = e.touches[0];
+    e.preventDefault();
+    setPan({
+      x: touchStart.current.panX + (touch.clientX - touchStart.current.x),
+      y: touchStart.current.panY + (touch.clientY - touchStart.current.y),
+    });
+  }, [isPanning]);
+
+  const handleTouchEnd = useCallback(() => {
+    setIsPanning(false);
+    touchStart.current = null;
+  }, []);
+
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       if (e.ctrlKey) return;
@@ -1009,7 +1045,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.06 : 0.94;
-      const newZoom = Math.min(Math.max(zoom * factor, 0.2), 2);
+      const newZoom = Math.min(Math.max(zoom * factor, 0.05), 2);
       const scale = newZoom / zoom;
       setPan({ x: mouseX - scale * (mouseX - pan.x), y: mouseY - scale * (mouseY - pan.y) });
       setZoom(newZoom);
@@ -1033,7 +1069,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
 
       const factor = e.deltaY < 0 ? 1.12 : 0.88;
       setZoom((prevZoom) => {
-        const nextZoom = Math.min(Math.max(prevZoom * factor, 0.2), 2);
+        const nextZoom = Math.min(Math.max(prevZoom * factor, 0.05), 2);
         const scale = nextZoom / prevZoom;
         setPan((prev) => ({
           x: mouseX - scale * (mouseX - prev.x),
@@ -1121,12 +1157,16 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
         <div
           ref={containerRef}
           className="relative min-h-[24rem] w-full flex-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50 dark:border-border/50 dark:bg-muted/20 md:min-h-0"
-          style={{ cursor: isPanning ? "grabbing" : "default" }}
+          style={{ cursor: isPanning ? "grabbing" : "default", touchAction: "none" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
         >
           <DotGrid />
 
@@ -1201,7 +1241,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
               type="button"
               className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               onClick={() => {
-                const newZoom = Math.max(zoom * 0.8, 0.2);
+                const newZoom = Math.max(zoom * 0.8, 0.05);
                 const container = containerRef.current;
                 if (container) {
                   const cx = container.clientWidth / 2;
@@ -1286,6 +1326,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
                   key={node.id}
                   node={node}
                   agent={agent}
+                  humanTitle={node.nodeType === "human" ? (humanMemberByMembershipId.get(node.id)?.title ?? null) : null}
                   isDropTarget={isDropTarget}
                   isInvalidTarget={!!activeId && invalid}
                   isExpanded={expanded}
@@ -1319,6 +1360,7 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
               <CardContent
                 node={activeNode}
                 agent={activeAgent}
+                humanTitle={activeNode.nodeType === "human" ? (humanMemberByMembershipId.get(activeNode.id)?.title ?? null) : null}
                 isAgentNode={activeIsAgent}
                 companyId={companyId}
                 sessionUserId={sessionUserId}

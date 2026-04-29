@@ -22,7 +22,7 @@ export const PROJECT_PERMISSION_UI_GROUPS: {
   {
     id: "issues",
     title: "Tasks",
-    subtitle: "Create/update tickets under this project.",
+    subtitle: "Create/update tasks under this project.",
     keys: ["project:edit tickets"],
   },
   {
@@ -35,8 +35,8 @@ export const PROJECT_PERMISSION_UI_GROUPS: {
 
 const LABELS: Partial<Record<ProjectPermissionKey, string>> = {
   "project:read": "View project",
-  "project:edit tickets": "Edit tickets",
-  "project:hide tickets": "Hide tickets",
+  "project:edit tickets": "Edit tasks",
+  "project:hide tickets": "Hide tasks",
   "project:edit configuration": "Edit configuration",
   "project:edit Workflow": "Edit workflow",
   "project:edit Budget": "Edit budget",
@@ -64,13 +64,13 @@ export const PROJECT_ACCESS_PRESETS: {
   {
     id: "contributor",
     label: "Contributor",
-    description: "Can read and edit tickets.",
+    description: "Can read and edit tasks.",
     keys: ["project:read", "project:edit tickets"],
   },
   {
     id: "manager",
     label: "Manager",
-    description: "Can manage tickets, workflow and budget.",
+    description: "Can manage tasks, workflow and budget.",
     keys: [
       "project:read",
       "project:edit tickets",

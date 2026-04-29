@@ -18,6 +18,7 @@ export interface CompanyMembership {
   principalId: string;
   status: MembershipStatus;
   membershipRole: string | null;
+  title: string | null;
   reportsToMembershipId: string | null;
   createdAt: Date;
   updatedAt: Date;

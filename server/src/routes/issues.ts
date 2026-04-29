@@ -109,6 +109,24 @@ export function issueRoutes(db: Db, storage: StorageService) {
     if (!allowed) throw forbidden("Missing permission: attention_queue.read");
   }
 
+  async function assertCanReadTasks(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, "tasks.read");
+      if (!allowed) throw forbidden("Missing permission: tasks.read");
+      return;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const allowed = await access.hasPermission(
+      companyId,
+      "agent",
+      req.actor.agentId,
+      "tasks.read",
+    );
+    if (!allowed) throw forbidden("Missing permission: tasks.read");
+  }
+
   async function runSingleFileUpload(req: Request, res: Response) {
     await new Promise<void>((resolve, reject) => {
       upload.single("file")(req, res, (err: unknown) => {
@@ -156,6 +174,25 @@ export function issueRoutes(db: Db, storage: StorageService) {
       const actorAgent = await agentsSvc.getById(req.actor.agentId);
       if (actorAgent && actorAgent.companyId === companyId && canCreateAgentsLegacy(actorAgent)) return;
       throw forbidden("Missing permission: tasks:assign");
+    }
+    throw unauthorized();
+  }
+
+  async function assertCanCreateTasks(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, "tasks.create");
+      if (!allowed) throw forbidden("Missing permission: tasks.create");
+      return;
+    }
+    if (req.actor.type === "agent") {
+      if (!req.actor.agentId) throw forbidden("Agent authentication required");
+      const allowedByGrant = await access.hasPermission(companyId, "agent", req.actor.agentId, "tasks.create");
+      if (allowedByGrant) return;
+      const actorAgent = await agentsSvc.getById(req.actor.agentId);
+      if (actorAgent && actorAgent.companyId === companyId && canCreateAgentsLegacy(actorAgent)) return;
+      throw forbidden("Missing permission: tasks.create");
     }
     throw unauthorized();
   }
@@ -309,6 +346,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
   router.get("/companies/:companyId/issues", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    await assertCanReadTasks(req, companyId);
     const actor = projectAuthActorFromRequest(req);
     const allowedProjectIds = await access.listProjectIdsVisibleToActor(companyId, actor);
     if (allowedProjectIds !== null && allowedProjectIds.length === 0) {
@@ -380,6 +418,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
   router.get("/companies/:companyId/labels", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    await assertCanReadTasks(req, companyId);
     const result = await svc.listLabels(companyId);
     res.json(result);
   });
@@ -903,6 +942,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
   router.post("/companies/:companyId/issues", validate(createIssueSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    await assertCanCreateTasks(req, companyId);
     if (!req.body.projectId) {
       throw unprocessable(manualIssueProjectIdRequiredMessage, {
         field: "projectId",

@@ -107,6 +107,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
   const canReadCommandCenter = sidebarBadges?.canReadCommandCenter ?? true;
+  const canReadTasks = sidebarBadges?.canReadTasks ?? true;
   const canReadHybridOrg = sidebarBadges?.canReadHybridOrg ?? true;
   const canReadSkills = sidebarBadges?.canReadSkills ?? true;
   const canReadGoals = sidebarBadges?.canReadGoals ?? true;
@@ -217,6 +218,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
           />
         );
       case "tasks":
+        if (!canReadTasks) return null;
         return (
           <SidebarNavItem
             to="/issues"

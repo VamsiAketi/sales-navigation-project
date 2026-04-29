@@ -120,6 +120,8 @@ export type CompanyMember = {
   principalId: string;
   status: "pending" | "active" | "suspended";
   membershipRole: string | null;
+  membershipRoleLabel?: string | null;
+  title: string | null;
   reportsToMembershipId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -180,6 +182,7 @@ export const accessApi = {
     memberId: string,
     input: {
       membershipRole?: string | null;
+      title?: string | null;
       reportsToMembershipId?: string | null;
       managedAgentMemberIds?: string[];
     },
@@ -207,6 +210,19 @@ export const accessApi = {
     api.patch<CompanyMember>(
       `/companies/${companyId}/members/${encodeURIComponent(memberId)}/permissions`,
       { grants },
+    ),
+
+  /**
+   * Omit body or pass `{}` for a random invite-style password. Pass `{ newPassword }` to set explicitly.
+   */
+  setMemberPassword: (
+    companyId: string,
+    memberId: string,
+    body?: { newPassword?: string },
+  ) =>
+    api.post<{ ok: true; temporaryPassword?: string }>(
+      `/companies/${companyId}/members/${encodeURIComponent(memberId)}/set-password`,
+      body ?? {},
     ),
 
   removeMember: (companyId: string, memberId: string) =>
