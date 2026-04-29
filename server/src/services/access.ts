@@ -61,6 +61,7 @@ const GRANT_READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "users:invite": "teams.read",
   "joins:approve": "teams.read",
   "users:manage_permissions": "teams.read",
+  "users:reset_password": "teams.read",
   "company_settings.general": "company_settings.read",
   "company_settings.appearance": "company_settings.read",
   "company_settings.security_access": "company_settings.read",

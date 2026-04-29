@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Eye, EyeOff, KeyRound, Mail, User, X, Pencil, Check } from "lucide-react";
+import { Bell, Eye, EyeOff, KeyRound, Mail, User, X, Pencil, Check, Trash2 } from "lucide-react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { PageTabBar } from "@/components/PageTabBar";
@@ -468,12 +468,21 @@ function SendResetLinkSection({ email }: { email: string | null }) {
 }
 
 function PasskeySection() {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [deletingPasskeyId, setDeletingPasskeyId] = useState<string | null>(null);
+
+  const passkeysQuery = useQuery({
+    queryKey: queryKeys.auth.passkeys,
+    queryFn: () => authApi.listPasskeys(),
+    staleTime: 30_000,
+  });
 
   const mutation = useMutation({
     mutationFn: () => authApi.addPasskey(),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.passkeys });
       setStatus("success");
       setMessage("Passkey added successfully. You can now use passkey sign-in on the login page.");
     },
@@ -482,6 +491,35 @@ function PasskeySection() {
       setMessage(err instanceof Error ? err.message : "Failed to register passkey.");
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (passkeyId: string) => authApi.deletePasskey({ passkeyId }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.passkeys });
+      setStatus("success");
+      setMessage("Passkey removed.");
+    },
+    onError: (err) => {
+      setStatus("error");
+      setMessage(err instanceof Error ? err.message : "Failed to remove passkey.");
+    },
+    onSettled: () => {
+      setDeletingPasskeyId(null);
+    },
+  });
+
+  function formatPasskeyDate(value: string | null): string {
+    if (!value) return "Unknown date";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Unknown date";
+    return date.toLocaleString();
+  }
+
+  function formatPasskeyDeviceType(deviceType: string): string {
+    if (deviceType === "multiDevice") return "Synced passkey";
+    if (deviceType === "singleDevice") return "Device-bound passkey";
+    return deviceType;
+  }
 
   return (
     <section className="rounded-xl border border-border bg-card p-5 space-y-4">
@@ -496,7 +534,7 @@ function PasskeySection() {
         <Button
           type="button"
           variant="outline"
-          disabled={mutation.isPending}
+          disabled={mutation.isPending || deleteMutation.isPending}
           onClick={() => {
             setStatus("idle");
             setMessage(null);
@@ -516,6 +554,58 @@ function PasskeySection() {
             {message}
           </p>
         )}
+
+        <div className="space-y-2 rounded-md border border-border/70 bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">Registered passkeys</p>
+          {passkeysQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading passkeys...</p>
+          ) : passkeysQuery.isError ? (
+            <p className="text-sm text-destructive">
+              {passkeysQuery.error instanceof Error ? passkeysQuery.error.message : "Failed to load passkeys."}
+            </p>
+          ) : passkeysQuery.data && passkeysQuery.data.length > 0 ? (
+            <ul className="space-y-2">
+              {passkeysQuery.data.map((passkey) => {
+                const isDeleting = deleteMutation.isPending && deletingPasskeyId === passkey.id;
+                return (
+                  <li
+                    key={passkey.id}
+                    className="flex items-start justify-between gap-3 rounded-md border border-border bg-background px-3 py-2"
+                  >
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate text-sm font-medium">
+                        {passkey.name?.trim() || "Unnamed passkey"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatPasskeyDeviceType(passkey.deviceType)} · Added {formatPasskeyDate(passkey.createdAt)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {passkey.backedUp ? "Backed up/synced" : "Not backed up"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={deleteMutation.isPending}
+                      aria-label={`Delete passkey ${passkey.name ?? passkey.id}`}
+                      onClick={() => {
+                        setStatus("idle");
+                        setMessage(null);
+                        setDeletingPasskeyId(passkey.id);
+                        deleteMutation.mutate(passkey.id);
+                      }}
+                    >
+                      {isDeleting ? "..." : <Trash2 className="h-4 w-4 text-destructive" />}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No passkeys registered yet.</p>
+          )}
+        </div>
       </div>
     </section>
   );

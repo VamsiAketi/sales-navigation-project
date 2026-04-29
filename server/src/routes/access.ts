@@ -31,6 +31,7 @@ import {
   createOpenClawInvitePromptSchema,
   listJoinRequestsQuerySchema,
   resolveCliAuthChallengeSchema,
+  setMemberPasswordSchema,
   updateMemberOrgConfigSchema,
   updateMemberPermissionsSchema,
   updateProjectPrincipalGrantsSchema,
@@ -43,7 +44,8 @@ import {
   conflict,
   notFound,
   unauthorized,
-  badRequest
+  badRequest,
+  unprocessable,
 } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { validate } from "../middleware/validate.js";
@@ -1662,6 +1664,8 @@ export function accessRoutes(
     deploymentExposure: DeploymentExposure;
     bindHost: string;
     allowedHostnames: string[];
+    /** Used to set credential passwords for managed users (authenticated mode only). */
+    changePassword?: (input: { userId: string; newPassword: string }) => Promise<void>;
   }
 ) {
   const router = Router();
@@ -3523,6 +3527,91 @@ export function accessRoutes(
       if (!updated) throw notFound("Member not found");
       res.json(updated);
     }
+  );
+
+  router.post(
+    "/companies/:companyId/members/:memberId/set-password",
+    validate(setMemberPasswordSchema),
+    async (req, res) => {
+      if (!opts.changePassword) {
+        throw badRequest(
+          "Member password resets require authenticated deployment with email/password credential sign-in.",
+        );
+      }
+      const companyId = req.params.companyId as string;
+      const memberId = req.params.memberId as string;
+      await assertCompanyPermission(req, companyId, "users:reset_password");
+
+      const membership = await db
+        .select({
+          id: companyMemberships.id,
+          principalType: companyMemberships.principalType,
+          principalId: companyMemberships.principalId,
+          status: companyMemberships.status,
+        })
+        .from(companyMemberships)
+        .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, memberId)))
+        .then((rows) => rows[0] ?? null);
+      if (!membership) throw notFound("Member not found");
+      if (membership.principalType !== "user") {
+        throw badRequest("Only human members can have a password credential set");
+      }
+      if (membership.status !== "active" && membership.status !== "suspended") {
+        throw badRequest("Member must be active or suspended");
+      }
+
+      const parsedBody = req.body as Record<string, unknown>;
+      const generatedRandom = !("newPassword" in parsedBody);
+      const newPassword = generatedRandom
+        ? createTemporaryPassword()
+        : String(parsedBody.newPassword ?? "").trim();
+
+      try {
+        await opts.changePassword!({
+          userId: membership.principalId,
+          newPassword,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("No credential account")) {
+          throw unprocessable(message);
+        }
+        logger.error({ error, companyId, memberId }, "member set-password failed");
+        throw error;
+      }
+
+      await db
+        .insert(instanceUserRoles)
+        .values({
+          userId: membership.principalId,
+          role: "must_change_password",
+        })
+        .onConflictDoNothing();
+
+      await logActivity(db, {
+        companyId,
+        actorType: req.actor.type === "agent" ? "agent" : "user",
+        actorId:
+          req.actor.type === "agent"
+            ? req.actor.agentId ?? "unknown-agent"
+            : req.actor.userId ?? "board",
+        action: "user.password_set_by_operator",
+        entityType: "user",
+        entityId: membership.principalId,
+        details: {
+          membershipId: memberId,
+          targetUserId: membership.principalId,
+          generatedRandomPassword: generatedRandom,
+          mustChangePasswordBeforeAppAccess: true,
+        },
+      });
+
+      res.json(
+        generatedRandom
+          ? { ok: true as const, temporaryPassword: newPassword }
+          : { ok: true as const },
+      );
+    },
   );
 
   router.get("/companies/:companyId/projects/:projectId/principal-permissions", async (req, res) => {

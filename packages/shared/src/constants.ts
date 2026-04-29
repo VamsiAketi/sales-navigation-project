@@ -426,6 +426,7 @@ export const PERMISSION_KEYS = [
   "agents:create",
   "users:invite",
   "users:manage_permissions",
+  "users:reset_password",
   "tasks.read",
   "tasks.create",
   "tasks:assign",

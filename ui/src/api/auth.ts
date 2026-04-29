@@ -26,6 +26,15 @@ export type ProjectNotificationEventType =
   | "issue.assigned";
 
 export type SignInMethodMode = "otp_or_password" | "password_only";
+export type AuthPasskey = {
+  id: string;
+  name: string | null;
+  createdAt: string | null;
+  deviceType: string;
+  backedUp: boolean;
+  transports: string | null;
+  aaguid: string | null;
+};
 
 export type UserNotificationPreferences = {
   enabled: boolean;
@@ -184,6 +193,57 @@ export const authApi = {
         (typeof result.error.message === "string" && result.error.message.length > 0)
           ? result.error.message
           : "Passkey setup failed";
+      throw new Error(message);
+    }
+  },
+
+  listPasskeys: async (): Promise<AuthPasskey[]> => {
+    const res = await fetch("/api/auth/passkeys", {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      const p = payload as Record<string, unknown> | null;
+      const message =
+        (typeof p?.message === "string" ? p.message : null) ??
+        (typeof p?.error === "string" ? p.error : null) ??
+        `Failed to load passkeys (${res.status})`;
+      throw new Error(message);
+    }
+    const rows =
+      payload &&
+      typeof payload === "object" &&
+      Array.isArray((payload as { passkeys?: unknown }).passkeys)
+        ? (payload as { passkeys: unknown[] }).passkeys
+        : [];
+    return rows
+      .filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"))
+      .map((row) => ({
+        id: typeof row.id === "string" ? row.id : "",
+        name: typeof row.name === "string" ? row.name : null,
+        createdAt: typeof row.createdAt === "string" ? row.createdAt : null,
+        deviceType: typeof row.deviceType === "string" ? row.deviceType : "unknown",
+        backedUp: row.backedUp === true,
+        transports: typeof row.transports === "string" ? row.transports : null,
+        aaguid: typeof row.aaguid === "string" ? row.aaguid : null,
+      }))
+      .filter((row) => row.id.length > 0);
+  },
+
+  deletePasskey: async (input: { passkeyId: string }) => {
+    const res = await fetch(`/api/auth/passkeys/${encodeURIComponent(input.passkeyId)}`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      const p = payload as Record<string, unknown> | null;
+      const message =
+        (typeof p?.message === "string" ? p.message : null) ??
+        (typeof p?.error === "string" ? p.error : null) ??
+        `Failed to delete passkey (${res.status})`;
       throw new Error(message);
     }
   },

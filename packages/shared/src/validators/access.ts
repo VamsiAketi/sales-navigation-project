@@ -110,6 +110,20 @@ export const updateMemberOrgConfigSchema = z.object({
 
 export type UpdateMemberOrgConfig = z.infer<typeof updateMemberOrgConfigSchema>;
 
+export const setMemberPasswordSchema = z.preprocess(
+  (val) => (val === undefined || val === null ? {} : val),
+  z.union([
+    /** Generate a random password using the same rules as human invites. */
+    z.object({}).strict(),
+    /** Set an explicit password (legacy / automation). */
+    z.object({
+      newPassword: z.string().min(8).max(256),
+    }),
+  ]),
+);
+
+export type SetMemberPassword = z.infer<typeof setMemberPasswordSchema>;
+
 export const updateMemberStatusSchema = z.object({
   status: z.enum(MEMBERSHIP_STATUSES).refine((status) => status !== "pending", {
     message: "Pending membership status is not supported for this operation",

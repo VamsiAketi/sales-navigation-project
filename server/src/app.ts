@@ -33,6 +33,7 @@ import { userNotificationPreferencesRoutes } from "./routes/user-notification-pr
 import { notificationRoutes } from "./routes/notifications.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
+import { authPasskeyRoutes } from "./routes/auth-passkeys.js";
 import { applyUiBranding, buildSiteWebManifest } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -463,6 +464,8 @@ export async function createApp(
     next();
   });
 
+  app.use("/api/auth", authPasskeyRoutes(db));
+
   if (opts.betterAuthHandler) {
     app.all("/api/auth/{*authPath}", opts.betterAuthHandler);
   }
@@ -565,6 +568,7 @@ export async function createApp(
       deploymentExposure: opts.deploymentExposure,
       bindHost: opts.bindHost,
       allowedHostnames: opts.allowedHostnames,
+      changePassword: opts.changePassword,
     }),
   );
   api.use(userNotificationPreferencesRoutes(db));
