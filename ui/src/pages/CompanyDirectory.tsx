@@ -115,6 +115,7 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "users:invite": "teams.read",
   "joins:approve": "teams.read",
   "users:manage_permissions": "teams.read",
+  "users:reset_password": "teams.read",
   "company_settings.general": "company_settings.read",
   "company_settings.appearance": "company_settings.read",
   "company_settings.security_access": "company_settings.read",
@@ -149,6 +150,7 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "agents.read",
     "users:invite",
     "users:manage_permissions",
+    "users:reset_password",
     "tasks.read",
     "tasks.create",
     "tasks:assign",
@@ -248,6 +250,9 @@ const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
   },
   "users:manage_permissions": {
     title: "Manage roles & access",
+  },
+  "users:reset_password": {
+    title: "Reset passwords",
   },
   "tasks.read": {
     title: "View tasks",
@@ -355,6 +360,7 @@ const PERMISSION_CATEGORY_DEFS: {
     keys: [
       "teams.read",
       "users:manage_permissions",
+      "users:reset_password",
       "users:invite",
       "joins:approve",
       "teams.title_create",
@@ -815,6 +821,12 @@ export function CompanyDirectory() {
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [humanDetailsDialogOpen, setHumanDetailsDialogOpen] = useState(false);
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [passwordResetCredentials, setPasswordResetCredentials] = useState<{ temporaryPassword: string } | null>(
+    null,
+  );
+  const [passwordResetCredentialsCopied, setPasswordResetCredentialsCopied] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [offboardingIssueReassignDrafts, setOffboardingIssueReassignDrafts] = useState<Record<string, string>>({});
@@ -927,6 +939,7 @@ export function CompanyDirectory() {
   const canCreateTitles = currentUserPermissionSet.has("teams.title_create");
   const canAssignTitles = currentUserPermissionSet.has("teams.title_assign");
   const canManageTitles = currentUserPermissionSet.has("teams.title_manage");
+  const canResetPassword = currentUserPermissionSet.has("users:reset_password");
   const hasTitleAccess = canCreateTitles || canAssignTitles || canManageTitles;
   const canOpenRolesAndTitlesDialog = canEditTeams || canCreateTitles || canAssignTitles || canManageTitles;
 
@@ -1488,7 +1501,12 @@ export function CompanyDirectory() {
   const humanPermissionMutation = useMutation({
     mutationFn: (input: { memberId: string; grants: Array<{ permissionKey: PermissionKey; scope: Record<string, unknown> | null }> }) =>
       accessApi.updateMemberPermissions(selectedCompanyId!, input.memberId, input.grants),
-    onSuccess: invalidateMembers
+    onSuccess: invalidateMembers,
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (input: { companyId: string; memberId: string }) =>
+      accessApi.setMemberPassword(input.companyId, input.memberId),
   });
 
   const agentSaveMutation = useMutation({
@@ -2658,6 +2676,33 @@ export function CompanyDirectory() {
                         </div>
                       </div>
                       <div className="pt-2 space-y-2">
+                        {canResetPassword &&
+                          selectedHumanMember &&
+                          currentUserId &&
+                          selectedHumanMember.principalId !== currentUserId ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-full justify-start rounded-md border-border/70 bg-background px-2 text-xs font-medium text-foreground hover:bg-muted"
+                            disabled={
+                              !selectedCompanyId ||
+                              deactivateHumanMutation.isPending ||
+                              reactivateHumanMutation.isPending ||
+                              removeHumanMutation.isPending ||
+                              resetPasswordMutation.isPending
+                            }
+                            onClick={() => {
+                              setHumanDetailsDialogOpen(false);
+                              setResetPasswordError(null);
+                              setPasswordResetCredentials(null);
+                              setPasswordResetCredentialsCopied(false);
+                              setResetPasswordDialogOpen(true);
+                            }}
+                          >
+                            Reset password
+                          </Button>
+                        ) : null}
                         {selectedHumanMember.status === "suspended" ? (
                           <Button
                             type="button"
@@ -2757,6 +2802,145 @@ export function CompanyDirectory() {
           </div>
         </div>
       ) : null}
+
+      <Dialog
+        open={resetPasswordDialogOpen}
+        onOpenChange={(open) => {
+          setResetPasswordDialogOpen(open);
+          if (!open) {
+            setPasswordResetCredentials(null);
+            setPasswordResetCredentialsCopied(false);
+            setResetPasswordError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border/60">
+          {passwordResetCredentials ? (
+            <DialogHeader>
+              <DialogTitle className="text-left text-base font-semibold text-foreground">
+                Password successfully reset
+              </DialogTitle>
+            </DialogHeader>
+          ) : (
+            <DialogHeader>
+              <DialogTitle className="text-left text-base font-semibold leading-snug text-foreground">
+                Reset Password for{" "}
+                {selectedHumanMember ? memberDisplayName(selectedHumanMember) : "this user"}?
+              </DialogTitle>
+              <DialogDescription className="text-left text-sm text-muted-foreground">
+                This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+          )}
+          <div className="space-y-4 py-2">
+            {passwordResetCredentials ? (
+              <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
+                {selectedHumanMember?.user?.email ? (
+                  <p>
+                    Email: <span className="font-mono">{selectedHumanMember.user.email}</span>
+                  </p>
+                ) : null}
+                <p>
+                  Password:{" "}
+                  <span className="break-all font-mono">{passwordResetCredentials.temporaryPassword}</span>
+                </p>
+                <div className="pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-full px-5 shadow-sm"
+                    onClick={async () => {
+                      const lines = [
+                        selectedHumanMember?.user?.email &&
+                          `Email: ${selectedHumanMember.user.email}`,
+                        `Password: ${passwordResetCredentials.temporaryPassword}`,
+                      ].filter(Boolean) as string[];
+                      try {
+                        await navigator.clipboard.writeText(lines.join("\n"));
+                        setPasswordResetCredentialsCopied(true);
+                        window.setTimeout(() => setPasswordResetCredentialsCopied(false), 2000);
+                        pushToast({
+                          title: "Copied",
+                          body: "Temporary password details copied to clipboard.",
+                          tone: "success",
+                        });
+                      } catch {
+                        pushToast({
+                          title: "Copy failed",
+                          body: "Clipboard is unavailable. Copy manually.",
+                          tone: "error",
+                        });
+                      }
+                    }}
+                  >
+                    {passwordResetCredentialsCopied ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Check className="h-4 w-4" />
+                        Copied
+                      </span>
+                    ) : (
+                      "Copy details"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {!passwordResetCredentials && resetPasswordError ? (
+              <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                {resetPasswordError}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            {passwordResetCredentials ? (
+              <DialogClose asChild>
+                <Button type="button" variant="default" size="sm" style={{ backgroundColor: "#6569E1" }} className="text-white hover:brightness-105">
+                  Done
+                </Button>
+              </DialogClose>
+            ) : (
+              <>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline" size="sm" disabled={resetPasswordMutation.isPending}>
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button
+                  type="button"
+                  size="sm"
+                  style={{ backgroundColor: "#6569E1" }}
+                  className="text-white hover:brightness-105 disabled:opacity-70"
+                  disabled={
+                    resetPasswordMutation.isPending ||
+                    !selectedCompanyId ||
+                    !selectedHumanMember
+                  }
+                  onClick={() => {
+                    if (!selectedCompanyId || !selectedHumanMember) return;
+                    setResetPasswordError(null);
+                    resetPasswordMutation.mutate(
+                      { companyId: selectedCompanyId, memberId: selectedHumanMember.id },
+                      {
+                        onSuccess: (data) => {
+                          if (data.temporaryPassword) {
+                            setPasswordResetCredentials({ temporaryPassword: data.temporaryPassword });
+                          }
+                        },
+                        onError: (err) => {
+                          setResetPasswordError(apiErrorMessage(err));
+                        },
+                      },
+                    );
+                  }}
+                >
+                  {resetPasswordMutation.isPending ? "Generating…" : "Generate temporary password"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Deactivate confirmation dialog */}
       <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>

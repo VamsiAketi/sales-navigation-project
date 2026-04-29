@@ -565,6 +565,7 @@ export async function createApp(
       deploymentExposure: opts.deploymentExposure,
       bindHost: opts.bindHost,
       allowedHostnames: opts.allowedHostnames,
+      changePassword: opts.changePassword,
     }),
   );
   api.use(userNotificationPreferencesRoutes(db));

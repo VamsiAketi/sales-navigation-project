@@ -261,6 +261,7 @@ export {
   resolveCliAuthChallengeSchema,
   updateMemberPermissionsSchema,
   updateMemberOrgConfigSchema,
+  setMemberPasswordSchema,
   updateMemberStatusSchema,
   updateUserCompanyAccessSchema,
   type CreateCompanyInvite,
@@ -274,6 +275,7 @@ export {
   type ResolveCliAuthChallenge,
   type UpdateMemberPermissions,
   type UpdateMemberOrgConfig,
+  type SetMemberPassword,
   type UpdateMemberStatus,
   type UpdateUserCompanyAccess,
 } from "./access.js";
