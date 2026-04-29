@@ -3380,6 +3380,16 @@ export function accessRoutes(
         throw forbidden("Permission denied");
       }
 
+      if (roleUpdateRequested && isOwnerMembershipRole(nextRole)) {
+        if (member.principalType !== "user") {
+          throw badRequest("Owner role can only be assigned to user members.");
+        }
+        const instanceOwnerUserId = await access.getInstanceOwnerUserId();
+        if (instanceOwnerUserId && member.principalId !== instanceOwnerUserId) {
+          throw badRequest("Owner role can only be assigned to the first instance user.");
+        }
+      }
+
       if (requestedReportsTo === member.id) {
         throw badRequest("Member cannot report to itself");
       }

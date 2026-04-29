@@ -27,6 +27,7 @@ import {
   type ProjectAuthActor,
   type ProjectPermissionKey,
 } from "@paperclipai/shared";
+import { badRequest } from "../errors.js";
 import { isOwnerMembershipRole, normalizeMembershipRole } from "../lib/membership-role.js";
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
@@ -124,6 +125,31 @@ export function accessService(db: Db) {
       .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
       .then((rows) => rows[0] ?? null);
     return Boolean(row);
+  }
+
+  async function getInstanceOwnerUserId(): Promise<string | null> {
+    const row = await db
+      .select({ id: authUsers.id })
+      .from(authUsers)
+      .orderBy(sql`${authUsers.createdAt} asc`, sql`${authUsers.id} asc`)
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return row?.id ?? null;
+  }
+
+  async function assertOwnerAssignmentAllowed(
+    principalType: PrincipalType,
+    principalId: string,
+    membershipRole: string | null | undefined,
+  ): Promise<void> {
+    if (principalType !== "user") return;
+    if (!isOwnerMembershipRole(membershipRole)) return;
+    const instanceOwnerUserId = await getInstanceOwnerUserId();
+    // Local implicit board uses a synthetic user id; keep local-trusted behavior unchanged.
+    if (!instanceOwnerUserId || principalId === "local-board") return;
+    if (principalId !== instanceOwnerUserId) {
+      throw badRequest("Owner role can only be assigned to the first instance user.");
+    }
   }
 
   async function getMembership(
@@ -673,6 +699,7 @@ export function accessService(db: Db) {
     status: "pending" | "active" | "suspended" = "active",
   ) {
     const normalizedMembershipRole = normalizeMembershipRole(membershipRole);
+    await assertOwnerAssignmentAllowed(principalType, principalId, normalizedMembershipRole);
     const existing = await getMembership(companyId, principalType, principalId);
     if (existing) {
       if (existing.status !== status || existing.membershipRole !== normalizedMembershipRole) {
@@ -1079,6 +1106,7 @@ export function accessService(db: Db) {
     hasPermission,
     getMembership,
     ensureMembership,
+    getInstanceOwnerUserId,
     listMembers,
     listActiveUserMemberships,
     copyActiveUserMemberships,
