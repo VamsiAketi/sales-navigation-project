@@ -192,6 +192,18 @@ export const accessApi = {
       input,
     ),
 
+  transferOwnership: (
+    companyId: string,
+    input: {
+      targetMemberId: string;
+      currentOwnerNextRole: string;
+    },
+  ) =>
+    api.post<{ ok: true; newOwnerMemberId: string; previousOwnerMemberId: string }>(
+      `/companies/${companyId}/owner-transfer`,
+      input,
+    ),
+
   updateMemberStatus: (
     companyId: string,
     memberId: string,

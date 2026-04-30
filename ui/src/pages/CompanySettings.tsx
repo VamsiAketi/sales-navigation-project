@@ -5,6 +5,7 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
+import { authApi } from "../api/auth";
 import { assetsApi } from "../api/assets";
 import { secretsApi } from "../api/secrets";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
@@ -13,6 +14,15 @@ import { Button } from "@/components/ui/button";
 import type { CompanyProjectAccessMode } from "@paperclipai/shared";
 import { Settings, Check, Download, Upload, Shield } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
+import { InlineEntitySelector, type InlineEntityOption } from "../components/InlineEntitySelector";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Field,
   ToggleField,
@@ -74,6 +84,46 @@ export function CompanySettings() {
   const [newSecretValue, setNewSecretValue] = useState("");
   const [newSecretDescription, setNewSecretDescription] = useState("");
   const [projectAccessDraft, setProjectAccessDraft] = useState<CompanyProjectAccessMode>("open");
+  const [ownerTransferDialogOpen, setOwnerTransferDialogOpen] = useState(false);
+  const [selectedNewOwnerMemberId, setSelectedNewOwnerMemberId] = useState("");
+  const [selectedCurrentOwnerNextRole, setSelectedCurrentOwnerNextRole] = useState("admin");
+
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+  });
+  const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+
+  const { data: companyMembers = [] } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.access.members(selectedCompanyId) : ["access-members", "none"],
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+  });
+
+  const activeHumanMembers = useMemo(
+    () => companyMembers.filter((member) => member.principalType === "user" && member.status === "active"),
+    [companyMembers],
+  );
+  const currentUserMember = useMemo(
+    () => activeHumanMembers.find((member) => member.principalId === currentUserId) ?? null,
+    [activeHumanMembers, currentUserId],
+  );
+  const isCurrentUserOwner = ((currentUserMember?.membershipRole ?? "").trim().toLowerCase() === "owner");
+  const ownerTransferCandidates = useMemo(
+    () => activeHumanMembers.filter((member) => member.id !== currentUserMember?.id),
+    [activeHumanMembers, currentUserMember?.id],
+  );
+  const ownerTransferRoleOptions = ["admin", "operator", "viewer", "member"] as const;
+
+  useEffect(() => {
+    if (ownerTransferCandidates.length === 0) {
+      setSelectedNewOwnerMemberId("");
+      return;
+    }
+    if (!selectedNewOwnerMemberId || !ownerTransferCandidates.some((member) => member.id === selectedNewOwnerMemberId)) {
+      setSelectedNewOwnerMemberId(ownerTransferCandidates[0]?.id ?? "");
+    }
+  }, [ownerTransferCandidates, selectedNewOwnerMemberId]);
 
   const generalDirty =
     !!selectedCompany &&
@@ -264,6 +314,26 @@ export function CompanySettings() {
     },
   });
 
+  const transferOwnershipMutation = useMutation({
+    mutationFn: (input: { targetMemberId: string; currentOwnerNextRole: string }) =>
+      accessApi.transferOwnership(selectedCompanyId!, input),
+    onSuccess: async () => {
+      setOwnerTransferDialogOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.access.members(selectedCompanyId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.companies.all }),
+      ]);
+      pushToast({ title: "Ownership transferred successfully", tone: "success" });
+    },
+    onError: (err) => {
+      pushToast({
+        title: err instanceof Error ? err.message : "Failed to transfer ownership",
+        tone: "error",
+      });
+    },
+  });
+
   useEffect(() => {
     setBreadcrumbs([
       { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
@@ -302,6 +372,31 @@ export function CompanySettings() {
     if (Object.keys(payload).length === 0) return;
     generalMutation.mutate(payload);
   }
+
+  const selectedNewOwnerMember =
+    ownerTransferCandidates.find((member) => member.id === selectedNewOwnerMemberId) ?? null;
+  const selectedNewOwnerLabel = selectedNewOwnerMember
+    ? selectedNewOwnerMember.user?.name?.trim() ||
+      selectedNewOwnerMember.user?.email ||
+      selectedNewOwnerMember.principalId
+    : "selected user";
+  const ownerCandidateOptions = useMemo<InlineEntityOption[]>(
+    () =>
+      ownerTransferCandidates.map((member) => ({
+        id: member.id,
+        label: member.user?.name?.trim() || member.user?.email || member.principalId,
+        searchText: `${member.user?.name ?? ""} ${member.user?.email ?? ""} ${member.principalId}`,
+      })),
+    [ownerTransferCandidates],
+  );
+  const ownerNextRoleOptions = useMemo<InlineEntityOption[]>(
+    () =>
+      ownerTransferRoleOptions.map((role) => ({
+        id: role,
+        label: role.charAt(0).toUpperCase() + role.slice(1),
+      })),
+    [ownerTransferRoleOptions],
+  );
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -613,6 +708,65 @@ export function CompanySettings() {
         </div>
       </div>
 
+      {isCurrentUserOwner ? (
+        <div className="space-y-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Ownership
+          </div>
+          <div className="space-y-3 rounded-md border border-border px-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Transfer ownership to another active member and choose your new role after transfer.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="New owner" hint="Choose who will become the Owner after confirmation.">
+                <InlineEntitySelector
+                  value={selectedNewOwnerMemberId}
+                  options={ownerCandidateOptions}
+                  placeholder="Select new owner"
+                  noneLabel="No eligible members"
+                  includeNoneOption={false}
+                  searchPlaceholder="Search members..."
+                  emptyMessage="No matching members."
+                  onChange={setSelectedNewOwnerMemberId}
+                  className="h-10 w-full justify-between rounded-md border-border/60 bg-background text-sm font-normal"
+                />
+              </Field>
+              <Field label="Your role after transfer" hint="After transfer, your account will be reassigned to this role.">
+                <InlineEntitySelector
+                  value={selectedCurrentOwnerNextRole}
+                  options={ownerNextRoleOptions}
+                  placeholder="Select role"
+                  noneLabel="No roles"
+                  includeNoneOption={false}
+                  searchPlaceholder="Search roles..."
+                  emptyMessage="No roles found."
+                  onChange={setSelectedCurrentOwnerNextRole}
+                  className="h-10 w-full justify-between rounded-md border-border/60 bg-background text-sm font-normal"
+                />
+              </Field>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Result: <span className="font-medium text-foreground">{selectedNewOwnerLabel}</span> becomes{" "}
+              <span className="font-medium text-foreground">Owner</span>, and you become{" "}
+              <span className="font-medium text-foreground">
+                {selectedCurrentOwnerNextRole.charAt(0).toUpperCase() + selectedCurrentOwnerNextRole.slice(1)}
+              </span>
+              .
+            </p>
+            <div>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={ownerTransferCandidates.length === 0 || !selectedNewOwnerMemberId}
+                onClick={() => setOwnerTransferDialogOpen(true)}
+              >
+                Transfer ownership
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Hiring */}
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -784,6 +938,45 @@ export function CompanySettings() {
         </div>
       </div>
       */}
+      <Dialog open={ownerTransferDialogOpen} onOpenChange={setOwnerTransferDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm ownership transfer</DialogTitle>
+            <DialogDescription>
+              This action will make <span className="font-medium text-foreground">{selectedNewOwnerLabel}</span> the
+              new Owner. Your role will change to{" "}
+              <span className="font-medium text-foreground">
+                {selectedCurrentOwnerNextRole.charAt(0).toUpperCase() + selectedCurrentOwnerNextRole.slice(1)}
+              </span>
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-amber-400/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-200">
+            Warning: Ownership transfer changes company control immediately. Make sure the selected user is correct.
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOwnerTransferDialogOpen(false)}
+              disabled={transferOwnershipMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!selectedNewOwnerMemberId || transferOwnershipMutation.isPending}
+              onClick={() => {
+                transferOwnershipMutation.mutate({
+                  targetMemberId: selectedNewOwnerMemberId,
+                  currentOwnerNextRole: selectedCurrentOwnerNextRole,
+                });
+              }}
+            >
+              {transferOwnershipMutation.isPending ? "Transferring..." : "Confirm transfer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

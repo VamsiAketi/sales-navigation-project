@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Router } from "express";
 import type { Request } from "express";
-import { and, eq, isNull, desc, inArray } from "drizzle-orm";
+import { and, eq, isNull, desc, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents as dbAgents,
@@ -33,6 +33,7 @@ import {
   resolveCliAuthChallengeSchema,
   setMemberPasswordSchema,
   updateMemberOrgConfigSchema,
+  transferOwnershipSchema,
   updateMemberPermissionsSchema,
   updateProjectPrincipalGrantsSchema,
   updateUserCompanyAccessSchema,
@@ -3509,6 +3510,126 @@ export function accessRoutes(
         membershipRoleLabel: membershipRoleLabel(updated.membershipRole),
       });
     }
+  );
+
+  router.post(
+    "/companies/:companyId/owner-transfer",
+    validate(transferOwnershipSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      if (req.actor.type !== "board" || !req.actor.userId) {
+        throw forbidden("Board access required");
+      }
+
+      const actorUserId = req.actor.userId;
+      const { targetMemberId } = req.body;
+      const currentOwnerNextRole = normalizeMembershipRole(req.body.currentOwnerNextRole);
+      if (isOwnerMembershipRole(currentOwnerNextRole)) {
+        throw badRequest("Current owner must choose a non-owner role.");
+      }
+
+      const [actorMembership, targetMembership] = await Promise.all([
+        db
+          .select()
+          .from(companyMemberships)
+          .where(
+            and(
+              eq(companyMemberships.companyId, companyId),
+              eq(companyMemberships.principalType, "user"),
+              eq(companyMemberships.principalId, actorUserId),
+            ),
+          )
+          .then((rows) => rows[0] ?? null),
+        db
+          .select()
+          .from(companyMemberships)
+          .where(
+            and(
+              eq(companyMemberships.companyId, companyId),
+              eq(companyMemberships.id, targetMemberId),
+            ),
+          )
+          .then((rows) => rows[0] ?? null),
+      ]);
+
+      if (!actorMembership || actorMembership.status !== "active" || !isOwnerMembershipRole(actorMembership.membershipRole)) {
+        throw forbidden("Only an active owner can transfer ownership.");
+      }
+      if (!targetMembership) {
+        throw notFound("Target member not found.");
+      }
+      if (targetMembership.id === actorMembership.id) {
+        throw badRequest("Select a different member as the new owner.");
+      }
+      if (targetMembership.principalType !== "user") {
+        throw badRequest("Ownership can only be transferred to a human member.");
+      }
+      if (targetMembership.status !== "active") {
+        throw badRequest("New owner must be an active member.");
+      }
+
+      const transferred = await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          select ${companyMemberships.id}
+          from ${companyMemberships}
+          where ${companyMemberships.companyId} = ${companyId}
+            and ${companyMemberships.principalType} = 'user'
+            and ${companyMemberships.status} = 'active'
+            and ${companyMemberships.membershipRole} = 'owner'
+          for update
+        `);
+
+        const now = new Date();
+        const newOwner = await tx
+          .update(companyMemberships)
+          .set({
+            membershipRole: "owner",
+            updatedAt: now,
+          })
+          .where(eq(companyMemberships.id, targetMembership.id))
+          .returning()
+          .then((rows) => rows[0] ?? null);
+
+        const previousOwner = await tx
+          .update(companyMemberships)
+          .set({
+            membershipRole: currentOwnerNextRole,
+            updatedAt: now,
+          })
+          .where(eq(companyMemberships.id, actorMembership.id))
+          .returning()
+          .then((rows) => rows[0] ?? null);
+
+        if (!newOwner || !previousOwner) {
+          throw conflict("Ownership transfer failed. Please retry.");
+        }
+
+        return { newOwner, previousOwner };
+      });
+
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: actorUserId,
+        action: "company.owner_transferred",
+        entityType: "company",
+        entityId: companyId,
+        details: {
+          fromMemberId: transferred.previousOwner.id,
+          fromUserId: transferred.previousOwner.principalId,
+          toMemberId: transferred.newOwner.id,
+          toUserId: transferred.newOwner.principalId,
+          previousOwnerNewRole: currentOwnerNextRole,
+        },
+      });
+
+      res.json({
+        ok: true as const,
+        newOwnerMemberId: transferred.newOwner.id,
+        previousOwnerMemberId: transferred.previousOwner.id,
+      });
+    },
   );
 
   router.patch(

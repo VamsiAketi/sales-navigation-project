@@ -2471,6 +2471,8 @@ export function CompanyDirectory() {
                     const roleValue = (memberRoleDrafts[member.id] ?? member.membershipRole ?? "").trim();
                     const isOwnerRole = normalizeRoleLabel(roleValue) === "owner";
                     const reportsToValue = (memberManagerDrafts[member.id] ?? member.reportsToMembershipId ?? "").trim();
+                    const managerMember = activeHumanMembers.find((candidate) => candidate.id === reportsToValue) ?? null;
+                    const reportsToLabel = managerMember ? memberDisplayName(managerMember) : "None";
                     const rowInvalidManagers = descendantsOf(member.id, childrenByMemberId);
                     rowInvalidManagers.add(member.id);
                     return (
@@ -2521,7 +2523,7 @@ export function CompanyDirectory() {
                         </span>
                         <span onClick={(event) => event.stopPropagation()} className="min-w-0">
                           {isOwnerRole ? (
-                            <span className="inline-flex h-8 w-[150px] max-w-full items-center rounded-md border border-border/60 bg-muted/40 px-2 text-xs font-medium text-foreground">
+                            <span className="inline-flex h-8 w-[150px] max-w-full items-center rounded-md px-2 text-xs font-medium text-foreground">
                               Owner
                             </span>
                           ) : (
@@ -2546,27 +2548,33 @@ export function CompanyDirectory() {
                           )}
                         </span>
                         <span onClick={(event) => event.stopPropagation()} className="min-w-0">
-                          <InlineEntitySelector
-                            value={reportsToValue}
-                            options={activeHumanMembers
-                              .filter((candidate) => candidate.id !== member.id && !rowInvalidManagers.has(candidate.id))
-                              .map((candidate) => ({
-                                id: candidate.id,
-                                label: memberDisplayName(candidate),
-                              searchText: `${memberDisplayName(candidate)} ${candidate.user?.email ?? ""}`,
-                              }))}
-                            placeholder="Reports to"
-                            noneLabel="None"
-                            searchPlaceholder="Search humans..."
-                            emptyMessage="No humans found."
-                            onChange={(next) => {
-                              setSelectedHumanMemberId(member.id);
-                              const nextManager = next.trim();
-                              setMemberManagerDrafts((prev) => ({ ...prev, [member.id]: nextManager }));
-                              saveHumanRowEdits(member, roleValue, memberTitleDrafts[member.id] ?? member.title ?? "", nextManager);
-                            }}
-                            className="h-8 w-[140px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
-                          />
+                          {isOwnerRole ? (
+                            <span className="inline-flex h-8 w-[140px] max-w-full items-center rounded-md px-2 text-xs font-medium text-foreground">
+                              {reportsToLabel}
+                            </span>
+                          ) : (
+                            <InlineEntitySelector
+                              value={reportsToValue}
+                              options={activeHumanMembers
+                                .filter((candidate) => candidate.id !== member.id && !rowInvalidManagers.has(candidate.id))
+                                .map((candidate) => ({
+                                  id: candidate.id,
+                                  label: memberDisplayName(candidate),
+                                searchText: `${memberDisplayName(candidate)} ${candidate.user?.email ?? ""}`,
+                                }))}
+                              placeholder="Reports to"
+                              noneLabel="None"
+                              searchPlaceholder="Search humans..."
+                              emptyMessage="No humans found."
+                              onChange={(next) => {
+                                setSelectedHumanMemberId(member.id);
+                                const nextManager = next.trim();
+                                setMemberManagerDrafts((prev) => ({ ...prev, [member.id]: nextManager }));
+                                saveHumanRowEdits(member, roleValue, memberTitleDrafts[member.id] ?? member.title ?? "", nextManager);
+                              }}
+                              className="h-8 w-[140px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                            />
+                          )}
                         </span>
                         <span
                           className={cn(

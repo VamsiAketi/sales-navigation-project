@@ -110,6 +110,13 @@ export const updateMemberOrgConfigSchema = z.object({
 
 export type UpdateMemberOrgConfig = z.infer<typeof updateMemberOrgConfigSchema>;
 
+export const transferOwnershipSchema = z.object({
+  targetMemberId: z.string().uuid(),
+  currentOwnerNextRole: z.string().trim().min(1).max(120),
+});
+
+export type TransferOwnership = z.infer<typeof transferOwnershipSchema>;
+
 export const setMemberPasswordSchema = z.preprocess(
   (val) => (val === undefined || val === null ? {} : val),
   z.union([
