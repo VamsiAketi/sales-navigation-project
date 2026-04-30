@@ -22,9 +22,6 @@ import { cn } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { heartbeatsApi } from "../api/heartbeats";
-import { authApi } from "../api/auth";
-import { healthApi } from "../api/health";
-import { accessApi } from "../api/access";
 import { useLocation, useNavigate } from "@/lib/router";
 import {
   Tooltip,
@@ -170,33 +167,7 @@ export function CompanyRail() {
   );
   const companyIds = useMemo(() => sidebarCompanies.map((company) => company.id), [sidebarCompanies]);
 
-  const { data: health } = useQuery({
-    queryKey: queryKeys.health,
-    queryFn: () => healthApi.get(),
-  });
-  const { data: session } = useQuery({
-    queryKey: queryKeys.auth.session,
-    queryFn: () => authApi.getSession(),
-  });
-  const isLocalTrusted = health?.deploymentMode === "local_trusted";
-  const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
-
-  const memberQueries = useQueries({
-    queries: companyIds.map((companyId) => ({
-      queryKey: queryKeys.access.members(companyId),
-      queryFn: () => accessApi.listMembers(companyId),
-      enabled: !isLocalTrusted && !!currentUserId,
-    })),
-  });
-
-  const canCreateCompany = isLocalTrusted || memberQueries.some((q) =>
-    q.data?.some(
-      (member) =>
-        member.principalType === "user" &&
-        member.principalId === currentUserId &&
-        member.grants.some((g) => g.permissionKey === "companies:create"),
-    )
-  );
+  const canCreateCompany = true;
 
   const liveRunsQueries = useQueries({
     queries: companyIds.map((companyId) => ({

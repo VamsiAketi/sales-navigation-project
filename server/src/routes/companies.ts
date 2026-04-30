@@ -281,17 +281,6 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 
   router.post("/", validate(createCompanySchema), async (req, res) => {
     assertBoard(req);
-    const isPrivileged = req.actor.source === "local_implicit" || req.actor.isInstanceAdmin;
-    if (!isPrivileged) {
-      const userId = req.actor.userId;
-      const companyIds = req.actor.companyIds ?? [];
-      const grants = await Promise.all(
-        companyIds.map((cid) => access.hasPermission(cid, "user", userId!, "companies:create")),
-      );
-      if (!grants.some(Boolean)) {
-        throw forbidden("You do not have the permission to create new companies");
-      }
-    }
     const company = await svc.create(req.body);
     await access.ensureMembership(company.id, "user", req.actor.userId ?? "local-board", "owner", "active");
     await logActivity(db, {

@@ -69,7 +69,7 @@ function parseTeamTypeFilterFromTab(tab: string | null): TeamTypeFilter | null {
   return null;
 }
 
-const HUMAN_ROLE_OPTIONS = ["owner", "Admin", "Manager", "Contributor", "Reader"] as const;
+const HUMAN_ROLE_OPTIONS = ["Admin", "Manager", "Contributor", "Reader"] as const;
 
 const AGENT_ROLE_OPTIONS = [
   "SREEngineer",
@@ -165,7 +165,6 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "tasks:assign",
     "tasks:assign_scope",
     "joins:approve",
-    "companies:create",
     "command_center.read",
     "hybrid_org.read",
     "hybrid_org.edit",
@@ -277,9 +276,6 @@ const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
   },
   "joins:approve": {
     title: "Approve join requests",
-  },
-  "companies:create": {
-    title: "Create companies",
   },
   "command_center.read": {
     title: "View Command Center",
@@ -416,11 +412,6 @@ const PERMISSION_CATEGORY_DEFS: {
     id: "attention_queue",
     title: "Attention Queue",
     keys: ["attention_queue.read"],
-  },
-  {
-    id: "company",
-    title: "Company management",
-    keys: ["companies:create"],
   },
   {
     id: "audit_logs",
@@ -831,7 +822,7 @@ export function CompanyDirectory() {
   const [newTitle, setNewTitle] = useState("");
   const [newHumanRole, setNewHumanRole] = useState("");
   const [newAgentRole, setNewAgentRole] = useState("");
-  const [selectedManageHumanRole, setSelectedManageHumanRole] = useState<string>(HUMAN_ROLE_OPTIONS[0] ?? "owner");
+  const [selectedManageHumanRole, setSelectedManageHumanRole] = useState<string>(HUMAN_ROLE_OPTIONS[0] ?? "Admin");
   const [humanRolePermissions, setHumanRolePermissions] = useState<Record<string, PermissionKey[]>>({});
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -1798,6 +1789,7 @@ export function CompanyDirectory() {
   }) {
     const roleDraft = memberRoleDrafts[member.id] ?? "";
     const normalized = roleDraft.trim();
+    const isOwnerRole = normalizeRoleLabel(normalized) === "owner";
     const merged = useMemo(() => {
       const base = [...options];
       for (const r of customOptions ?? []) {
@@ -1812,16 +1804,22 @@ export function CompanyDirectory() {
     return (
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">{label}</div>
-        <InlineEntitySelector
-          value={normalized}
-          options={roleOptions}
-          placeholder="Role"
-          noneLabel="None"
-          searchPlaceholder="Search roles..."
-          emptyMessage="No roles found."
-          onChange={(next) => setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }))}
-          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
-        />
+        {isOwnerRole ? (
+          <div className="h-10 rounded-lg border border-border/60 bg-muted/40 px-3 text-sm font-medium leading-10 text-foreground">
+            Owner
+          </div>
+        ) : (
+          <InlineEntitySelector
+            value={normalized}
+            options={roleOptions}
+            placeholder="Role"
+            noneLabel="None"
+            searchPlaceholder="Search roles..."
+            emptyMessage="No roles found."
+            onChange={(next) => setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }))}
+            className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+          />
+        )}
       </div>
     );
   }
@@ -2471,6 +2469,7 @@ export function CompanyDirectory() {
                     const selected = selectedHumanMember?.id === member.id;
                     const isSuspended = member.status === "suspended";
                     const roleValue = (memberRoleDrafts[member.id] ?? member.membershipRole ?? "").trim();
+                    const isOwnerRole = normalizeRoleLabel(roleValue) === "owner";
                     const reportsToValue = (memberManagerDrafts[member.id] ?? member.reportsToMembershipId ?? "").trim();
                     const rowInvalidManagers = descendantsOf(member.id, childrenByMemberId);
                     rowInvalidManagers.add(member.id);
@@ -2521,24 +2520,30 @@ export function CompanyDirectory() {
                           {member.user?.email ?? member.principalId}
                         </span>
                         <span onClick={(event) => event.stopPropagation()} className="min-w-0">
-                          <InlineEntitySelector
-                            value={roleValue}
-                            options={manageHumanRoleOptions.map((role) => ({
-                              id: normalizeRoleLabel(role),
-                              label: roleDisplayLabel(role),
-                            }))}
-                            placeholder="Role"
-                            noneLabel="None"
-                            searchPlaceholder="Search roles..."
-                            emptyMessage="No roles found."
-                            onChange={(next) => {
-                              setSelectedHumanMemberId(member.id);
-                              const nextRole = next.trim();
-                              setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: nextRole }));
-                              saveHumanRowEdits(member, nextRole, memberTitleDrafts[member.id] ?? member.title ?? "", reportsToValue);
-                            }}
-                            className="h-8 w-[150px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
-                          />
+                          {isOwnerRole ? (
+                            <span className="inline-flex h-8 w-[150px] max-w-full items-center rounded-md border border-border/60 bg-muted/40 px-2 text-xs font-medium text-foreground">
+                              Owner
+                            </span>
+                          ) : (
+                            <InlineEntitySelector
+                              value={roleValue}
+                              options={manageHumanRoleOptions.map((role) => ({
+                                id: normalizeRoleLabel(role),
+                                label: roleDisplayLabel(role),
+                              }))}
+                              placeholder="Role"
+                              noneLabel="None"
+                              searchPlaceholder="Search roles..."
+                              emptyMessage="No roles found."
+                              onChange={(next) => {
+                                setSelectedHumanMemberId(member.id);
+                                const nextRole = next.trim();
+                                setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: nextRole }));
+                                saveHumanRowEdits(member, nextRole, memberTitleDrafts[member.id] ?? member.title ?? "", reportsToValue);
+                              }}
+                              className="h-8 w-[150px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
+                            />
+                          )}
                         </span>
                         <span onClick={(event) => event.stopPropagation()} className="min-w-0">
                           <InlineEntitySelector
