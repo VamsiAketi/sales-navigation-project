@@ -1105,6 +1105,7 @@ export function CompanyDirectory() {
 
   const selectedHumanMember =
     selectedHumanMemberId ? activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ?? null : null;
+  const selectedHumanIsOwner = normalizeRoleLabel(selectedHumanMember?.membershipRole ?? "") === "owner";
   const selectedHumanPrincipalId = selectedHumanMember?.principalId ?? null;
 
   const offboardingReassignOptions = useMemo(
@@ -2664,7 +2665,14 @@ export function CompanyDirectory() {
             onClick={() => setHumanDetailsDialogOpen(false)}
             aria-hidden
           />
-          <div className="relative z-[81] flex h-[88vh] w-[46vw] max-h-[88vh] max-w-[46vw] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl">
+          <div
+            className={cn(
+              "relative z-[81] flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl",
+              selectedHumanIsOwner
+                ? "w-[320px] max-w-[92vw]"
+                : "h-[88vh] w-[46vw] max-h-[88vh] max-w-[46vw]",
+            )}
+          >
             {selectedHumanMember ? (
               <>
                 <div className="flex items-center justify-between border-b border-border/60 px-5 py-4">
@@ -2678,8 +2686,13 @@ export function CompanyDirectory() {
                     Close
                   </Button>
                 </div>
-                <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[260px_1fr]">
-                  <aside className="border-r border-border/60 bg-muted/25 p-4">
+                <div
+                  className={cn(
+                    "grid min-h-0 flex-1 gap-0",
+                    selectedHumanIsOwner ? "grid-cols-1" : "md:grid-cols-[260px_1fr]",
+                  )}
+                >
+                  <aside className={cn("bg-muted/25 p-4", !selectedHumanIsOwner && "border-r border-border/60")}>
                     <div className="rounded-xl border border-border/60 bg-background p-3">
                       <div className="flex flex-col items-center text-center">
                         <DirectoryMemberAvatar member={selectedHumanMember} size="lg" className="mb-2" />
@@ -2708,7 +2721,8 @@ export function CompanyDirectory() {
                           </span>
                         </div>
                       </div>
-                      <div className="pt-2 space-y-2">
+                      {!selectedHumanIsOwner ? (
+                        <div className="pt-2 space-y-2">
                         {canResetPassword &&
                           selectedHumanMember &&
                           currentUserId &&
@@ -2758,69 +2772,76 @@ export function CompanyDirectory() {
                             Activate user
                           </Button>
                         ) : (
+                          !selectedHumanIsOwner ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 w-full justify-start rounded-md border-border/70 bg-background px-2 text-xs font-medium text-foreground hover:bg-muted"
+                              disabled={!selectedCompanyId || deactivateHumanMutation.isPending || removeHumanMutation.isPending}
+                              onClick={() => {
+                                setHumanDetailsDialogOpen(false);
+                                setDeactivateDialogOpen(true);
+                              }}
+                            >
+                              Deactivate user
+                            </Button>
+                          ) : null
+                        )}
+                        {!selectedHumanIsOwner ? (
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="h-8 w-full justify-start rounded-md border-border/70 bg-background px-2 text-xs font-medium text-foreground hover:bg-muted"
-                            disabled={!selectedCompanyId || deactivateHumanMutation.isPending || removeHumanMutation.isPending}
+                            className="h-8 w-full justify-start rounded-md border-destructive/40 bg-background px-2 text-xs font-medium text-destructive hover:bg-destructive/10"
+                            disabled={!selectedCompanyId || deactivateHumanMutation.isPending || reactivateHumanMutation.isPending || removeHumanMutation.isPending}
                             onClick={() => {
                               setHumanDetailsDialogOpen(false);
-                              setDeactivateDialogOpen(true);
+                              setDeleteDialogOpen(true);
                             }}
                           >
-                            Deactivate user
+                            Delete user
                           </Button>
-                        )}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-full justify-start rounded-md border-destructive/40 bg-background px-2 text-xs font-medium text-destructive hover:bg-destructive/10"
-                          disabled={!selectedCompanyId || deactivateHumanMutation.isPending || reactivateHumanMutation.isPending || removeHumanMutation.isPending}
-                          onClick={() => {
-                            setHumanDetailsDialogOpen(false);
-                            setDeleteDialogOpen(true);
-                          }}
-                        >
-                          Delete user
-                        </Button>
-                      </div>
+                        ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </aside>
-                  <section className="min-h-0 overflow-y-auto p-4">
-                    <HumanPermissionsPanel
-                      idPrefix={`member-${selectedHumanMember.id}`}
-                      enabledKeys={
-                        humanPermissionMutation.isPending &&
-                        humanPermissionMutation.variables?.memberId === selectedHumanMember.id
-                          ? normalizePermissionSelection(
-                              humanPermissionMutation.variables.grants.map((grant) => grant.permissionKey),
-                            )
-                          : normalizePermissionSelection(
-                              selectedHumanMember.grants.map((grant) => grant.permissionKey as PermissionKey),
-                            )
-                      }
-                      disabled={!selectedCompanyId}
-                      onKeysChange={(keys) => {
-                        if (!selectedCompanyId) return;
-                        const nextGrants = keys.map((permissionKey) => ({
-                          permissionKey,
-                          scope: null,
-                        }));
-                        humanPermissionMutation.mutate({
-                          memberId: selectedHumanMember.id,
-                          grants: nextGrants,
-                        });
-                      }}
-                      intro={null}
-                    />
-                    {humanPermissionMutation.isError ? (
-                      <div className="mt-3 text-xs text-destructive">
-                        {apiErrorMessage(humanPermissionMutation.error)}
-                      </div>
-                    ) : null}
-                  </section>
+                  {!selectedHumanIsOwner ? (
+                    <section className="min-h-0 overflow-y-auto p-4">
+                      <HumanPermissionsPanel
+                        idPrefix={`member-${selectedHumanMember.id}`}
+                        enabledKeys={
+                          humanPermissionMutation.isPending &&
+                          humanPermissionMutation.variables?.memberId === selectedHumanMember.id
+                            ? normalizePermissionSelection(
+                                humanPermissionMutation.variables.grants.map((grant) => grant.permissionKey),
+                              )
+                            : normalizePermissionSelection(
+                                selectedHumanMember.grants.map((grant) => grant.permissionKey as PermissionKey),
+                              )
+                        }
+                        disabled={!selectedCompanyId}
+                        onKeysChange={(keys) => {
+                          if (!selectedCompanyId) return;
+                          const nextGrants = keys.map((permissionKey) => ({
+                            permissionKey,
+                            scope: null,
+                          }));
+                          humanPermissionMutation.mutate({
+                            memberId: selectedHumanMember.id,
+                            grants: nextGrants,
+                          });
+                        }}
+                        intro={null}
+                      />
+                      {humanPermissionMutation.isError ? (
+                        <div className="mt-3 text-xs text-destructive">
+                          {apiErrorMessage(humanPermissionMutation.error)}
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
                 </div>
                 <div className="border-t border-border/60 px-5 py-3" />
               </>
