@@ -352,7 +352,7 @@ export function IssueStatusChart({ issues }: { issues: { status: string; created
   }
 
   const active = STATUS_ORDER.filter((s) => allStatuses.has(s));
-  if (!active.length) return <p className="py-8 text-center text-xs text-muted-foreground">No issues yet</p>;
+  if (!active.length) return <p className="py-8 text-center text-xs text-muted-foreground">No tasks yet</p>;
 
   const data = days.map((d) => {
     const raw = grouped.get(d)!;

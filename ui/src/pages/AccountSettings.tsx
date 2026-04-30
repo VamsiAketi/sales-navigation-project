@@ -673,23 +673,23 @@ function NotificationPreferencesTab() {
   }> = [
     {
       key: "issue.status_changed",
-      label: "Issue status changes",
-      description: "Notify me when an issue moves between states (for example, In Review or Done).",
+      label: "Task status changes",
+      description: "Notify me when a task moves between steps (for example In review or Done).",
     },
     {
       key: "issue.comment_added",
       label: "New comments",
-      description: "Notify me when someone adds a new comment to an issue I am involved in.",
+      description: "Notify me when someone adds a new comment to a task I'm involved in.",
     },
     {
       key: "issue.comment_mentioned",
       label: "@mentions in comments",
-      description: "Notify me when someone @mentions me in an issue comment.",
+      description: "Notify me when someone @mentions me in a task comment.",
     },
     {
       key: "issue.assigned",
-      label: "Issue assignments",
-      description: "Notify me when an issue is assigned to me.",
+      label: "Task assignments",
+      description: "Notify me when someone assigns a task to me.",
     },
   ];
 

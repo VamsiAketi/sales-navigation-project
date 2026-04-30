@@ -121,7 +121,7 @@ export function CommandPalette() {
         if (v && isMobile) setSidebarOpen(false);
       }}>
       <CommandInput
-        placeholder="Search issues, agents, projects..."
+        placeholder="Search tasks, agents, projects..."
         value={query}
         onValueChange={setQuery}
       />
@@ -169,7 +169,7 @@ export function CommandPalette() {
           </CommandItem>
           <CommandItem onSelect={() => go("/issues")}>
             <CircleDot className="mr-2 h-4 w-4" />
-            Issues
+            Tasks
           </CommandItem>
           <CommandItem onSelect={() => go("/projects")}>
             <Hexagon className="mr-2 h-4 w-4" />
@@ -196,7 +196,7 @@ export function CommandPalette() {
         {visibleIssues.length > 0 && (
           <>
             <CommandSeparator />
-            <CommandGroup heading="Issues">
+            <CommandGroup heading="Tasks">
               {visibleIssues.slice(0, 10).map((issue) => (
                 <CommandItem
                   key={issue.id}

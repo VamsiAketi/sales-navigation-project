@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CompanySecret, Project } from "@paperclipai/shared";
+import type { CompanySecret, Project, ProjectSecret } from "@paperclipai/shared";
 import { DEFAULT_BOARD_CLOSED_RETENTION_DAYS } from "@paperclipai/shared";
 import { StatusBadge } from "./StatusBadge";
 import { ProjectStatusPicker } from "./ProjectStatusPicker";
@@ -10,159 +10,22 @@ import { displayBrandSafe } from "../lib/displayBrandSafe";
 import { goalsApi } from "../api/goals";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { projectsApi } from "../api/projects";
+import { projectSecretsApi } from "../api/project-secrets";
 import { secretsApi } from "../api/secrets";
 import { useCompany } from "../context/CompanyContext";
+import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { AlertCircle, Archive, ArchiveRestore, Check, ExternalLink, Github, Loader2, Plus, Trash2, X } from "lucide-react";
 import { DraftInput } from "./agent-config-primitives";
 import { InlineEditor } from "./InlineEditor";
 
-function rowsFromEnvConfig(env: Record<string, string> | null | undefined): Array<{ envKey: string; secretName: string }> {
-  const e = Object.entries(env ?? {});
-  return e.length > 0 ? e.map(([k, v]) => ({ envKey: k, secretName: v })) : [{ envKey: "", secretName: "" }];
-}
-
-function stableProjectEnvKey(env: Record<string, string> | null | undefined): string {
-  if (!env || Object.keys(env).length === 0) return "__empty__";
-  return JSON.stringify(
-    Object.keys(env)
-      .sort()
-      .reduce<Record<string, string>>((acc, k) => {
-        acc[k] = env[k]!;
-        return acc;
-      }, {}),
-  );
-}
-
-function ProjectSecretBindingsEditor({
-  envConfig,
-  companySecrets,
-  companySettingsPath,
-  onSave,
-}: {
-  envConfig: Record<string, string> | null;
-  companySecrets: CompanySecret[];
-  companySettingsPath: string;
-  onSave: (next: Record<string, string> | null) => void;
-}) {
-  const [rows, setRows] = useState(() => rowsFromEnvConfig(envConfig));
-  const [savedOk, setSavedOk] = useState(false);
-
-  useEffect(() => {
-    setRows(rowsFromEnvConfig(envConfig));
-  }, [stableProjectEnvKey(envConfig)]);
-
-  const secretNames = [...new Set(companySecrets.map((s) => s.name))].sort();
-
-  function buildRecord(): Record<string, string> | null {
-    const rec: Record<string, string> = {};
-    for (const r of rows) {
-      const k = r.envKey.trim();
-      const s = r.secretName.trim();
-      if (k && s) rec[k] = s;
-    }
-    return Object.keys(rec).length > 0 ? rec : null;
-  }
-
-  function handleSave() {
-    onSave(buildRecord());
-    setSavedOk(true);
-    window.setTimeout(() => setSavedOk(false), 2000);
-  }
-
-  return (
-    <div className="space-y-3">
-      <p className="text-[11px] text-muted-foreground leading-relaxed">
-        For each row: <span className="font-medium text-foreground">env var name</span> (what the agent sees) →{" "}
-        <span className="font-medium text-foreground">company secret</span> (name from{" "}
-        <Link to={companySettingsPath} className="underline underline-offset-2">
-          Company settings
-        </Link>
-        ).
-      </p>
-      {secretNames.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          No company secrets yet. Add them under Company settings → Secrets first.
-        </p>
-      ) : null}
-      <div className="space-y-2">
-        {rows.map((row, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-2">
-            <input
-              className="min-w-28 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
-              placeholder="ENV_VAR_NAME"
-              value={row.envKey}
-              onChange={(e) => {
-                const v = e.target.value;
-                setRows((prev) => prev.map((r, j) => (j === i ? { ...r, envKey: v } : r)));
-              }}
-              disabled={secretNames.length === 0}
-            />
-            <span className="text-xs text-muted-foreground shrink-0">→</span>
-            <select
-              className="min-w-32 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
-              value={row.secretName}
-              onChange={(e) => {
-                const v = e.target.value;
-                setRows((prev) => prev.map((r, j) => (j === i ? { ...r, secretName: v } : r)));
-              }}
-              disabled={secretNames.length === 0}
-            >
-              <option value="">— company secret —</option>
-              {secretNames.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className="shrink-0"
-              onClick={() => {
-                setRows((prev) => {
-                  const next = prev.filter((_, j) => j !== i);
-                  return next.length ? next : [{ envKey: "", secretName: "" }];
-                });
-              }}
-              aria-label="Remove row"
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          className="h-7"
-          onClick={() => setRows((prev) => [...prev, { envKey: "", secretName: "" }])}
-          disabled={secretNames.length === 0}
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          Add mapping
-        </Button>
-        <Button type="button" size="xs" className="h-7" onClick={handleSave} disabled={secretNames.length === 0}>
-          Save bindings
-        </Button>
-        {savedOk ? <span className="text-xs text-green-600 dark:text-green-400">Saved</span> : null}
-      </div>
-    </div>
-  );
-}
+/** Matches Company settings → Secrets form controls. */
+const secretsFormInputClass =
+  "w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none";
 
 interface ProjectPropertiesProps {
   project: Project;
@@ -182,7 +45,6 @@ export type ProjectConfigFieldKey =
   | "status"
   | "goals"
   | "board_closed_retention_days"
-  | "env_config"
   | "notification_config"
   | "execution_workspace_enabled"
   | "execution_workspace_default_mode"
@@ -336,12 +198,13 @@ export function ProjectProperties({
   aboveSecrets,
 }: ProjectPropertiesProps) {
   const canEditConfig = Boolean(onUpdate || onFieldUpdate);
-  const { selectedCompanyId, selectedCompany } = useCompany();
-  const companyPrefix = selectedCompany?.issuePrefix?.trim() ?? "";
-  const companySettingsPath = companyPrefix ? `/${companyPrefix}/company/settings` : "/company/settings";
+  const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
+  const { pushToast } = useToast();
   const [goalOpen, setGoalOpen] = useState(false);
-  const [projectSecretsModalOpen, setProjectSecretsModalOpen] = useState(false);
+  const [newProjectSecretName, setNewProjectSecretName] = useState("");
+  const [newProjectSecretValue, setNewProjectSecretValue] = useState("");
+  const [newProjectSecretDescription, setNewProjectSecretDescription] = useState("");
   const [executionWorkspaceAdvancedOpen, setExecutionWorkspaceAdvancedOpen] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"repo" | null>(null);
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
@@ -368,10 +231,39 @@ export function ProjectProperties({
     queryFn: () => goalsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
-  const { data: companySecrets = [] } = useQuery({
+  const { data: companySecrets = [] } = useQuery<CompanySecret[]>({
     queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
     queryFn: () => secretsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+  });
+  const { data: projectOwnedSecrets = [] } = useQuery<ProjectSecret[]>({
+    queryKey: queryKeys.projects.projectSecrets(project.id),
+    queryFn: () => projectSecretsApi.list(project.id, selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const createProjectSecretMutation = useMutation({
+    mutationFn: (input: { name: string; value: string; description: string | null }) =>
+      projectSecretsApi.create(
+        project.id,
+        { name: input.name, value: input.value, description: input.description },
+        selectedCompanyId!,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.projectSecrets(project.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) });
+      setNewProjectSecretName("");
+      setNewProjectSecretValue("");
+      setNewProjectSecretDescription("");
+      pushToast({ title: "Project secret created", tone: "success" });
+    },
+  });
+  const deleteProjectSecretMutation = useMutation({
+    mutationFn: (secretId: string) => projectSecretsApi.remove(secretId, selectedCompanyId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.projectSecrets(project.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) });
+      pushToast({ title: "Project secret deleted", tone: "success" });
+    },
   });
   const { data: experimentalSettings } = useQuery({
     queryKey: queryKeys.instance.experimentalSettings,
@@ -424,6 +316,21 @@ export function ProjectProperties({
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(selectedCompanyId) });
     }
   };
+
+  const exposeSecretsOnRunsMutation = useMutation({
+    mutationFn: (next: boolean) =>
+      projectsApi.update(project.id, { exposeProjectSecretsOnIssueRuns: next }, selectedCompanyId ?? undefined),
+    onSuccess: (_data, next) => {
+      invalidateProject();
+      pushToast({
+        title: next ? "Auto-inject on" : "Auto-inject off",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({ title: "Could not update setting", tone: "error" });
+    },
+  });
 
   const createWorkspace = useMutation({
     mutationFn: (data: Record<string, unknown>) => projectsApi.createWorkspace(project.id, data),
@@ -645,7 +552,7 @@ export function ProjectProperties({
         <header className="border-b border-border/60 bg-muted/20 px-5 py-4 sm:px-6">
           <h2 className="text-sm font-semibold tracking-tight text-foreground">Project settings</h2>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-            Core details, goals, notifications, and how agents receive secrets for this project.
+            Core details, goals, and notifications.
           </p>
         </header>
         <div className="divide-y divide-border/55">
@@ -831,27 +738,110 @@ export function ProjectProperties({
             {aboveSecrets}
           </PropertyRow>
         ) : null}
-        <PropertyRow label={<FieldLabel label="Secrets" state="idle" />}>
-          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <span className="min-w-0 text-sm leading-snug text-muted-foreground sm:max-w-md">
-              {project.envConfig && Object.keys(project.envConfig).length > 0
-                ? `${Object.keys(project.envConfig).length} env mapping${
-                    Object.keys(project.envConfig).length === 1 ? "" : "s"
-                  } configured for agents.`
-                : "Map environment variable names to company secrets for agent runtime."}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 w-full shrink-0 sm:w-auto"
-              onClick={() => setProjectSecretsModalOpen(true)}
-              disabled={!(onUpdate || onFieldUpdate)}
-            >
-              Configure secrets
-            </Button>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
+        <header className="border-b border-border/60 bg-muted/20 px-5 py-4 sm:px-6">
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">Project secrets</h2>
+        </header>
+        <div className="px-5 py-4 sm:px-6">
+          <div className="mb-4 flex items-center justify-between gap-4 border-b border-border/50 pb-4">
+            <span className="text-xs text-muted-foreground">Auto-inject on task runs</span>
+            <Switch
+              checked={Boolean(project.exposeProjectSecretsOnIssueRuns)}
+              disabled={!canEditConfig || !selectedCompanyId || exposeSecretsOnRunsMutation.isPending}
+              aria-label="Add project secrets automatically when an agent works on a task in this project"
+              onCheckedChange={(checked) => exposeSecretsOnRunsMutation.mutate(checked)}
+            />
           </div>
-        </PropertyRow>
+          <div className="space-y-3 rounded-md border border-border px-4 py-4">
+            <div className="grid gap-2">
+                <input
+                  className={cn(secretsFormInputClass, !canEditConfig && "cursor-not-allowed opacity-70")}
+                  placeholder="Secret name (e.g. deploy_token)"
+                  value={newProjectSecretName}
+                  onChange={(e) => setNewProjectSecretName(e.target.value)}
+                  disabled={!canEditConfig}
+                />
+                <input
+                  type="password"
+                  className={cn(secretsFormInputClass, !canEditConfig && "cursor-not-allowed opacity-70")}
+                  placeholder="Secret value"
+                  value={newProjectSecretValue}
+                  onChange={(e) => setNewProjectSecretValue(e.target.value)}
+                  disabled={!canEditConfig}
+                />
+                <input
+                  className={cn(secretsFormInputClass, !canEditConfig && "cursor-not-allowed opacity-70")}
+                  placeholder="Description (optional)"
+                  value={newProjectSecretDescription}
+                  onChange={(e) => setNewProjectSecretDescription(e.target.value)}
+                  disabled={!canEditConfig}
+                />
+                <div>
+                  <Button
+                    size="sm"
+                    className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+                    style={{ backgroundColor: "#6569E1" }}
+                    disabled={
+                      !canEditConfig ||
+                      createProjectSecretMutation.isPending ||
+                      newProjectSecretName.trim().length === 0 ||
+                      newProjectSecretValue.length === 0
+                    }
+                    onClick={() =>
+                      createProjectSecretMutation.mutate({
+                        name: newProjectSecretName.trim(),
+                        value: newProjectSecretValue,
+                        description: newProjectSecretDescription.trim() || null,
+                      })
+                    }
+                  >
+                    {createProjectSecretMutation.isPending ? "Saving..." : "Add secret"}
+                  </Button>
+                </div>
+                {createProjectSecretMutation.isError && (
+                  <span className="text-xs text-destructive">
+                    {createProjectSecretMutation.error instanceof Error
+                      ? createProjectSecretMutation.error.message
+                      : "Failed to create project secret"}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {projectOwnedSecrets.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No project secrets yet.</p>
+                ) : (
+                  projectOwnedSecrets.map((secret) => (
+                    <div
+                      key={secret.id}
+                      className="flex items-center justify-between gap-3 rounded border border-border/70 px-2.5 py-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{secret.name}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {secret.description ?? "No description"}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive"
+                        disabled={deleteProjectSecretMutation.isPending || !canEditConfig}
+                        onClick={() => {
+                          const confirmed = window.confirm(`Delete project secret "${secret.name}"?`);
+                          if (!confirmed) return;
+                          deleteProjectSecretMutation.mutate(secret.id);
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
         </div>
       </section>
 
@@ -1088,7 +1078,7 @@ export function ProjectProperties({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs text-xs">
-                  Project-owned defaults for isolated issue checkouts and execution workspace behavior.
+                  Defaults for isolated task workspaces (separate folders per run) and related behavior.
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -1096,11 +1086,11 @@ export function ProjectProperties({
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <span>Enable isolated issue checkouts</span>
+                      <span>Enable separate workspaces per task run</span>
                       <SaveIndicator state={fieldState("execution_workspace_enabled")} />
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Let issues choose between the project's primary checkout and an isolated execution workspace.
+                      Lets each task choose the shared team workspace or its own sandbox on disk.
                     </div>
                   </div>
                   {onUpdate || onFieldUpdate ? (
@@ -1136,11 +1126,11 @@ export function ProjectProperties({
                     <div className="flex items-center justify-between gap-3">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2 text-sm">
-                          <span>New issues default to isolated checkout</span>
+                          <span>New tasks start in their own isolated workspace copy</span>
                           <SaveIndicator state={fieldState("execution_workspace_default_mode")} />
                         </div>
                         <div className="text-[11px] text-muted-foreground">
-                          If disabled, new issues stay on the project's primary checkout unless someone opts in.
+                          When turned off, new tasks use the project's shared workspace unless someone chooses otherwise.
                         </div>
                       </div>
                       <button
@@ -1321,27 +1311,6 @@ export function ProjectProperties({
           </div>
         ) : null}
       </section>
-
-      {onUpdate || onFieldUpdate ? (
-        <Dialog open={projectSecretsModalOpen} onOpenChange={setProjectSecretsModalOpen}>
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle>Project secret mappings</DialogTitle>
-              <DialogDescription className="text-xs">
-                Map env var names to company secret names. Agents on this project get these env vars at runtime.
-              </DialogDescription>
-            </DialogHeader>
-            <ProjectSecretBindingsEditor
-              envConfig={project.envConfig ?? null}
-              companySecrets={companySecrets}
-              companySettingsPath={companySettingsPath}
-              onSave={(next) => {
-                commitField("env_config", { envConfig: next });
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      ) : null}
 
       {onArchive && (
         <section className="overflow-hidden rounded-xl border border-destructive/25 bg-card shadow-xs">

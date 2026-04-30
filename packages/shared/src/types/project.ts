@@ -110,11 +110,6 @@ export interface Project {
   pauseReason: PauseReason | null;
   pausedAt: Date | null;
   executionWorkspacePolicy: ProjectExecutionWorkspacePolicy | null;
-  /**
-   * Project-level env mapping: env var name -> company secret name.
-   * The runtime resolves secret names to concrete secret values when agents run project issues.
-   */
-  envConfig?: Record<string, string> | null;
   notificationConfig?: ProjectNotificationConfig | null;
   /** Short uppercase key used as the prefix for issue identifiers in this project (e.g. "AIH"). */
   issuePrefix?: string | null;
@@ -123,6 +118,11 @@ export interface Project {
    * Older closed tasks are listed under the project Archive tab. Minimum 1; default 7.
    */
   boardClosedRetentionDays: number;
+  /**
+   * When true, heartbeat runs for issues in this project receive all decrypted project secrets
+   * in adapter env (keys derived from secret names); explicit bindings on the agent win on clashes.
+   */
+  exposeProjectSecretsOnIssueRuns: boolean;
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;

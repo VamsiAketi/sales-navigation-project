@@ -885,7 +885,7 @@ export function Dashboard() {
                       >
                         <RunActivityChart runs={runs ?? []} />
                       </ChartCard>
-                      <ChartCard title="Tasks by priority" subtitle="Last 14 days" to="/issues" drillLabel="Open issues">
+                      <ChartCard title="Tasks by priority" subtitle="Last 14 days" to="/issues" drillLabel="Open tasks">
                         <PriorityChart issues={issues ?? []} />
                       </ChartCard>
                       <ChartCard
@@ -893,7 +893,7 @@ export function Dashboard() {
                         subtitle="Last 14 days"
                         caption="Where work stands"
                         to="/issues"
-                        drillLabel="Open issues"
+                        drillLabel="Open tasks"
                       >
                         <IssueStatusChart issues={issues ?? []} />
                       </ChartCard>
