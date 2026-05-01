@@ -382,7 +382,7 @@ describe("agent skill routes", () => {
     });
   });
 
-  it("materializes the bundled CEO instruction set for default CEO agents", async () => {
+  it("materializes the bundled AI Admin instruction set for default CEO agents", async () => {
     const res = await request(createApp())
       .post("/api/companies/company-1/agents")
       .send({
@@ -400,9 +400,9 @@ describe("agent skill routes", () => {
         adapterType: "claude_local",
       }),
       expect.objectContaining({
-        "AGENTS.md": expect.stringContaining("You are the CEO."),
-        "HEARTBEAT.md": expect.stringContaining("CEO Heartbeat Checklist"),
-        "SOUL.md": expect.stringContaining("CEO Persona"),
+        "AGENTS.md": expect.stringContaining("You are the AI Admin."),
+        "HEARTBEAT.md": expect.stringContaining("AI Admin Heartbeat Checklist"),
+        "SOUL.md": expect.stringContaining("AI Admin Persona"),
         "TOOLS.md": expect.stringContaining("# Tools"),
       }),
       { entryFile: "AGENTS.md", replaceExisting: false },
