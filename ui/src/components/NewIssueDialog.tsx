@@ -56,6 +56,7 @@ import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDe
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { setFocusAfterIssueCreate } from "../lib/focus-created-issue";
 import { projectStatusSwatchClass } from "../lib/status-colors";
+import { CREATE_AGENT_ISSUE_TITLE } from "../lib/issue-presets";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
@@ -355,6 +356,7 @@ export function NewIssueDialog() {
   const [projectValidationError, setProjectValidationError] = useState<string | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
+  const newIssueWasOpenRef = useRef(false);
 
   const effectiveCompanyId = dialogCompanyId ?? selectedCompanyId;
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
@@ -648,7 +650,7 @@ export function NewIssueDialog() {
       setTargetStartDate("");
       setDueDate("");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
-    } else if (draft && draft.title.trim()) {
+    } else if (draft && draft.title.trim() && draft.title !== CREATE_AGENT_ISSUE_TITLE) {
       const restoredProjectRef = newIssueDefaults.projectId ?? draft.projectId;
       const restoredProject = resolveProjectByRef(orderedProjects, restoredProjectRef);
       const restoredProjectId = restoredProject?.id ?? restoredProjectRef;
@@ -676,6 +678,11 @@ export function NewIssueDialog() {
       setDueDate(draft.dueDate ?? "");
       executionWorkspaceDefaultProjectId.current = restoredProjectId || null;
     } else {
+      if (!newIssueDefaults.title && draft?.title === CREATE_AGENT_ISSUE_TITLE) {
+        clearDraft();
+      }
+      setTitle("");
+      setDescription("");
       const defaultProjectRef = newIssueDefaults.projectId ?? "";
       const defaultProject = resolveProjectByRef(orderedProjects, defaultProjectRef);
       const defaultProjectId = defaultProject?.id ?? defaultProjectRef;
@@ -748,6 +755,19 @@ export function NewIssueDialog() {
     setDueDate("");
     executionWorkspaceDefaultProjectId.current = null;
   }
+
+  // Closing without a successful create should not leave a persisted draft or in-memory form state.
+  useEffect(() => {
+    if (newIssueWasOpenRef.current && !newIssueOpen && !createIssue.isPending) {
+      if (draftTimer.current) {
+        clearTimeout(draftTimer.current);
+        draftTimer.current = null;
+      }
+      clearDraft();
+      reset();
+    }
+    newIssueWasOpenRef.current = newIssueOpen;
+  }, [newIssueOpen, createIssue.isPending]);
 
   function handleCompanyChange(companyId: string) {
     if (companyId === effectiveCompanyId) return;
@@ -996,7 +1016,7 @@ export function NewIssueDialog() {
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Couldn't create this task. Try again.";
   const hasAssignee = Boolean(selectedAssigneeAgentId || selectedAssigneeUserId);
-  const isCreateAgentPreset = newIssueDefaults.title === "Create a new agent";
+  const isCreateAgentPreset = newIssueDefaults.title === CREATE_AGENT_ISSUE_TITLE;
   const isPresetTitle = Boolean(newIssueDefaults.title);
   const assigneeRequired = !isBoardPinnedHiddenProjectIssueStatusValue(status);
   const missingRequiredFields: string[] = [];

@@ -5,8 +5,12 @@ import { authApi } from "../api/auth";
 import { healthApi } from "../api/health";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Eye, EyeOff, KeyRound, Mail, Lock } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Mail, Lock } from "lucide-react";
 import { buildVisibleVersionLabel } from "@/components/Layout";
+import {
+  instanceSubdomainFromBrowserHost,
+  isLoopbackHostname,
+} from "../lib/instance-subdomain";
 
 type AuthMode = "sign_in" | "sign_up";
 const OTP_LENGTH = 6;
@@ -212,6 +216,17 @@ export function AuthPage() {
 
   const versionLabel = buildVisibleVersionLabel(health?.version);
 
+  /** Tenant subdomain, or in Vite dev on loopback a fixed "Local" label for UI testing. */
+  const instanceDisplayLabel = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const sub = instanceSubdomainFromBrowserHost(window.location.host);
+    if (sub) return sub;
+    if (import.meta.env.DEV && isLoopbackHostname(window.location.hostname)) {
+      return "Local";
+    }
+    return null;
+  }, []);
+
   if (isSessionLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
@@ -223,10 +238,22 @@ export function AuthPage() {
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-background">
       <div className="w-full max-w-md px-8 py-12">
-          <div className="flex items-center gap-2 mb-8">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">AI-Harness</span>
-          </div>
+          {instanceDisplayLabel ? (
+            <div className="mb-2 w-full">
+              <p
+                className="text-xl font-semibold text-foreground break-words"
+                title={
+                  import.meta.env.DEV &&
+                  instanceDisplayLabel === "Local" &&
+                  isLoopbackHostname(window.location.hostname)
+                    ? "Dev-only placeholder on localhost (not a real subdomain)"
+                    : `Instance: ${instanceDisplayLabel}`
+                }
+              >
+                {instanceDisplayLabel}
+              </p>
+            </div>
+          ) : null}
 
           <h1 className="text-xl font-semibold">
             {isResetMode
