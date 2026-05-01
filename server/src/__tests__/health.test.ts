@@ -4,6 +4,7 @@ import request from "supertest";
 import type { Db } from "@paperclipai/db";
 import { healthRoutes } from "../routes/health.js";
 import * as devServerStatus from "../dev-server-status.js";
+import { getInstanceDisplayName } from "../ui-branding.js";
 import { serverVersion } from "../version.js";
 
 describe("GET /health", () => {
@@ -21,7 +22,11 @@ describe("GET /health", () => {
 
     const res = await request(app).get("/health");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: "ok", version: serverVersion });
+    expect(res.body).toEqual({
+      status: "ok",
+      version: serverVersion,
+      instanceDisplayName: getInstanceDisplayName(),
+    });
   });
 
   it("returns 200 when the database probe succeeds", async () => {
@@ -34,7 +39,11 @@ describe("GET /health", () => {
     const res = await request(app).get("/health");
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: "ok", version: serverVersion });
+    expect(res.body).toMatchObject({
+      status: "ok",
+      version: serverVersion,
+      instanceDisplayName: getInstanceDisplayName(),
+    });
   });
 
   it("returns 503 when the database probe fails", async () => {

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, lt, lte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { activityLog, agents, companies, costEvents, issues, projects } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
@@ -47,6 +47,16 @@ async function getMonthlySpendTotal(
 export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
   const budgets = budgetService(db, budgetHooks);
   return {
+    /** Sum of `model_cost_cents` for every company (instance-wide operational estimate). */
+    totalModelCostCentsAllCompanies: async (): Promise<number> => {
+      const [row] = await db
+        .select({
+          total: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
+        })
+        .from(costEvents);
+      return Number(row?.total ?? 0);
+    },
+
     createEvent: async (companyId: string, data: Omit<typeof costEvents.$inferInsert, "companyId">) => {
       const agent = await db
         .select()
@@ -327,6 +337,29 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           costEvents.model,
         )
         .orderBy(costEvents.provider, costEvents.biller, costEvents.billingType, costEvents.model);
+    },
+
+    /** One row per UTC calendar day; `model_cost_cents` matches server pricing at event insert time. */
+    dailyTotals: async (companyId: string, range: CostDateRange) => {
+      const conditions: ReturnType<typeof eq>[] = [eq(costEvents.companyId, companyId)];
+      if (range.from) conditions.push(gte(costEvents.occurredAt, range.from));
+      if (range.to) conditions.push(lte(costEvents.occurredAt, range.to));
+
+      const utcDay = sql<string>`to_char((${costEvents.occurredAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`;
+
+      return db
+        .select({
+          day: utcDay,
+          costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
+          modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
+          inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
+          cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
+          outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
+        })
+        .from(costEvents)
+        .where(and(...conditions))
+        .groupBy(utcDay)
+        .orderBy(asc(utcDay));
     },
 
     byProject: async (companyId: string, range?: CostDateRange) => {

@@ -10,6 +10,7 @@ import {
   Boxes,
   Repeat,
   Settings,
+  CreditCard,
   Users,
   GripVertical,
   CheckSquare,
@@ -284,7 +285,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
   );
 }
 
-const COMPANY_NAV_IDS = ["audit", "settings"] as const;
+const COMPANY_NAV_IDS = ["audit", "billing", "settings"] as const;
 
 export function SidebarCompanyNavSection() {
   const { sidebarCompact } = useSidebar();
@@ -341,6 +342,18 @@ export function SidebarCompanyNavSection() {
             label="Audit Log"
             icon={History}
             iconClassName={azureSidebarIcon.audit}
+            textVariant="sub"
+            className={dragDisabled ? undefined : "!pl-2"}
+          />
+        );
+      case "billing":
+        if (!canReadCompanySettings) return null;
+        return (
+          <SidebarNavItem
+            to="/company/billing"
+            label="Billing"
+            icon={CreditCard}
+            iconClassName={azureSidebarIcon.billing}
             textVariant="sub"
             className={dragDisabled ? undefined : "!pl-2"}
           />

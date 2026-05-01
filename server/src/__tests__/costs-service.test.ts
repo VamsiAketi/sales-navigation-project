@@ -52,6 +52,7 @@ const mockCostService = vi.hoisted(() => ({
   byBiller: vi.fn().mockResolvedValue([]),
   windowSpend: vi.fn().mockResolvedValue([]),
   byProject: vi.fn().mockResolvedValue([]),
+  totalModelCostCentsAllCompanies: vi.fn().mockResolvedValue(0),
 }));
 const mockFinanceService = vi.hoisted(() => ({
   createEvent: vi.fn(),
@@ -72,6 +73,14 @@ const mockBudgetService = vi.hoisted(() => ({
   upsertPolicy: vi.fn(),
   resolveIncident: vi.fn(),
 }));
+const mockInstanceSettingsService = vi.hoisted(() => ({
+  getGeneral: vi.fn().mockResolvedValue({
+    censorUsernameInLogs: false,
+    keyboardShortcuts: false,
+    feedbackDataSharingPreference: "prompt",
+    billingPrepaidCents: 0,
+  }),
+}));
 
 vi.mock("../services/index.js", () => ({
   accessService: () => ({
@@ -79,6 +88,7 @@ vi.mock("../services/index.js", () => ({
     listProjectIdsVisibleToActor: vi.fn(async () => null),
     principalHasAnyProjectPermission: vi.fn(async () => true),
     canUser: vi.fn(async () => true),
+    hasPermission: vi.fn(async () => true),
   }),
   budgetService: () => mockBudgetService,
   costService: () => mockCostService,
@@ -86,6 +96,7 @@ vi.mock("../services/index.js", () => ({
   companyService: () => mockCompanyService,
   agentService: () => mockAgentService,
   heartbeatService: () => mockHeartbeatService,
+  instanceSettingsService: () => mockInstanceSettingsService,
   logActivity: mockLogActivity,
 }));
 
@@ -187,6 +198,38 @@ describe("cost routes", () => {
       .query({ limit: "25" });
     expect(res.status).toBe(200);
     expect(mockFinanceService.list).toHaveBeenCalledWith("company-1", undefined, 25);
+  });
+
+  it("returns prepaid balance from instance settings and aggregate model cost", async () => {
+    mockInstanceSettingsService.getGeneral.mockResolvedValueOnce({
+      censorUsernameInLogs: false,
+      keyboardShortcuts: false,
+      feedbackDataSharingPreference: "prompt",
+      billingPrepaidCents: 100_000,
+    });
+    mockCostService.totalModelCostCentsAllCompanies.mockResolvedValueOnce(25_000);
+    const app = createApp();
+    const res = await request(app).get("/api/companies/company-1/billing/prepaid-balance");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      prepaidCents: 100_000,
+      usedModelCents: 25_000,
+      remainingCents: 75_000,
+    });
+  });
+
+  it("clamps prepaid remaining at zero when usage exceeds prepaid", async () => {
+    mockInstanceSettingsService.getGeneral.mockResolvedValueOnce({
+      censorUsernameInLogs: false,
+      keyboardShortcuts: false,
+      feedbackDataSharingPreference: "prompt",
+      billingPrepaidCents: 10_000,
+    });
+    mockCostService.totalModelCostCentsAllCompanies.mockResolvedValueOnce(50_000);
+    const app = createApp();
+    const res = await request(app).get("/api/companies/company-1/billing/prepaid-balance");
+    expect(res.status).toBe(200);
+    expect(res.body.remainingCents).toBe(0);
   });
 
   it("rejects company budget updates for board users outside the company", async () => {

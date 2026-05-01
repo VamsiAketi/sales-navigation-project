@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import {
   createCostEventSchema,
   createFinanceEventSchema,
+  createStripeCheckoutSessionSchema,
   resolveBudgetIncidentSchema,
   updateBudgetSchema,
   upsertBudgetPolicySchema,
@@ -16,11 +17,18 @@ import {
   companyService,
   agentService,
   heartbeatService,
+  instanceSettingsService,
   logActivity,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
 import { badRequest, forbidden } from "../errors.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
+import { getStripeFromConfig } from "../stripe-client.js";
+import {
+  getOrCreateStripeCustomerForCompany,
+  stripeBillingBrandingFromEnv,
+  stripeSecretsFromEnv,
+} from "../services/stripe-billing.js";
 
 export function costRoutes(db: Db) {
   const router = Router();
@@ -34,6 +42,7 @@ export function costRoutes(db: Db) {
   const companies = companyService(db);
   const access = accessService(db);
   const agents = agentService(db);
+  const instanceSettings = instanceSettingsService(db);
 
   async function assertCostsReadAccess(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
@@ -133,6 +142,136 @@ export function costRoutes(db: Db) {
     const range = parseDateRange(req.query);
     const summary = await costs.summary(companyId, range);
     res.json(summary);
+  });
+
+  router.get("/companies/:companyId/billing/prepaid-balance", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    await assertCostsReadAccess(req, companyId);
+    const general = await instanceSettings.getGeneral();
+    const prepaidCents = general.billingPrepaidCents ?? 0;
+    const usedModelCents = await costs.totalModelCostCentsAllCompanies();
+    const remainingCents = Math.max(0, prepaidCents - usedModelCents);
+    res.json({ prepaidCents, usedModelCents, remainingCents });
+  });
+
+  router.get("/companies/:companyId/billing/stripe-status", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const { stripeSecretKey, stripeWebhookSecret } = stripeSecretsFromEnv();
+    res.json({
+      enabled: Boolean(stripeSecretKey),
+      hasWebhookSecret: Boolean(stripeWebhookSecret),
+    });
+  });
+
+  router.post("/companies/:companyId/billing/stripe/portal-session", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const { stripeSecretKey } = stripeSecretsFromEnv();
+    const stripe = getStripeFromConfig({ stripeSecretKey });
+    if (!stripe) {
+      res.status(503).json({ error: "Stripe is not configured" });
+      return;
+    }
+    const company = await companies.getById(companyId);
+    if (!company) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+    const branding = stripeBillingBrandingFromEnv();
+    const customer = await getOrCreateStripeCustomerForCompany({
+      stripe,
+      companyId,
+      companyName: branding.businessName,
+      companyDescription: branding.businessDescription,
+    });
+    const returnUrl = `${req.protocol}://${req.get("host")}/billing`;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customer.id,
+      return_url: returnUrl,
+    });
+    res.json({ url: session.url });
+  });
+
+  router.post(
+    "/companies/:companyId/billing/stripe/checkout-session",
+    validate(createStripeCheckoutSessionSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      assertBoard(req);
+      const { stripeSecretKey } = stripeSecretsFromEnv();
+      const stripe = getStripeFromConfig({ stripeSecretKey });
+      if (!stripe) {
+        res.status(503).json({ error: "Stripe is not configured" });
+        return;
+      }
+      const company = await companies.getById(companyId);
+      if (!company) {
+        res.status(404).json({ error: "Company not found" });
+        return;
+      }
+      const branding = stripeBillingBrandingFromEnv();
+      const customer = await getOrCreateStripeCustomerForCompany({
+        stripe,
+        companyId,
+        companyName: branding.businessName,
+        companyDescription: branding.businessDescription,
+      });
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        customer: customer.id,
+        success_url: `${baseUrl}/billing?stripe=topup-success`,
+        cancel_url: `${baseUrl}/billing?stripe=topup-cancelled`,
+        payment_method_types: ["card"],
+        payment_method_options: {
+          card: {
+            request_three_d_secure: "automatic",
+          },
+        },
+        metadata: {
+          paperclip_company_id: companyId,
+          paperclip_kind: "prepaid_topup",
+        },
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: req.body.amountCents,
+              product_data: {
+                name: "Paperclip prepaid credit",
+                description: `Top-up for ${branding.businessName}`,
+              },
+            },
+          },
+        ],
+      });
+      if (!session.url) {
+        res.status(500).json({ error: "Stripe checkout session did not include a redirect URL" });
+        return;
+      }
+      res.json({
+        sessionId: session.id,
+        url: session.url,
+      });
+    },
+  );
+
+  router.get("/companies/:companyId/costs/daily", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    await assertCostsReadAccess(req, companyId);
+    const range = parseDateRange(req.query);
+    if (!range?.from || !range?.to) {
+      res.status(400).json({ error: "Query parameters 'from' and 'to' are required (ISO dates)." });
+      return;
+    }
+    const rows = await costs.dailyTotals(companyId, range);
+    res.json(rows);
   });
 
   router.get("/companies/:companyId/costs/by-agent", async (req, res) => {

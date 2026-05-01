@@ -14,6 +14,8 @@ export const azureSidebarIcon = {
   audit: "text-[#d83b01] dark:text-[#ff9c5b]",
   team: "text-[#038387] dark:text-[#4dbbbc]",
   settings: "text-[#5c2d91] dark:text-[#d8b4fe]",
+  /** Stripe-adjacent violet for subscription / billing */
+  billing: "text-[#635bff] dark:text-[#a78bfa]",
   projects: "text-[#00bcf2] dark:text-[#69d4ff]",
   agents: "text-[#8764b8] dark:text-[#b794f6]",
   human: "text-[#334b75] dark:text-[#7eb0ff]",

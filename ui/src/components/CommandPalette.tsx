@@ -28,6 +28,7 @@ import {
   Inbox,
   DollarSign,
   History,
+  CreditCard,
   SquarePen,
   Plus,
 } from "lucide-react";
@@ -186,6 +187,10 @@ export function CommandPalette() {
           <CommandItem onSelect={() => go("/costs")}>
             <DollarSign className="mr-2 h-4 w-4" />
             Costs
+          </CommandItem>
+          <CommandItem onSelect={() => go("/company/billing")}>
+            <CreditCard className="mr-2 h-4 w-4" />
+            Billing
           </CommandItem>
           <CommandItem onSelect={() => go("/activity")}>
             <History className="mr-2 h-4 w-4" />

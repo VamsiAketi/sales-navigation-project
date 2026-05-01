@@ -30,6 +30,40 @@ export interface CostSummary {
   utilizationPercent: number;
 }
 
+/** Aggregated `cost_events` per calendar day (UTC), for charts and billing summaries. */
+/** Instance prepaid credit vs cumulative model-based spend (all companies). */
+export interface BillingPrepaidBalance {
+  prepaidCents: number;
+  /** Sum of `cost_events.model_cost_cents` across the instance. */
+  usedModelCents: number;
+  remainingCents: number;
+}
+
+export interface StripeBillingStatus {
+  enabled: boolean;
+  hasWebhookSecret: boolean;
+}
+
+export interface StripePortalSession {
+  url: string;
+}
+
+export interface StripeCheckoutSession {
+  sessionId: string;
+  url: string;
+}
+
+export interface CostDailyTotal {
+  /** `YYYY-MM-DD` (UTC) */
+  day: string;
+  costCents: number;
+  /** Sum of `model_cost_cents` (token × pricing table estimate at write time). */
+  modelCostCents: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+}
+
 export interface CostByAgent {
   agentId: string;
   agentName: string | null;

@@ -7,6 +7,8 @@ import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Eye, EyeOff, KeyRound, Mail, Lock } from "lucide-react";
 import { buildVisibleVersionLabel } from "@/components/Layout";
+import { getInstanceSlugFromAppHostname } from "../lib/host-instance-label";
+import { getWorktreeUiBranding } from "../lib/worktree-branding";
 
 type AuthMode = "sign_in" | "sign_up";
 const OTP_LENGTH = 6;
@@ -211,6 +213,18 @@ export function AuthPage() {
   const canSubmitReset = password.trim().length >= 8 && confirmPassword === password;
 
   const versionLabel = buildVisibleVersionLabel(health?.version);
+  const instanceDisplayLabel = useMemo(() => {
+    const fromHost =
+      typeof window !== "undefined"
+        ? getInstanceSlugFromAppHostname(window.location.hostname)
+        : null;
+    return (
+      fromHost ??
+      health?.instanceDisplayName ??
+      getWorktreeUiBranding()?.name ??
+      null
+    );
+  }, [health?.instanceDisplayName]);
 
   if (isSessionLoading) {
     return (
@@ -223,9 +237,17 @@ export function AuthPage() {
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-background">
       <div className="w-full max-w-md px-8 py-12">
-          <div className="flex items-center gap-2 mb-8">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">AI-Harness</span>
+          <div className="mb-8">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">AI-Harness</span>
+            </div>
+            {instanceDisplayLabel ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Instance name:{" "}
+                <span className="font-medium text-foreground">{instanceDisplayLabel}</span>
+              </p>
+            ) : null}
           </div>
 
           <h1 className="text-xl font-semibold">

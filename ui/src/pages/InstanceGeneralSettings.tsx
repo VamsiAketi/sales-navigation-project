@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PatchInstanceGeneralSettings } from "@paperclipai/shared";
 import { SlidersHorizontal } from "lucide-react";
 import { instanceSettingsApi } from "@/api/instanceSettings";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
@@ -14,6 +16,7 @@ export function InstanceGeneralSettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [prepaidDollars, setPrepaidDollars] = useState("");
 
   useEffect(() => {
     setBreadcrumbs([
@@ -55,6 +58,11 @@ export function InstanceGeneralSettings() {
   const censorUsernameInLogs = generalQuery.data?.censorUsernameInLogs === true;
   const keyboardShortcuts = generalQuery.data?.keyboardShortcuts === true;
   const feedbackDataSharingPreference = generalQuery.data?.feedbackDataSharingPreference ?? "prompt";
+  const billingPrepaidCents = generalQuery.data?.billingPrepaidCents ?? 0;
+
+  useEffect(() => {
+    setPrepaidDollars((billingPrepaidCents / 100).toFixed(2));
+  }, [billingPrepaidCents]);
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -73,6 +81,49 @@ export function InstanceGeneralSettings() {
           {actionError}
         </div>
       )}
+
+      <section className="rounded-xl border border-border bg-card p-5">
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <h2 className="text-sm font-semibold">Prepaid billing credit</h2>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              Total account credit for this instance (USD). The Billing page subtracts cumulative{" "}
+              <span className="font-mono text-xs">model_cost_cents</span> across all companies to show what is left.
+            </p>
+          </div>
+          <div className="flex max-w-md flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-1">
+              <label htmlFor="prepaid-dollars" className="text-xs text-muted-foreground">
+                Amount (USD)
+              </label>
+              <Input
+                id="prepaid-dollars"
+                type="number"
+                min={0}
+                step={0.01}
+                value={prepaidDollars}
+                onChange={(e) => setPrepaidDollars(e.target.value)}
+                disabled={updateGeneralMutation.isPending}
+              />
+            </div>
+            <Button
+              type="button"
+              disabled={updateGeneralMutation.isPending}
+              onClick={() => {
+                const n = Number.parseFloat(prepaidDollars);
+                if (!Number.isFinite(n) || n < 0) {
+                  setActionError("Enter a valid non-negative dollar amount.");
+                  return;
+                }
+                const cents = Math.round(n * 100);
+                updateGeneralMutation.mutate({ billingPrepaidCents: cents } satisfies PatchInstanceGeneralSettings);
+              }}
+            >
+              Save credit
+            </Button>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-start justify-between gap-4">

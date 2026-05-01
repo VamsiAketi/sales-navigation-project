@@ -22,6 +22,7 @@ import { goalRoutes } from "./routes/goals.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { secretRoutes } from "./routes/secrets.js";
 import { costRoutes } from "./routes/costs.js";
+import { stripeWebhookRoutes } from "./routes/stripe-webhook.js";
 import { activityRoutes } from "./routes/activity.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { sidebarBadgeRoutes } from "./routes/sidebar-badges.js";
@@ -473,6 +474,7 @@ export async function createApp(
 
   // Mount API routes
   const api = Router();
+  api.use(stripeWebhookRoutes(db));
   api.use(boardMutationGuard());
   api.use(
     "/health",

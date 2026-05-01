@@ -31,3 +31,9 @@ export const updateBudgetSchema = z.object({
 });
 
 export type UpdateBudget = z.infer<typeof updateBudgetSchema>;
+
+export const createStripeCheckoutSessionSchema = z.object({
+  amountCents: z.number().int().min(50).max(50_000_00),
+});
+
+export type CreateStripeCheckoutSession = z.infer<typeof createStripeCheckoutSessionSchema>;
