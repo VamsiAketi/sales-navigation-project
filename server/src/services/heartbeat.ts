@@ -31,6 +31,7 @@ import { getTelemetryClient } from "../telemetry.js";
 import { companySkillService } from "./company-skills.js";
 import { budgetService, type BudgetEnforcementScope } from "./budgets.js";
 import { secretService } from "./secrets.js";
+import { projectSecretService } from "./project-secrets.js";
 import { resolveDefaultAgentWorkspaceDir, resolveManagedProjectWorkspaceDir } from "../home-paths.js";
 import { summarizeHeartbeatRunResultJson } from "./heartbeat-run-summary.js";
 import { calculateModelCostCents } from "./model-pricing.js";
@@ -59,6 +60,7 @@ import {
 import { instanceSettingsService } from "./instance-settings.js";
 import { githubRepoUrlsEquivalent, resolveProjectGitHubCredentials } from "./project-git.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
+import { envKeyFromProjectSecretName } from "../lib/project-secret-env-key.js";
 import {
   hasSessionCompactionThresholds,
   resolveSessionCompactionPolicy,
@@ -891,6 +893,7 @@ export function heartbeatService(db: Db) {
 
   const runLogStore = getRunLogStore();
   const secretsSvc = secretService(db);
+  const projectSecretsSvc = projectSecretService(db);
   const companySkills = companySkillService(db);
   const issuesSvc = issueService(db);
   const executionWorkspacesSvc = executionWorkspaceService(db);
@@ -2208,17 +2211,37 @@ export function heartbeatService(db: Db) {
       : null;
     const contextProjectId = readNonEmptyString(context.projectId);
     const executionProjectId = issueContext?.projectId ?? contextProjectId;
-    const projectExecutionWorkspacePolicy = executionProjectId
+    const executionProjectRow = executionProjectId
       ? await db
-          .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
+          .select({
+            executionWorkspacePolicy: projects.executionWorkspacePolicy,
+            exposeProjectSecretsOnIssueRuns: projects.exposeProjectSecretsOnIssueRuns,
+          })
           .from(projects)
           .where(and(eq(projects.id, executionProjectId), eq(projects.companyId, agent.companyId)))
-          .then((rows) =>
-            gateProjectExecutionWorkspacePolicy(
-              parseProjectExecutionWorkspacePolicy(rows[0]?.executionWorkspacePolicy),
-              isolatedWorkspacesEnabled,
-            ))
+          .then((rows) => rows[0] ?? null)
       : null;
+    const projectExecutionWorkspacePolicy = executionProjectRow
+      ? gateProjectExecutionWorkspacePolicy(
+          parseProjectExecutionWorkspacePolicy(executionProjectRow.executionWorkspacePolicy),
+          isolatedWorkspacesEnabled,
+        )
+      : null;
+    const issueProjectIdForSecrets = issueContext?.projectId ?? null;
+    let injectIssueProjectSecrets = false;
+    if (issueProjectIdForSecrets) {
+      if (executionProjectId === issueProjectIdForSecrets && executionProjectRow) {
+        injectIssueProjectSecrets = executionProjectRow.exposeProjectSecretsOnIssueRuns;
+      } else {
+        const exposeRow = await db
+          .select({ exposeProjectSecretsOnIssueRuns: projects.exposeProjectSecretsOnIssueRuns })
+          .from(projects)
+          .where(and(eq(projects.id, issueProjectIdForSecrets), eq(projects.companyId, agent.companyId)))
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+        injectIssueProjectSecrets = Boolean(exposeRow?.exposeProjectSecretsOnIssueRuns);
+      }
+    }
     const taskSession = taskKey
       ? await getTaskSession(agent.companyId, agent.id, agent.adapterType, taskKey)
       : null;
@@ -2298,9 +2321,57 @@ export function heartbeatService(db: Db) {
       agent.companyId,
       executionRunConfig,
     );
+    const resolvedSecretKeys = new Set(secretKeys);
+    let mergedRuntimeConfig = resolvedConfig as Record<string, unknown>;
+
+    if (injectIssueProjectSecrets && issueProjectIdForSecrets) {
+      const parsedEnv =
+        mergedRuntimeConfig.env &&
+        typeof mergedRuntimeConfig.env === "object" &&
+        mergedRuntimeConfig.env !== null &&
+        !Array.isArray(mergedRuntimeConfig.env)
+          ? { ...(mergedRuntimeConfig.env as Record<string, string>) }
+          : ({} as Record<string, string>);
+
+      const existingKeysNormalized = new Set(Object.keys(parsedEnv).map((k) => k.toUpperCase()));
+
+      try {
+        const secretRows = await projectSecretsSvc.list(agent.companyId, issueProjectIdForSecrets);
+        const takenDerivedKeys = new Set<string>();
+        for (const sr of secretRows) {
+          const envKey = envKeyFromProjectSecretName(sr.name);
+          if (!envKey) continue;
+          const nk = envKey.toUpperCase();
+          if (takenDerivedKeys.has(nk)) continue;
+          takenDerivedKeys.add(nk);
+          if (existingKeysNormalized.has(nk)) continue;
+
+          try {
+            parsedEnv[envKey] = await projectSecretsSvc.resolveSecretValue(
+              agent.companyId,
+              issueProjectIdForSecrets,
+              sr.id,
+              "latest",
+            );
+            resolvedSecretKeys.add(envKey);
+          } catch (err) {
+            logger.warn(
+              { err, secretId: sr.id, issueProjectId: issueProjectIdForSecrets },
+              "heartbeat: failed injecting project secret into env",
+            );
+          }
+        }
+        mergedRuntimeConfig = { ...mergedRuntimeConfig, env: parsedEnv };
+      } catch (err) {
+        logger.warn(
+          { err, issueProjectId: issueProjectIdForSecrets },
+          "heartbeat: failed listing project secrets for env injection",
+        );
+      }
+    }
     const runtimeSkillEntries = await companySkills.listRuntimeSkillEntries(agent.companyId);
-    const runtimeConfig = {
-      ...resolvedConfig,
+    const adapterRuntimeConfig: Record<string, unknown> = {
+      ...mergedRuntimeConfig,
       paperclipRuntimeSkills: runtimeSkillEntries,
     };
     const workspaceOperationRecorder = workspaceOperationsSvc.createRecorder({
@@ -2324,7 +2395,7 @@ export function heartbeatService(db: Db) {
       : null;
     const executionWorkspace = reusedExecutionWorkspace ?? await realizeExecutionWorkspace({
           base: executionWorkspaceBase,
-          config: runtimeConfig,
+          config: adapterRuntimeConfig,
           issue: issueRef,
           agent: {
             id: agent.id,
@@ -2515,9 +2586,9 @@ export function heartbeatService(db: Db) {
     };
     context.paperclipWorkspaces = resolvedWorkspace.workspaceHints;
     const runtimeServiceIntents = (() => {
-      const runtimeConfig = parseObject(resolvedConfig.workspaceRuntime);
-      return Array.isArray(runtimeConfig.services)
-        ? runtimeConfig.services.filter(
+      const runtimeConfigWs = parseObject(adapterRuntimeConfig.workspaceRuntime);
+      return Array.isArray(runtimeConfigWs.services)
+        ? runtimeConfigWs.services.filter(
             (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
           )
         : [];
@@ -2671,7 +2742,7 @@ export function heartbeatService(db: Db) {
         await onLog(logEntry.stream, logEntry.chunk);
       }
       const adapterEnv = Object.fromEntries(
-        Object.entries(parseObject(resolvedConfig.env)).filter(
+        Object.entries(parseObject(adapterRuntimeConfig.env)).filter(
           (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string",
         ),
       );
@@ -2686,7 +2757,7 @@ export function heartbeatService(db: Db) {
         issue: issueRef,
         workspace: executionWorkspace,
         executionWorkspaceId: persistedExecutionWorkspace?.id ?? issueRef?.executionWorkspaceId ?? null,
-        config: resolvedConfig,
+        config: adapterRuntimeConfig,
         adapterEnv,
         onLog,
       });
@@ -2720,8 +2791,8 @@ export function heartbeatService(db: Db) {
         }
       }
       const onAdapterMeta = async (meta: AdapterInvocationMeta) => {
-        if (meta.env && secretKeys.size > 0) {
-          for (const key of secretKeys) {
+        if (meta.env && resolvedSecretKeys.size > 0) {
+          for (const key of resolvedSecretKeys) {
             if (key in meta.env) meta.env[key] = "***REDACTED***";
           }
         }
@@ -2789,7 +2860,7 @@ export function heartbeatService(db: Db) {
         runId: run.id,
         agent,
         runtime: runtimeForAdapter,
-        config: runtimeConfig,
+        config: adapterRuntimeConfig,
         context: adapterContext,
         onLog,
         onMeta: onAdapterMeta,

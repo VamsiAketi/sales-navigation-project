@@ -994,7 +994,7 @@ export function NewIssueDialog() {
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
   const canDiscardDraft = hasDraft || hasSavedDraft;
   const createIssueErrorMessage =
-    createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
+    createIssue.error instanceof Error ? createIssue.error.message : "Couldn't create this task. Try again.";
   const hasAssignee = Boolean(selectedAssigneeAgentId || selectedAssigneeUserId);
   const isCreateAgentPreset = newIssueDefaults.title === "Create a new agent";
   const isPresetTitle = Boolean(newIssueDefaults.title);
@@ -1781,7 +1781,7 @@ export function NewIssueDialog() {
               {createIssue.isPending ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Creating issue...
+                  Creating task...
                 </span>
               ) : createIssue.isError ? (
                 <p className="text-xs leading-snug text-destructive">{createIssueErrorMessage}</p>

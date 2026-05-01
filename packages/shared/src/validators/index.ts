@@ -131,7 +131,6 @@ export {
   updateProjectSchema,
   createProjectWorkspaceSchema,
   updateProjectWorkspaceSchema,
-  projectSecretBindingsSchema,
   projectExecutionWorkspacePolicySchema,
   projectNotificationConfigSchema,
   projectNotificationRuleSchema,
@@ -207,14 +206,21 @@ export {
 export {
   envBindingPlainSchema,
   envBindingSecretRefSchema,
+  envBindingProjectSecretRefSchema,
   envBindingSchema,
   envConfigSchema,
   createSecretSchema,
   rotateSecretSchema,
   updateSecretSchema,
+  createProjectSecretSchema,
+  rotateProjectSecretSchema,
+  updateProjectSecretSchema,
   type CreateSecret,
   type RotateSecret,
   type UpdateSecret,
+  type CreateProjectSecret,
+  type RotateProjectSecret,
+  type UpdateProjectSecret,
 } from "./secret.js";
 
 export {

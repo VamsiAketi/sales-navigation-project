@@ -171,7 +171,7 @@ export function Issues() {
   });
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={CircleDot} message="Select a company to view issues." />;
+    return <EmptyState icon={CircleDot} message="Select a company to view tasks." />;
   }
   if (!canReadTasks) {
     return <EmptyState icon={CircleDot} message="You do not have permission to view tasks." />;

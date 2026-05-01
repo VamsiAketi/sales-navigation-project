@@ -1008,7 +1008,7 @@ export function IssuesList({
               }}
               placeholder="Search tasks..."
               className="h-9 pl-7 text-sm"
-              aria-label="Search issues"
+              aria-label="Search tasks"
             />
           </div>
           {/* ── Assignee avatar filter strip + dropdown ── */}
