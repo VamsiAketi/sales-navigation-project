@@ -767,6 +767,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   };
 
   const isImageAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("image/");
+  const isVideoAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("video/");
   const attachmentList = attachments ?? [];
   const hasAttachments = attachmentList.length > 0;
   const attachmentUploadButton = (
@@ -774,7 +775,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,application/pdf,text/plain,text/markdown,application/json,text/csv,text/html,.md,.markdown"
+        accept="image/*,video/webm,video/mp4,video/ogg,video/quicktime,application/pdf,text/plain,text/markdown,application/json,text/csv,text/html,.md,.markdown"
         className="hidden"
         onChange={handleFilePicked}
         multiple
@@ -1116,6 +1117,35 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
               <p className="text-[11px] text-muted-foreground">
                 {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
               </p>
+              {isVideoAttachment(attachment) && (
+                <div className="mt-2 space-y-2">
+                  <video
+                    controls
+                    preload="metadata"
+                    className="max-h-56 w-full rounded border border-border bg-accent/10"
+                    src={attachment.contentPath}
+                  >
+                    <track kind="captions" />
+                  </video>
+                  <div className="flex items-center gap-3 text-xs">
+                    <a
+                      href={attachment.contentPath}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:underline"
+                    >
+                      Watch
+                    </a>
+                    <a
+                      href={attachment.contentPath}
+                      download={attachment.originalFilename ?? true}
+                      className="hover:underline"
+                    >
+                      Download
+                    </a>
+                  </div>
+                </div>
+              )}
               {isImageAttachment(attachment) && (
                 <button
                   type="button"
