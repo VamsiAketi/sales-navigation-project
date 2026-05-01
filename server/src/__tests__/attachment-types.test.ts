@@ -6,6 +6,12 @@ import {
 } from "../attachment-types.js";
 
 describe("parseAllowedTypes", () => {
+  it("includes common video types in defaults", () => {
+    expect(DEFAULT_ALLOWED_TYPES).toEqual(
+      expect.arrayContaining(["video/webm", "video/mp4", "video/ogg", "video/quicktime"]),
+    );
+  });
+
   it("returns default image types when input is undefined", () => {
     expect(parseAllowedTypes(undefined)).toEqual([...DEFAULT_ALLOWED_TYPES]);
   });
