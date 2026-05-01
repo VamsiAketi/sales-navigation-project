@@ -1008,7 +1008,7 @@ export function IssuesList({
               }}
               placeholder="Search tasks..."
               className="h-9 pl-7 text-sm"
-              aria-label="Search issues"
+              aria-label="Search tasks"
             />
           </div>
           {/* ── Assignee avatar filter strip + dropdown ── */}
@@ -1478,9 +1478,11 @@ export function IssuesList({
                 ? "No Done or Cancelled tasks past the board retention window."
                 : "No tasks match the current filters or search."
           }
-          action={viewState.showHidden || pastBoardClosedRetentionDays ? undefined : "Create Task"}
+          action={viewState.showHidden || pastBoardClosedRetentionDays || !canCreateTask ? undefined : "Create Task"}
           onAction={
-            viewState.showHidden || pastBoardClosedRetentionDays ? undefined : () => openNewIssue(newIssueDefaults())
+            viewState.showHidden || pastBoardClosedRetentionDays || !canCreateTask
+              ? undefined
+              : () => openNewIssue(newIssueDefaults())
           }
         />
       )}
@@ -1583,14 +1585,16 @@ export function IssuesList({
                     {group.label}
                   </span>
                 </CollapsibleTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="ml-auto text-muted-foreground"
-                  onClick={() => openNewIssue(newIssueDefaults(group.key))}
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
+                {canCreateTask ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="ml-auto text-muted-foreground"
+                    onClick={() => openNewIssue(newIssueDefaults(group.key))}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                ) : null}
               </div>
             )}
             <CollapsibleContent>
