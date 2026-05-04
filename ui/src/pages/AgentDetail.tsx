@@ -127,6 +127,16 @@ function redactPathText(value: string, censorUsernameInLogs: boolean) {
   return redactHomePathUserSegments(value, { enabled: censorUsernameInLogs });
 }
 
+function hasUiPathLikeText(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) return false;
+  return (
+    /(^|[\s"'`(])(?:\/|~\/|\.\.?\/)[^\s"'`)]{2,}/.test(normalized)
+    || /(^|[\s"'`(])[A-Za-z]:\\[^\s"'`)]{2,}/.test(normalized)
+    || /\b(?:cwd|working\s*dir|worktree|repo\s*root|file(?:\s*path)?|path)\s*[:=]\s*\S+/i.test(normalized)
+  );
+}
+
 function redactPathValue<T>(value: T, censorUsernameInLogs: boolean): T {
   return redactHomePathUserSegmentsInValue(value, { enabled: censorUsernameInLogs });
 }
@@ -3717,6 +3727,16 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
     () => buildTranscript(logLines, adapter.parseStdoutLine, { censorUsernameInLogs }),
     [adapter, censorUsernameInLogs, logLines],
   );
+  const visibleEvents = useMemo(
+    () => events.filter((evt) => {
+      // UI-only hide: suppress verbose adapter invocation logs.
+      if (evt.eventType === "adapter.invoke") return false;
+      const message = evt.message ?? "";
+      const payloadText = evt.payload ? JSON.stringify(evt.payload) : "";
+      return !hasUiPathLikeText(message) && !hasUiPathLikeText(payloadText);
+    }),
+    [events],
+  );
 
   useEffect(() => {
     setTranscriptMode("nice");
@@ -3744,11 +3764,13 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
 
   return (
     <div className="space-y-3">
+      {/* UI-only hide: workspace operation logs frequently contain file paths and cwd details. */}
       <WorkspaceOperationsSection
-        operations={workspaceOperations}
+        operations={[]}
         censorUsernameInLogs={censorUsernameInLogs}
       />
-      {adapterInvokePayload && (
+      {/* UI-only hide: invocation details include cwd/command/context paths. */}
+      {false && adapterInvokePayload && (
         <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2">
           <div className="text-xs font-medium text-muted-foreground">Invocation</div>
           {typeof adapterInvokePayload.adapterType === "string" && (
@@ -3912,11 +3934,11 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
         </div>
       )}
 
-      {events.length > 0 && (
+      {visibleEvents.length > 0 && (
         <div>
-          <div className="mb-2 text-xs font-medium text-muted-foreground">Events ({events.length})</div>
+          <div className="mb-2 text-xs font-medium text-muted-foreground">Events ({visibleEvents.length})</div>
           <div className="bg-neutral-100 dark:bg-neutral-950 rounded-lg p-3 font-mono text-xs space-y-0.5">
-            {events.map((evt) => {
+            {visibleEvents.map((evt) => {
               const color = evt.color
                 ?? (evt.level ? levelColors[evt.level] : null)
                 ?? (evt.stream ? streamColors[evt.stream] : null)

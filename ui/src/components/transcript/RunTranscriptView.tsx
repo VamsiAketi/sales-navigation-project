@@ -116,6 +116,16 @@ function compactWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function hasPathLikeText(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) return false;
+  return (
+    /(^|[\s"'`(])(?:\/|~\/|\.\.?\/)[^\s"'`)]{2,}/.test(normalized)
+    || /(^|[\s"'`(])[A-Za-z]:\\[^\s"'`)]{2,}/.test(normalized)
+    || /\b(?:cwd|working\s*dir|worktree|repo\s*root|file(?:\s*path)?|path)\s*[:=]\s*\S+/i.test(normalized)
+  );
+}
+
 function truncate(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, Math.max(0, max - 1))}…` : value;
 }
@@ -581,6 +591,45 @@ export function normalizeTranscript(entries: TranscriptEntry[], streaming: boole
   }
 
   return groupToolBlocks(groupCommandBlocks(blocks));
+}
+
+function shouldHideEntryInRawMode(entry: TranscriptEntry): boolean {
+  if (entry.kind === "tool_call" && isCommandTool(entry.name, entry.input)) {
+    // UI-only hide: suppress "Executing command" logs.
+    return true;
+  }
+  if (entry.kind === "tool_result") {
+    return hasPathLikeText(entry.content ?? "");
+  }
+  if (entry.kind === "stdout" || entry.kind === "stderr" || entry.kind === "system") {
+    return hasPathLikeText(entry.text ?? "");
+  }
+  return false;
+}
+
+function shouldHideBlockInNiceMode(block: TranscriptBlock): boolean {
+  if (block.type === "command_group") {
+    // UI-only hide: suppress command execution groups from transcript.
+    return true;
+  }
+  if (block.type === "tool") {
+    if (isCommandTool(block.name, block.input)) return true;
+    return hasPathLikeText(formatUnknown(block.input)) || hasPathLikeText(block.result ?? "");
+  }
+  if (block.type === "tool_group") {
+    return block.items.some((item) =>
+      hasPathLikeText(formatUnknown(item.input)) || hasPathLikeText(item.result ?? ""));
+  }
+  if (block.type === "stderr_group") {
+    return block.lines.some((line) => hasPathLikeText(line.text));
+  }
+  if (block.type === "stdout") {
+    return hasPathLikeText(block.text);
+  }
+  if (block.type === "event") {
+    return hasPathLikeText(block.text) || hasPathLikeText(block.detail ?? "");
+  }
+  return false;
 }
 
 function TranscriptMessageBlock({
@@ -1213,8 +1262,11 @@ export function RunTranscriptView({
   thinkingClassName,
 }: RunTranscriptViewProps) {
   const blocks = useMemo(() => normalizeTranscript(entries, streaming), [entries, streaming]);
-  const visibleBlocks = limit ? blocks.slice(-limit) : blocks;
-  const visibleEntries = limit ? entries.slice(-limit) : entries;
+  // UI-only filtering requested by product: hide command logs and path-bearing log lines.
+  const filteredBlocks = useMemo(() => blocks.filter((block) => !shouldHideBlockInNiceMode(block)), [blocks]);
+  const filteredEntries = useMemo(() => entries.filter((entry) => !shouldHideEntryInRawMode(entry)), [entries]);
+  const visibleBlocks = limit ? filteredBlocks.slice(-limit) : filteredBlocks;
+  const visibleEntries = limit ? filteredEntries.slice(-limit) : filteredEntries;
 
   if (entries.length === 0) {
     return (
