@@ -1318,6 +1318,7 @@ export function NewIssueDialog() {
                 triggerAriaLabel={projectFieldLabel}
                 triggerAriaRequired
                 triggerAriaInvalid={Boolean(projectValidationError)}
+                triggerAdornment={<span className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>}
                 searchPlaceholder="Search projects..."
                 emptyMessage="No projects found."
                 onChange={handleProjectChange}
@@ -1327,18 +1328,19 @@ export function NewIssueDialog() {
                 renderTriggerValue={(option) =>
                   option && currentProject ? (
                     <>
+                      {/*
                       <span
                         className={cn(
                           "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
                           projectStatusSwatchClass(currentProject.status),
                         )}
                       />
+                      */}
                       <span className="truncate" title={option.label}>{option.label}</span>
-                      <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
                     </>
                   ) : (
                     <span className="text-muted-foreground">
-                      Select Project <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
+                      Select Project
                     </span>
                   )
                 }

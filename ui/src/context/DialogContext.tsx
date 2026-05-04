@@ -3,7 +3,7 @@ import { useCompany } from "./CompanyContext";
 import { agentsApi } from "../api/agents";
 import { goalsApi } from "../api/goals";
 import { projectsApi } from "../api/projects";
-import { selectDefaultCompanyGoalId } from "../lib/onboarding-launch";
+import { ONBOARDING_PROJECT_NAME, selectDefaultCompanyGoalId } from "../lib/onboarding-launch";
 import {
   CREATE_AGENT_ISSUE_DESCRIPTION,
   CREATE_AGENT_ISSUE_TITLE,
@@ -106,10 +106,16 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         assigneeAgentId = agents.find((a) => a.role === "ceo")?.id;
         const firstGoalId = selectDefaultCompanyGoalId(goals);
         const projects = await projectsApi.list(selectedCompanyId);
+        const aiAdminProject =
+          projects.find(
+            (project) => project.name === ONBOARDING_PROJECT_NAME && !project.archivedAt,
+          ) ?? projects.find((project) => project.name === ONBOARDING_PROJECT_NAME);
         const defaultProject =
+          aiAdminProject ??
           projects.find(
             (project) => firstGoalId && project.goalIds.includes(firstGoalId),
           ) ??
+          projects.find((project) => !project.archivedAt) ??
           projects[0] ??
           null;
         defaultProjectId = defaultProject?.id;
@@ -118,6 +124,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       }
       openNewIssue({
         assigneeAgentId,
+        status: "todo",
         title: CREATE_AGENT_ISSUE_TITLE,
         description: CREATE_AGENT_ISSUE_DESCRIPTION,
         ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
