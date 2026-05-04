@@ -1036,7 +1036,7 @@ export function IssuesList({
             <PopoverContent
               align="end"
               collisionPadding={8}
-              className="w-[min(40rem,calc(100vw-1rem))] max-h-[min(36rem,calc(100dvh-1rem))] overflow-y-auto p-2"
+              className="w-[min(40rem,calc(100vw-1rem))] max-h-[min(33.5rem,calc(100dvh-3rem))] overflow-y-auto p-2"
             >
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-1.5 border-b border-border pb-2">
@@ -1083,7 +1083,6 @@ export function IssuesList({
                             onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s.value) })}
                           />
                           <StatusIcon status={s.value} projectStatuses={projectStatuses ?? filterStatusOptions} />
-                          <span className="min-w-0 break-words">{s.name}</span>
                         </label>
                       ))}
                     </div>
