@@ -483,7 +483,7 @@ export function CommentThread({
             />
             Re-open
           </label>
-          {/* {enableReassign && reassignOptions.length > 0 && (
+          {enableReassign && reassignOptions.length > 0 && (
             <InlineEntitySelector
               value={reassignTarget}
               options={reassignOptions}
@@ -492,18 +492,18 @@ export function CommentThread({
               searchPlaceholder="Search assignees..."
               emptyMessage="No assignees found."
               onChange={setReassignTarget}
-              className="text-xs h-8"
+              className="h-8 w-40 min-w-40 text-xs"
               renderTriggerValue={(option) => {
-                if (!option) return <span className="text-muted-foreground">Assignee</span>;
+                if (!option) return <span className="truncate text-muted-foreground">Assignee</span>;
                 const agentId = option.id.startsWith("agent:") ? option.id.slice("agent:".length) : null;
                 const agent = agentId ? agentMap?.get(agentId) : null;
                 return (
-                  <>
+                  <span className="flex min-w-0 items-center gap-1.5">
                     {agent ? (
                       <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     ) : null}
-                    <span className="truncate">{option.label}</span>
-                  </>
+                    <span className="min-w-0 truncate">{option.label}</span>
+                  </span>
                 );
               }}
               renderOption={(option) => {
@@ -511,16 +511,16 @@ export function CommentThread({
                 const agentId = option.id.startsWith("agent:") ? option.id.slice("agent:".length) : null;
                 const agent = agentId ? agentMap?.get(agentId) : null;
                 return (
-                  <>
+                  <span className="flex min-w-0 items-center gap-1.5">
                     {agent ? (
                       <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     ) : null}
-                    <span className="truncate">{option.label}</span>
-                  </>
+                    <span className="min-w-0 truncate">{option.label}</span>
+                  </span>
                 );
               }}
             />
-          )} */}
+          )}
           <Button size="sm" disabled={!canSubmit} onClick={handleSubmit}>
             {submitting ? "Posting..." : "Comment"}
           </Button>
