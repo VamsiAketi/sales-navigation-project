@@ -52,7 +52,7 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
     () =>
       [
         { type: "link", to: "/dashboard", label: "Home", icon: House },
-        ...(canReadTasks ? ([{ type: "link", to: "/issues", label: "Issues", icon: CircleDot }] as const) : []),
+        ...(canReadTasks ? ([{ type: "link", to: "/issues", label: "Tasks", icon: CircleDot }] as const) : []),
         ...(canCreateTasks ? ([{ type: "action", label: "Create", icon: SquarePen, onClick: () => openNewIssue() }] as const) : []),
         ...(canReadAgents ? ([{ type: "link", to: "/agents/all", label: "Agents", icon: Users }] as const) : []),
         { type: "link", to: "/inbox", label: "Inbox", icon: Inbox },

@@ -43,7 +43,10 @@ type CreateWorkspaceInput = {
 };
 type UpdateWorkspaceInput = Partial<CreateWorkspaceInput>;
 
-interface ProjectWithGoals extends Omit<ProjectRow, "executionWorkspacePolicy" | "notificationConfig"> {
+interface ProjectWithGoals extends Omit<
+  ProjectRow,
+  "executionWorkspacePolicy" | "notificationConfig" | "envConfig" | "projectEnvConfig"
+> {
   urlKey: string;
   goalIds: string[];
   goals: ProjectGoalRef[];
@@ -93,8 +96,9 @@ async function attachGoals(db: Db, rows: ProjectRow[]): Promise<ProjectWithGoals
   return rows.map((r) => {
     const g = map.get(r.id) ?? [];
     const parsedNotificationConfig = projectNotificationConfigSchema.safeParse(r.notificationConfig);
+    const { envConfig: _envConfig, projectEnvConfig: _projectEnvConfig, ...restRow } = r;
     return {
-      ...r,
+      ...restRow,
       urlKey: deriveProjectUrlKey(r.name, r.id),
       goalIds: g.map((x) => x.id),
       goals: g,

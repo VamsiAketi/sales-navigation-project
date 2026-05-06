@@ -62,6 +62,17 @@ vi.mock("../services/index.js", () => ({
     remove: vi.fn(async () => null),
   }),
   projectService: () => mockProjectService,
+  projectSecretService: () => ({
+    list: vi.fn(async () => []),
+    create: vi.fn(),
+    getById: vi.fn(),
+    getByName: vi.fn(),
+    resolveSecretValue: vi.fn(),
+    rotate: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+    listProviders: vi.fn(() => []),
+  }),
   secretService: () => ({
     create: vi.fn(),
     listForProject: vi.fn(async () => []),

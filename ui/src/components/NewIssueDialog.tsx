@@ -56,6 +56,7 @@ import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDe
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { setFocusAfterIssueCreate } from "../lib/focus-created-issue";
 import { projectStatusSwatchClass } from "../lib/status-colors";
+import { CREATE_AGENT_ISSUE_TITLE } from "../lib/issue-presets";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
@@ -355,6 +356,7 @@ export function NewIssueDialog() {
   const [projectValidationError, setProjectValidationError] = useState<string | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
+  const newIssueWasOpenRef = useRef(false);
 
   const effectiveCompanyId = dialogCompanyId ?? selectedCompanyId;
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
@@ -648,7 +650,7 @@ export function NewIssueDialog() {
       setTargetStartDate("");
       setDueDate("");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
-    } else if (draft && draft.title.trim()) {
+    } else if (draft && draft.title.trim() && draft.title !== CREATE_AGENT_ISSUE_TITLE) {
       const restoredProjectRef = newIssueDefaults.projectId ?? draft.projectId;
       const restoredProject = resolveProjectByRef(orderedProjects, restoredProjectRef);
       const restoredProjectId = restoredProject?.id ?? restoredProjectRef;
@@ -676,6 +678,11 @@ export function NewIssueDialog() {
       setDueDate(draft.dueDate ?? "");
       executionWorkspaceDefaultProjectId.current = restoredProjectId || null;
     } else {
+      if (!newIssueDefaults.title && draft?.title === CREATE_AGENT_ISSUE_TITLE) {
+        clearDraft();
+      }
+      setTitle("");
+      setDescription("");
       const defaultProjectRef = newIssueDefaults.projectId ?? "";
       const defaultProject = resolveProjectByRef(orderedProjects, defaultProjectRef);
       const defaultProjectId = defaultProject?.id ?? defaultProjectRef;
@@ -748,6 +755,19 @@ export function NewIssueDialog() {
     setDueDate("");
     executionWorkspaceDefaultProjectId.current = null;
   }
+
+  // Closing without a successful create should not leave a persisted draft or in-memory form state.
+  useEffect(() => {
+    if (newIssueWasOpenRef.current && !newIssueOpen && !createIssue.isPending) {
+      if (draftTimer.current) {
+        clearTimeout(draftTimer.current);
+        draftTimer.current = null;
+      }
+      clearDraft();
+      reset();
+    }
+    newIssueWasOpenRef.current = newIssueOpen;
+  }, [newIssueOpen, createIssue.isPending]);
 
   function handleCompanyChange(companyId: string) {
     if (companyId === effectiveCompanyId) return;
@@ -994,9 +1014,9 @@ export function NewIssueDialog() {
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
   const canDiscardDraft = hasDraft || hasSavedDraft;
   const createIssueErrorMessage =
-    createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
+    createIssue.error instanceof Error ? createIssue.error.message : "Couldn't create this task. Try again.";
   const hasAssignee = Boolean(selectedAssigneeAgentId || selectedAssigneeUserId);
-  const isCreateAgentPreset = newIssueDefaults.title === "Create a new agent";
+  const isCreateAgentPreset = newIssueDefaults.title === CREATE_AGENT_ISSUE_TITLE;
   const isPresetTitle = Boolean(newIssueDefaults.title);
   const assigneeRequired = !isBoardPinnedHiddenProjectIssueStatusValue(status);
   const missingRequiredFields: string[] = [];
@@ -1298,6 +1318,7 @@ export function NewIssueDialog() {
                 triggerAriaLabel={projectFieldLabel}
                 triggerAriaRequired
                 triggerAriaInvalid={Boolean(projectValidationError)}
+                triggerAdornment={<span className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>}
                 searchPlaceholder="Search projects..."
                 emptyMessage="No projects found."
                 onChange={handleProjectChange}
@@ -1307,18 +1328,19 @@ export function NewIssueDialog() {
                 renderTriggerValue={(option) =>
                   option && currentProject ? (
                     <>
+                      {/*
                       <span
                         className={cn(
                           "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
                           projectStatusSwatchClass(currentProject.status),
                         )}
                       />
+                      */}
                       <span className="truncate" title={option.label}>{option.label}</span>
-                      <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
                     </>
                   ) : (
                     <span className="text-muted-foreground">
-                      Select Project <span aria-hidden="true" className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>
+                      Select Project
                     </span>
                   )
                 }
@@ -1781,7 +1803,7 @@ export function NewIssueDialog() {
               {createIssue.isPending ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Creating issue...
+                  Creating task...
                 </span>
               ) : createIssue.isError ? (
                 <p className="text-xs leading-snug text-destructive">{createIssueErrorMessage}</p>

@@ -1,6 +1,11 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import {
+  SECRET_PROVIDERS,
+  type SecretProvider,
+  createProjectSecretSchema,
+  rotateProjectSecretSchema,
+  updateProjectSecretSchema,
   createProjectSchema,
   createProjectWorkspaceSchema,
   createProjectIssueStatusSchema,
@@ -16,18 +21,24 @@ import {
   accessService,
   projectService,
   projectIssueStatusService,
-  secretService,
+  projectSecretService,
   logActivity,
 } from "../services/index.js";
-import { conflict, forbidden, unprocessable } from "../errors.js";
+import { conflict, forbidden } from "../errors.js";
 import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
 
 export function projectRoutes(db: Db) {
   const router = Router();
   const svc = projectService(db);
   const statusSvc = projectIssueStatusService(db);
-  const secretsSvc = secretService(db);
+  const projectSecretsSvc = projectSecretService(db);
   const access = accessService(db);
+  const configuredDefaultSecretProvider = process.env.PAPERCLIP_SECRETS_PROVIDER;
+  const defaultSecretProvider = (
+    configuredDefaultSecretProvider && SECRET_PROVIDERS.includes(configuredDefaultSecretProvider as SecretProvider)
+      ? configuredDefaultSecretProvider
+      : "local_encrypted"
+  ) as SecretProvider;
 
   async function requireProjectPermission(
     req: Request,
@@ -39,30 +50,6 @@ export function projectRoutes(db: Db) {
     if (!(await access.satisfiesProjectPermission(companyId, projectId, permission, actor))) {
       throw forbidden("Project permission denied");
     }
-  }
-
-  async function validateProjectSecretBindings(
-    companyId: string,
-    raw: unknown,
-  ): Promise<Record<string, string> | null> {
-    if (raw === null || raw === undefined) return null;
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      throw unprocessable("envConfig must be an object mapping env names to company secret names");
-    }
-    const rec = raw as Record<string, unknown>;
-    const out: Record<string, string> = {};
-    for (const [envKey, secretNameRaw] of Object.entries(rec)) {
-      if (typeof secretNameRaw !== "string" || !secretNameRaw.trim()) {
-        throw unprocessable(`envConfig: company secret name required for ${envKey}`);
-      }
-      const secretName = secretNameRaw.trim();
-      const secret = await secretsSvc.getByName(companyId, secretName);
-      if (!secret) {
-        throw unprocessable(`Unknown company secret: ${secretName}`);
-      }
-      out[envKey] = secretName;
-    }
-    return Object.keys(out).length > 0 ? out : null;
   }
 
   async function resolveCompanyIdForProjectReference(req: Request) {
@@ -134,19 +121,9 @@ export function projectRoutes(db: Db) {
       workspace?: Parameters<typeof svc.createWorkspace>[1];
     };
 
-    const { workspace, ...rawProjectData } = req.body as CreateProjectPayload;
+    const { workspace, ...insertPayload } = req.body as CreateProjectPayload;
 
-    const projectEnvConfig =
-      rawProjectData.envConfig !== undefined
-        ? await validateProjectSecretBindings(companyId, rawProjectData.envConfig)
-        : undefined;
-
-    const projectData = {
-      ...rawProjectData,
-      ...(projectEnvConfig !== undefined ? { envConfig: projectEnvConfig } : {}),
-    };
-
-    const project = await svc.create(companyId, projectData);
+    const project = await svc.create(companyId, insertPayload);
     await statusSvc.seedDefaults(project.id, companyId);
     let createdWorkspaceId: string | null = null;
     if (workspace) {
@@ -158,7 +135,7 @@ export function projectRoutes(db: Db) {
       }
       createdWorkspaceId = createdWorkspace.id;
     }
-    const hydratedProject = workspace ? await svc.getById(project.id) : project;
+    let hydratedProject = workspace ? await svc.getById(project.id) : project;
 
     if (
       req.actor.type === "board"
@@ -470,6 +447,57 @@ export function projectRoutes(db: Db) {
       },
     });
     res.json(status);
+  });
+
+  router.get("/projects/:id/project-secrets", async (req, res) => {
+    const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+    await requireProjectPermission(req, existing.companyId, id, "project:edit configuration");
+    const secrets = await projectSecretsSvc.list(existing.companyId, id);
+    res.json(secrets);
+  });
+
+  router.post("/projects/:id/project-secrets", validate(createProjectSecretSchema), async (req, res) => {
+    const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+    await requireProjectPermission(req, existing.companyId, id, "project:edit configuration");
+
+    const created = await projectSecretsSvc.create(
+      existing.companyId,
+      id,
+      {
+        name: req.body.name,
+        provider: req.body.provider ?? defaultSecretProvider,
+        value: req.body.value,
+        description: req.body.description,
+        externalRef: req.body.externalRef,
+      },
+      { userId: req.actor.userId ?? "board", agentId: null },
+    );
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: existing.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: "project_secret.created",
+      entityType: "project_secret",
+      entityId: created.id,
+      details: { name: created.name, projectId: id, provider: created.provider },
+    });
+
+    res.status(201).json(created);
   });
 
   router.delete("/projects/:id", async (req, res) => {

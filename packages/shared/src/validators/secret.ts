@@ -12,11 +12,18 @@ export const envBindingSecretRefSchema = z.object({
   version: z.union([z.literal("latest"), z.number().int().positive()]).optional(),
 });
 
+export const envBindingProjectSecretRefSchema = z.object({
+  type: z.literal("project_secret_ref"),
+  secretId: z.string().uuid(),
+  version: z.union([z.literal("latest"), z.number().int().positive()]).optional(),
+});
+
 // Backward-compatible union that accepts legacy inline values.
 export const envBindingSchema = z.union([
   z.string(),
   envBindingPlainSchema,
   envBindingSecretRefSchema,
+  envBindingProjectSecretRefSchema,
 ]);
 
 export const envConfigSchema = z.record(envBindingSchema);
@@ -45,3 +52,11 @@ export const updateSecretSchema = z.object({
 });
 
 export type UpdateSecret = z.infer<typeof updateSecretSchema>;
+
+/** Same shape as company secrets — used for `/projects/:id/project-secrets` routes. */
+export const createProjectSecretSchema = createSecretSchema;
+export const rotateProjectSecretSchema = rotateSecretSchema;
+export const updateProjectSecretSchema = updateSecretSchema;
+export type CreateProjectSecret = z.infer<typeof createProjectSecretSchema>;
+export type RotateProjectSecret = z.infer<typeof rotateProjectSecretSchema>;
+export type UpdateProjectSecret = z.infer<typeof updateProjectSecretSchema>;

@@ -137,6 +137,15 @@ Paperclip stores secret metadata and versions in:
 
 - `company_secrets`
 - `company_secret_versions`
+- `project_secrets` (scoped to a project; same provider material as company secrets)
+- `project_secret_versions`
+
+Projects may set `expose_project_secrets_on_issue_runs` so heartbeat runs tied to an issue in that project merge every stored project secret into adapter env (see server heartbeat).
+
+Legacy JSON columns on `projects` (unused by current server; optional cleanup on old DBs):
+
+- `env_config`
+- `project_env_config`
 
 For local/default installs, the active provider is `local_encrypted`:
 

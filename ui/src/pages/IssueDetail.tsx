@@ -72,11 +72,11 @@ type CommentReassignment = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  "issue.created": "created the issue",
-  "issue.updated": "updated the issue",
-  "issue.checked_out": "checked out the issue",
-  "issue.released": "released the issue",
-  "issue.read_marked": "marked the issue as read",
+  "issue.created": "created this task",
+  "issue.updated": "updated this task",
+  "issue.checked_out": "picked up this task for work",
+  "issue.released": "stopped work on this task",
+  "issue.read_marked": "marked this task as read",
   "issue.comment_added": "added a comment",
   "issue.attachment_added": "added an attachment",
   "issue.attachment_removed": "removed an attachment",
@@ -88,8 +88,8 @@ const ACTION_LABELS: Record<string, string> = {
   "issue.work_product_deleted": "deleted a work product",
   "issue.approval_linked": "linked an approval",
   "issue.approval_unlinked": "unlinked an approval",
-  "issue.checkout_lock_adopted": "adopted a checkout lock",
-  "issue.deleted": "deleted the issue",
+  "issue.checkout_lock_adopted": "took over ongoing work",
+  "issue.deleted": "deleted this task",
   "agent.created": "created an agent",
   "agent.updated": "updated the agent",
   "agent.paused": "paused the agent",
@@ -767,6 +767,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   };
 
   const isImageAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("image/");
+  const isVideoAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("video/");
   const attachmentList = attachments ?? [];
   const hasAttachments = attachmentList.length > 0;
   const attachmentUploadButton = (
@@ -774,7 +775,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,application/pdf,text/plain,text/markdown,application/json,text/csv,text/html,.md,.markdown"
+        accept="image/*,video/webm,video/mp4,video/ogg,video/quicktime,application/pdf,text/plain,text/markdown,application/json,text/csv,text/html,.md,.markdown"
         className="hidden"
         onChange={handleFilePicked}
         multiple
@@ -1116,6 +1117,35 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
               <p className="text-[11px] text-muted-foreground">
                 {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
               </p>
+              {isVideoAttachment(attachment) && (
+                <div className="mt-2 space-y-2">
+                  <video
+                    controls
+                    preload="metadata"
+                    className="max-h-56 w-full rounded border border-border bg-accent/10"
+                    src={attachment.contentPath}
+                  >
+                    <track kind="captions" />
+                  </video>
+                  <div className="flex items-center gap-3 text-xs">
+                    <a
+                      href={attachment.contentPath}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:underline"
+                    >
+                      Watch
+                    </a>
+                    <a
+                      href={attachment.contentPath}
+                      download={attachment.originalFilename ?? true}
+                      className="hover:underline"
+                    >
+                      Download
+                    </a>
+                  </div>
+                </div>
+              )}
               {isImageAttachment(attachment) && (
                 <button
                   type="button"
@@ -1149,7 +1179,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           </TabsTrigger>
           <TabsTrigger value="subissues" className="gap-1.5">
             <ListTree className="h-3.5 w-3.5" />
-            Sub-issues
+            Sub-tasks
           </TabsTrigger>
           <TabsTrigger value="activity" className="gap-1.5">
             <ActivityIcon className="h-3.5 w-3.5" />
@@ -1198,7 +1228,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
 
         <TabsContent value="subissues">
           {childIssues.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No sub-issues.</p>
+            <p className="text-xs text-muted-foreground">No sub-tasks yet.</p>
           ) : (
             <div className="border border-border rounded-lg divide-y divide-border">
               {childIssues.map((child) => (

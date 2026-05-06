@@ -65,17 +65,17 @@ const EVENT_META: Array<{
   {
     key: "issue.status_changed",
     label: "Status changes",
-    description: "When an issue moves to a different workflow state.",
+    description: "When a task moves to a different step in your workflow.",
   },
   {
     key: "issue.comment_added",
     label: "New comments",
-    description: "When someone adds a comment on an issue.",
+    description: "When someone adds a comment on a task.",
   },
   {
     key: "issue.comment_mentioned",
     label: "@mentions in comments",
-    description: "When someone @mentions a human teammate in an issue comment.",
+    description: "When someone @mentions a teammate in a task comment.",
   },
   {
     key: "issue.assigned",
@@ -86,7 +86,7 @@ const EVENT_META: Array<{
 
 const ROLE_LABELS: Record<ProjectNotificationRecipientRole, string> = {
   issue_assignee_user: "Human assignee",
-  issue_creator_user: "Human who created the issue",
+  issue_creator_user: "Human who created the task",
 };
 
 function ruleFor(

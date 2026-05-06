@@ -36,20 +36,39 @@ PATCH /api/secrets/{secretId}
 
 Creates a new version of the secret. Agents referencing `"version": "latest"` automatically get the new value on next heartbeat.
 
-## Using Secrets in Agent Config
+## Using secrets in agent config
 
-Reference secrets in agent adapter config instead of inline values:
+Reference encrypted values from `adapter_config.env` instead of inline plaintext. Two binding shapes are supported:
+
+The server resolves both **`secret_ref`** and **`project_secret_ref`** whenever adapter config is resolved (heartbeat, test environment, skills listing, etc.). **`project_secret_ref`** looks up the secret by id, checks it belongs to the company, and decrypts using that row’s project scope.
+
+## Company secret reference (`secret_ref`)
 
 ```json
 {
   "env": {
     "ANTHROPIC_API_KEY": {
       "type": "secret_ref",
-      "secretId": "{secretId}",
+      "secretId": "{companySecretId}",
       "version": "latest"
     }
   }
 }
 ```
 
-The server resolves and decrypts secret references at runtime, injecting the real value into the agent process environment.
+## Project secret reference (`project_secret_ref`)
+
+Create or list secrets with `POST` / `GET` **`/api/projects/{projectId}/project-secrets`**. Responses include metadata and **`id`**; values are never returned. Use that UUID:
+
+```json
+{
+  "env": {
+    "DEPLOY_TOKEN": {
+      "type": "project_secret_ref",
+      "secretId": "{projectSecretUuid}",
+      "version": "latest"
+    }
+  }
+}
+```
+

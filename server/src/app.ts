@@ -21,6 +21,7 @@ import { executionWorkspaceRoutes } from "./routes/execution-workspaces.js";
 import { goalRoutes } from "./routes/goals.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { secretRoutes } from "./routes/secrets.js";
+import { projectSecretMutationsRoutes } from "./routes/project-secret-mutations.js";
 import { costRoutes } from "./routes/costs.js";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook.js";
 import { activityRoutes } from "./routes/activity.js";
@@ -496,6 +497,7 @@ export async function createApp(
   api.use(goalRoutes(db));
   api.use(approvalRoutes(db));
   api.use(secretRoutes(db));
+  api.use(projectSecretMutationsRoutes(db));
   api.use(costRoutes(db));
   api.use(activityRoutes(db));
   api.use(dashboardRoutes(db));

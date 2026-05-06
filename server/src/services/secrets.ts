@@ -5,6 +5,7 @@ import type { AgentEnvConfig, EnvBinding, SecretProvider } from "@paperclipai/sh
 import { envBindingSchema } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
 import { getSecretProvider, listSecretProviders } from "../secrets/provider-registry.js";
+import { projectSecretService } from "./project-secrets.js";
 
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SENSITIVE_ENV_KEY_RE =
@@ -13,7 +14,8 @@ const REDACTED_SENTINEL = "***REDACTED***";
 
 type CanonicalEnvBinding =
   | { type: "plain"; value: string }
-  | { type: "secret_ref"; secretId: string; version: number | "latest" };
+  | { type: "secret_ref"; secretId: string; version: number | "latest" }
+  | { type: "project_secret_ref"; secretId: string; version: number | "latest" };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
@@ -31,6 +33,13 @@ function canonicalizeBinding(binding: EnvBinding): CanonicalEnvBinding {
   if (binding.type === "plain") {
     return { type: "plain", value: String(binding.value) };
   }
+  if (binding.type === "project_secret_ref") {
+    return {
+      type: "project_secret_ref",
+      secretId: binding.secretId,
+      version: binding.version ?? "latest",
+    };
+  }
   return {
     type: "secret_ref",
     secretId: binding.secretId,
@@ -39,6 +48,8 @@ function canonicalizeBinding(binding: EnvBinding): CanonicalEnvBinding {
 }
 
 export function secretService(db: Db) {
+  const projectSecretsSvc = projectSecretService(db);
+
   async function getById(id: string) {
     return db
       .select()
@@ -121,6 +132,19 @@ export function secretService(db: Db) {
           throw unprocessable(`Refusing to persist redacted placeholder for key: ${key}`);
         }
         normalized[key] = binding;
+        continue;
+      }
+
+      if (binding.type === "project_secret_ref") {
+        const row = await projectSecretsSvc.getById(binding.secretId);
+        if (!row || row.companyId !== companyId) {
+          throw unprocessable(`Unknown project secret for key: ${key}`);
+        }
+        normalized[key] = {
+          type: "project_secret_ref",
+          secretId: binding.secretId,
+          version: binding.version,
+        };
         continue;
       }
 
@@ -319,7 +343,10 @@ export function secretService(db: Db) {
       return normalized;
     },
 
-    resolveEnvBindings: async (companyId: string, envValue: unknown): Promise<{ env: Record<string, string>; secretKeys: Set<string> }> => {
+    resolveEnvBindings: async (
+      companyId: string,
+      envValue: unknown,
+    ): Promise<{ env: Record<string, string>; secretKeys: Set<string> }> => {
       const record = asRecord(envValue);
       if (!record) return { env: {} as Record<string, string>, secretKeys: new Set<string>() };
       const resolved: Record<string, string> = {};
@@ -336,15 +363,32 @@ export function secretService(db: Db) {
         const binding = canonicalizeBinding(parsed.data as EnvBinding);
         if (binding.type === "plain") {
           resolved[key] = binding.value;
-        } else {
-          resolved[key] = await resolveSecretValue(companyId, binding.secretId, binding.version);
-          secretKeys.add(key);
+          continue;
         }
+        if (binding.type === "project_secret_ref") {
+          const ps = await projectSecretsSvc.getById(binding.secretId);
+          if (!ps || ps.companyId !== companyId) {
+            throw unprocessable(`Unknown project secret for key: ${key}`);
+          }
+          resolved[key] = await projectSecretsSvc.resolveSecretValue(
+            companyId,
+            ps.projectId,
+            binding.secretId,
+            binding.version,
+          );
+          secretKeys.add(key);
+          continue;
+        }
+        resolved[key] = await resolveSecretValue(companyId, binding.secretId, binding.version);
+        secretKeys.add(key);
       }
       return { env: resolved, secretKeys };
     },
 
-    resolveAdapterConfigForRuntime: async (companyId: string, adapterConfig: Record<string, unknown>): Promise<{ config: Record<string, unknown>; secretKeys: Set<string> }> => {
+    resolveAdapterConfigForRuntime: async (
+      companyId: string,
+      adapterConfig: Record<string, unknown>,
+    ): Promise<{ config: Record<string, unknown>; secretKeys: Set<string> }> => {
       const resolved = { ...adapterConfig };
       const secretKeys = new Set<string>();
       if (!Object.prototype.hasOwnProperty.call(adapterConfig, "env")) {
@@ -367,10 +411,24 @@ export function secretService(db: Db) {
         const binding = canonicalizeBinding(parsed.data as EnvBinding);
         if (binding.type === "plain") {
           env[key] = binding.value;
-        } else {
-          env[key] = await resolveSecretValue(companyId, binding.secretId, binding.version);
-          secretKeys.add(key);
+          continue;
         }
+        if (binding.type === "project_secret_ref") {
+          const ps = await projectSecretsSvc.getById(binding.secretId);
+          if (!ps || ps.companyId !== companyId) {
+            throw unprocessable(`Unknown project secret for key: ${key}`);
+          }
+          env[key] = await projectSecretsSvc.resolveSecretValue(
+            companyId,
+            ps.projectId,
+            binding.secretId,
+            binding.version,
+          );
+          secretKeys.add(key);
+          continue;
+        }
+        env[key] = await resolveSecretValue(companyId, binding.secretId, binding.version);
+        secretKeys.add(key);
       }
       resolved.env = env;
       return { config: resolved, secretKeys };

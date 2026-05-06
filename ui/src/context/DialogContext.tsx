@@ -1,4 +1,13 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { useCompany } from "./CompanyContext";
+import { agentsApi } from "../api/agents";
+import { goalsApi } from "../api/goals";
+import { projectsApi } from "../api/projects";
+import { ONBOARDING_PROJECT_NAME, selectDefaultCompanyGoalId } from "../lib/onboarding-launch";
+import {
+  CREATE_AGENT_ISSUE_DESCRIPTION,
+  CREATE_AGENT_ISSUE_TITLE,
+} from "../lib/issue-presets";
 
 interface NewIssueDefaults {
   status?: string;
@@ -31,9 +40,7 @@ interface DialogContextValue {
   newGoalDefaults: NewGoalDefaults;
   openNewGoal: (defaults?: NewGoalDefaults) => void;
   closeNewGoal: () => void;
-  newAgentOpen: boolean;
   openNewAgent: () => void;
-  closeNewAgent: () => void;
   onboardingOpen: boolean;
   onboardingOptions: OnboardingOptions;
   openOnboarding: (options?: OnboardingOptions) => void;
@@ -43,12 +50,12 @@ interface DialogContextValue {
 const DialogContext = createContext<DialogContextValue | null>(null);
 
 export function DialogProvider({ children }: { children: ReactNode }) {
+  const { selectedCompanyId } = useCompany();
   const [newIssueOpen, setNewIssueOpen] = useState(false);
   const [newIssueDefaults, setNewIssueDefaults] = useState<NewIssueDefaults>({});
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newGoalOpen, setNewGoalOpen] = useState(false);
   const [newGoalDefaults, setNewGoalDefaults] = useState<NewGoalDefaults>({});
-  const [newAgentOpen, setNewAgentOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingOptions, setOnboardingOptions] = useState<OnboardingOptions>({});
 
@@ -81,12 +88,49 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openNewAgent = useCallback(() => {
-    setNewAgentOpen(true);
-  }, []);
-
-  const closeNewAgent = useCallback(() => {
-    setNewAgentOpen(false);
-  }, []);
+    void (async () => {
+      if (!selectedCompanyId) {
+        openNewIssue({
+          title: CREATE_AGENT_ISSUE_TITLE,
+          description: CREATE_AGENT_ISSUE_DESCRIPTION,
+        });
+        return;
+      }
+      let defaultProjectId: string | undefined;
+      let assigneeAgentId: string | undefined;
+      try {
+        const [agents, goals] = await Promise.all([
+          agentsApi.list(selectedCompanyId),
+          goalsApi.list(selectedCompanyId),
+        ]);
+        assigneeAgentId = agents.find((a) => a.role === "ceo")?.id;
+        const firstGoalId = selectDefaultCompanyGoalId(goals);
+        const projects = await projectsApi.list(selectedCompanyId);
+        const aiAdminProject =
+          projects.find(
+            (project) => project.name === ONBOARDING_PROJECT_NAME && !project.archivedAt,
+          ) ?? projects.find((project) => project.name === ONBOARDING_PROJECT_NAME);
+        const defaultProject =
+          aiAdminProject ??
+          projects.find(
+            (project) => firstGoalId && project.goalIds.includes(firstGoalId),
+          ) ??
+          projects.find((project) => !project.archivedAt) ??
+          projects[0] ??
+          null;
+        defaultProjectId = defaultProject?.id;
+      } catch {
+        // Keep flow usable; user can pick project and assignee manually.
+      }
+      openNewIssue({
+        assigneeAgentId,
+        status: "todo",
+        title: CREATE_AGENT_ISSUE_TITLE,
+        description: CREATE_AGENT_ISSUE_DESCRIPTION,
+        ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
+      });
+    })();
+  }, [selectedCompanyId, openNewIssue]);
 
   const openOnboarding = useCallback((options: OnboardingOptions = {}) => {
     setOnboardingOptions(options);
@@ -112,9 +156,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         newGoalDefaults,
         openNewGoal,
         closeNewGoal,
-        newAgentOpen,
         openNewAgent,
-        closeNewAgent,
         onboardingOpen,
         onboardingOptions,
         openOnboarding,

@@ -141,9 +141,11 @@ export type {
   SecretVersionSelector,
   EnvPlainBinding,
   EnvSecretRefBinding,
+  EnvProjectSecretRefBinding,
   EnvBinding,
   AgentEnvConfig,
   CompanySecret,
+  ProjectSecret,
   SecretProviderDescriptor,
 } from "./secrets.js";
 export type {

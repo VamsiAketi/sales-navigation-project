@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, date, index, uniqueIndex, jsonb, integer } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, date, boolean, index, uniqueIndex, jsonb, integer } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { goals } from "./goals.js";
 import { agents } from "./agents.js";
@@ -19,6 +19,8 @@ export const projects = pgTable(
     pausedAt: timestamp("paused_at", { withTimezone: true }),
     executionWorkspacePolicy: jsonb("execution_workspace_policy").$type<Record<string, unknown>>(),
     envConfig: jsonb("env_config").$type<Record<string, unknown> | null>(),
+    /** Env var name -> project secret name (resolved at agent runtime within this project). */
+    projectEnvConfig: jsonb("project_env_config").$type<Record<string, unknown> | null>(),
     notificationConfig: jsonb("notification_config").$type<Record<string, unknown> | null>(),
     /** Short uppercase key used as the prefix for issue identifiers (e.g. "AIH" → "AIH-1"). */
     issuePrefix: text("issue_prefix"),
@@ -29,6 +31,11 @@ export const projects = pgTable(
      * (uses completed_at / cancelled_at). Older tasks appear under the project Archive tab. Minimum 1; default 7.
      */
     boardClosedRetentionDays: integer("board_closed_retention_days").notNull().default(7),
+    /**
+     * When true, heartbeat runs for issues in this project merge all decrypted project secrets
+     * into adapter env under keys derived from each secret name (explicit agent env wins on clashes).
+     */
+    exposeProjectSecretsOnIssueRuns: boolean("expose_project_secrets_on_issue_runs").notNull().default(false),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -21,6 +21,7 @@ interface InlineEntitySelectorProps {
   onConfirm?: () => void;
   className?: string;
   renderTriggerValue?: (option: InlineEntityOption | null) => ReactNode;
+  triggerAdornment?: ReactNode;
   renderOption?: (option: InlineEntityOption, isSelected: boolean) => ReactNode;
   triggerAriaLabel?: string;
   triggerAriaRequired?: boolean;
@@ -54,6 +55,7 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
       onConfirm,
       className,
       renderTriggerValue,
+      triggerAdornment,
       renderOption,
       triggerAriaLabel,
       triggerAriaRequired,
@@ -135,6 +137,11 @@ export const InlineEntitySelector = forwardRef<HTMLButtonElement, InlineEntitySe
                 ? renderTriggerValue(currentOption)
                 : (currentOption?.label ?? <span className="text-muted-foreground">{placeholder}</span>)}
             </span>
+            {triggerAdornment ? (
+              <span className="shrink-0 text-xs" aria-hidden="true">
+                {triggerAdornment}
+              </span>
+            ) : null}
             <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/80" aria-hidden="true" />
           </button>
         </PopoverTrigger>

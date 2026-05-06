@@ -400,9 +400,9 @@ export function ExecutionWorkspaceDetail() {
                   </div>
                   <h1 className="text-2xl font-semibold">{workspace.name}</h1>
                   <p className="max-w-2xl text-sm text-muted-foreground">
-                    Configure the concrete runtime workspace that Paperclip reuses for this issue flow. These settings stay
-                    attached to the execution workspace so future runs can keep local paths, repo refs, provisioning, teardown,
-                    and runtime-service behavior in sync with the actual workspace being reused.
+                    This is the working area Paperclip reuses when an agent runs tasks for this project. The settings here
+                    stay attached so later runs keep the same folders, code link, and cleanup rules in sync with what is
+                    actually on disk.
                   </p>
                 </div>
                 <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
@@ -602,7 +602,7 @@ export function ExecutionWorkspaceDetail() {
                   "None"
                 )}
               </DetailRow>
-              <DetailRow label="Source issue">
+              <DetailRow label="Source task">
                 {sourceIssue ? (
                   <Link to={issueUrl(sourceIssue)} className="hover:underline">
                     {sourceIssue.identifier ?? sourceIssue.id} · {sourceIssue.title}
@@ -798,22 +798,22 @@ export function ExecutionWorkspaceDetail() {
         <div className="rounded-2xl border border-border bg-card p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-1">
-              <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Linked issues</div>
-              <h2 className="text-lg font-semibold">Issues using this workspace</h2>
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Linked tasks</div>
+              <h2 className="text-lg font-semibold">Tasks using this workspace</h2>
               <p className="text-sm text-muted-foreground">
-                Any issue attached to this execution workspace appears here so you can review the full session context before reusing or closing it.
+                Any task using this workspace is listed here so you can see related work before closing or reusing this area.
               </p>
             </div>
             <StatusPill>{linkedIssues.length} linked</StatusPill>
           </div>
           <Separator className="my-4" />
           {linkedIssuesQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading linked issues…</p>
+            <p className="text-sm text-muted-foreground">Loading linked tasks…</p>
           ) : linkedIssuesQuery.error ? (
             <p className="text-sm text-destructive">
               {linkedIssuesQuery.error instanceof Error
                 ? linkedIssuesQuery.error.message
-                : "Failed to load linked issues."}
+                : "Couldn't load linked tasks."}
             </p>
           ) : linkedIssues.length > 0 ? (
             <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
@@ -840,7 +840,7 @@ export function ExecutionWorkspaceDetail() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No issues are currently linked to this execution workspace.</p>
+            <p className="text-sm text-muted-foreground">No tasks are linked to this workspace yet.</p>
           )}
         </div>
       </div>

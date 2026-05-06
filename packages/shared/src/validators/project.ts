@@ -61,7 +61,6 @@ export const projectWorkspaceRuntimeConfigSchema = z.object({
 
 const projectWorkspaceSourceTypeSchema = z.enum(["local_path", "git_repo", "remote_managed", "non_git_path"]);
 const projectWorkspaceVisibilitySchema = z.enum(["default", "advanced"]);
-export const projectSecretBindingsSchema = z.record(z.string(), z.unknown()).optional().nullable();
 
 const projectWorkspaceFields = {
   name: z.string().min(1).optional(),
@@ -133,8 +132,8 @@ const projectFields = {
   executionWorkspacePolicy: projectExecutionWorkspacePolicySchema.optional().nullable(),
   notificationConfig: projectNotificationConfigSchema.optional().nullable(),
   archivedAt: z.string().datetime().optional().nullable(),
-  envConfig: projectSecretBindingsSchema,
   boardClosedRetentionDays: z.number().int().min(1).max(3650).optional(),
+  exposeProjectSecretsOnIssueRuns: z.boolean().optional(),
 };
 
 export const createProjectSchema = z.object({
