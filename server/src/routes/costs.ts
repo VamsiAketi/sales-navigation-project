@@ -25,6 +25,7 @@ import { badRequest, forbidden } from "../errors.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 import { getStripeFromConfig } from "../stripe-client.js";
 import {
+  findStripeCustomerByCompanyId,
   getOrCreateStripeCustomerForCompany,
   stripeBillingBrandingFromEnv,
   stripeSecretsFromEnv,
@@ -166,6 +167,45 @@ export function costRoutes(db: Db) {
     });
   });
 
+  router.get("/companies/:companyId/billing/stripe/invoices", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const { stripeSecretKey } = stripeSecretsFromEnv();
+    const stripe = getStripeFromConfig({ stripeSecretKey });
+    if (!stripe) {
+      res.json({ invoices: [] });
+      return;
+    }
+    const customer = await findStripeCustomerByCompanyId(stripe, companyId);
+    if (!customer) {
+      res.json({ invoices: [] });
+      return;
+    }
+    const list = await stripe.invoices.list({ customer: customer.id, limit: 100 });
+    const invoices = list.data.map((inv) => {
+      const line0 = inv.lines?.data?.[0];
+      const lineDesc =
+        line0 && typeof line0 === "object" && line0 !== null && "description" in line0
+          ? String((line0 as { description?: string | null }).description ?? "").trim()
+          : "";
+      const description =
+        inv.description?.trim() || lineDesc || (inv.number?.trim() ? `Invoice ${inv.number.trim()}` : null);
+      return {
+        id: inv.id,
+        number: inv.number ?? null,
+        description,
+        status: inv.status ?? null,
+        amountPaidCents: inv.amount_paid ?? 0,
+        currency: inv.currency ?? "usd",
+        createdAt: inv.created ? new Date(inv.created * 1000).toISOString() : new Date().toISOString(),
+        hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
+        invoicePdf: inv.invoice_pdf ?? null,
+      };
+    });
+    res.json({ invoices });
+  });
+  
   router.post("/companies/:companyId/billing/stripe/portal-session", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -225,14 +265,16 @@ export function costRoutes(db: Db) {
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         customer: customer.id,
-        success_url: `${baseUrl}/billing?stripe=topup-success`,
-        cancel_url: `${baseUrl}/billing?stripe=topup-cancelled`,
+        success_url: `${baseUrl}/company/billing?stripe=topup-success`,
+        cancel_url: `${baseUrl}/company/billing`,
         payment_method_types: ["card"],
         payment_method_options: {
           card: {
             request_three_d_secure: "automatic",
           },
         },
+        // One-time Checkout does not create a Stripe Invoice by default; enable so top-ups show under Invoices / PDF.
+        invoice_creation: { enabled: true },
         metadata: {
           paperclip_company_id: companyId,
           paperclip_kind: "prepaid_topup",
@@ -244,7 +286,7 @@ export function costRoutes(db: Db) {
               currency: "usd",
               unit_amount: req.body.amountCents,
               product_data: {
-                name: "Paperclip prepaid credit",
+                name: "Wallet funds added",
                 description: `Top-up for ${branding.businessName}`,
               },
             },

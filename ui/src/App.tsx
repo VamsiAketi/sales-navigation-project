@@ -154,6 +154,7 @@ function boardRoutes() {
       <Route path="dashboard" element={<Dashboard />} />
       <Route path="onboarding" element={<OnboardingRoutePage />} />
       <Route path="companies" element={<Companies />} />
+      <Route path="billing" element={<LegacyBillingRedirect />} />
       <Route path="company/settings" element={<CompanySettings />} />
       <Route path="company/billing" element={<Billing />} />
       <Route path="company/export/*" element={<CompanyExport />} />
@@ -226,6 +227,11 @@ function InboxRootRedirect() {
 function LegacySettingsRedirect() {
   const location = useLocation();
   return <Navigate to={`/instance/settings/general${location.search}${location.hash}`} replace />;
+}
+
+function LegacyBillingRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/company/billing${location.search}${location.hash}`} replace />;
 }
 
 function OnboardingRoutePage() {

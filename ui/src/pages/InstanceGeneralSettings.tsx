@@ -87,8 +87,8 @@ export function InstanceGeneralSettings() {
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold">Prepaid billing credit</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Total account credit for this instance (USD). The Billing page subtracts cumulative{" "}
-              <span className="font-mono text-xs">model_cost_cents</span> across all companies to show what is left.
+              Total account credit for this instance (USD). The Billing page subtracts cumulative estimated model usage
+              cost across all companies to show what is left.
             </p>
           </div>
           <div className="flex max-w-md flex-col gap-2 sm:flex-row sm:items-end">

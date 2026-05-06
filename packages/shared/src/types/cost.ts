@@ -53,6 +53,24 @@ export interface StripeCheckoutSession {
   url: string;
 }
 
+/** Stripe Invoice summary for Billing UI (from `stripe.invoices.list`). */
+export interface StripeInvoiceRow {
+  id: string;
+  number: string | null;
+  /** Invoice or line-item description when Stripe provides it. */
+  description: string | null;
+  status: string | null;
+  amountPaidCents: number;
+  currency: string;
+  createdAt: string;
+  hostedInvoiceUrl: string | null;
+  invoicePdf: string | null;
+}
+
+export interface StripeInvoicesResponse {
+  invoices: StripeInvoiceRow[];
+}
+
 export interface CostDailyTotal {
   /** `YYYY-MM-DD` (UTC) */
   day: string;
