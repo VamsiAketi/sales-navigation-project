@@ -75,6 +75,9 @@ services:
         wait;
       else
         echo "Config ${PAPERCLIP_CONFIG:-/paperclip/instances/default/config.json} exists; skipping onboarding/bootstrap.";
+        echo "=== VERIFYING ADMIN (CEO) BOOTSTRAP STATE ===";
+        pnpm paperclipai auth bootstrap-ceo --data-dir /paperclip --base-url "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}";
+        echo "=== ADMIN (CEO) BOOTSTRAP CHECK DONE ===";
         pnpm --filter @paperclipai/server dev;
       fi
       '

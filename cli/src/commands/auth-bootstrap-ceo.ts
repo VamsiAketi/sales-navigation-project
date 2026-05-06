@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
+import fs from "node:fs";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { createDb, instanceUserRoles, invites } from "@paperclipai/db";
+import { authUsers, createDb, instanceUserRoles, invites } from "@paperclipai/db";
 import { loadPaperclipEnvFile } from "../config/env.js";
 import { readConfig, resolveConfigPath } from "../config/store.js";
 
@@ -46,6 +47,54 @@ function resolveBaseUrl(configPath?: string, explicitBaseUrl?: string) {
   return `http://${publicHost}:${port}`;
 }
 
+function readRawConfigObject(configPath?: string): Record<string, unknown> | null {
+  const resolved = resolveConfigPath(configPath);
+  if (!fs.existsSync(resolved)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(resolved, "utf-8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getNestedObject(input: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  const value = input[key];
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function getText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function hasIncompleteConfiguredCeo(rawConfig: Record<string, unknown> | null): boolean {
+  if (!rawConfig) return false;
+
+  // Only enforce this check when a CEO section exists in config.
+  const ceoConfig =
+    getNestedObject(rawConfig, "ceo") ??
+    getNestedObject(rawConfig, "bootstrapCeo") ??
+    getNestedObject(rawConfig, "bootstrap_ceo");
+
+  if (!ceoConfig) return false;
+
+  const ceoUser =
+    getText(ceoConfig.user) ??
+    getText(ceoConfig.username) ??
+    getText(ceoConfig.name);
+  const ceoEmail = getText(ceoConfig.email);
+
+  return !(ceoUser && ceoEmail);
+}
+
 export async function bootstrapCeoInvite(opts: {
   config?: string;
   force?: boolean;
@@ -81,14 +130,33 @@ export async function bootstrapCeoInvite(opts: {
     };
   };
   try {
-    const existingAdminCount = await db
-      .select()
+    const rawConfig = readRawConfigObject(configPath);
+    const configMissingCeoUserOrEmail = hasIncompleteConfiguredCeo(rawConfig);
+    if (configMissingCeoUserOrEmail) {
+      p.log.info("Config has CEO bootstrap section but CEO user/email is incomplete. Generating bootstrap invite.");
+    }
+
+    const existingAdminRows = await db
+      .select({ userId: instanceUserRoles.userId })
       .from(instanceUserRoles)
       .where(eq(instanceUserRoles.role, "instance_admin"))
-      .then((rows) => rows.length);
+      .then((rows) => rows.filter((row) => row.userId !== null));
 
-    if (existingAdminCount > 0 && !opts.force) {
-      p.log.info("Instance already has an admin user. Use --force to generate a new bootstrap invite.");
+    let hasAdminWithEmail = false;
+    for (const admin of existingAdminRows) {
+      const user = await db
+        .select({ email: authUsers.email })
+        .from(authUsers)
+        .where(eq(authUsers.id, admin.userId))
+        .then((rows) => rows[0] ?? null);
+      if (user?.email && user.email.trim().length > 0) {
+        hasAdminWithEmail = true;
+        break;
+      }
+    }
+
+    if (hasAdminWithEmail && !opts.force && !configMissingCeoUserOrEmail) {
+      p.log.info("Instance already has an admin user with email. Use --force to generate a new bootstrap invite.");
       return;
     }
 
