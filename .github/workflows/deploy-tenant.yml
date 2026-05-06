@@ -225,6 +225,8 @@ jobs:
           set -euo pipefail
 
           TENANT="${{ github.event.inputs.tenant }}"
+          NAMESPACE="ai-harness-${TENANT}"
+          RELEASE_NAME="ai-harness-${TENANT}"
           HOST="${TENANT}.app.ai-harness.com"
           BASE_URL="https://${HOST}"
 
@@ -233,10 +235,9 @@ jobs:
           # Generate a random 24-char base64 password
           USER_PASSWORD="$(openssl rand -base64 18)"
 
-          INVITE_URL="${{ steps.capture_invite.outputs.invite_url }}"
-          INVITE_TOKEN="${INVITE_URL##*/}"
+          INITIAL_INVITE_URL="${{ steps.capture_invite.outputs.invite_url }}"
 
-          echo "Using invite URL: ${INVITE_URL}"
+          echo "Initial invite URL from capture step: ${INITIAL_INVITE_URL}"
           echo "Bootstrapping CEO user ${USER_EMAIL} at ${BASE_URL}"
 
           TMP_DIR="$(mktemp -d)"
@@ -309,6 +310,20 @@ jobs:
             return 0
           }
 
+          refresh_invite_token_from_logs() {
+            local line=""
+            local url=""
+            local token=""
+            line="$(kubectl logs deployment/${RELEASE_NAME}-server -n "${NAMESPACE}" --tail=1000 | grep 'Invite URL:' | tail -n1 || true)"
+            if [ -z "$line" ]; then
+              echo ""
+              return 0
+            fi
+            url="$(echo "$line" | awk '{print $NF}')"
+            token="${url##*/}"
+            echo "$token"
+          }
+
           # 1) Sign up or sign in the CEO user
           SIGNUP_RESP="$TMP_DIR/signup.json"
           SIGNUP_STATUS="$(post_json_with_cookies_retry \
@@ -342,6 +357,14 @@ jobs:
 
           echo "Authenticated as ${USER_EMAIL}, accepting invite..."
 
+          INVITE_TOKEN="$(refresh_invite_token_from_logs)"
+          if [ -z "$INVITE_TOKEN" ]; then
+            INVITE_TOKEN="${INITIAL_INVITE_URL##*/}"
+            echo "No fresher invite token found in logs; using captured token."
+          else
+            echo "Using freshest invite token from logs."
+          fi
+
           # 2) Accept the invite as this user
           ACCEPT_RESP="$TMP_DIR/accept.json"
           ACCEPT_STATUS="$(post_json_with_cookies_retry \
@@ -349,6 +372,19 @@ jobs:
             '{"requestType":"human"}' \
             "$ACCEPT_RESP" \
             "accept-invite")"
+
+          if [ "$ACCEPT_STATUS" = "404" ]; then
+            echo "Invite token returned 404; refreshing token from latest logs and retrying once..."
+            RETRY_TOKEN="$(refresh_invite_token_from_logs)"
+            if [ -n "$RETRY_TOKEN" ] && [ "$RETRY_TOKEN" != "$INVITE_TOKEN" ]; then
+              INVITE_TOKEN="$RETRY_TOKEN"
+              ACCEPT_STATUS="$(post_json_with_cookies_retry \
+                "$BASE_URL/api/invites/$INVITE_TOKEN/accept" \
+                '{"requestType":"human"}' \
+                "$ACCEPT_RESP" \
+                "accept-invite-retry")"
+            fi
+          fi
 
           if ! [[ "$ACCEPT_STATUS" =~ ^2 ]]; then
             echo "Failed to accept invite (HTTP $ACCEPT_STATUS)" >&2
