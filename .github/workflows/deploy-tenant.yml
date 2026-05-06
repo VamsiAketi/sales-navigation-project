@@ -183,7 +183,7 @@ jobs:
 
           INVITE_LINE=""
           # Retry a few times in case bootstrap runs slightly after readiness
-          for i in $(seq 1 5); do
+          for i in $(seq 1 15); do
             echo "Attempt ${i} to find invite URL in logs..."
             INVITE_LINE=$(kubectl logs deployment/${RELEASE_NAME}-server -n "${NAMESPACE}" --tail=500 | grep -m1 'Invite URL:' || true)
             if [ -n "$INVITE_LINE" ]; then
