@@ -9,5 +9,9 @@ export type StripeClient = Stripe;
 export function getStripeFromConfig(config: { stripeSecretKey: string | undefined }): Stripe | null {
   const key = config.stripeSecretKey?.trim();
   if (!key) return null;
-  return new Stripe(key);
+  return new Stripe(key, {
+    apiVersion: "2026-04-22.dahlia",
+    maxNetworkRetries: 2,
+    timeout: 20_000,
+  });
 }

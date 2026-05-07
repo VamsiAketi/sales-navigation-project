@@ -115,6 +115,8 @@ export interface Config {
   microsoftAuthClientSecret: string | undefined;
   /** Stripe secret API key (`sk_live_…` / `sk_test_…`). Enables the Stripe Node SDK when set. */
   stripeSecretKey: string | undefined;
+  stripeReconciliationEnabled: boolean;
+  stripeReconciliationIntervalMs: number;
 }
 
 export function loadConfig(): Config {
@@ -335,5 +337,10 @@ export function loadConfig(): Config {
     microsoftAuthClientId,
     microsoftAuthClientSecret,
     stripeSecretKey,
+    stripeReconciliationEnabled: process.env.PAPERCLIP_STRIPE_RECONCILIATION_ENABLED !== "false",
+    stripeReconciliationIntervalMs: Math.max(
+      30_000,
+      Number(process.env.PAPERCLIP_STRIPE_RECONCILIATION_INTERVAL_MS) || 5 * 60 * 1000,
+    ),
   };
 }

@@ -168,6 +168,7 @@ export type {
   StripeBillingStatus,
   StripePortalSession,
   StripeCheckoutSession,
+  StripeCheckoutSessionStatus,
   StripeInvoiceRow,
   StripeInvoicesResponse,
   CostByAgent,

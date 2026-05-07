@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BILLING_TYPES } from "../constants.js";
 
 export const createCostEventSchema = z.object({
+  idempotencyKey: z.string().min(1).max(200).optional(),
   agentId: z.string().uuid(),
   issueId: z.string().uuid().optional().nullable(),
   projectId: z.string().uuid().optional().nullable(),
@@ -34,6 +35,8 @@ export type UpdateBudget = z.infer<typeof updateBudgetSchema>;
 
 export const createStripeCheckoutSessionSchema = z.object({
   amountCents: z.number().int().min(50).max(50_000_00),
+  idempotencyKey: z.string().min(1).max(200).optional(),
+  returnPath: z.string().startsWith("/").optional(),
 });
 
 export type CreateStripeCheckoutSession = z.infer<typeof createStripeCheckoutSessionSchema>;

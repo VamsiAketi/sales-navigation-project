@@ -2,6 +2,7 @@ import type { BillingType } from "../constants.js";
 
 export interface CostEvent {
   id: string;
+  idempotencyKey?: string | null;
   companyId: string;
   agentId: string;
   issueId: string | null;
@@ -34,9 +35,10 @@ export interface CostSummary {
 /** Instance prepaid credit vs cumulative model-based spend (all companies). */
 export interface BillingPrepaidBalance {
   prepaidCents: number;
-  /** Sum of `cost_events.model_cost_cents` across the instance. */
+  /** Sum of `cost_events.model_cost_cents` for this company. */
   usedModelCents: number;
   remainingCents: number;
+  deficitCents: number;
 }
 
 export interface StripeBillingStatus {
@@ -51,6 +53,12 @@ export interface StripePortalSession {
 export interface StripeCheckoutSession {
   sessionId: string;
   url: string;
+}
+
+export interface StripeCheckoutSessionStatus {
+  sessionId: string;
+  status: "paid" | "unpaid";
+  paymentStatus: string | null;
 }
 
 /** Stripe Invoice summary for Billing UI (from `stripe.invoices.list`). */
