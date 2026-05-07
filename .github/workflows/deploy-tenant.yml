@@ -96,6 +96,31 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
+      - name: Release PV if tenant was previously deleted
+        run: |
+          TENANT="${{ github.event.inputs.tenant }}"
+          PV_NAME="ai-harness-${TENANT}-shared-pv"
+
+          PV_STATUS=$(kubectl get pv "${PV_NAME}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+          echo "PV '${PV_NAME}' status: ${PV_STATUS}"
+
+          if [ "${PV_STATUS}" = "Released" ]; then
+            # The stale claimRef holds the old PVC UID, blocking any new PVC from binding.
+            # Clearing it makes the PV Available so the new PVC can bind on helm install.
+            echo "PV is Released — clearing stale claimRef to make it Available..."
+            kubectl patch pv "${PV_NAME}" -p '{"spec":{"claimRef":null}}'
+            echo "Done. PV is now Available for binding."
+          elif [ "${PV_STATUS}" = "Bound" ]; then
+            # PV is actively in use by a live PVC — tenant is running. Do nothing.
+            echo "PV is Bound (tenant is live). No action needed."
+          elif [ "${PV_STATUS}" = "Available" ]; then
+            echo "PV is Available. No action needed."
+          elif [ "${PV_STATUS}" = "NotFound" ]; then
+            echo "PV does not exist. Helm will create it."
+          else
+            echo "PV status is '${PV_STATUS}'. No action taken."
+          fi
+
       - name: Create tenant database on shared Azure PostgreSQL
         run: |
           TENANT="${{ github.event.inputs.tenant }}"
