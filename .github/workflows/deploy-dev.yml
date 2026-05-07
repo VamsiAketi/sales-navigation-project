@@ -47,10 +47,10 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Compute image tag dd.mm.yyyy.N
+      - name: Compute image tag YYYY.MM.DD.N
         id: tag
         run: |
-          DATE_TAG=$(date +'%d.%m.%Y')
+          DATE_TAG=$(date +'%Y.%m.%d')
           # Count existing tags for this date in ACR and increment
           EXISTING_COUNT=$(az acr repository show-tags \
             -n "${{ steps.acr.outputs.acr_name }}" \

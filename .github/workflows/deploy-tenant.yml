@@ -20,7 +20,7 @@ on:
         required: false
         type: string
       imageTag:
-        description: "Image tag to deploy (dd.mm.yyyy.N)"
+        description: "Image tag to deploy (YYYY.MM.DD.N)"
         required: true
         type: string
       createNamespace:
