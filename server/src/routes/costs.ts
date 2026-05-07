@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
-import type { Db } from "@paperclipai/db";
+import Stripe from "stripe";
+import { stripeCheckoutIntents, type Db } from "@paperclipai/db";
 import {
   createCostEventSchema,
   createFinanceEventSchema,
@@ -9,6 +10,7 @@ import {
   upsertBudgetPolicySchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
+import { desc, eq } from "drizzle-orm";
 import {
   accessService,
   budgetService,
@@ -17,7 +19,6 @@ import {
   companyService,
   agentService,
   heartbeatService,
-  instanceSettingsService,
   logActivity,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
@@ -25,8 +26,12 @@ import { badRequest, forbidden } from "../errors.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 import { getStripeFromConfig } from "../stripe-client.js";
 import {
+  createCheckoutIntentRecord,
   findStripeCustomerByCompanyId,
+  getCompanyWalletTotals,
   getOrCreateStripeCustomerForCompany,
+  hasWalletCreditForCheckoutSession,
+  markCheckoutIntentLifecycle,
   stripeBillingBrandingFromEnv,
   stripeSecretsFromEnv,
 } from "../services/stripe-billing.js";
@@ -43,7 +48,62 @@ export function costRoutes(db: Db) {
   const companies = companyService(db);
   const access = accessService(db);
   const agents = agentService(db);
-  const instanceSettings = instanceSettingsService(db);
+
+  function mapStripeInvoice(inv: Stripe.Invoice) {
+    const line0 = inv.lines?.data?.[0];
+    const lineDesc =
+      line0 && typeof line0 === "object" && line0 !== null && "description" in line0
+        ? String((line0 as { description?: string | null }).description ?? "").trim()
+        : "";
+    const description =
+      inv.description?.trim() || lineDesc || (inv.number?.trim() ? `Invoice ${inv.number.trim()}` : null);
+    return {
+      id: inv.id,
+      number: inv.number ?? null,
+      description,
+      status: inv.status ?? null,
+      amountPaidCents: inv.amount_paid ?? 0,
+      currency: inv.currency ?? "usd",
+      createdAt: inv.created ? new Date(inv.created * 1000).toISOString() : new Date().toISOString(),
+      hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
+      invoicePdf: inv.invoice_pdf ?? null,
+    };
+  }
+
+  async function fetchInvoicesFromRecentCheckoutIntents(stripe: Stripe, companyId: string) {
+    const intents = await db
+      .select({
+        checkoutSessionId: stripeCheckoutIntents.checkoutSessionId,
+      })
+      .from(stripeCheckoutIntents)
+      .where(eq(stripeCheckoutIntents.companyId, companyId))
+      .orderBy(desc(stripeCheckoutIntents.createdAt))
+      .limit(25);
+
+    const invoices: Stripe.Invoice[] = [];
+    const seenInvoiceIds = new Set<string>();
+    for (const intent of intents) {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(intent.checkoutSessionId, {
+          expand: ["invoice"],
+        });
+        let invoice: Stripe.Invoice | null = null;
+        if (typeof session.invoice === "string") {
+          invoice = await stripe.invoices.retrieve(session.invoice);
+        } else if (session.invoice && typeof session.invoice === "object" && "id" in session.invoice) {
+          invoice = session.invoice as Stripe.Invoice;
+        }
+        if (!invoice || seenInvoiceIds.has(invoice.id)) continue;
+        seenInvoiceIds.add(invoice.id);
+        invoices.push(invoice);
+      } catch {
+        // Ignore stale/missing checkout sessions so one bad intent doesn't fail the whole invoices API.
+        continue;
+      }
+    }
+
+    return invoices.map(mapStripeInvoice);
+  }
 
   async function assertCostsReadAccess(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
@@ -149,11 +209,13 @@ export function costRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     await assertCostsReadAccess(req, companyId);
-    const general = await instanceSettings.getGeneral();
-    const prepaidCents = general.billingPrepaidCents ?? 0;
-    const usedModelCents = await costs.totalModelCostCentsAllCompanies();
-    const remainingCents = Math.max(0, prepaidCents - usedModelCents);
-    res.json({ prepaidCents, usedModelCents, remainingCents });
+    const wallet = await getCompanyWalletTotals(db, companyId);
+    const prepaidCents = wallet.creditCents;
+    const usedModelCents = wallet.debitCents;
+    const net = wallet.netCents;
+    const remainingCents = Math.max(0, net);
+    const deficitCents = net < 0 ? Math.abs(net) : 0;
+    res.json({ prepaidCents, usedModelCents, remainingCents, deficitCents });
   });
 
   router.get("/companies/:companyId/billing/stripe-status", async (req, res) => {
@@ -177,33 +239,20 @@ export function costRoutes(db: Db) {
       res.json({ invoices: [] });
       return;
     }
-    const customer = await findStripeCustomerByCompanyId(stripe, companyId);
+    const customer = await findStripeCustomerByCompanyId(db, stripe, companyId);
     if (!customer) {
-      res.json({ invoices: [] });
+      const fallbackInvoices = await fetchInvoicesFromRecentCheckoutIntents(stripe, companyId);
+      res.json({ invoices: fallbackInvoices });
       return;
     }
     const list = await stripe.invoices.list({ customer: customer.id, limit: 100 });
-    const invoices = list.data.map((inv) => {
-      const line0 = inv.lines?.data?.[0];
-      const lineDesc =
-        line0 && typeof line0 === "object" && line0 !== null && "description" in line0
-          ? String((line0 as { description?: string | null }).description ?? "").trim()
-          : "";
-      const description =
-        inv.description?.trim() || lineDesc || (inv.number?.trim() ? `Invoice ${inv.number.trim()}` : null);
-      return {
-        id: inv.id,
-        number: inv.number ?? null,
-        description,
-        status: inv.status ?? null,
-        amountPaidCents: inv.amount_paid ?? 0,
-        currency: inv.currency ?? "usd",
-        createdAt: inv.created ? new Date(inv.created * 1000).toISOString() : new Date().toISOString(),
-        hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
-        invoicePdf: inv.invoice_pdf ?? null,
-      };
-    });
-    res.json({ invoices });
+    const invoices = list.data.map(mapStripeInvoice);
+    if (invoices.length > 0) {
+      res.json({ invoices });
+      return;
+    }
+    const fallbackInvoices = await fetchInvoicesFromRecentCheckoutIntents(stripe, companyId);
+    res.json({ invoices: fallbackInvoices });
   });
   
   router.post("/companies/:companyId/billing/stripe/portal-session", async (req, res) => {
@@ -223,12 +272,16 @@ export function costRoutes(db: Db) {
     }
     const branding = stripeBillingBrandingFromEnv();
     const customer = await getOrCreateStripeCustomerForCompany({
+      db,
       stripe,
       companyId,
       companyName: branding.businessName,
       companyDescription: branding.businessDescription,
     });
-    const returnUrl = `${req.protocol}://${req.get("host")}/billing`;
+    const returnPath = typeof req.body?.returnPath === "string" && req.body.returnPath.startsWith("/")
+      ? req.body.returnPath
+      : "/company/billing";
+    const returnUrl = `${req.protocol}://${req.get("host")}${returnPath}`;
     const session = await stripe.billingPortal.sessions.create({
       customer: customer.id,
       return_url: returnUrl,
@@ -256,17 +309,21 @@ export function costRoutes(db: Db) {
       }
       const branding = stripeBillingBrandingFromEnv();
       const customer = await getOrCreateStripeCustomerForCompany({
+        db,
         stripe,
         companyId,
         companyName: branding.businessName,
         companyDescription: branding.businessDescription,
       });
       const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const returnPath = req.body.returnPath?.startsWith("/") ? req.body.returnPath : "/company/billing";
+      const successUrl = `${baseUrl}${returnPath}?stripe=payment-success&session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = `${baseUrl}${returnPath}?stripe=payment-cancelled`;
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         customer: customer.id,
-        success_url: `${baseUrl}/company/billing?stripe=topup-success`,
-        cancel_url: `${baseUrl}/company/billing`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
         payment_method_types: ["card"],
         payment_method_options: {
           card: {
@@ -292,17 +349,61 @@ export function costRoutes(db: Db) {
             },
           },
         ],
-      });
+      }, req.body.idempotencyKey ? { idempotencyKey: req.body.idempotencyKey } : undefined);
       if (!session.url) {
         res.status(500).json({ error: "Stripe checkout session did not include a redirect URL" });
         return;
       }
+      await createCheckoutIntentRecord({
+        db,
+        companyId,
+        checkoutSessionId: session.id,
+        amountCents: req.body.amountCents,
+        currency: "usd",
+        stripeCustomerId: customer.id,
+        paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null,
+        status: "created",
+        metadata: { requestedBy: req.actor.type, idempotencyKey: req.body.idempotencyKey ?? null },
+      });
       res.json({
         sessionId: session.id,
         url: session.url,
       });
     },
   );
+
+  router.get("/companies/:companyId/billing/stripe/checkout-session/:sessionId/status", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const sessionId = req.params.sessionId as string;
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    const { stripeSecretKey } = stripeSecretsFromEnv();
+    const stripe = getStripeFromConfig({ stripeSecretKey });
+    if (!stripe) {
+      res.status(503).json({ error: "Stripe is not configured" });
+      return;
+    }
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const sessionCompanyId = session.metadata?.paperclip_company_id?.trim();
+    if (!sessionCompanyId || sessionCompanyId !== companyId) {
+      res.status(404).json({ error: "Checkout session not found" });
+      return;
+    }
+    const credited = await hasWalletCreditForCheckoutSession(db, companyId, sessionId);
+    const paid = session.payment_status === "paid" && credited;
+    if (paid) {
+      await markCheckoutIntentLifecycle(db, sessionId, "reconciled");
+    } else if (session.payment_status === "paid") {
+      await markCheckoutIntentLifecycle(db, sessionId, "paid");
+    } else {
+      await markCheckoutIntentLifecycle(db, sessionId, "failed");
+    }
+    res.json({
+      sessionId,
+      status: paid ? "paid" : "unpaid",
+      paymentStatus: session.payment_status ?? null,
+    });
+  });
 
   router.get("/companies/:companyId/costs/daily", async (req, res) => {
     const companyId = req.params.companyId as string;
