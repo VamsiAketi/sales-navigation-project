@@ -81,6 +81,22 @@ const mockInstanceSettingsService = vi.hoisted(() => ({
     billingPrepaidCents: 0,
   }),
 }));
+const mockStripeBilling = vi.hoisted(() => ({
+  createCheckoutIntentRecord: vi.fn(),
+  findStripeCustomerByCompanyId: vi.fn(),
+  getCompanyWalletTotals: vi.fn().mockResolvedValue({ creditCents: 0, debitCents: 0, netCents: 0 }),
+  getOrCreateStripeCustomerForCompany: vi.fn(),
+  hasWalletCreditForCheckoutSession: vi.fn().mockResolvedValue(false),
+  markCheckoutIntentLifecycle: vi.fn(),
+  stripeBillingBrandingFromEnv: vi.fn().mockReturnValue({
+    businessName: "AI-HARNESS",
+    businessDescription: "Human-Led. AI-Powered. One Team.",
+  }),
+  stripeSecretsFromEnv: vi.fn().mockReturnValue({
+    stripeSecretKey: undefined,
+    stripeWebhookSecret: undefined,
+  }),
+}));
 
 vi.mock("../services/index.js", () => ({
   accessService: () => ({
@@ -103,6 +119,8 @@ vi.mock("../services/index.js", () => ({
 vi.mock("../services/quota-windows.js", () => ({
   fetchAllQuotaWindows: mockFetchAllQuotaWindows,
 }));
+
+vi.mock("../services/stripe-billing.js", () => mockStripeBilling);
 
 function createApp() {
   const app = express();
@@ -201,13 +219,11 @@ describe("cost routes", () => {
   });
 
   it("returns prepaid balance from instance settings and aggregate model cost", async () => {
-    mockInstanceSettingsService.getGeneral.mockResolvedValueOnce({
-      censorUsernameInLogs: false,
-      keyboardShortcuts: false,
-      feedbackDataSharingPreference: "prompt",
-      billingPrepaidCents: 100_000,
+    mockStripeBilling.getCompanyWalletTotals.mockResolvedValueOnce({
+      creditCents: 100_000,
+      debitCents: 25_000,
+      netCents: 75_000,
     });
-    mockCostService.totalModelCostCentsAllCompanies.mockResolvedValueOnce(25_000);
     const app = createApp();
     const res = await request(app).get("/api/companies/company-1/billing/prepaid-balance");
     expect(res.status).toBe(200);
@@ -215,21 +231,21 @@ describe("cost routes", () => {
       prepaidCents: 100_000,
       usedModelCents: 25_000,
       remainingCents: 75_000,
+      deficitCents: 0,
     });
   });
 
   it("clamps prepaid remaining at zero when usage exceeds prepaid", async () => {
-    mockInstanceSettingsService.getGeneral.mockResolvedValueOnce({
-      censorUsernameInLogs: false,
-      keyboardShortcuts: false,
-      feedbackDataSharingPreference: "prompt",
-      billingPrepaidCents: 10_000,
+    mockStripeBilling.getCompanyWalletTotals.mockResolvedValueOnce({
+      creditCents: 10_000,
+      debitCents: 50_000,
+      netCents: -40_000,
     });
-    mockCostService.totalModelCostCentsAllCompanies.mockResolvedValueOnce(50_000);
     const app = createApp();
     const res = await request(app).get("/api/companies/company-1/billing/prepaid-balance");
     expect(res.status).toBe(200);
     expect(res.body.remainingCents).toBe(0);
+    expect(res.body.deficitCents).toBe(40_000);
   });
 
   it("rejects company budget updates for board users outside the company", async () => {
