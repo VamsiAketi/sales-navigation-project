@@ -96,7 +96,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      - name: Release PV if tenant was previously deleted
+      - name: Recreate PV if tenant was previously deleted
         run: |
           TENANT="${{ github.event.inputs.tenant }}"
           PV_NAME="ai-harness-${TENANT}-shared-pv"
@@ -105,13 +105,12 @@ jobs:
           echo "PV '${PV_NAME}' status: ${PV_STATUS}"
 
           if [ "${PV_STATUS}" = "Released" ]; then
-            # The stale claimRef holds the old PVC UID, blocking any new PVC from binding.
-            # Clearing it makes the PV Available so the new PVC can bind on helm install.
-            echo "PV is Released — clearing stale claimRef to make it Available..."
-            kubectl patch pv "${PV_NAME}" -p '{"spec":{"claimRef":null}}'
-            echo "Done. PV is now Available for binding."
+            # PVC was deleted with the namespace but PV survived (Retain policy).
+            # Deleting it lets Helm recreate it fresh — no stale claimRef UID blocking binding.
+            echo "PV is Released — deleting so Helm recreates it cleanly..."
+            kubectl delete pv "${PV_NAME}"
+            echo "Done. Helm will create a fresh PV on install."
           elif [ "${PV_STATUS}" = "Bound" ]; then
-            # PV is actively in use by a live PVC — tenant is running. Do nothing.
             echo "PV is Bound (tenant is live). No action needed."
           elif [ "${PV_STATUS}" = "Available" ]; then
             echo "PV is Available. No action needed."
