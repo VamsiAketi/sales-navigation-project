@@ -35,7 +35,6 @@ on:
 env:
   IMAGE_NAME: ai-harness
   TLS_SECRET_NAME: app-ai-harness-tls
-  TLS_SOURCE_NAMESPACE: dev
 
 jobs:
   deploy-tenant:
@@ -98,15 +97,15 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      - name: Ensure namespace and TLS secret
+      - name: Ensure namespace and TLS certificate
         run: |
           set -euo pipefail
 
           TENANT="${{ github.event.inputs.tenant }}"
           CREATE_NS="${{ github.event.inputs.createNamespace }}"
           NAMESPACE="ai-harness-${TENANT}"
+          HOST="${TENANT}.app.ai-harness.com"
           TLS_SECRET_NAME="${{ env.TLS_SECRET_NAME }}"
-          TLS_SOURCE_NAMESPACE="${{ env.TLS_SOURCE_NAMESPACE }}"
 
           if [ "${CREATE_NS}" = "true" ]; then
             kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
@@ -117,12 +116,28 @@ jobs:
             exit 0
           fi
 
-          echo "TLS secret ${TLS_SECRET_NAME} missing in ${NAMESPACE}; copying from ${TLS_SOURCE_NAMESPACE}."
-          kubectl get secret "${TLS_SECRET_NAME}" -n "${TLS_SOURCE_NAMESPACE}" -o json \
-            | jq 'del(.metadata.annotations, .metadata.creationTimestamp, .metadata.resourceVersion, .metadata.uid, .metadata.managedFields, .metadata.ownerReferences) | .metadata.namespace = "'"${NAMESPACE}"'"' \
-            | kubectl apply -f -
+          if kubectl get certificate "${TLS_SECRET_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+            echo "Certificate ${TLS_SECRET_NAME} already exists in ${NAMESPACE}; cert-manager will reconcile secret."
+            exit 0
+          fi
 
-          echo "TLS secret ${TLS_SECRET_NAME} copied to ${NAMESPACE}."
+          echo "TLS secret ${TLS_SECRET_NAME} missing in ${NAMESPACE}; creating cert-manager Certificate for host ${HOST}."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: ${TLS_SECRET_NAME}
+            namespace: ${NAMESPACE}
+          spec:
+            secretName: ${TLS_SECRET_NAME}
+            issuerRef:
+              kind: ClusterIssuer
+              name: letsencrypt-cert-issuer
+            dnsNames:
+              - ${HOST}
+          EOF
+
+          echo "Certificate ${TLS_SECRET_NAME} created in ${NAMESPACE}."
 
       - name: Release PV if tenant was previously deleted
         run: |
