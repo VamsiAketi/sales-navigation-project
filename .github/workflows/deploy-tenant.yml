@@ -289,6 +289,19 @@ jobs:
             echo "_Note: This URL is typically single-use and time-limited. Share it only with the intended recipient._"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Wait for TLS certificate to be ready
+        if: steps.capture_invite.outputs.invite_url != '' && github.event.inputs.userEmail != '' && github.event.inputs.userName != ''
+        run: |
+          TENANT="${{ github.event.inputs.tenant }}"
+          NAMESPACE="ai-harness-${TENANT}"
+
+          echo "Waiting for TLS certificate to be issued by cert-manager..."
+          kubectl wait certificate/app-ai-harness-tls \
+            --for=condition=Ready \
+            --namespace="${NAMESPACE}" \
+            --timeout=300s
+          echo "TLS certificate is ready."
+
       - name: Auto-bootstrap CEO user and accept invite
         id: bootstrap_ceo
         if: steps.capture_invite.outputs.invite_url != '' && github.event.inputs.userEmail != '' && github.event.inputs.userName != ''
@@ -498,4 +511,3 @@ jobs:
 
             Thanks,
             AI-Harness Support
-
