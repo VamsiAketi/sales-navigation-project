@@ -122,11 +122,26 @@ jobs:
           fi
 
       - name: Create tenant database on shared Azure PostgreSQL
+        id: create_db
         run: |
           TENANT="${{ github.event.inputs.tenant }}"
           DB_NAME="ai-harness-${TENANT}"
 
-          echo "Creating database '${DB_NAME}' on shared Azure PostgreSQL instance..."
+          # Check if DB already exists before creating so we know if it's fresh
+          DB_EXISTS=$(az postgres flexible-server db show \
+            --resource-group "${{ secrets.AZURE_POSTGRES_RG }}" \
+            --server-name   "${{ secrets.AZURE_POSTGRES_SERVER }}" \
+            --database-name "${DB_NAME}" \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "${DB_EXISTS}" ]; then
+            echo "Database '${DB_NAME}' does not exist. Creating fresh..."
+            echo "db_is_fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Database '${DB_NAME}' already exists."
+            echo "db_is_fresh=false" >> "$GITHUB_OUTPUT"
+          fi
+
           az postgres flexible-server db create \
             --resource-group "${{ secrets.AZURE_POSTGRES_RG }}" \
             --server-name   "${{ secrets.AZURE_POSTGRES_SERVER }}" \
@@ -134,6 +149,38 @@ jobs:
             2>&1 | grep -v "already exists" || true
 
           echo "Database '${DB_NAME}' is ready."
+
+      - name: Clear stale config if DB is fresh
+        if: steps.create_db.outputs.db_is_fresh == 'true'
+        run: |
+          TENANT="${{ github.event.inputs.tenant }}"
+          CONFIG_PATH="${TENANT}/instances/default/config.json"
+
+          echo "DB is fresh — checking for stale config.json on file share..."
+
+          STORAGE_KEY=$(az storage account keys list \
+            --resource-group "ai-harness-prod" \
+            --account-name   "aiharnessstorage" \
+            --query "[0].value" -o tsv)
+
+          FILE_EXISTS=$(az storage file exists \
+            --account-name "aiharnessstorage" \
+            --share-name   "paperclip-shared" \
+            --path         "${CONFIG_PATH}" \
+            --account-key  "${STORAGE_KEY}" \
+            --query        "exists" -o tsv)
+
+          if [ "${FILE_EXISTS}" = "true" ]; then
+            echo "Stale config.json found. Deleting so app onboards fresh against new DB..."
+            az storage file delete \
+              --account-name "aiharnessstorage" \
+              --share-name   "paperclip-shared" \
+              --path         "${CONFIG_PATH}" \
+              --account-key  "${STORAGE_KEY}"
+            echo "config.json deleted. App will onboard fresh and generate a new invite URL."
+          else
+            echo "No stale config.json found. Nothing to clear."
+          fi
 
       - name: Deploy tenant with Helm
         run: |
