@@ -67,7 +67,7 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Resolve image tag and validate
+      - name: Resolve image tag and validate 
         id: tag
         run: |
           IMAGE_TAG="${{ github.event.inputs.imageTag }}"
