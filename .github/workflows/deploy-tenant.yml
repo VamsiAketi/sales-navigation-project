@@ -34,6 +34,7 @@ on:
 
 env:
   IMAGE_NAME: ai-harness
+  TLS_SECRET_NAME: app-ai-harness-tls
 
 jobs:
   deploy-tenant:
@@ -95,6 +96,64 @@ jobs:
 
       - name: Install Helm
         uses: azure/setup-helm@v4
+
+      - name: Ensure namespace and TLS certificate
+        run: |
+          set -euo pipefail
+
+          TENANT="${{ github.event.inputs.tenant }}"
+          CREATE_NS="${{ github.event.inputs.createNamespace }}"
+          NAMESPACE="ai-harness-${TENANT}"
+          HOST="${TENANT}.app.ai-harness.com"
+          TLS_SECRET_NAME="${{ env.TLS_SECRET_NAME }}"
+
+          if [ "${CREATE_NS}" = "true" ]; then
+            kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
+          fi
+
+          if kubectl get secret "${TLS_SECRET_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+            echo "TLS secret ${TLS_SECRET_NAME} already exists in ${NAMESPACE}."
+            exit 0
+          fi
+
+          if kubectl get certificate "${TLS_SECRET_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+            echo "Certificate ${TLS_SECRET_NAME} already exists in ${NAMESPACE}; waiting for cert-manager to create secret."
+          else
+            echo "TLS secret ${TLS_SECRET_NAME} missing in ${NAMESPACE}; creating cert-manager Certificate for host ${HOST}."
+    printf '%s\n' \
+      "apiVersion: cert-manager.io/v1" \
+      "kind: Certificate" \
+      "metadata:" \
+      "  name: ${TLS_SECRET_NAME}" \
+      "  namespace: ${NAMESPACE}" \
+      "spec:" \
+      "  secretName: ${TLS_SECRET_NAME}" \
+      "  issuerRef:" \
+      "    kind: ClusterIssuer" \
+      "    name: letsencrypt-cert-issuer" \
+      "  dnsNames:" \
+      "    - ${HOST}" \
+      | kubectl apply -f -
+            echo "Certificate ${TLS_SECRET_NAME} created in ${NAMESPACE}."
+          fi
+
+          echo "Waiting for certificate/${TLS_SECRET_NAME} to become Ready..."
+          if ! kubectl wait certificate/"${TLS_SECRET_NAME}" --for=condition=Ready --namespace="${NAMESPACE}" --timeout=300s; then
+            echo "Certificate was not Ready in time. Diagnostic output:"
+            kubectl describe certificate "${TLS_SECRET_NAME}" -n "${NAMESPACE}" || true
+            kubectl get certificaterequest -n "${NAMESPACE}" || true
+            kubectl get order -n "${NAMESPACE}" || true
+            kubectl get challenge -n "${NAMESPACE}" || true
+            exit 1
+          fi
+
+          if ! kubectl get secret "${TLS_SECRET_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+            echo "Certificate is Ready but secret ${TLS_SECRET_NAME} is still missing in ${NAMESPACE}."
+            kubectl describe certificate "${TLS_SECRET_NAME}" -n "${NAMESPACE}" || true
+            exit 1
+          fi
+
+          echo "TLS secret ${TLS_SECRET_NAME} is present in ${NAMESPACE}."
 
       - name: Release PV if tenant was previously deleted
         run: |
@@ -289,19 +348,6 @@ jobs:
             echo ""
             echo "_Note: This URL is typically single-use and time-limited. Share it only with the intended recipient._"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Wait for TLS certificate to be ready
-        if: steps.capture_invite.outputs.invite_url != '' && github.event.inputs.userEmail != '' && github.event.inputs.userName != ''
-        run: |
-          TENANT="${{ github.event.inputs.tenant }}"
-          NAMESPACE="ai-harness-${TENANT}"
-
-          echo "Waiting for TLS certificate to be issued by cert-manager..."
-          kubectl wait certificate/app-ai-harness-tls \
-            --for=condition=Ready \
-            --namespace="${NAMESPACE}" \
-            --timeout=300s
-          echo "TLS certificate is ready."
 
       - name: Auto-bootstrap CEO user and accept invite
         id: bootstrap_ceo
