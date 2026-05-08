@@ -120,20 +120,20 @@ jobs:
             echo "Certificate ${TLS_SECRET_NAME} already exists in ${NAMESPACE}; waiting for cert-manager to create secret."
           else
             echo "TLS secret ${TLS_SECRET_NAME} missing in ${NAMESPACE}; creating cert-manager Certificate for host ${HOST}."
-            cat <<EOF | kubectl apply -f -
-            apiVersion: cert-manager.io/v1
-            kind: Certificate
-            metadata:
-              name: ${TLS_SECRET_NAME}
-              namespace: ${NAMESPACE}
-            spec:
-              secretName: ${TLS_SECRET_NAME}
-              issuerRef:
-                kind: ClusterIssuer
-                name: letsencrypt-cert-issuer
-              dnsNames:
-                - ${HOST}
-            EOF
+    printf '%s\n' \
+      "apiVersion: cert-manager.io/v1" \
+      "kind: Certificate" \
+      "metadata:" \
+      "  name: ${TLS_SECRET_NAME}" \
+      "  namespace: ${NAMESPACE}" \
+      "spec:" \
+      "  secretName: ${TLS_SECRET_NAME}" \
+      "  issuerRef:" \
+      "    kind: ClusterIssuer" \
+      "    name: letsencrypt-cert-issuer" \
+      "  dnsNames:" \
+      "    - ${HOST}" \
+      | kubectl apply -f -
             echo "Certificate ${TLS_SECRET_NAME} created in ${NAMESPACE}."
           fi
 
