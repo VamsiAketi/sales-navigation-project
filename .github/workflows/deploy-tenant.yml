@@ -117,27 +117,43 @@ jobs:
           fi
 
           if kubectl get certificate "${TLS_SECRET_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
-            echo "Certificate ${TLS_SECRET_NAME} already exists in ${NAMESPACE}; cert-manager will reconcile secret."
-            exit 0
+            echo "Certificate ${TLS_SECRET_NAME} already exists in ${NAMESPACE}; waiting for cert-manager to create secret."
+          else
+            echo "TLS secret ${TLS_SECRET_NAME} missing in ${NAMESPACE}; creating cert-manager Certificate for host ${HOST}."
+            cat <<EOF | kubectl apply -f -
+            apiVersion: cert-manager.io/v1
+            kind: Certificate
+            metadata:
+              name: ${TLS_SECRET_NAME}
+              namespace: ${NAMESPACE}
+            spec:
+              secretName: ${TLS_SECRET_NAME}
+              issuerRef:
+                kind: ClusterIssuer
+                name: letsencrypt-cert-issuer
+              dnsNames:
+                - ${HOST}
+            EOF
+            echo "Certificate ${TLS_SECRET_NAME} created in ${NAMESPACE}."
           fi
 
-          echo "TLS secret ${TLS_SECRET_NAME} missing in ${NAMESPACE}; creating cert-manager Certificate for host ${HOST}."
-          cat <<EOF | kubectl apply -f -
-          apiVersion: cert-manager.io/v1
-          kind: Certificate
-          metadata:
-            name: ${TLS_SECRET_NAME}
-            namespace: ${NAMESPACE}
-          spec:
-            secretName: ${TLS_SECRET_NAME}
-            issuerRef:
-              kind: ClusterIssuer
-              name: letsencrypt-cert-issuer
-            dnsNames:
-              - ${HOST}
-          EOF
+          echo "Waiting for certificate/${TLS_SECRET_NAME} to become Ready..."
+          if ! kubectl wait certificate/"${TLS_SECRET_NAME}" --for=condition=Ready --namespace="${NAMESPACE}" --timeout=300s; then
+            echo "Certificate was not Ready in time. Diagnostic output:"
+            kubectl describe certificate "${TLS_SECRET_NAME}" -n "${NAMESPACE}" || true
+            kubectl get certificaterequest -n "${NAMESPACE}" || true
+            kubectl get order -n "${NAMESPACE}" || true
+            kubectl get challenge -n "${NAMESPACE}" || true
+            exit 1
+          fi
 
-          echo "Certificate ${TLS_SECRET_NAME} created in ${NAMESPACE}."
+          if ! kubectl get secret "${TLS_SECRET_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+            echo "Certificate is Ready but secret ${TLS_SECRET_NAME} is still missing in ${NAMESPACE}."
+            kubectl describe certificate "${TLS_SECRET_NAME}" -n "${NAMESPACE}" || true
+            exit 1
+          fi
+
+          echo "TLS secret ${TLS_SECRET_NAME} is present in ${NAMESPACE}."
 
       - name: Release PV if tenant was previously deleted
         run: |
