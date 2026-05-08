@@ -34,6 +34,8 @@ on:
 
 env:
   IMAGE_NAME: ai-harness
+  TLS_SECRET_NAME: app-ai-harness-tls
+  TLS_SOURCE_NAMESPACE: dev
 
 jobs:
   deploy-tenant:
@@ -95,6 +97,32 @@ jobs:
 
       - name: Install Helm
         uses: azure/setup-helm@v4
+
+      - name: Ensure namespace and TLS secret
+        run: |
+          set -euo pipefail
+
+          TENANT="${{ github.event.inputs.tenant }}"
+          CREATE_NS="${{ github.event.inputs.createNamespace }}"
+          NAMESPACE="ai-harness-${TENANT}"
+          TLS_SECRET_NAME="${{ env.TLS_SECRET_NAME }}"
+          TLS_SOURCE_NAMESPACE="${{ env.TLS_SOURCE_NAMESPACE }}"
+
+          if [ "${CREATE_NS}" = "true" ]; then
+            kubectl get ns "${NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${NAMESPACE}"
+          fi
+
+          if kubectl get secret "${TLS_SECRET_NAME}" -n "${NAMESPACE}" >/dev/null 2>&1; then
+            echo "TLS secret ${TLS_SECRET_NAME} already exists in ${NAMESPACE}."
+            exit 0
+          fi
+
+          echo "TLS secret ${TLS_SECRET_NAME} missing in ${NAMESPACE}; copying from ${TLS_SOURCE_NAMESPACE}."
+          kubectl get secret "${TLS_SECRET_NAME}" -n "${TLS_SOURCE_NAMESPACE}" -o json \
+            | jq 'del(.metadata.annotations, .metadata.creationTimestamp, .metadata.resourceVersion, .metadata.uid, .metadata.managedFields, .metadata.ownerReferences) | .metadata.namespace = "'"${NAMESPACE}"'"' \
+            | kubectl apply -f -
+
+          echo "TLS secret ${TLS_SECRET_NAME} copied to ${NAMESPACE}."
 
       - name: Release PV if tenant was previously deleted
         run: |
