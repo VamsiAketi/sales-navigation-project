@@ -1991,6 +1991,25 @@ export function accessRoutes(
     if (!allowed) throw forbidden("Permission denied");
   }
 
+  async function assertCanCreateHumanInvite(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "agent") {
+      if (!req.actor.agentId) throw forbidden("Agent authentication required");
+      const allowed = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "users:invite",
+      );
+      if (!allowed) throw forbidden("Permission denied");
+      return;
+    }
+    if (req.actor.type !== "board") throw unauthorized();
+    if (isLocalImplicit(req)) return;
+    const allowed = await access.canUser(companyId, req.actor.userId, "users:invite");
+    if (!allowed) throw forbidden("Permission denied");
+  }
+
   async function createCompanyInviteForCompany(input: {
     req: Request;
     companyId: string;
@@ -2120,7 +2139,7 @@ export function accessRoutes(
     validate(createHumanInviteSchema),
     async (req, res) => {
       const companyId = req.params.companyId as string;
-      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+      await assertCanCreateHumanInvite(req, companyId);
 
       if (opts.deploymentMode !== "authenticated") {
         throw badRequest(
