@@ -43,11 +43,11 @@ const AZURE = {
   purple: "#8764b8",
   gray: "#8a8886",
   grayDark: "#605e5c",
-  grid: "hsl(var(--border))",
-  axis: "hsl(var(--muted-foreground))",
+  grid: "var(--border)",
+  axis: "var(--muted-foreground)",
 } as const;
 
-const TICK_STYLE = { fontSize: 10, fill: "hsl(var(--muted-foreground))", fontFamily: "inherit" };
+const TICK_STYLE = { fontSize: 10, fill: "var(--muted-foreground)", fontFamily: "inherit" };
 
 /* ── Shared chart primitives (Azure-style plot well + grid) ──────────────── */
 
@@ -500,7 +500,7 @@ export function SuccessRateChart({ runs }: { runs: HeartbeatRun[] }) {
               strokeWidth={2}
               dot={false}
               connectNulls
-              activeDot={{ r: 4, fill: AZURE.blue, stroke: "hsl(var(--card))", strokeWidth: 2 }}
+              activeDot={{ r: 4, fill: AZURE.blue, stroke: "var(--card)", strokeWidth: 2 }}
             />
           </LineChart>
         </ResponsiveContainer>

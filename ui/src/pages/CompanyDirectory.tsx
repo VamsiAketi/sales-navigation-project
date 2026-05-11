@@ -1862,7 +1862,76 @@ export function CompanyDirectory() {
   return (
     <div className="space-y-6">
       <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-            <DialogContent className="flex max-h-[min(92dvh,44rem)] w-full max-w-2xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
+        <DialogContent className="flex max-h-[min(92dvh,44rem)] w-full max-w-2xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
+          {humanInviteCredentials ? (
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
+              <div className="mx-auto w-full max-w-xl">
+                <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
+                  <p className="text-sm font-medium text-foreground">Temporary credentials (share securely)</p>
+                  <p>
+                    Name: <span className="font-mono">{humanInviteCredentials.name}</span>
+                  </p>
+                  <p>
+                    Email: <span className="font-mono">{humanInviteCredentials.email}</span>
+                  </p>
+                  <p>
+                    Username:{" "}
+                    <span className="font-mono">
+                      {humanInviteCredentials.temporaryUsername}
+                    </span>
+                  </p>
+                  <p>
+                    Password:{" "}
+                    <span className="font-mono">
+                      {humanInviteCredentials.temporaryPassword}
+                    </span>
+                  </p>
+                  <div className="pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-full px-5 shadow-sm"
+                      onClick={async () => {
+                        const credentialsText = [
+                          `Name: ${humanInviteCredentials.name}`,
+                          `Email: ${humanInviteCredentials.email}`,
+                          `Username: ${humanInviteCredentials.temporaryUsername}`,
+                          `Password: ${humanInviteCredentials.temporaryPassword}`,
+                        ].join("\n");
+                        try {
+                          await navigator.clipboard.writeText(credentialsText);
+                          setHumanInviteCredentialsCopied(true);
+                          window.setTimeout(() => setHumanInviteCredentialsCopied(false), 2000);
+                          pushToast({
+                            title: "Credentials copied",
+                            body: "Temporary login details were copied to clipboard.",
+                            tone: "success",
+                          });
+                        } catch {
+                          pushToast({
+                            title: "Copy failed",
+                            body: "Clipboard is unavailable. Copy the details manually.",
+                            tone: "error",
+                          });
+                        }
+                      }}
+                    >
+                      {humanInviteCredentialsCopied ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Check className="h-4 w-4" />
+                          Copied
+                        </span>
+                      ) : (
+                        "Copy credentials"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
               <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
                 <DialogHeader>
                   <DialogTitle>Invite Human</DialogTitle>
@@ -1928,70 +1997,6 @@ export function CompanyDirectory() {
                         />
                       </div>
                     </div>
-                    {humanInviteCredentials && (
-                      <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
-                        <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
-                        <p>
-                          Name: <span className="font-mono">{humanInviteCredentials.name}</span>
-                        </p>
-                        <p>
-                          Email: <span className="font-mono">{humanInviteCredentials.email}</span>
-                        </p>
-                        <p>
-                          Username:{" "}
-                          <span className="font-mono">
-                            {humanInviteCredentials.temporaryUsername}
-                          </span>
-                        </p>
-                        <p>
-                          Password:{" "}
-                          <span className="font-mono">
-                            {humanInviteCredentials.temporaryPassword}
-                          </span>
-                        </p>
-                        <div className="pt-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="rounded-full px-5 shadow-sm"
-                            onClick={async () => {
-                              const credentialsText = [
-                                `Name: ${humanInviteCredentials.name}`,
-                                `Email: ${humanInviteCredentials.email}`,
-                                `Username: ${humanInviteCredentials.temporaryUsername}`,
-                                `Password: ${humanInviteCredentials.temporaryPassword}`,
-                              ].join("\n");
-                              try {
-                                await navigator.clipboard.writeText(credentialsText);
-                                setHumanInviteCredentialsCopied(true);
-                                window.setTimeout(() => setHumanInviteCredentialsCopied(false), 2000);
-                                pushToast({
-                                  title: "Credentials copied",
-                                  body: "Temporary login details were copied to clipboard.",
-                                  tone: "success",
-                                });
-                              } catch {
-                                pushToast({
-                                  title: "Copy failed",
-                                  body: "Clipboard is unavailable. Copy the details manually.",
-                                  tone: "error",
-                                });
-                              }
-                            }}
-                          >
-                            {humanInviteCredentialsCopied ? (
-                              <span className="inline-flex items-center gap-1.5">
-                                <Check className="h-4 w-4" />
-                                Copied
-                              </span>
-                            ) : (
-                              "Copy credentials"
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </section>
                   <section className="min-w-0 space-y-3">
                     <h3 className="text-sm font-semibold tracking-tight text-foreground">Role permissions</h3>
@@ -2034,7 +2039,9 @@ export function CompanyDirectory() {
                   </Button>
                 </div>
               </div>
-            </DialogContent>
+            </>
+          )}
+        </DialogContent>
       </Dialog>
 
       {rolesDialogOpen ? (
