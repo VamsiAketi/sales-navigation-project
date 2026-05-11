@@ -15,6 +15,8 @@ export type DevServerHealthStatus = {
 export type HealthStatus = {
   status: "ok";
   version?: string;
+  /** Human-readable instance label (worktree name, AI-Harness:instanceId, or product name for default). */
+  instanceDisplayName?: string;
   deploymentMode?: "local_trusted" | "authenticated";
   deploymentExposure?: "private" | "public";
   authReady?: boolean;

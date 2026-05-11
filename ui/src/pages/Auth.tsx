@@ -215,7 +215,6 @@ export function AuthPage() {
   const canSubmitReset = password.trim().length >= 8 && confirmPassword === password;
 
   const versionLabel = buildVisibleVersionLabel(health?.version);
-
   /** Tenant subdomain, or in Vite dev on loopback a fixed "Local" label for UI testing. */
   const instanceDisplayLabel = useMemo(() => {
     if (typeof window === "undefined") return null;

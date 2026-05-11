@@ -24,6 +24,7 @@ export const companies = pgTable(
     feedbackDataSharingTermsVersion: text("feedback_data_sharing_terms_version"),
     brandColor: text("brand_color"),
     logoAssetId: uuid("logo_asset_id"),
+    stripeCustomerId: text("stripe_customer_id"),
     /**
      * `open`: company members may access any company project (legacy).
      * `restricted`: principals need explicit rows in `project_principal_grants` per project.
@@ -34,5 +35,6 @@ export const companies = pgTable(
   },
   (table) => ({
     issuePrefixUniqueIdx: uniqueIndex("companies_issue_prefix_idx").on(table.issuePrefix),
+    stripeCustomerIdUniqueIdx: uniqueIndex("companies_stripe_customer_id_unique_idx").on(table.stripeCustomerId),
   }),
 );

@@ -160,7 +160,24 @@ export type {
   RoutineExecutionIssueOrigin,
   RoutineListItem,
 } from "./routine.js";
-export type { CostEvent, CostSummary, CostByAgent, CostByProviderModel, CostByBiller, CostByAgentModel, CostWindowSpendRow, CostByProject } from "./cost.js";
+export type {
+  CostEvent,
+  CostSummary,
+  CostDailyTotal,
+  BillingPrepaidBalance,
+  StripeBillingStatus,
+  StripePortalSession,
+  StripeCheckoutSession,
+  StripeCheckoutSessionStatus,
+  StripeInvoiceRow,
+  StripeInvoicesResponse,
+  CostByAgent,
+  CostByProviderModel,
+  CostByBiller,
+  CostByAgentModel,
+  CostWindowSpendRow,
+  CostByProject,
+} from "./cost.js";
 export type { FinanceEvent, FinanceSummary, FinanceByBiller, FinanceByKind } from "./finance.js";
 export type {
   AgentWakeupResponse,

@@ -240,8 +240,10 @@ export {
 
 export {
   createCostEventSchema,
+  createStripeCheckoutSessionSchema,
   updateBudgetSchema,
   type CreateCostEvent,
+  type CreateStripeCheckoutSession,
   type UpdateBudget,
 } from "./cost.js";
 

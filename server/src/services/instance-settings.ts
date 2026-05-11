@@ -22,12 +22,14 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
       keyboardShortcuts: parsed.data.keyboardShortcuts ?? false,
       feedbackDataSharingPreference:
         parsed.data.feedbackDataSharingPreference ?? DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
+      billingPrepaidCents: parsed.data.billingPrepaidCents ?? 0,
     };
   }
   return {
     censorUsernameInLogs: false,
     keyboardShortcuts: false,
     feedbackDataSharingPreference: DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
+    billingPrepaidCents: 0,
   };
 }
 

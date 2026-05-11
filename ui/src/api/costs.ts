@@ -1,5 +1,7 @@
 import type {
   CostSummary,
+  CostDailyTotal,
+  BillingPrepaidBalance,
   CostByAgent,
   CostByProviderModel,
   CostByBiller,
@@ -11,6 +13,10 @@ import type {
   FinanceByKind,
   FinanceEvent,
   ProviderQuotaResult,
+  StripeBillingStatus,
+  StripePortalSession,
+  StripeCheckoutSession,
+  StripeInvoicesResponse,
 } from "@paperclipai/shared";
 import { api } from "./client";
 
@@ -25,6 +31,18 @@ function dateParams(from?: string, to?: string): string {
 export const costsApi = {
   summary: (companyId: string, from?: string, to?: string) =>
     api.get<CostSummary>(`/companies/${companyId}/costs/summary${dateParams(from, to)}`),
+  daily: (companyId: string, from: string, to: string) =>
+    api.get<CostDailyTotal[]>(`/companies/${companyId}/costs/daily${dateParams(from, to)}`),
+  prepaidBalance: (companyId: string) =>
+    api.get<BillingPrepaidBalance>(`/companies/${companyId}/billing/prepaid-balance`),
+  stripeStatus: (companyId: string) =>
+    api.get<StripeBillingStatus>(`/companies/${companyId}/billing/stripe-status`),
+  createStripePortalSession: (companyId: string) =>
+    api.post<StripePortalSession>(`/companies/${companyId}/billing/stripe/portal-session`, {}),
+  createStripeCheckoutSession: (companyId: string, amountCents: number) =>
+    api.post<StripeCheckoutSession>(`/companies/${companyId}/billing/stripe/checkout-session`, { amountCents }),
+  stripeInvoices: (companyId: string) =>
+    api.get<StripeInvoicesResponse>(`/companies/${companyId}/billing/stripe/invoices`),
   byAgent: (companyId: string, from?: string, to?: string) =>
     api.get<CostByAgent[]>(`/companies/${companyId}/costs/by-agent${dateParams(from, to)}`),
   byAgentModel: (companyId: string, from?: string, to?: string) =>

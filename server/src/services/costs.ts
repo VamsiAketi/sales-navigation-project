@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, lt, lte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agents, companies, costEvents, issues, projects } from "@paperclipai/db";
-import { notFound, unprocessable } from "../errors.js";
+import { activityLog, agents, companies, companyWalletTransactions, costEvents, issues, projects } from "@paperclipai/db";
+import { conflict, notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 import { calculateModelCostCents } from "./model-pricing.js";
 
@@ -23,7 +23,7 @@ function currentUtcMonthWindow(now = new Date()) {
 }
 
 async function getMonthlySpendTotal(
-  db: Db,
+  db: Pick<Db, "select">,
   scope: { companyId: string; agentId?: string | null },
 ) {
   const { start, end } = currentUtcMonthWindow();
@@ -47,62 +47,108 @@ async function getMonthlySpendTotal(
 export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
   const budgets = budgetService(db, budgetHooks);
   return {
+    /** Sum of `model_cost_cents` for every company (instance-wide operational estimate). */
+    totalModelCostCentsAllCompanies: async (): Promise<number> => {
+      const [row] = await db
+        .select({
+          total: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
+        })
+        .from(costEvents);
+      return Number(row?.total ?? 0);
+    },
+    totalModelCostCentsByCompany: async (companyId: string): Promise<number> => {
+      const [row] = await db
+        .select({
+          total: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
+        })
+        .from(costEvents)
+        .where(eq(costEvents.companyId, companyId));
+      return Number(row?.total ?? 0);
+    },
+
     createEvent: async (companyId: string, data: Omit<typeof costEvents.$inferInsert, "companyId">) => {
-      const agent = await db
-        .select()
-        .from(agents)
-        .where(eq(agents.id, data.agentId))
-        .then((rows) => rows[0] ?? null);
+      const event = await db.transaction(async (tx) => {
+        const agent = await tx
+          .select()
+          .from(agents)
+          .where(eq(agents.id, data.agentId))
+          .then((rows) => rows[0] ?? null);
 
-      if (!agent) throw notFound("Agent not found");
-      if (agent.companyId !== companyId) {
-        throw unprocessable("Agent does not belong to company");
-      }
+        if (!agent) throw notFound("Agent not found");
+        if (agent.companyId !== companyId) {
+          throw unprocessable("Agent does not belong to company");
+        }
 
-      const event = await db
-        .insert(costEvents)
-        .values({
-          ...data,
-          companyId,
-          biller: data.biller ?? data.provider,
-          billingType: data.billingType ?? "unknown",
-          cachedInputTokens: data.cachedInputTokens ?? 0,
-          modelCostCents:
-            typeof data.modelCostCents === "number"
-              ? data.modelCostCents
-              : calculateModelCostCents(
-                  data.model,
-                  data.inputTokens ?? 0,
-                  data.cachedInputTokens ?? 0,
-                  data.outputTokens ?? 0,
-                ),
-        })
-        .returning()
-        .then((rows) => rows[0]);
+        const eventRow = await tx
+          .insert(costEvents)
+          .values({
+            ...data,
+            companyId,
+            biller: data.biller ?? data.provider,
+            billingType: data.billingType ?? "unknown",
+            cachedInputTokens: data.cachedInputTokens ?? 0,
+            modelCostCents:
+              typeof data.modelCostCents === "number"
+                ? data.modelCostCents
+                : calculateModelCostCents(
+                    data.model,
+                    data.inputTokens ?? 0,
+                    data.cachedInputTokens ?? 0,
+                    data.outputTokens ?? 0,
+                  ),
+          })
+          .returning()
+          .then((rows) => rows[0]);
 
-      const [agentMonthSpend, companyMonthSpend] = await Promise.all([
-        getMonthlySpendTotal(db, { companyId, agentId: event.agentId }),
-        getMonthlySpendTotal(db, { companyId }),
-      ]);
+        const [agentMonthSpend, companyMonthSpend] = await Promise.all([
+          getMonthlySpendTotal(tx, { companyId, agentId: eventRow.agentId }),
+          getMonthlySpendTotal(tx, { companyId }),
+        ]);
 
-      await db
-        .update(agents)
-        .set({
-          spentMonthlyCents: agentMonthSpend,
-          updatedAt: new Date(),
-        })
-        .where(eq(agents.id, event.agentId));
+        await tx
+          .update(agents)
+          .set({
+            spentMonthlyCents: agentMonthSpend,
+            updatedAt: new Date(),
+          })
+          .where(eq(agents.id, eventRow.agentId));
 
-      await db
-        .update(companies)
-        .set({
-          spentMonthlyCents: companyMonthSpend,
-          updatedAt: new Date(),
-        })
-        .where(eq(companies.id, companyId));
+        await tx
+          .update(companies)
+          .set({
+            spentMonthlyCents: companyMonthSpend,
+            updatedAt: new Date(),
+          })
+          .where(eq(companies.id, companyId));
+
+        if ((eventRow.modelCostCents ?? 0) > 0) {
+          await tx
+            .insert(companyWalletTransactions)
+            .values({
+              companyId,
+              amountCents: eventRow.modelCostCents,
+              currency: "usd",
+              direction: "debit",
+              sourceType: "cost_event_model_debit",
+              sourceId: eventRow.id,
+              metadataJson: {
+                costEventId: eventRow.id,
+                biller: eventRow.biller,
+                model: eventRow.model,
+              },
+            })
+            .onConflictDoNothing();
+        }
+        return eventRow;
+      }).catch((error) => {
+        const err = error as { code?: string; message?: string };
+        if (err.code === "23505" && String(err.message ?? "").includes("cost_events_company_idempotency_key_unique_idx")) {
+          throw conflict("Duplicate cost event idempotency key");
+        }
+        throw error;
+      });
 
       await budgets.evaluateCostEvent(event);
-
       return event;
     },
 
@@ -216,28 +262,28 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
       return db
         .select({
           biller: costEvents.biller,
-          costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
-          modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
-          inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
-          cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
-          outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
+          costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::double precision`,
+          modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::double precision`,
+          inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::double precision`,
+          cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::double precision`,
+          outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::double precision`,
           apiRunCount:
-            sql<number>`count(distinct case when ${costEvents.billingType} = ${METERED_BILLING_TYPE} then ${costEvents.heartbeatRunId} end)::int`,
+            sql<number>`count(distinct case when ${costEvents.billingType} = ${METERED_BILLING_TYPE} then ${costEvents.heartbeatRunId} end)::double precision`,
           subscriptionRunCount:
-            sql<number>`count(distinct case when ${costEvents.billingType} in (${sql.join(SUBSCRIPTION_BILLING_TYPES.map((value) => sql`${value}`), sql`, `)}) then ${costEvents.heartbeatRunId} end)::int`,
+            sql<number>`count(distinct case when ${costEvents.billingType} in (${sql.join(SUBSCRIPTION_BILLING_TYPES.map((value) => sql`${value}`), sql`, `)}) then ${costEvents.heartbeatRunId} end)::double precision`,
           subscriptionCachedInputTokens:
-            sql<number>`coalesce(sum(case when ${costEvents.billingType} in (${sql.join(SUBSCRIPTION_BILLING_TYPES.map((value) => sql`${value}`), sql`, `)}) then ${costEvents.cachedInputTokens} else 0 end), 0)::int`,
+            sql<number>`coalesce(sum(case when ${costEvents.billingType} in (${sql.join(SUBSCRIPTION_BILLING_TYPES.map((value) => sql`${value}`), sql`, `)}) then ${costEvents.cachedInputTokens} else 0 end), 0)::double precision`,
           subscriptionInputTokens:
-            sql<number>`coalesce(sum(case when ${costEvents.billingType} in (${sql.join(SUBSCRIPTION_BILLING_TYPES.map((value) => sql`${value}`), sql`, `)}) then ${costEvents.inputTokens} else 0 end), 0)::int`,
+            sql<number>`coalesce(sum(case when ${costEvents.billingType} in (${sql.join(SUBSCRIPTION_BILLING_TYPES.map((value) => sql`${value}`), sql`, `)}) then ${costEvents.inputTokens} else 0 end), 0)::double precision`,
           subscriptionOutputTokens:
-            sql<number>`coalesce(sum(case when ${costEvents.billingType} in (${sql.join(SUBSCRIPTION_BILLING_TYPES.map((value) => sql`${value}`), sql`, `)}) then ${costEvents.outputTokens} else 0 end), 0)::int`,
-          providerCount: sql<number>`count(distinct ${costEvents.provider})::int`,
-          modelCount: sql<number>`count(distinct ${costEvents.model})::int`,
+            sql<number>`coalesce(sum(case when ${costEvents.billingType} in (${sql.join(SUBSCRIPTION_BILLING_TYPES.map((value) => sql`${value}`), sql`, `)}) then ${costEvents.outputTokens} else 0 end), 0)::double precision`,
+          providerCount: sql<number>`count(distinct ${costEvents.provider})::double precision`,
+          modelCount: sql<number>`count(distinct ${costEvents.model})::double precision`,
         })
         .from(costEvents)
         .where(and(...conditions))
         .groupBy(costEvents.biller)
-        .orderBy(desc(sql`coalesce(sum(${costEvents.modelCostCents}), 0)::int`));
+        .orderBy(desc(sql`coalesce(sum(${costEvents.modelCostCents}), 0)::double precision`));
     },
 
     /**
@@ -327,6 +373,29 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           costEvents.model,
         )
         .orderBy(costEvents.provider, costEvents.biller, costEvents.billingType, costEvents.model);
+    },
+
+    /** One row per UTC calendar day; `model_cost_cents` matches server pricing at event insert time. */
+    dailyTotals: async (companyId: string, range: CostDateRange) => {
+      const conditions: ReturnType<typeof eq>[] = [eq(costEvents.companyId, companyId)];
+      if (range.from) conditions.push(gte(costEvents.occurredAt, range.from));
+      if (range.to) conditions.push(lte(costEvents.occurredAt, range.to));
+
+      const utcDay = sql<string>`to_char((${costEvents.occurredAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`;
+
+      return db
+        .select({
+          day: utcDay,
+          costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::double precision`,
+          modelCostCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::double precision`,
+          inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::double precision`,
+          cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::double precision`,
+          outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::double precision`,
+        })
+        .from(costEvents)
+        .where(and(...conditions))
+        .groupBy(utcDay)
+        .orderBy(asc(utcDay));
     },
 
     byProject: async (companyId: string, range?: CostDateRange) => {

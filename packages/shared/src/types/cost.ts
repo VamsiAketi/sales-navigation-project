@@ -2,6 +2,7 @@ import type { BillingType } from "../constants.js";
 
 export interface CostEvent {
   id: string;
+  idempotencyKey?: string | null;
   companyId: string;
   agentId: string;
   issueId: string | null;
@@ -28,6 +29,65 @@ export interface CostSummary {
   modelSpendCents: number;
   budgetCents: number;
   utilizationPercent: number;
+}
+
+/** Aggregated `cost_events` per calendar day (UTC), for charts and billing summaries. */
+/** Instance prepaid credit vs cumulative model-based spend (all companies). */
+export interface BillingPrepaidBalance {
+  prepaidCents: number;
+  /** Sum of `cost_events.model_cost_cents` for this company. */
+  usedModelCents: number;
+  remainingCents: number;
+  deficitCents: number;
+}
+
+export interface StripeBillingStatus {
+  enabled: boolean;
+  hasWebhookSecret: boolean;
+}
+
+export interface StripePortalSession {
+  url: string;
+}
+
+export interface StripeCheckoutSession {
+  sessionId: string;
+  url: string;
+}
+
+export interface StripeCheckoutSessionStatus {
+  sessionId: string;
+  status: "paid" | "unpaid";
+  paymentStatus: string | null;
+}
+
+/** Stripe Invoice summary for Billing UI (from `stripe.invoices.list`). */
+export interface StripeInvoiceRow {
+  id: string;
+  number: string | null;
+  /** Invoice or line-item description when Stripe provides it. */
+  description: string | null;
+  status: string | null;
+  amountPaidCents: number;
+  currency: string;
+  createdAt: string;
+  hostedInvoiceUrl: string | null;
+  invoicePdf: string | null;
+}
+
+export interface StripeInvoicesResponse {
+  invoices: StripeInvoiceRow[];
+}
+
+export interface CostDailyTotal {
+  /** `YYYY-MM-DD` (UTC) */
+  day: string;
+  costCents: number;
+  /** Sum of `model_cost_cents` (token × pricing table estimate at write time). */
+  modelCostCents: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
 }
 
 export interface CostByAgent {
