@@ -7,7 +7,7 @@
  */
 const LEGACY_STORAGE_KEY = "dashboard:section-order";
 
-export const DASHBOARD_SECTION_IDS = ["goals", "costs", "metrics", "charts"] as const;
+export const DASHBOARD_SECTION_IDS = ["goals", "projects", "tasks", "costs", "metrics", "charts"] as const;
 export type DashboardSectionId = (typeof DASHBOARD_SECTION_IDS)[number];
 
 function scopedKey(userId: string | null, companyId: string) {
