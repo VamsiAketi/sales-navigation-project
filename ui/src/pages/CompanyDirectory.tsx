@@ -193,6 +193,7 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "agents.read",
     "agents.edit",
     "agents:create",
+    "users:invite",
     "tasks.read",
     "tasks.create",
     "tasks:assign",
@@ -254,7 +255,7 @@ const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
     title: "Create agents",
   },
   "users:invite": {
-    title: "Invite teammates",
+    title: "Invite human",
   },
   "users:manage_permissions": {
     title: "Manage roles & access",
@@ -947,9 +948,11 @@ export function CompanyDirectory() {
     () => new Set((currentUserMember?.grants ?? []).map((grant) => grant.permissionKey as PermissionKey)),
     [currentUserMember?.grants],
   );
+  const canInviteHumans = currentUserPermissionSet.has("users:invite");
   const canCreateTitles = currentUserPermissionSet.has("teams.title_create");
   const canAssignTitles = currentUserPermissionSet.has("teams.title_assign");
   const canManageTitles = currentUserPermissionSet.has("teams.title_manage");
+  const canManageRoles = canEditTeams;
   const canResetPassword = currentUserPermissionSet.has("users:reset_password");
   const hasTitleAccess = canCreateTitles || canAssignTitles || canManageTitles;
   const canOpenRolesAndTitlesDialog = canEditTeams || canCreateTitles || canAssignTitles || canManageTitles;
@@ -1557,6 +1560,33 @@ export function CompanyDirectory() {
   const selectedHumanRoleDraft = selectedHumanMember
     ? (memberRoleDrafts[selectedHumanMember.id] ?? "").trim()
     : "";
+  const selectedHumanCurrentPermissionKeys = useMemo(() => {
+    if (!selectedHumanMember) return [] as PermissionKey[];
+    if (
+      humanPermissionMutation.isPending &&
+      humanPermissionMutation.variables?.memberId === selectedHumanMember.id
+    ) {
+      return normalizePermissionSelection(
+        humanPermissionMutation.variables.grants.map((grant) => grant.permissionKey),
+      );
+    }
+    return normalizePermissionSelection(
+      selectedHumanMember.grants.map((grant) => grant.permissionKey as PermissionKey),
+    );
+  }, [
+    humanPermissionMutation.isPending,
+    humanPermissionMutation.variables,
+    selectedHumanMember,
+  ]);
+  const selectedHumanDefaultPermissionKeys = useMemo(
+    () => permissionsForRole(selectedHumanMember?.membershipRole),
+    [selectedHumanMember?.membershipRole],
+  );
+  const showResetDefaultPermissionsButton =
+    selectedHumanCurrentPermissionKeys.length !== selectedHumanDefaultPermissionKeys.length ||
+    selectedHumanCurrentPermissionKeys.some(
+      (key, index) => key !== selectedHumanDefaultPermissionKeys[index],
+    );
   const selectedHumanManagerIsAgent =
     !!selectedHumanManagerId && memberPrincipalTypeById.get(selectedHumanManagerId) === "agent";
 
@@ -1991,13 +2021,13 @@ export function CompanyDirectory() {
                     className="rounded-full px-8 shadow-sm text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
                     style={{ backgroundColor: "#6569E1" }}
                     onClick={() => {
-                      if (!canEditTeams) return;
+                      if (!canInviteHumans) return;
                       setHumanInviteSubmitAttempted(true);
                       if (!humanInviteName.trim() || !humanInviteEmail.trim()) return;
                       humanInviteMutation.mutate();
                     }}
                     disabled={
-                      humanInviteMutation.isPending || !selectedCompanyId || !canEditTeams
+                      humanInviteMutation.isPending || !selectedCompanyId || !canInviteHumans
                     }
                   >
                     {humanInviteMutation.isPending ? "Creating..." : "Create invite"}
@@ -2018,9 +2048,13 @@ export function CompanyDirectory() {
             <div className="shrink-0 border-b border-border/60 px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
-                  <h2 className="text-lg font-semibold text-foreground">Manage roles</h2>
+                  <h2 className="text-lg font-semibold text-foreground">
+                    {canManageRoles ? "Manage roles" : "Manage titles"}
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    Add reusable roles for your org. These appear in human and agent role dropdowns.
+                    {canManageRoles
+                      ? "Add reusable roles for your org. These appear in human and agent role dropdowns."
+                      : "Create and maintain reusable titles for teammates."}
                   </p>
                 </div>
                 <Button
@@ -2039,104 +2073,113 @@ export function CompanyDirectory() {
               <Tabs defaultValue="humans" className="min-h-0 h-full">
                 <TabsList variant="line" className="px-0">
                   <TabsTrigger value="humans">Humans</TabsTrigger>
-                  <TabsTrigger value="agents">Agents</TabsTrigger>
+                  {canManageRoles ? <TabsTrigger value="agents">Agents</TabsTrigger> : null}
                 </TabsList>
 
                 <TabsContent value="humans" className="mt-4 h-[calc(88vh-12rem)] min-h-0">
-                  <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
+                  <div
+                    className={cn(
+                      "grid h-full min-h-0 gap-4",
+                      canManageRoles ? "lg:grid-cols-[minmax(20rem,26rem)_1fr]" : "lg:grid-cols-1",
+                    )}
+                  >
                     <section className="space-y-3 overflow-y-auto rounded-2xl border border-border/60 bg-muted/15 p-4">
-                      <div className="text-sm font-medium text-foreground">Create role</div>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={newHumanRole}
-                          onChange={(e) => setNewHumanRole(e.target.value)}
-                          placeholder="Add a role (e.g. Sales Lead)"
-                          className="h-10 rounded-lg border-border/60"
-                        />
-                        <Button
-                          type="button"
-                          className="rounded-full"
-                          onClick={() => {
-                            if (!selectedCompanyId) return;
-                            const next = normalizeRoleLabel(newHumanRole);
-                            if (!next) return;
-                            setNewHumanRole("");
-                            setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
-                            setSelectedManageHumanRole(next);
-                            setHumanRolePermissions((prev) => {
-                              if (prev[next]) return prev;
-                              return { ...prev, [next]: permissionsForRole(next) };
-                            });
-                          }}
-                          disabled={!normalizeRoleLabel(newHumanRole)}
-                        >
-                          Add
-                        </Button>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="text-xs text-muted-foreground">Select role to manage</div>
-                        <InlineEntitySelector
-                          value={selectedManageHumanRole}
-                          options={manageHumanRoleOptions.map((role) => ({
-                            id: normalizeRoleLabel(role),
-                            label: roleDisplayLabel(role),
-                          }))}
-                          placeholder="Select role"
-                          noneLabel="None"
-                          includeNoneOption={false}
-                          searchPlaceholder="Search roles..."
-                          emptyMessage="No roles found."
-                          onChange={setSelectedManageHumanRole}
-                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {manageHumanRoleOptions.map((role) => {
-                          const selected = role === selectedManageHumanRole;
-                          return (
-                            <button
-                              key={role}
+                      {canManageRoles ? (
+                        <>
+                          <div className="text-sm font-medium text-foreground">Create role</div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={newHumanRole}
+                              onChange={(e) => setNewHumanRole(e.target.value)}
+                              placeholder="Add a role (e.g. Sales Lead)"
+                              className="h-10 rounded-lg border-border/60"
+                            />
+                            <Button
                               type="button"
-                              className={cn(
-                                "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                                selected
-                                  ? "border-primary/40 bg-primary/10 text-foreground"
-                                  : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                              )}
-                              onClick={() => setSelectedManageHumanRole(role)}
+                              className="rounded-full"
+                              onClick={() => {
+                                if (!selectedCompanyId) return;
+                                const next = normalizeRoleLabel(newHumanRole);
+                                if (!next) return;
+                                setNewHumanRole("");
+                                setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
+                                setSelectedManageHumanRole(next);
+                                setHumanRolePermissions((prev) => {
+                                  if (prev[next]) return prev;
+                                  return { ...prev, [next]: permissionsForRole(next) };
+                                });
+                              }}
+                              disabled={!normalizeRoleLabel(newHumanRole)}
                             >
-                              {roleDisplayLabel(role)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {selectedManageHumanRole &&
-                      !(HUMAN_ROLE_OPTIONS as readonly string[]).includes(selectedManageHumanRole) ? (
-                        <div className="pt-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            className="rounded-full"
-                            onClick={() => {
-                              const roleToRemove = selectedManageHumanRole;
-                              setCustomHumanRoles((prev) => prev.filter((r) => r !== roleToRemove));
-                              setHumanRolePermissions((prev) => {
-                                const next = { ...prev };
-                                delete next[roleToRemove];
-                                return next;
-                              });
-                              const fallback = manageHumanRoleOptions.find((r) => r !== roleToRemove) ?? "";
-                              setSelectedManageHumanRole(fallback);
-                            }}
-                          >
-                            Delete role
-                          </Button>
-                        </div>
+                              Add
+                            </Button>
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="text-xs text-muted-foreground">Select role to manage</div>
+                            <InlineEntitySelector
+                              value={selectedManageHumanRole}
+                              options={manageHumanRoleOptions.map((role) => ({
+                                id: normalizeRoleLabel(role),
+                                label: roleDisplayLabel(role),
+                              }))}
+                              placeholder="Select role"
+                              noneLabel="None"
+                              includeNoneOption={false}
+                              searchPlaceholder="Search roles..."
+                              emptyMessage="No roles found."
+                              onChange={setSelectedManageHumanRole}
+                              className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {manageHumanRoleOptions.map((role) => {
+                              const selected = role === selectedManageHumanRole;
+                              return (
+                                <button
+                                  key={role}
+                                  type="button"
+                                  className={cn(
+                                    "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                                    selected
+                                      ? "border-primary/40 bg-primary/10 text-foreground"
+                                      : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                                  )}
+                                  onClick={() => setSelectedManageHumanRole(role)}
+                                >
+                                  {roleDisplayLabel(role)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {selectedManageHumanRole &&
+                          !(HUMAN_ROLE_OPTIONS as readonly string[]).includes(selectedManageHumanRole) ? (
+                            <div className="pt-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                className="rounded-full"
+                                onClick={() => {
+                                  const roleToRemove = selectedManageHumanRole;
+                                  setCustomHumanRoles((prev) => prev.filter((r) => r !== roleToRemove));
+                                  setHumanRolePermissions((prev) => {
+                                    const next = { ...prev };
+                                    delete next[roleToRemove];
+                                    return next;
+                                  });
+                                  const fallback = manageHumanRoleOptions.find((r) => r !== roleToRemove) ?? "";
+                                  setSelectedManageHumanRole(fallback);
+                                }}
+                              >
+                                Delete role
+                              </Button>
+                            </div>
+                          ) : null}
+                        </>
                       ) : null}
 
                       {canCreateTitles || canManageTitles ? (
-                        <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
+                        <div className={cn("space-y-3", canManageRoles ? "mt-4 border-t border-border/60 pt-4" : "")}>
                           <div className="text-sm font-medium text-foreground">Manage titles</div>
                           <div className="flex items-center gap-2">
                             <Input
@@ -2197,25 +2240,27 @@ export function CompanyDirectory() {
                         </div>
                       ) : null}
                     </section>
-                    <section className="space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-muted/10 p-3">
-                      <div className="text-sm font-medium text-foreground">
-                        Role permissions{selectedManageHumanRole ? `: ${selectedManageHumanRole}` : ""}
-                      </div>
-                      <div className="rounded-lg border border-border/50 bg-background/60 p-2.5">
-                        <HumanPermissionsPanel
-                          idPrefix={`human-role-${selectedManageHumanRole || "none"}`}
-                          enabledKeys={permissionsForRole(selectedManageHumanRole)}
-                          onKeysChange={(keys) => {
-                            if (!selectedManageHumanRole) return;
-                            setHumanRolePermissions((prev) => ({
-                              ...prev,
-                              [selectedManageHumanRole]: keys,
-                            }));
-                          }}
-                          intro={null}
-                        />
-                      </div>
-                    </section>
+                    {canManageRoles ? (
+                      <section className="space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-muted/10 p-3">
+                        <div className="text-sm font-medium text-foreground">
+                          Role permissions{selectedManageHumanRole ? `: ${selectedManageHumanRole}` : ""}
+                        </div>
+                        <div className="rounded-lg border border-border/50 bg-background/60 p-2.5">
+                          <HumanPermissionsPanel
+                            idPrefix={`human-role-${selectedManageHumanRole || "none"}`}
+                            enabledKeys={permissionsForRole(selectedManageHumanRole)}
+                            onKeysChange={(keys) => {
+                              if (!selectedManageHumanRole) return;
+                              setHumanRolePermissions((prev) => ({
+                                ...prev,
+                                [selectedManageHumanRole]: keys,
+                              }));
+                            }}
+                            intro={null}
+                          />
+                        </div>
+                      </section>
+                    ) : null}
                   </div>
                 </TabsContent>
 
@@ -2342,7 +2387,7 @@ export function CompanyDirectory() {
                         className="h-9 rounded-lg border-border/60 bg-background"
                       />
                     </div>
-                    {canEditTeams ? (
+                    {canInviteHumans ? (
                       <Button
                         type="button"
                         className="h-9 rounded-md border border-indigo-500 bg-indigo-500 px-4 text-white hover:border-indigo-600 hover:bg-indigo-600"
@@ -2359,7 +2404,11 @@ export function CompanyDirectory() {
                         className="h-9 rounded-md border border-border/70 bg-background px-4 text-foreground hover:bg-muted"
                         onClick={() => setRolesDialogOpen(true)}
                       >
-                        {hasTitleAccess ? "Manage roles & titles" : "Manage roles"}
+                        {canEditTeams
+                          ? hasTitleAccess
+                            ? "Manage roles & titles"
+                            : "Manage roles"
+                          : "Manage titles"}
                       </Button>
                     ) : null}
                     {hasActiveTeamFilters ? (
@@ -2801,6 +2850,50 @@ export function CompanyDirectory() {
                             }}
                           >
                             Delete user
+                          </Button>
+                        ) : null}
+                        {!selectedHumanIsOwner && showResetDefaultPermissionsButton ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-full justify-start rounded-md border-border/70 bg-background px-2 text-xs font-medium text-foreground hover:bg-muted"
+                            disabled={
+                              !selectedCompanyId ||
+                              deactivateHumanMutation.isPending ||
+                              reactivateHumanMutation.isPending ||
+                              removeHumanMutation.isPending
+                            }
+                            onClick={() => {
+                              if (!selectedCompanyId) return;
+                              humanPermissionMutation.mutate(
+                                {
+                                  memberId: selectedHumanMember.id,
+                                  grants: selectedHumanDefaultPermissionKeys.map((permissionKey) => ({
+                                    permissionKey,
+                                    scope: null,
+                                  })),
+                                },
+                                {
+                                  onSuccess: () => {
+                                    pushToast({
+                                      title: "Permissions reset",
+                                      body: "Default permissions restored for this user role.",
+                                      tone: "success",
+                                    });
+                                  },
+                                  onError: (err) => {
+                                    pushToast({
+                                      title: "Reset failed",
+                                      body: apiErrorMessage(err),
+                                      tone: "error",
+                                    });
+                                  },
+                                },
+                              );
+                            }}
+                          >
+                            Reset default permissions
                           </Button>
                         ) : null}
                         </div>
