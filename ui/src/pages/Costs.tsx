@@ -904,7 +904,7 @@ export function Costs() {
                             className="flex items-center justify-between gap-3 border border-border px-3 py-2 text-sm"
                           >
                             <span className="truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
-                            <span className="font-medium tabular-nums">{formatCents(row.costCents)}</span>
+                            <span className="font-medium tabular-nums">{formatCents(row.modelCostCents)}</span>
                           </div>
                         ))
                       )}
