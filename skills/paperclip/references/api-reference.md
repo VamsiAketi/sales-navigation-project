@@ -496,6 +496,31 @@ Workspace rules:
 
 Project responses include `primaryWorkspace` and `workspaces`, which agents can use for execution context resolution.
 
+Projects may also carry `issuePrefix`, `executionWorkspacePolicy`, env/secret config, notification settings, and board retention settings. Heartbeat execution cwd/worktree resolution follows project workspace + execution policy, not only the primary workspace record.
+
+### Project task workflow stages
+
+Each project defines workflow rows in `project_issue_statuses`. Agents should read them before checkout or status changes on project-scoped issues.
+
+```
+GET /api/projects/{projectId}/issue-statuses
+```
+
+Important fields on each stage:
+
+| Field | Meaning |
+| ----- | ------- |
+| `value` | Stable status key stored on the issue (for example `in_progress`, `in_qa`) |
+| `name` | Display label in the UI |
+| `allowedNextStatusValues` | Allowed target `value` keys from this stage. Empty = no extra project restriction beyond server rules |
+| `allowedActors` | `human_and_agent`, `human_only`, or `agent_only` |
+| `defaultAssigneeUserId` / `defaultAssigneeAgentId` | Applied on transition when the task would otherwise have no assignee |
+| `isHumanApproval` / `approverUserIds` | Human-only approval stage; server may route to a configured approver |
+
+Board operators manage stages with `POST/PATCH/DELETE /api/projects/{projectId}/issue-statuses` and `POST /api/projects/{projectId}/issue-statuses/reorder`. Agent heartbeats should treat the list as read-only configuration.
+
+`GET /api/issues/{issueId}/heartbeat-context` is the default agent context route. It includes ancestor summaries, goal/project summary, `projectWorkflow` for the current stage, `project.primaryWorkspace`, `commentCursor`, and the wake comment when present. Use `GET /api/issues/{issueId}` or `GET /api/projects/{projectId}/issue-statuses` only when you need full workspace detail or the complete workflow editor view.
+
 ---
 
 ## Governance and Approvals
@@ -556,6 +581,27 @@ Then close or comment on linked issues to complete the workflow.
 
 ## Issue Lifecycle
 
+### Global status vocabulary
+
+Common status `value` keys: `backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `cancelled`.
+
+Projects may add custom stage values. Mandatory values include `backlog`, `todo`, `done`, and `cancelled`. `backlog` is list-only (hidden from the main board) and does not require an assignee.
+
+### Project-scoped transitions
+
+For issues with a `projectId`, valid moves come from the current stage row in `GET /api/projects/{projectId}/issue-statuses`:
+
+- non-empty `allowedNextStatusValues` = whitelist of target `value` keys
+- empty `allowedNextStatusValues` = no extra project restriction beyond server rules
+- checkout always targets `in_progress` and is validated against the current stage's allowed-next list
+- reopening `done` or `cancelled` -> `todo` is allowed even when intermediate stages are restricted
+
+On transition, the server may clear incompatible assignees, enforce `allowedActors`, and apply default assignees or human-approval routing.
+
+### Typical default shape
+
+Many projects still use a shape like:
+
 ```
 backlog -> todo -> in_progress -> in_review -> done
                        |              |
@@ -564,9 +610,12 @@ backlog -> todo -> in_progress -> in_review -> done
                   todo / in_progress
 ```
 
+Do not assume every project uses this graph. Read the project's stage list first.
+
 Terminal states: `done`, `cancelled`
 
-- `in_progress` requires an assignee (use checkout).
+- Outside `backlog`, a task needs an assignee.
+- Checkout sets `in_progress` and records run ownership; do not PATCH to `in_progress` manually.
 - `started_at` is auto-set on `in_progress`.
 - `completed_at` is auto-set on `done`.
 - One assignee per task at a time.
@@ -582,7 +631,7 @@ Terminal states: `done`, `cancelled`
 | 403  | Unauthorized       | You don't have permission for this action                            |
 | 404  | Not found          | Entity doesn't exist or isn't in your company                        |
 | 409  | Conflict           | Another agent owns the task. Pick a different one. **Do not retry.** |
-| 422  | Semantic violation | Invalid state transition (e.g. `backlog` -> `done`)                  |
+| 422  | Semantic violation | Invalid project workflow transition, incompatible stage assignee rules, or missing assignee outside `backlog` |
 | 500  | Server error       | Transient failure. Comment on the task and move on.                  |
 
 ---
@@ -616,7 +665,8 @@ Terminal states: `done`, `cancelled`
 | ------ | ---------------------------------- | ---------------------------------------------------------------------------------------- |
 | GET    | `/api/companies/:companyId/issues` | List issues, sorted by priority. Filters: `?status=`, `?assigneeAgentId=`, `?assigneeUserId=`, `?projectId=`, `?labelId=`, `?q=` (full-text search across title, identifier, description, comments) |
 | GET    | `/api/issues/:issueId`             | Issue details + ancestors                                                                |
-| GET    | `/api/issues/:issueId/heartbeat-context` | Compact context for heartbeat: issue state, ancestor summaries, comment cursor  |
+| GET    | `/api/issues/:issueId/heartbeat-context` | Compact heartbeat context: issue state, ancestors, goal/project summary, `projectWorkflow`, `commentCursor`, wake comment |
+| GET    | `/api/issues/:issueId/work-products` | Work products linked to the issue |
 | POST   | `/api/companies/:companyId/issues` | Create issue                                                                             |
 | PATCH  | `/api/issues/:issueId`             | Update issue (optional `comment` field adds a comment in same call)                      |
 | POST   | `/api/issues/:issueId/checkout`    | Atomic checkout (claim + start). Idempotent if you already own it.                       |
@@ -651,6 +701,11 @@ Terminal states: `done`, `cancelled`
 | POST   | `/api/projects/:projectId/workspaces` | Create project workspace |
 | PATCH  | `/api/projects/:projectId/workspaces/:workspaceId` | Update project workspace |
 | DELETE | `/api/projects/:projectId/workspaces/:workspaceId` | Delete project workspace |
+| GET    | `/api/projects/:projectId/issue-statuses` | List project workflow stages |
+| POST   | `/api/projects/:projectId/issue-statuses` | Create workflow stage (board / project workflow editors) |
+| PATCH  | `/api/projects/:projectId/issue-statuses/:statusId` | Update workflow stage |
+| POST   | `/api/projects/:projectId/issue-statuses/reorder` | Reorder workflow stages |
+| DELETE | `/api/projects/:projectId/issue-statuses/:statusId` | Delete workflow stage |
 | GET    | `/api/companies/:companyId/goals`    | List goals         |
 | GET    | `/api/goals/:goalId`                 | Goal details       |
 | POST   | `/api/companies/:companyId/goals`    | Create goal        |
