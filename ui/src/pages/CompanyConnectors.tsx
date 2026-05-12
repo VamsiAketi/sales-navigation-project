@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Link2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { ConnectorConnectionCreated, ConnectorEventBinding, ConnectorTypeDefinition } from "@paperclipai/shared";
+import { useSearchParams } from "@/lib/router";
 import { connectorsApi } from "../api/connectors";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
@@ -38,11 +39,25 @@ function copyToClipboard(value: string, pushToast: ReturnType<typeof useToast>["
   void navigator.clipboard.writeText(value).then(() => pushToast({ title: "Copied to clipboard", tone: "success" }));
 }
 
+function startGmailOAuth(
+  companyId: string,
+  connectionId: string,
+  pushToast: ReturnType<typeof useToast>["pushToast"],
+) {
+  void connectorsApi
+    .getGmailOAuthUrl(companyId, connectionId)
+    .then((result) => {
+      window.location.assign(result.authorizationUrl);
+    })
+    .catch((error: Error) => pushToast({ title: error.message, tone: "error" }));
+}
+
 export function CompanyConnectors() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [createTypeKey, setCreateTypeKey] = useState("");
   const [createName, setCreateName] = useState("");
@@ -59,6 +74,27 @@ export function CompanyConnectors() {
     setBreadcrumbs([{ label: "Connectors" }]);
   }, [setBreadcrumbs]);
 
+  useEffect(() => {
+    const gmailResult =
+      searchParams.get("gmail") ??
+      (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("gmail") : null);
+    if (!gmailResult || !selectedCompanyId) return;
+
+    if (gmailResult === "connected") {
+      pushToast({ title: "Gmail connected", tone: "success" });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId) });
+    } else if (gmailResult === "error") {
+      pushToast({ title: "Gmail connection failed", tone: "error" });
+    }
+
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("gmail")) return;
+    url.searchParams.delete("gmail");
+    url.searchParams.delete("connectionId");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [pushToast, queryClient, searchParams, selectedCompanyId]);
+
   const { data: sidebarBadges } = useQuery({
     queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
     queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
@@ -69,10 +105,12 @@ export function CompanyConnectors() {
   const canManageConnectors = sidebarBadges?.canManageConnectors ?? true;
   const canManageConnectorBindings = sidebarBadges?.canManageConnectorBindings ?? true;
 
-  const { data: catalog = [], isLoading: catalogLoading } = useQuery({
+  const { data: catalogResponse, isLoading: catalogLoading } = useQuery({
     queryKey: queryKeys.connectors.catalog,
     queryFn: () => connectorsApi.catalog(),
   });
+  const catalog = catalogResponse?.catalog ?? [];
+  const gmailOAuthConfigured = catalogResponse?.gmailOAuthConfigured ?? false;
 
   const { data: connections = [], isLoading: connectionsLoading } = useQuery({
     queryKey: selectedCompanyId ? queryKeys.connectors.list(selectedCompanyId) : ["connectors", "none"],
@@ -101,6 +139,9 @@ export function CompanyConnectors() {
     [projects],
   );
 
+  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
+
   const createConnection = useMutation({
     mutationFn: () =>
       connectorsApi.createConnection(selectedCompanyId!, {
@@ -108,12 +149,15 @@ export function CompanyConnectors() {
         name: createName.trim(),
         config: {},
       }),
-    onSuccess: (created: ConnectorConnectionCreated) => {
+    onSuccess: async (created: ConnectorConnectionCreated) => {
       pushToast({ title: "Connector connection created", tone: "success" });
       setCreateOpen(false);
       setCreateName("");
       if (created.inboundSecretValue) setRevealedSecret(created.inboundSecretValue);
       void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId!) });
+      if (created.connectorTypeKey === "gmail" && gmailOAuthConfigured) {
+        startGmailOAuth(selectedCompanyId!, created.id, pushToast);
+      }
     },
     onError: (error: Error) => pushToast({ title: error.message, tone: "error" }),
   });
@@ -131,6 +175,18 @@ export function CompanyConnectors() {
     mutationFn: (connectionId: string) => connectorsApi.deleteConnection(selectedCompanyId!, connectionId),
     onSuccess: () => {
       pushToast({ title: "Connector deleted", tone: "success" });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId!) });
+    },
+    onError: (error: Error) => pushToast({ title: error.message, tone: "error" }),
+  });
+
+  const syncGmail = useMutation({
+    mutationFn: (connectionId: string) => connectorsApi.syncGmail(selectedCompanyId!, connectionId),
+    onSuccess: (result) => {
+      pushToast({
+        title: result.processed > 0 ? `Synced ${result.processed} message(s)` : "Gmail sync completed",
+        tone: "success",
+      });
       void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId!) });
     },
     onError: (error: Error) => pushToast({ title: error.message, tone: "error" }),
@@ -171,7 +227,7 @@ export function CompanyConnectors() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Connectors</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Connect external channels, post normalized events to inbound URLs, and bind each event type to an agent workflow prompt.
+            Connect managed inboxes like Gmail with Google sign-in, or use webhook connectors for custom ingress.
           </p>
         </div>
         {canManageConnectors ? (
@@ -181,6 +237,13 @@ export function CompanyConnectors() {
           </Button>
         ) : null}
       </div>
+
+      {!gmailOAuthConfigured ? (
+        <p className="text-sm text-muted-foreground">
+          Gmail connect is not configured on this instance. Set `PAPERCLIP_GMAIL_OAUTH_CLIENT_ID` and
+          `PAPERCLIP_GMAIL_OAUTH_CLIENT_SECRET` on the server.
+        </p>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -206,7 +269,7 @@ export function CompanyConnectors() {
       {connections.length === 0 ? (
         <EmptyState
           icon={Link2}
-          message="Create a connection to get an inbound URL and bearer token for external systems."
+          message="Create a Gmail connection or webhook connector, then add bindings to route inbound events to agents."
           action={canManageConnectors ? "Add connection" : undefined}
           onAction={canManageConnectors ? () => setCreateOpen(true) : undefined}
         />
@@ -219,7 +282,12 @@ export function CompanyConnectors() {
               connection={connection}
               canManageConnectors={canManageConnectors}
               canManageConnectorBindings={canManageConnectorBindings}
+              agentById={agentById}
+              projectById={projectById}
               onRotate={() => rotateSecret.mutate(connection.id)}
+              onSync={() => syncGmail.mutate(connection.id)}
+              syncPending={syncGmail.isPending && syncGmail.variables === connection.id}
+              onConnectGmail={() => startGmailOAuth(selectedCompanyId, connection.id, pushToast)}
               onDelete={() => deleteConnection.mutate(connection.id)}
               onCopy={(value) => copyToClipboard(value, pushToast)}
               onAddBinding={() => {
@@ -246,7 +314,7 @@ export function CompanyConnectors() {
                 </SelectTrigger>
                 <SelectContent>
                   {catalog.map((entry) => (
-                    <SelectItem key={entry.key} value={entry.key}>
+                    <SelectItem key={entry.key} value={entry.key} disabled={entry.key === "gmail" && !gmailOAuthConfigured}>
                       {entry.displayName}
                     </SelectItem>
                   ))}
@@ -351,7 +419,12 @@ function ConnectionCard({
   connection,
   canManageConnectors,
   canManageConnectorBindings,
+  agentById,
+  projectById,
   onRotate,
+  onSync,
+  syncPending,
+  onConnectGmail,
   onDelete,
   onCopy,
   onAddBinding,
@@ -362,12 +435,19 @@ function ConnectionCard({
     name: string;
     connectorTypeKey: string;
     status: string;
+    authMode?: "inbound_webhook" | "managed_oauth";
+    connectedAccountEmail?: string | null;
     inboundUrl: string | null;
     lastError: string | null;
   };
   canManageConnectors: boolean;
   canManageConnectorBindings: boolean;
+  agentById: Map<string, { id: string; name: string }>;
+  projectById: Map<string, { id: string; name: string }>;
   onRotate: () => void;
+  onSync: () => void;
+  syncPending: boolean;
+  onConnectGmail: () => void;
   onDelete: () => void;
   onCopy: (value: string) => void;
   onAddBinding: () => void;
@@ -400,10 +480,28 @@ function ConnectionCard({
           ) : null}
           {canManageConnectors ? (
             <>
-              <Button variant="secondary" size="sm" onClick={onRotate}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Rotate token
-              </Button>
+              {connection.authMode === "managed_oauth" &&
+              (connection.status === "pending_auth" || connection.status === "error") ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onConnectGmail}
+                >
+                  {connection.status === "error" ? "Reconnect Gmail" : "Connect Gmail"}
+                </Button>
+              ) : null}
+              {connection.authMode === "managed_oauth" && connection.status === "active" ? (
+                <Button variant="secondary" size="sm" onClick={onSync} disabled={syncPending}>
+                  <RefreshCw className={`mr-2 h-4 w-4${syncPending ? " animate-spin" : ""}`} />
+                  Sync now
+                </Button>
+              ) : null}
+              {connection.authMode !== "managed_oauth" ? (
+                <Button variant="secondary" size="sm" onClick={onRotate}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Rotate token
+                </Button>
+              ) : null}
               <Button variant="ghost" size="sm" onClick={onDelete}>
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -412,6 +510,9 @@ function ConnectionCard({
         </div>
       </CardHeader>
       <CardContent className="grid gap-4">
+        {connection.connectedAccountEmail ? (
+          <p className="text-sm text-muted-foreground">Connected as {connection.connectedAccountEmail}</p>
+        ) : null}
         {connection.inboundUrl ? (
           <div className="grid gap-2">
             <div className="text-sm font-medium">Inbound URL</div>
@@ -430,15 +531,21 @@ function ConnectionCard({
             <p className="text-sm text-muted-foreground">No bindings configured.</p>
           ) : (
             <div className="grid gap-2">
-              {bindings.map((binding: ConnectorEventBinding) => (
-                <div key={binding.id} className="rounded-md border px-3 py-2 text-sm">
-                  <div className="font-medium">{binding.title}</div>
-                  <div className="mt-1 text-muted-foreground">
-                    {binding.eventType} · agent {binding.agentId.slice(0, 8)}
-                    {binding.projectId ? ` · project ${binding.projectId.slice(0, 8)}` : ""}
+              {bindings.map((binding: ConnectorEventBinding) => {
+                const agentName = agentById.get(binding.agentId)?.name ?? binding.agentId;
+                const projectName = binding.projectId
+                  ? projectById.get(binding.projectId)?.name ?? binding.projectId
+                  : null;
+                return (
+                  <div key={binding.id} className="rounded-md border px-3 py-2 text-sm">
+                    <div className="font-medium">{binding.title}</div>
+                    <div className="mt-1 text-muted-foreground">
+                      {binding.eventType} · agent {agentName}
+                      {projectName ? ` · project ${projectName}` : ""}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

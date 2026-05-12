@@ -12,7 +12,8 @@ import type {
 import { api } from "./client";
 
 export const connectorsApi = {
-  catalog: () => api.get<ConnectorTypeDefinition[]>("/connectors/catalog"),
+  catalog: () =>
+    api.get<{ catalog: ConnectorTypeDefinition[]; gmailOAuthConfigured: boolean }>("/connectors/catalog"),
   listConnections: (companyId: string) => api.get<ConnectorConnection[]>(`/companies/${companyId}/connectors`),
   createConnection: (companyId: string, data: CreateConnectorConnection) =>
     api.post<ConnectorConnectionCreated>(`/companies/${companyId}/connectors`, data),
@@ -32,4 +33,8 @@ export const connectorsApi = {
     api.delete<{ ok: true }>(`/companies/${companyId}/connectors/${connectionId}/bindings/${bindingId}`),
   listDeliveries: (companyId: string, connectionId: string, limit = 50) =>
     api.get<ConnectorEventDelivery[]>(`/companies/${companyId}/connectors/${connectionId}/deliveries?limit=${limit}`),
+  getGmailOAuthUrl: (companyId: string, connectionId: string) =>
+    api.get<{ authorizationUrl: string }>(`/companies/${companyId}/connectors/${connectionId}/gmail/oauth-url`),
+  syncGmail: (companyId: string, connectionId: string) =>
+    api.post<{ processed: number }>(`/companies/${companyId}/connectors/${connectionId}/gmail/sync`, {}),
 };

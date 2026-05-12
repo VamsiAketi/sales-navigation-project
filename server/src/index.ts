@@ -35,6 +35,7 @@ import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
 import {
   feedbackService,
   heartbeatService,
+  gmailConnectorService,
   reconcilePersistedRuntimeServicesOnStartup,
   routineService,
 } from "./services/index.js";
@@ -687,6 +688,18 @@ export async function startServer(): Promise<StartedServer> {
           logger.error({ err }, "periodic heartbeat recovery failed");
         });
     }, config.heartbeatSchedulerIntervalMs);
+  }
+
+  if (config.gmailSyncEnabled) {
+    const gmail = gmailConnectorService(db as any, config);
+    void gmail.tickSync().catch((err) => {
+      logger.error({ err }, "startup gmail connector sync failed");
+    });
+    setInterval(() => {
+      void gmail.tickSync().catch((err) => {
+        logger.error({ err }, "gmail connector sync tick failed");
+      });
+    }, config.gmailSyncIntervalMs);
   }
   
   if (config.databaseBackupEnabled) {

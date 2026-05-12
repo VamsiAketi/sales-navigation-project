@@ -74,10 +74,25 @@ function buildEventPrompt(bindingPrompt: string, event: ConnectorInboundEvent, p
 }
 
 function mapConnection(row: typeof connectorConnections.$inferSelect) {
+  const definition = getConnectorTypeDefinition(row.connectorTypeKey);
   const baseUrl = getPublicApiBaseUrl();
+  const gmailConfig =
+    row.config && typeof row.config === "object" && !Array.isArray(row.config)
+      ? (row.config as Record<string, unknown>).gmail
+      : null;
+  const gmailRecord =
+    gmailConfig && typeof gmailConfig === "object" && !Array.isArray(gmailConfig)
+      ? (gmailConfig as Record<string, unknown>)
+      : null;
   return {
     ...row,
-    inboundUrl: `${baseUrl}/api/connector-inbound/${row.inboundPublicId}`,
+    authMode: definition?.authMode ?? "inbound_webhook",
+    connectedAccountEmail:
+      typeof gmailRecord?.emailAddress === "string" ? gmailRecord.emailAddress : null,
+    inboundUrl:
+      definition?.authMode === "managed_oauth"
+        ? null
+        : `${baseUrl}/api/connector-inbound/${row.inboundPublicId}`,
   };
 }
 
@@ -113,6 +128,124 @@ export function connectorService(db: Db) {
     return mapConnection(row);
   }
 
+  async function dispatchConnectionEvent(
+    connection: typeof connectorConnections.$inferSelect,
+    event: ConnectorInboundEvent,
+  ) {
+    if (connection.status !== "active") {
+      throw conflict("Connector connection is not active");
+    }
+    if (!isConnectorEventTypeForConnector(connection.connectorTypeKey, event.eventType)) {
+      throw unprocessable("Event type is not supported for this connector");
+    }
+
+    const bindings = await db
+      .select()
+      .from(connectorEventBindings)
+      .where(
+        and(
+          eq(connectorEventBindings.companyId, connection.companyId),
+          eq(connectorEventBindings.connectionId, connection.id),
+          eq(connectorEventBindings.eventType, event.eventType),
+          eq(connectorEventBindings.enabled, true),
+        ),
+      );
+
+    if (bindings.length === 0) {
+      return { deliveryIds: [], runIds: [], skippedDuplicate: false };
+    }
+
+    const deliveryIds: string[] = [];
+    const runIds: string[] = [];
+    let skippedDuplicate = false;
+
+    for (const binding of bindings) {
+      let deliveryId: string;
+      try {
+        const [delivery] = await db
+          .insert(connectorEventDeliveries)
+          .values({
+            companyId: connection.companyId,
+            connectionId: connection.id,
+            bindingId: binding.id,
+            externalEventId: event.externalEventId,
+            eventType: event.eventType,
+            status: "received",
+            payload: event as unknown as Record<string, unknown>,
+          })
+          .returning();
+        deliveryId = delivery.id;
+      } catch (error) {
+        const code = error && typeof error === "object" && "code" in error ? (error as { code?: string }).code : null;
+        if (code === "23505") {
+          skippedDuplicate = true;
+          continue;
+        }
+        throw error;
+      }
+
+      try {
+        const prompt = buildEventPrompt(binding.prompt, event, binding.projectId);
+        const run = await heartbeat.wakeup(binding.agentId, {
+          source: "event",
+          triggerDetail: "system",
+          reason: "connector_event",
+          payload: {
+            prompt,
+            connectorEvent: event,
+            projectId: binding.projectId,
+            connectorBindingId: binding.id,
+            connectorConnectionId: connection.id,
+          },
+          idempotencyKey: `connector:${connection.id}:${binding.id}:${event.externalEventId}`,
+          requestedByActorType: "system",
+          requestedByActorId: connection.id,
+          contextSnapshot: {
+            wakeReason: "connector_event",
+            wakeSource: "event",
+            connectorConnectionId: connection.id,
+            connectorBindingId: binding.id,
+            connectorEventType: event.eventType,
+            externalEventId: event.externalEventId,
+            projectId: binding.projectId,
+            eventRunMode: "one_shot",
+            taskKey: `connector-event:${event.externalEventId}`,
+          },
+        });
+        await db
+          .update(connectorEventDeliveries)
+          .set({
+            status: run ? "dispatched" : "failed",
+            heartbeatRunId: run?.id ?? null,
+            processedAt: new Date(),
+            error: run ? null : "Agent wakeup was skipped by heartbeat policy",
+            updatedAt: new Date(),
+          })
+          .where(eq(connectorEventDeliveries.id, deliveryId));
+        if (run) runIds.push(run.id);
+        deliveryIds.push(deliveryId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await db
+          .update(connectorEventDeliveries)
+          .set({
+            status: "failed",
+            processedAt: new Date(),
+            error: message,
+            updatedAt: new Date(),
+          })
+          .where(eq(connectorEventDeliveries.id, deliveryId));
+        await db
+          .update(connectorConnections)
+          .set({ status: "error", lastError: message, updatedAt: new Date() })
+          .where(eq(connectorConnections.id, connection.id));
+        throw error;
+      }
+    }
+
+    return { deliveryIds, runIds, skippedDuplicate };
+  }
+
   return {
     listCatalog: () => CONNECTOR_TYPE_DEFINITIONS,
 
@@ -132,7 +265,8 @@ export function connectorService(db: Db) {
       input: CreateConnectorConnection,
       actorUserId: string | null,
     ) => {
-      if (!getConnectorTypeDefinition(input.connectorTypeKey)) {
+      const definition = getConnectorTypeDefinition(input.connectorTypeKey);
+      if (!definition) {
         throw unprocessable("Unsupported connector type");
       }
       const inboundPublicId = crypto.randomBytes(12).toString("hex");
@@ -153,6 +287,7 @@ export function connectorService(db: Db) {
           companyId,
           connectorTypeKey: input.connectorTypeKey,
           name: input.name,
+          status: definition.authMode === "managed_oauth" ? "pending_auth" : "active",
           config: input.config ?? {},
           inboundPublicId,
           inboundSecretId: secret.id,
@@ -162,7 +297,7 @@ export function connectorService(db: Db) {
         .returning();
       return {
         ...mapConnection(row),
-        inboundSecretValue: inboundToken,
+        inboundSecretValue: definition.authMode === "managed_oauth" ? null : inboundToken,
       };
     },
 
@@ -325,6 +460,8 @@ export function connectorService(db: Db) {
         .limit(Math.min(Math.max(limit, 1), 200));
     },
 
+    dispatchConnectionEvent,
+
     ingestInbound: async (input: {
       publicId: string;
       authorizationHeader?: string | null;
@@ -347,111 +484,7 @@ export function connectorService(db: Db) {
         throw unprocessable("Event type is not supported for this connector");
       }
 
-      const bindings = await db
-        .select()
-        .from(connectorEventBindings)
-        .where(
-          and(
-            eq(connectorEventBindings.companyId, connection.companyId),
-            eq(connectorEventBindings.connectionId, connection.id),
-            eq(connectorEventBindings.eventType, input.event.eventType),
-            eq(connectorEventBindings.enabled, true),
-          ),
-        );
-
-      if (bindings.length === 0) {
-        return { deliveryIds: [], runIds: [], skippedDuplicate: false };
-      }
-
-      const deliveryIds: string[] = [];
-      const runIds: string[] = [];
-      let skippedDuplicate = false;
-
-      for (const binding of bindings) {
-        let deliveryId: string;
-        try {
-          const [delivery] = await db
-            .insert(connectorEventDeliveries)
-            .values({
-              companyId: connection.companyId,
-              connectionId: connection.id,
-              bindingId: binding.id,
-              externalEventId: input.event.externalEventId,
-              eventType: input.event.eventType,
-              status: "received",
-              payload: input.event as unknown as Record<string, unknown>,
-            })
-            .returning();
-          deliveryId = delivery.id;
-        } catch (error) {
-          const code = error && typeof error === "object" && "code" in error ? (error as { code?: string }).code : null;
-          if (code === "23505") {
-            skippedDuplicate = true;
-            continue;
-          }
-          throw error;
-        }
-
-        try {
-          const prompt = buildEventPrompt(binding.prompt, input.event, binding.projectId);
-          const run = await heartbeat.wakeup(binding.agentId, {
-            source: "event",
-            triggerDetail: "system",
-            reason: "connector_event",
-            payload: {
-              prompt,
-              connectorEvent: input.event,
-              projectId: binding.projectId,
-              connectorBindingId: binding.id,
-              connectorConnectionId: connection.id,
-            },
-            idempotencyKey: `connector:${connection.id}:${binding.id}:${input.event.externalEventId}`,
-            requestedByActorType: "system",
-            requestedByActorId: connection.id,
-            contextSnapshot: {
-              wakeReason: "connector_event",
-              wakeSource: "event",
-              connectorConnectionId: connection.id,
-              connectorBindingId: binding.id,
-              connectorEventType: input.event.eventType,
-              externalEventId: input.event.externalEventId,
-              projectId: binding.projectId,
-              eventRunMode: "one_shot",
-              taskKey: `connector-event:${input.event.externalEventId}`,
-            },
-          });
-          await db
-            .update(connectorEventDeliveries)
-            .set({
-              status: run ? "dispatched" : "failed",
-              heartbeatRunId: run?.id ?? null,
-              processedAt: new Date(),
-              error: run ? null : "Agent wakeup was skipped by heartbeat policy",
-              updatedAt: new Date(),
-            })
-            .where(eq(connectorEventDeliveries.id, deliveryId));
-          if (run) runIds.push(run.id);
-          deliveryIds.push(deliveryId);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          await db
-            .update(connectorEventDeliveries)
-            .set({
-              status: "failed",
-              processedAt: new Date(),
-              error: message,
-              updatedAt: new Date(),
-            })
-            .where(eq(connectorEventDeliveries.id, deliveryId));
-          await db
-            .update(connectorConnections)
-            .set({ status: "error", lastError: message, updatedAt: new Date() })
-            .where(eq(connectorConnections.id, connection.id));
-          throw error;
-        }
-      }
-
-      return { deliveryIds, runIds, skippedDuplicate };
+      return dispatchConnectionEvent(connection, input.event);
     },
   };
 }

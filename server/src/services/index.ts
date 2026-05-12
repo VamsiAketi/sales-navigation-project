@@ -20,6 +20,7 @@ export { secretService } from "./secrets.js";
 export { projectSecretService } from "./project-secrets.js";
 export { routineService } from "./routines.js";
 export { connectorService } from "./connectors.js";
+export { gmailConnectorService } from "./gmail-connector.js";
 export { costService } from "./costs.js";
 export { financeService } from "./finance.js";
 export { heartbeatService } from "./heartbeat.js";

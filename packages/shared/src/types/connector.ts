@@ -10,6 +10,8 @@ export interface ConnectorConnection {
   inboundPublicId: string;
   inboundSecretId: string | null;
   inboundUrl: string | null;
+  authMode?: "inbound_webhook" | "managed_oauth";
+  connectedAccountEmail?: string | null;
   lastError: string | null;
   createdByUserId: string | null;
   updatedByUserId: string | null;

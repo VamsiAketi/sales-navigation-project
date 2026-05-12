@@ -8,13 +8,16 @@ import {
   updateConnectorEventBindingSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
+import { loadConfig } from "../config.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
-import { accessService, connectorService, logActivity } from "../services/index.js";
+import { accessService, connectorService, gmailConnectorService, logActivity } from "../services/index.js";
 import { forbidden } from "../errors.js";
 
 export function connectorRoutes(db: Db) {
   const router = Router();
   const svc = connectorService(db);
+  const config = loadConfig();
+  const gmail = gmailConnectorService(db, config);
   const access = accessService(db);
 
   async function assertCanReadConnectors(req: Request, companyId: string) {
@@ -40,7 +43,10 @@ export function connectorRoutes(db: Db) {
   }
 
   router.get("/connectors/catalog", async (_req, res) => {
-    res.json(svc.listCatalog());
+    res.json({
+      catalog: svc.listCatalog(),
+      gmailOAuthConfigured: gmail.isConfigured(),
+    });
   });
 
   router.get("/companies/:companyId/connectors", async (req, res) => {
@@ -202,6 +208,36 @@ export function connectorRoutes(db: Db) {
     await assertCanReadConnectors(req, companyId);
     const limit = Number(req.query.limit ?? 50);
     res.json(await svc.listDeliveries(companyId, connectionId, Number.isFinite(limit) ? limit : 50));
+  });
+
+  router.get("/companies/:companyId/connectors/:connectionId/gmail/oauth-url", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const connectionId = req.params.connectionId as string;
+    await assertCanManageConnectors(req, companyId);
+    res.json(await gmail.getAuthorizationUrl(companyId, connectionId));
+  });
+
+  router.get("/connectors/gmail/oauth/callback", async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code : null;
+    const state = typeof req.query.state === "string" ? req.query.state : null;
+    if (!code || !state) {
+      res.redirect("/company/connectors?gmail=error");
+      return;
+    }
+    try {
+      const result = await gmail.completeOAuthCallback({ code, state });
+      res.redirect(`/company/connectors?gmail=connected&connectionId=${encodeURIComponent(result.connectionId)}`);
+    } catch {
+      res.redirect("/company/connectors?gmail=error");
+    }
+  });
+
+  router.post("/companies/:companyId/connectors/:connectionId/gmail/sync", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const connectionId = req.params.connectionId as string;
+    await assertCanManageConnectors(req, companyId);
+    await svc.getConnection(companyId, connectionId);
+    res.json(await gmail.syncConnection(connectionId));
   });
 
   router.post("/connector-inbound/:publicId", validate(connectorInboundEventSchema), async (req, res) => {

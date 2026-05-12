@@ -1,7 +1,7 @@
 export const CONNECTOR_EVENT_TYPES = ["message.received"] as const;
 export type ConnectorEventType = (typeof CONNECTOR_EVENT_TYPES)[number];
 
-export const CONNECTOR_CONNECTION_STATUSES = ["active", "paused", "error"] as const;
+export const CONNECTOR_CONNECTION_STATUSES = ["pending_auth", "active", "paused", "error"] as const;
 export type ConnectorConnectionStatus = (typeof CONNECTOR_CONNECTION_STATUSES)[number];
 
 export const CONNECTOR_DELIVERY_STATUSES = [
@@ -17,14 +17,29 @@ export interface ConnectorTypeDefinition {
   key: string;
   displayName: string;
   description: string;
+  authMode: "inbound_webhook" | "managed_oauth";
   eventTypes: Array<{ key: ConnectorEventType; displayName: string; description: string }>;
 }
 
 export const CONNECTOR_TYPE_DEFINITIONS: ConnectorTypeDefinition[] = [
   {
+    key: "gmail",
+    displayName: "Gmail",
+    description: "Connect a Gmail inbox with Google sign-in. Paperclip syncs new mail and routes it to agents.",
+    authMode: "managed_oauth",
+    eventTypes: [
+      {
+        key: "message.received",
+        displayName: "Message received",
+        description: "Fires when a new Gmail message is detected for this connection.",
+      },
+    ],
+  },
+  {
     key: "email",
-    displayName: "Email",
+    displayName: "Email (webhook)",
     description: "Accept inbound email events from your mail ingress and route them to agents.",
+    authMode: "inbound_webhook",
     eventTypes: [
       {
         key: "message.received",
@@ -37,6 +52,7 @@ export const CONNECTOR_TYPE_DEFINITIONS: ConnectorTypeDefinition[] = [
     key: "webhook",
     displayName: "Custom webhook",
     description: "Accept JSON events from any external system through a signed inbound URL.",
+    authMode: "inbound_webhook",
     eventTypes: [
       {
         key: "message.received",
