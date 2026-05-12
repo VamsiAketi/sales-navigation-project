@@ -358,6 +358,7 @@ export const HEARTBEAT_INVOCATION_SOURCES = [
   "assignment",
   "on_demand",
   "automation",
+  "event",
 ] as const;
 export type HeartbeatInvocationSource = (typeof HEARTBEAT_INVOCATION_SOURCES)[number];
 
@@ -457,6 +458,9 @@ export const PERMISSION_KEYS = [
   "company_settings.invites",
   "company_settings.secrets",
   "company_settings.packages",
+  "connectors.read",
+  "connectors.manage",
+  "connectors.bindings.manage",
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
@@ -813,3 +817,17 @@ export const PLUGIN_BRIDGE_ERROR_CODES = [
   "UNKNOWN",
 ] as const;
 export type PluginBridgeErrorCode = (typeof PLUGIN_BRIDGE_ERROR_CODES)[number];
+
+export {
+  CONNECTOR_EVENT_TYPES,
+  CONNECTOR_CONNECTION_STATUSES,
+  CONNECTOR_DELIVERY_STATUSES,
+  CONNECTOR_TYPE_DEFINITIONS,
+  CONNECTOR_TYPE_KEYS,
+  getConnectorTypeDefinition,
+  isConnectorEventTypeForConnector,
+  type ConnectorEventType,
+  type ConnectorConnectionStatus,
+  type ConnectorDeliveryStatus,
+  type ConnectorTypeDefinition,
+} from "./constants/connectors.js";

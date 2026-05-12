@@ -29,4 +29,7 @@ export interface SidebarBadges {
   canManageCompanySettingsInvites?: boolean;
   canManageCompanySettingsSecrets?: boolean;
   canManageCompanySettingsPackages?: boolean;
+  canReadConnectors?: boolean;
+  canManageConnectors?: boolean;
+  canManageConnectorBindings?: boolean;
 }

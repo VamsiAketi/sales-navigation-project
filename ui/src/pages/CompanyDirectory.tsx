@@ -132,6 +132,8 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "company_settings.invites": "company_settings.read",
   "company_settings.secrets": "company_settings.read",
   "company_settings.packages": "company_settings.read",
+  "connectors.manage": "connectors.read",
+  "connectors.bindings.manage": "connectors.read",
 };
 
 function normalizePermissionSelection(keys: PermissionKey[]): PermissionKey[] {
@@ -188,6 +190,9 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "company_settings.invites",
     "company_settings.secrets",
     "company_settings.packages",
+    "connectors.read",
+    "connectors.manage",
+    "connectors.bindings.manage",
   ],
   manager: [
     "agents.read",
@@ -353,6 +358,15 @@ const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
   "company_settings.packages": {
     title: "Edit Company Settings: Company Packages",
   },
+  "connectors.read": {
+    title: "View Connectors",
+  },
+  "connectors.manage": {
+    title: "Manage Connectors",
+  },
+  "connectors.bindings.manage": {
+    title: "Manage Connector Event Bindings",
+  },
 };
 
 const PERMISSION_CATEGORY_DEFS: {
@@ -432,6 +446,11 @@ const PERMISSION_CATEGORY_DEFS: {
       "company_settings.secrets",
       "company_settings.packages",
     ],
+  },
+  {
+    id: "connectors",
+    title: "Connectors",
+    keys: ["connectors.read", "connectors.manage", "connectors.bindings.manage"],
   },
 ];
 

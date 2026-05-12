@@ -36,6 +36,8 @@ Follow these steps every time you wake up:
   - add a markdown comment explaining why it remains open and what happens next.
     Always include links to the approval and issue in that comment.
 
+**Step 2b — Connector event wake (when triggered).** If `PAPERCLIP_WAKE_REASON=connector_event`, skip the normal inbox/checkout heartbeat flow (Steps 3-7). Execute the connector workflow prompt from the wake payload, use the Paperclip API only when coordination is required, then exit.
+
 **Step 3 — Get assignments.** Prefer `GET /api/agents/me/inbox-lite` for the normal heartbeat inbox. It returns the compact assignment list you need for prioritization. Fall back to `GET /api/companies/{companyId}/issues?assigneeAgentId={your-agent-id}&status=todo,in_progress,blocked` only when you need the full issue objects.
 
 **Step 4 — Pick work (with mention exception).** Work on `in_progress` first, then `todo`. Skip `blocked` unless you can unblock it.

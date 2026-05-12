@@ -31,6 +31,7 @@ import { Costs } from "./pages/Costs";
 import { Activity } from "./pages/Activity";
 import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
+import { CompanyConnectors } from "./pages/CompanyConnectors";
 import { Billing } from "./pages/Billing";
 import { CompanySkills } from "./pages/CompanySkills";
 import { CompanyExport } from "./pages/CompanyExport";
@@ -156,6 +157,7 @@ function boardRoutes() {
       <Route path="companies" element={<Companies />} />
       <Route path="billing" element={<LegacyBillingRedirect />} />
       <Route path="company/settings" element={<CompanySettings />} />
+      <Route path="company/connectors" element={<CompanyConnectors />} />
       <Route path="company/billing" element={<Billing />} />
       <Route path="company/export/*" element={<CompanyExport />} />
       <Route path="company/import" element={<CompanyImport />} />

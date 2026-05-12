@@ -11,6 +11,7 @@ import {
   Repeat,
   Settings,
   CreditCard,
+  Link2,
   Users,
   GripVertical,
   CheckSquare,
@@ -285,7 +286,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
   );
 }
 
-const COMPANY_NAV_IDS = ["audit", "billing", "settings"] as const;
+const COMPANY_NAV_IDS = ["audit", "billing", "connectors", "settings"] as const;
 
 export function SidebarCompanyNavSection() {
   const { sidebarCompact } = useSidebar();
@@ -303,6 +304,7 @@ export function SidebarCompanyNavSection() {
   });
   const canReadAuditLogs = sidebarBadges?.canReadAuditLogs ?? true;
   const canReadCompanySettings = sidebarBadges?.canReadCompanySettings ?? true;
+  const canReadConnectors = sidebarBadges?.canReadConnectors ?? true;
 
   const availableIds = useMemo(() => [...COMPANY_NAV_IDS], []);
   const { orderedIds, persistOrder } = useCompanySidebarNavOrder(
@@ -354,6 +356,18 @@ export function SidebarCompanyNavSection() {
             label="Billing"
             icon={CreditCard}
             iconClassName={azureSidebarIcon.billing}
+            textVariant="sub"
+            className={dragDisabled ? undefined : "!pl-2"}
+          />
+        );
+      case "connectors":
+        if (!canReadConnectors) return null;
+        return (
+          <SidebarNavItem
+            to="/company/connectors"
+            label="Connectors"
+            icon={Link2}
+            iconClassName={azureSidebarIcon.settings}
             textVariant="sub"
             className={dragDisabled ? undefined : "!pl-2"}
           />

@@ -161,6 +161,13 @@ export type {
   RoutineListItem,
 } from "./routine.js";
 export type {
+  ConnectorConnection,
+  ConnectorConnectionCreated,
+  ConnectorEventBinding,
+  ConnectorEventDelivery,
+  ConnectorInboundDispatchResult,
+} from "./connector.js";
+export type {
   CostEvent,
   CostSummary,
   CostDailyTotal,

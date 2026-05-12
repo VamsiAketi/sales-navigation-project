@@ -69,6 +69,8 @@ const GRANT_READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "company_settings.invites": "company_settings.read",
   "company_settings.secrets": "company_settings.read",
   "company_settings.packages": "company_settings.read",
+  "connectors.manage": "connectors.read",
+  "connectors.bindings.manage": "connectors.read",
 };
 
 function normalizeGrantsWithReadDependencies(grants: GrantInput[]): GrantInput[] {

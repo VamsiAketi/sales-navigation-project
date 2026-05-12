@@ -60,6 +60,12 @@ export const queryKeys = {
     runs: (id: string) => ["routines", "runs", id] as const,
     activity: (companyId: string, id: string) => ["routines", "activity", companyId, id] as const,
   },
+  connectors: {
+    catalog: ["connectors", "catalog"] as const,
+    list: (companyId: string) => ["connectors", companyId] as const,
+    bindings: (companyId: string, connectionId: string) => ["connectors", companyId, connectionId, "bindings"] as const,
+    deliveries: (companyId: string, connectionId: string) => ["connectors", companyId, connectionId, "deliveries"] as const,
+  },
   executionWorkspaces: {
     list: (companyId: string, filters?: Record<string, string | boolean | undefined>) =>
       ["execution-workspaces", companyId, filters ?? {}] as const,

@@ -477,6 +477,13 @@
       "when": 1777000000000,
       "tag": "0067_stripe_billing_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1777100000000,
+      "tag": "0068_connector_module",
+      "breakpoints": true
     }
   ]
 }
