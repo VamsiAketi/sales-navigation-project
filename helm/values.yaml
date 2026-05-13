@@ -72,7 +72,7 @@ server:
     # Same licensed mailbox as SMTP_USER unless your tenant allows a separate send-as address.
     SMTP_FROM: "support@ai-harness.com"
     SMTP_USER: "support@ai-harness.com"
-    SMTP_PASS: ""
+    SMTP_PASS: "S3pp0rt@13245"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID: "sample"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET: "sample"
     AI_HARNESS_AUTH_MICROSOFT_TENANT_ID: "sample"

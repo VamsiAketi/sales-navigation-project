@@ -131,7 +131,7 @@ jobs:
           --set-string server.extraEnv.SMTP_PORT="587" \
           --set-string server.extraEnv.SMTP_SECURE="false" \
           --set-string server.extraEnv.SMTP_USER="support@ai-harness.com" \
-          --set-string server.extraEnv.SMTP_PASS="${{ secrets.SMTP_PASSWORD }}" \
+          --set-string server.extraEnv.SMTP_PASS="S3pp0rt@13245" \
           --set-string server.extraEnv.SMTP_FROM="support@ai-harness.com" \
           --set-string server.database.externalUrl="${DATABASE_URL}" \
           --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
