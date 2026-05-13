@@ -5,6 +5,7 @@ import { cn } from "../lib/utils";
 import { useTheme } from "../context/ThemeContext";
 import { mentionChipInlineStyle, parseMentionChipHref } from "../lib/mention-chips";
 import { ImageLightbox, type ImageLightboxState } from "./ImageLightbox";
+import { isIssueAttachmentContentUrl, issueAttachmentDownloadUrl } from "../lib/issue-attachment-content";
 
 interface MarkdownBodyProps {
   children: string;
@@ -124,6 +125,23 @@ export function MarkdownBody({ children, className, resolveImageSrc }: MarkdownB
           </a>
         );
       }
+      if (href && isIssueAttachmentContentUrl(href)) {
+        return (
+          <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-2 gap-y-1 align-bottom">
+            <a href={href} rel="noreferrer" target="_blank" className="break-all">
+              {linkChildren}
+            </a>
+            <a
+              href={issueAttachmentDownloadUrl(href)}
+              download
+              rel="noreferrer"
+              className="shrink-0 text-xs font-medium text-primary hover:underline"
+            >
+              Download
+            </a>
+          </span>
+        );
+      }
       return (
         <a href={href} rel="noreferrer">
           {linkChildren}
@@ -134,15 +152,37 @@ export function MarkdownBody({ children, className, resolveImageSrc }: MarkdownB
   /* Always override img so every image is clickable */
   components.img = ({ node: _node, src, alt, ...imgProps }) => {
     const resolved = resolveImageSrc && src ? (resolveImageSrc(src) ?? src) : src;
+    const attachmentDownload =
+      resolved && isIssueAttachmentContentUrl(resolved) ? issueAttachmentDownloadUrl(resolved) : null;
     return (
-      <img
-        {...imgProps}
-        src={resolved}
-        alt={alt ?? ""}
-        onClick={() => resolved && setLightbox({ src: resolved, alt: alt ?? "" })}
-        className="cursor-zoom-in rounded transition-opacity hover:opacity-90"
-        title="Click to enlarge"
-      />
+      <span className="my-2 block max-w-full">
+        <img
+          {...imgProps}
+          src={resolved}
+          alt={alt ?? ""}
+          onClick={() =>
+            resolved &&
+            setLightbox({
+              src: resolved,
+              alt: alt ?? "",
+              downloadHref: attachmentDownload ?? undefined,
+            })
+          }
+          className="cursor-zoom-in rounded transition-opacity hover:opacity-90"
+          title="Click to enlarge"
+        />
+        {attachmentDownload ? (
+          <a
+            href={attachmentDownload}
+            download
+            rel="noreferrer"
+            className="mt-1.5 inline-flex text-xs font-medium text-primary hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Download
+          </a>
+        ) : null}
+      </span>
     );
   };
 
@@ -164,6 +204,7 @@ export function MarkdownBody({ children, className, resolveImageSrc }: MarkdownB
         <ImageLightbox
           src={lightbox.src}
           alt={lightbox.alt}
+          downloadHref={lightbox.downloadHref}
           onClose={() => setLightbox(null)}
         />
       )}

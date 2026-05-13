@@ -1925,7 +1925,12 @@ export function issueRoutes(db: Db, storage: StorageService) {
     res.setHeader("Content-Length", String(attachment.byteSize || object.contentLength || 0));
     res.setHeader("Cache-Control", "private, max-age=60");
     const filename = attachment.originalFilename ?? "attachment";
-    res.setHeader("Content-Disposition", `inline; filename=\"${filename.replaceAll("\"", "")}\"`);
+    const safeFilename = filename.replaceAll("\"", "");
+    const downloadRaw = req.query.download;
+    const downloadParam = Array.isArray(downloadRaw) ? downloadRaw[0] : downloadRaw;
+    const forceDownload = downloadParam === "1" || downloadParam === "true";
+    const disposition = forceDownload ? "attachment" : "inline";
+    res.setHeader("Content-Disposition", `${disposition}; filename=\"${safeFilename}\"`);
 
     object.stream.on("error", (err) => {
       next(err);
