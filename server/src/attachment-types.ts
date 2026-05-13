@@ -1,10 +1,10 @@
 /**
  * Shared attachment content-type configuration.
  *
- * By default only image types are allowed.  Set the
- * `PAPERCLIP_ALLOWED_ATTACHMENT_TYPES` environment variable to a
- * comma-separated list of MIME types or wildcard patterns to expand the
- * allowed set.
+ * Default list covers common images, video, audio, PDF, Office documents,
+ * and a few text types. Set `PAPERCLIP_ALLOWED_ATTACHMENT_TYPES` to a
+ * comma-separated list of MIME types or wildcard patterns to replace or
+ * extend the allowed set (see examples below).
  *
  * Examples:
  *   PAPERCLIP_ALLOWED_ATTACHMENT_TYPES=image/*,application/pdf
@@ -25,7 +25,21 @@ export const DEFAULT_ALLOWED_TYPES: readonly string[] = [
   "video/mp4",
   "video/ogg",
   "video/quicktime",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/ogg",
+  "audio/webm",
+  "audio/mp4",
+  "audio/aac",
+  "audio/flac",
+  "audio/x-m4a",
   "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "text/markdown",
   "text/plain",
   "application/json",
@@ -35,7 +49,7 @@ export const DEFAULT_ALLOWED_TYPES: readonly string[] = [
 
 /**
  * Parse a comma-separated list of MIME type patterns into a normalised array.
- * Returns the default image-only list when the input is empty or undefined.
+ * Returns the default allowed list when the input is empty or undefined.
  */
 export function parseAllowedTypes(raw: string | undefined): string[] {
   if (!raw) return [...DEFAULT_ALLOWED_TYPES];

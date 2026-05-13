@@ -1,9 +1,22 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useImperativeHandle,
+  forwardRef,
+} from "react";
+import { isIssueAttachmentContentUrl, issueAttachmentDownloadUrl } from "../lib/issue-attachment-content";
 import { cn } from "../lib/utils";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { useAutosaveIndicator } from "../hooks/useAutosaveIndicator";
 import { ImageLightbox, type ImageLightboxState } from "./ImageLightbox";
 import { Pencil } from "lucide-react";
+
+export interface InlineEditorRef {
+  /** When `multiline`, append markdown to the draft and focus the editor (e.g. sidebar upload). */
+  appendMarkdown: (markdown: string) => void;
+}
 
 interface InlineEditorProps {
   value: string;
@@ -22,17 +35,20 @@ const pad = "px-1 -mx-1";
 const markdownPad = "px-1";
 const AUTOSAVE_DEBOUNCE_MS = 900;
 
-export function InlineEditor({
-  value,
-  onSave,
-  as: Tag = "span",
-  className,
-  placeholder = "Click to edit...",
-  multiline = false,
-  showEditButton = false,
-  imageUploadHandler,
-  mentions,
-}: InlineEditorProps) {
+export const InlineEditor = forwardRef<InlineEditorRef, InlineEditorProps>(function InlineEditor(
+  {
+    value,
+    onSave,
+    as: Tag = "span",
+    className,
+    placeholder = "Click to edit...",
+    multiline = false,
+    showEditButton = false,
+    imageUploadHandler,
+    mentions,
+  },
+  ref,
+) {
   const [editing, setEditing] = useState(false);
   const [multilineFocused, setMultilineFocused] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -46,6 +62,20 @@ export function InlineEditor({
     reset,
     runSave,
   } = useAutosaveIndicator();
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      appendMarkdown: (markdown: string) => {
+        const chunk = markdown.trim();
+        if (!chunk || !multiline) return;
+        setMultilineFocused(true);
+        const sep = chunk.startsWith("\n") ? "" : "\n\n";
+        markdownRef.current?.insertMarkdown(`${sep}${chunk}`);
+      },
+    }),
+    [multiline],
+  );
 
   useEffect(() => {
     if (multiline && multilineFocused) return;
@@ -150,6 +180,7 @@ export function InlineEditor({
         <ImageLightbox
           src={lightbox.src}
           alt={lightbox.alt}
+          downloadHref={lightbox.downloadHref}
           onClose={() => setLightbox(null)}
         />
       )}
@@ -179,7 +210,10 @@ export function InlineEditor({
           const target = e.target as HTMLElement;
           if (target.tagName === "IMG") {
             const img = target as HTMLImageElement;
-            setLightbox({ src: img.src, alt: img.alt ?? "" });
+            const downloadHref = isIssueAttachmentContentUrl(img.src)
+              ? issueAttachmentDownloadUrl(img.src)
+              : undefined;
+            setLightbox({ src: img.src, alt: img.alt ?? "", downloadHref });
             e.stopPropagation();
           }
         }}
@@ -279,4 +313,4 @@ export function InlineEditor({
       )}
     </div>
   );
-}
+});

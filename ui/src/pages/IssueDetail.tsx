@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link, useLocation, useNavigate, useParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,8 +24,9 @@ import {
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { relativeTime, cn } from "../lib/utils";
-import { InlineEditor } from "../components/InlineEditor";
+import { InlineEditor, type InlineEditorRef } from "../components/InlineEditor";
 import { CommentThread } from "../components/CommentThread";
+import { IssueAttachmentsJiraGallery } from "../components/IssueAttachmentsJiraGallery";
 import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
 import { IssueProperties } from "../components/IssueProperties";
 import { IssueLink } from "../components/IssueLink";
@@ -42,7 +43,6 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ImageLightbox, type ImageLightboxState } from "../components/ImageLightbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -55,16 +55,21 @@ import {
   EyeOff,
   Hexagon,
   ListTree,
+  Loader2,
   MessageSquare,
   MoreHorizontal,
   Paperclip,
   Repeat,
   SlidersHorizontal,
-  Trash2,
   X,
 } from "lucide-react";
-import { INBOX_MINE_ISSUE_STATUS_FILTER, type ActivityEvent, type Agent, type IssueAttachment } from "@paperclipai/shared";
+import { INBOX_MINE_ISSUE_STATUS_FILTER, type ActivityEvent, type Agent } from "@paperclipai/shared";
 import { getRecentTouchedIssues } from "../lib/inbox";
+import { buildAttachmentOriginMap, extractAttachmentIdsFromMarkdown } from "../lib/issue-attachment-markdown-refs";
+import {
+  ISSUE_ATTACHMENT_FILE_INPUT_ACCEPT,
+  markdownTokenForUploadedIssueFile,
+} from "../lib/issue-attachment-file-accept";
 
 type CommentReassignment = {
   assigneeAgentId: string | null;
@@ -164,36 +169,6 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max - 1) + "\u2026";
 }
 
-function isMarkdownFile(file: File) {
-  const name = file.name.toLowerCase();
-  return (
-    name.endsWith(".md") ||
-    name.endsWith(".markdown") ||
-    file.type === "text/markdown"
-  );
-}
-
-function fileBaseName(filename: string) {
-  return filename.replace(/\.[^.]+$/, "");
-}
-
-function slugifyDocumentKey(input: string) {
-  const slug = input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "document";
-}
-
-function titleizeFilename(input: string) {
-  return input
-    .split(/[-_ ]+/g)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 function formatAction(
   action: string,
   details: Record<string, unknown> | null | undefined,
@@ -290,15 +265,14 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mobilePropsOpen, setMobilePropsOpen] = useState(false);
-  const [lightbox, setLightbox] = useState<ImageLightboxState | null>(null);
   const [detailTab, setDetailTab] = useState("comments");
   const [secondaryOpen, setSecondaryOpen] = useState({
     approvals: false,
   });
-  const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const [attachmentDragActive, setAttachmentDragActive] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastMarkedReadIssueIdRef = useRef<string | null>(null);
+  const descriptionEditorRef = useRef<InlineEditorRef>(null);
+  const descriptionAttachInputRef = useRef<HTMLInputElement>(null);
+  const [descriptionAttachBusy, setDescriptionAttachBusy] = useState(false);
 
   const { data: issue, isLoading, error } = useQuery({
     queryKey: queryKeys.issues.detail(issueId!),
@@ -311,6 +285,12 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   const { data: comments } = useQuery({
     queryKey: queryKeys.issues.comments(issueId!),
     queryFn: () => issuesApi.listComments(issueId!),
+    enabled: !!issueId,
+  });
+
+  const { data: attachments } = useQuery({
+    queryKey: queryKeys.issues.attachments(issueId!),
+    queryFn: () => issuesApi.listAttachments(issueId!),
     enabled: !!issueId,
   });
 
@@ -330,12 +310,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   const { data: linkedApprovals } = useQuery({
     queryKey: queryKeys.issues.approvals(issueId!),
     queryFn: () => issuesApi.listApprovals(issueId!),
-    enabled: !!issueId,
-  });
-
-  const { data: attachments } = useQuery({
-    queryKey: queryKeys.issues.attachments(issueId!),
-    queryFn: () => issuesApi.listAttachments(issueId!),
     enabled: !!issueId,
   });
 
@@ -571,13 +545,18 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     });
   }, [activity, comments, linkedRuns]);
 
+  const attachmentOriginById = useMemo(
+    () => buildAttachmentOriginMap(issue?.description, comments, attachments ?? []),
+    [issue?.description, comments, attachments],
+  );
+
   const invalidateIssue = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issueId!) });
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.activity(issueId!) });
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.runs(issueId!) });
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.approvals(issueId!) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.issues.attachments(issueId!) });
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.documents(issueId!) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.issues.attachments(issueId!) });
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.liveRuns(issueId!) });
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.activeRun(issueId!) });
     if (selectedCompanyId) {
@@ -640,56 +619,134 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     },
   });
 
-  const uploadAttachment = useMutation({
+  const uploadIssueAttachment = useMutation({
     mutationFn: async (file: File) => {
       if (!selectedCompanyId) throw new Error("No company selected");
       return issuesApi.uploadAttachment(selectedCompanyId, issueId!, file);
     },
     onSuccess: () => {
-      setAttachmentError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.attachments(issueId!) });
       invalidateIssue();
     },
     onError: (err) => {
-      setAttachmentError(err instanceof Error ? err.message : "Upload failed");
-    },
-  });
-
-  const importMarkdownDocument = useMutation({
-    mutationFn: async (file: File) => {
-      const baseName = fileBaseName(file.name);
-      const key = slugifyDocumentKey(baseName);
-      const existing = (issue?.documentSummaries ?? []).find((doc) => doc.key === key) ?? null;
-      const body = await file.text();
-      const inferredTitle = titleizeFilename(baseName);
-      const nextTitle = existing?.title ?? inferredTitle ?? null;
-      return issuesApi.upsertDocument(issueId!, key, {
-        title: key === "plan" ? null : nextTitle,
-        format: "markdown",
-        body,
-        baseRevisionId: existing?.latestRevisionId ?? null,
+      pushToast({
+        title: "Upload failed",
+        body: err instanceof Error ? err.message : "Could not upload file",
+        tone: "error",
       });
     },
-    onSuccess: () => {
-      setAttachmentError(null);
-      invalidateIssue();
-    },
-    onError: (err) => {
-      setAttachmentError(err instanceof Error ? err.message : "Document import failed");
-    },
   });
 
-  const deleteAttachment = useMutation({
-    mutationFn: (attachmentId: string) => issuesApi.deleteAttachment(attachmentId),
-    onSuccess: () => {
-      setAttachmentError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.issues.attachments(issueId!) });
-      invalidateIssue();
+  const handleDescriptionToolbarFiles = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const picked = e.target.files;
+      if (!picked?.length || !selectedCompanyId || !issueId) return;
+      // Snapshot before clearing the input: clearing `value` can empty the live `FileList` in some browsers.
+      const fileList = Array.from(picked);
+      e.target.value = "";
+      setDescriptionAttachBusy(true);
+      try {
+        for (const file of fileList) {
+          const att = await uploadIssueAttachment.mutateAsync(file);
+          const token = markdownTokenForUploadedIssueFile(file, att.contentPath);
+          descriptionEditorRef.current?.appendMarkdown(token);
+        }
+      } catch (err) {
+        pushToast({
+          title: "Upload failed",
+          body: err instanceof Error ? err.message : "Could not upload file",
+          tone: "error",
+        });
+      } finally {
+        setDescriptionAttachBusy(false);
+      }
     },
-    onError: (err) => {
-      setAttachmentError(err instanceof Error ? err.message : "Delete failed");
+    [selectedCompanyId, issueId, uploadIssueAttachment, pushToast],
+  );
+
+  const issueDescriptionUploadExtraActions = useMemo(
+    () => (
+      <>
+        <input
+          ref={descriptionAttachInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          accept={ISSUE_ATTACHMENT_FILE_INPUT_ACCEPT}
+          onChange={handleDescriptionToolbarFiles}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          disabled={descriptionAttachBusy}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => descriptionAttachInputRef.current?.click()}
+        >
+          {descriptionAttachBusy ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Paperclip className="mr-1.5 h-3.5 w-3.5" />
+          )}
+          <span className="hidden sm:inline">Upload attachment</span>
+          <span className="sm:hidden">Upload</span>
+        </Button>
+      </>
+    ),
+    [handleDescriptionToolbarFiles, descriptionAttachBusy],
+  );
+
+  const saveDescriptionWithAttachmentPrune = useCallback(
+    async (description: string) => {
+      if (!issueId || !issue) {
+        await updateIssue.mutateAsync({ description });
+        return;
+      }
+      const prev = issue.description ?? "";
+      const boardUserId = session?.user?.id ?? session?.session?.userId ?? null;
+      if (boardUserId) {
+        const prevIds = extractAttachmentIdsFromMarkdown(prev);
+        const nextIds = extractAttachmentIdsFromMarkdown(description);
+        const removed = [...prevIds].filter((id) => !nextIds.has(id));
+        if (removed.length > 0) {
+          const stillInComments = new Set<string>();
+          for (const c of comments ?? []) {
+            for (const id of extractAttachmentIdsFromMarkdown(c.body)) {
+              stillInComments.add(id);
+            }
+          }
+          const byLower = new Map((attachments ?? []).map((a) => [a.id.toLowerCase(), a]));
+          for (const low of removed) {
+            if (stillInComments.has(low)) continue;
+            const att = byLower.get(low);
+            if (!att) continue;
+            try {
+              await issuesApi.deleteAttachment(att.id);
+            } catch (err) {
+              pushToast({
+                title: "Could not remove orphaned file",
+                body: err instanceof Error ? err.message : "Delete failed",
+                tone: "error",
+              });
+            }
+          }
+          await queryClient.invalidateQueries({ queryKey: queryKeys.issues.attachments(issueId) });
+        }
+      }
+      await updateIssue.mutateAsync({ description });
     },
-  });
+    [
+      issueId,
+      issue,
+      session?.user?.id,
+      session?.session?.userId,
+      comments,
+      attachments,
+      updateIssue,
+      pushToast,
+      queryClient,
+    ],
+  );
 
   useEffect(() => {
     const titleLabel = issue?.title ?? issueId ?? "Task";
@@ -737,69 +794,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
 
   // Ancestors are returned oldest-first from the server (root at end, immediate parent at start)
   const ancestors = issue.ancestors ?? [];
-  const handleFilePicked = async (evt: ChangeEvent<HTMLInputElement>) => {
-    const files = evt.target.files;
-    if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
-      if (isMarkdownFile(file)) {
-        await importMarkdownDocument.mutateAsync(file);
-      } else {
-        await uploadAttachment.mutateAsync(file);
-      }
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const handleAttachmentDrop = async (evt: DragEvent<HTMLDivElement>) => {
-    evt.preventDefault();
-    setAttachmentDragActive(false);
-    const files = evt.dataTransfer.files;
-    if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
-      if (isMarkdownFile(file)) {
-        await importMarkdownDocument.mutateAsync(file);
-      } else {
-        await uploadAttachment.mutateAsync(file);
-      }
-    }
-  };
-
-  const isImageAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("image/");
-  const isVideoAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("video/");
-  const attachmentList = attachments ?? [];
-  const hasAttachments = attachmentList.length > 0;
-  const attachmentUploadButton = (
-    <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,video/webm,video/mp4,video/ogg,video/quicktime,application/pdf,text/plain,text/markdown,application/json,text/csv,text/html,.md,.markdown"
-        className="hidden"
-        onChange={handleFilePicked}
-        multiple
-      />
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={uploadAttachment.isPending || importMarkdownDocument.isPending}
-        className={cn(
-          "shadow-none",
-          attachmentDragActive && "border-primary bg-primary/5",
-        )}
-      >
-        <Paperclip className="h-3.5 w-3.5 mr-1.5" />
-        {uploadAttachment.isPending || importMarkdownDocument.isPending ? "Uploading..." : (
-          <>
-            <span className="hidden sm:inline">Upload attachment</span>
-            <span className="sm:hidden">Upload</span>
-          </>
-        )}
-      </Button>
-    </>
-  );
 
   return (
     <div className={fullWidth ? "space-y-6 pt-4" : "max-w-2xl space-y-6 pt-4"}>
@@ -997,15 +991,16 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
         />
 
         <InlineEditor
+          ref={descriptionEditorRef}
           value={issue.description ?? ""}
-          onSave={(description) => updateIssue.mutateAsync({ description })}
+          onSave={saveDescriptionWithAttachmentPrune}
           as="p"
           className="text-[15px] leading-7 text-foreground"
           placeholder="Add a description..."
           multiline
           mentions={mentionOptions}
           imageUploadHandler={async (file) => {
-            const attachment = await uploadAttachment.mutateAsync(file);
+            const attachment = await uploadIssueAttachment.mutateAsync(file);
             return attachment.contentPath;
           }}
         />
@@ -1056,118 +1051,26 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
         issue={issue}
         canDeleteDocuments={Boolean(session?.user?.id)}
         mentions={mentionOptions}
+        extraActions={issueDescriptionUploadExtraActions}
         imageUploadHandler={async (file) => {
-          const attachment = await uploadAttachment.mutateAsync(file);
+          const attachment = await uploadIssueAttachment.mutateAsync(file);
           return attachment.contentPath;
         }}
-        extraActions={!hasAttachments ? attachmentUploadButton : undefined}
       />
 
-      {hasAttachments ? (
-        <div
-        className={cn(
-          "space-y-3 rounded-lg transition-colors",
-        )}
-        onDragEnter={(evt) => {
-          evt.preventDefault();
-          setAttachmentDragActive(true);
+      <IssueAttachmentsJiraGallery
+        attachments={attachments ?? []}
+        originById={attachmentOriginById}
+        isUploading={uploadIssueAttachment.isPending}
+        onAddFiles={(files) => {
+          for (const file of Array.from(files)) {
+            uploadIssueAttachment.mutate(file);
+          }
         }}
-        onDragOver={(evt) => {
-          evt.preventDefault();
-          setAttachmentDragActive(true);
+        onRefresh={() => {
+          void queryClient.refetchQueries({ queryKey: queryKeys.issues.attachments(issueId!) });
         }}
-        onDragLeave={(evt) => {
-          if (evt.currentTarget.contains(evt.relatedTarget as Node | null)) return;
-          setAttachmentDragActive(false);
-        }}
-        onDrop={(evt) => void handleAttachmentDrop(evt)}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground">Attachments</h3>
-          {attachmentUploadButton}
-        </div>
-
-        {attachmentError && (
-          <p className="text-xs text-destructive">{attachmentError}</p>
-        )}
-
-        <div className="space-y-2">
-          {attachmentList.map((attachment) => (
-            <div key={attachment.id} className="border border-border rounded-md p-2">
-              <div className="flex items-center justify-between gap-2">
-                <a
-                  href={attachment.contentPath}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs hover:underline truncate"
-                  title={attachment.originalFilename ?? attachment.id}
-                >
-                  {attachment.originalFilename ?? attachment.id}
-                </a>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => deleteAttachment.mutate(attachment.id)}
-                  disabled={deleteAttachment.isPending}
-                  title="Delete attachment"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
-              </p>
-              {isVideoAttachment(attachment) && (
-                <div className="mt-2 space-y-2">
-                  <video
-                    controls
-                    preload="metadata"
-                    className="max-h-56 w-full rounded border border-border bg-accent/10"
-                    src={attachment.contentPath}
-                  >
-                    <track kind="captions" />
-                  </video>
-                  <div className="flex items-center gap-3 text-xs">
-                    <a
-                      href={attachment.contentPath}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hover:underline"
-                    >
-                      Watch
-                    </a>
-                    <a
-                      href={attachment.contentPath}
-                      download={attachment.originalFilename ?? true}
-                      className="hover:underline"
-                    >
-                      Download
-                    </a>
-                  </div>
-                </div>
-              )}
-              {isImageAttachment(attachment) && (
-                <button
-                  type="button"
-                  className="mt-2 w-full cursor-zoom-in"
-                  title="Click to zoom"
-                  onClick={() =>
-                    setLightbox({ src: attachment.contentPath, alt: attachment.originalFilename ?? "attachment" })
-                  }
-                >
-                  <img
-                    src={attachment.contentPath}
-                    alt={attachment.originalFilename ?? "attachment"}
-                    className="max-h-56 w-full rounded border border-border object-contain bg-accent/10"
-                    loading="lazy"
-                  />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-        </div>
-      ) : null}
+      />
 
       <Separator />
 
@@ -1216,11 +1119,8 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
               await addComment.mutateAsync({ body, reopen });
             }}
             imageUploadHandler={async (file) => {
-              const attachment = await uploadAttachment.mutateAsync(file);
-              return attachment.contentPath;
-            }}
-            onAttachImage={async (file) => {
-              await uploadAttachment.mutateAsync(file);
+              const att = await issuesApi.uploadAttachment(issue.companyId, issue.id, file);
+              return att.contentPath;
             }}
             liveRunSlot={<LiveRunWidget issueId={issueId!} companyId={issue.companyId} />}
           />
@@ -1341,14 +1241,6 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
           </ScrollArea>
         </SheetContent>
       </Sheet>
-      {/* Image lightbox */}
-      {lightbox && (
-        <ImageLightbox
-          src={lightbox.src}
-          alt={lightbox.alt}
-          onClose={() => setLightbox(null)}
-        />
-      )}
 
     </div>
   );

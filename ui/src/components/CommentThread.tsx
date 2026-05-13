@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { IssueComment, Agent } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,11 @@ import { StatusBadge } from "./StatusBadge";
 import { AgentIcon } from "./AgentIconPicker";
 import { formatDateTime, relativeTime } from "../lib/utils";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import {
+  ISSUE_ATTACHMENT_FILE_INPUT_ACCEPT,
+  markdownTokenForUploadedIssueFile,
+} from "../lib/issue-attachment-file-accept";
+import { flushComposerBlobUrls, revokeOrphanedComposerBlobs } from "../lib/flush-composer-blob-urls";
 
 interface CommentWithRunMeta extends IssueComment {
   runId?: string | null;
@@ -42,8 +47,9 @@ interface CommentThreadProps {
   /** Map of userId → display name for resolving human comment authors. */
   userMap?: Map<string, string>;
   currentUserId?: string | null;
+  /** When the comment is submitted, each staged `blob:` URL is replaced by calling this with the original `File`. */
   imageUploadHandler?: (file: File) => Promise<string>;
-  /** Callback to attach an image file to the parent issue (not inline in a comment). */
+  /** Callback to attach a file to the parent issue (not inline in a comment). */
   onAttachImage?: (file: File) => Promise<void>;
   draftKey?: string;
   liveRunSlot?: React.ReactNode;
@@ -308,6 +314,7 @@ export function CommentThread({
   const editorRef = useRef<MarkdownEditorRef>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingComposerBlobsRef = useRef(new Map<string, File>());
   const location = useLocation();
   const hasScrolledRef = useRef(false);
 
@@ -362,8 +369,22 @@ export function CommentThread({
   useEffect(() => {
     return () => {
       if (draftTimer.current) clearTimeout(draftTimer.current);
+      for (const url of pendingComposerBlobsRef.current.keys()) {
+        URL.revokeObjectURL(url);
+      }
+      pendingComposerBlobsRef.current.clear();
     };
   }, []);
+
+  const stageComposerFile = useCallback(async (file: File) => {
+    const url = URL.createObjectURL(file);
+    pendingComposerBlobsRef.current.set(url, file);
+    return url;
+  }, []);
+
+  useEffect(() => {
+    revokeOrphanedComposerBlobs(body, pendingComposerBlobsRef.current);
+  }, [body]);
 
   useEffect(() => {
     setReassignTarget(effectiveSuggestedAssigneeValue);
@@ -395,7 +416,11 @@ export function CommentThread({
 
     setSubmitting(true);
     try {
-      await onAdd(trimmed, reopen ? true : undefined, reassignment ?? undefined);
+      let bodyToPost = trimmed;
+      if (imageUploadHandler) {
+        bodyToPost = await flushComposerBlobUrls(trimmed, pendingComposerBlobsRef.current, imageUploadHandler);
+      }
+      await onAdd(bodyToPost, reopen ? true : undefined, reassignment ?? undefined);
       setBody("");
       if (draftKey) clearDraft(draftKey);
       setReopen(true);
@@ -411,10 +436,9 @@ export function CommentThread({
     setAttaching(true);
     try {
       if (imageUploadHandler) {
-        const url = await imageUploadHandler(file);
-        const safeName = file.name.replace(/[[\]]/g, "\\$&");
-        const markdown = `![${safeName}](${url})`;
-        setBody((prev) => prev ? `${prev}\n\n${markdown}` : markdown);
+        const url = await stageComposerFile(file);
+        const markdown = markdownTokenForUploadedIssueFile(file, url);
+        setBody((prev) => (prev ? `${prev}\n\n${markdown}` : markdown));
       } else if (onAttachImage) {
         await onAttachImage(file);
       }
@@ -450,7 +474,7 @@ export function CommentThread({
           placeholder="Leave a comment..."
           mentions={mentions}
           onSubmit={handleSubmit}
-          imageUploadHandler={imageUploadHandler}
+          imageUploadHandler={imageUploadHandler ? stageComposerFile : undefined}
           contentClassName="min-h-[60px] text-sm"
         />
         <div className="flex items-center justify-end gap-3">
@@ -459,7 +483,7 @@ export function CommentThread({
               <input
                 ref={attachInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
+                accept={ISSUE_ATTACHMENT_FILE_INPUT_ACCEPT}
                 className="hidden"
                 onChange={handleAttachFile}
               />
@@ -468,7 +492,7 @@ export function CommentThread({
                 size="icon-sm"
                 onClick={() => attachInputRef.current?.click()}
                 disabled={attaching}
-                title="Attach image"
+                title="Attach file"
               >
                 <Paperclip className="h-4 w-4" />
               </Button>
