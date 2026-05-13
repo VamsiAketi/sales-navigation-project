@@ -109,6 +109,11 @@ export function CompanySettings() {
     [activeHumanMembers, currentUserId],
   );
   const isCurrentUserOwner = ((currentUserMember?.membershipRole ?? "").trim().toLowerCase() === "owner");
+  const isCurrentUserReaderOrgRole = useMemo(
+    () => (currentUserMember?.membershipRole ?? "").trim().toLowerCase() === "reader",
+    [currentUserMember?.membershipRole],
+  );
+  const canUseCompanyPackagesActions = canManageCompanySettingsPackages && !isCurrentUserReaderOrgRole;
   const ownerTransferCandidates = useMemo(
     () => activeHumanMembers.filter((member) => member.id !== currentUserMember?.id),
     [activeHumanMembers, currentUserMember?.id],
@@ -868,18 +873,33 @@ export function CompanySettings() {
             <a href="/org" className="underline hover:text-foreground">Hybrid Org Chart</a> header.
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" variant="outline" asChild disabled={!canManageCompanySettingsPackages}>
-              <a href="/company/export">
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                Export
-              </a>
-            </Button>
-            <Button size="sm" variant="outline" asChild disabled={!canManageCompanySettingsPackages}>
-              <a href="/company/import">
-                <Upload className="mr-1.5 h-3.5 w-3.5" />
-                Import
-              </a>
-            </Button>
+            {canUseCompanyPackagesActions ? (
+              <>
+                <Button size="sm" variant="outline" asChild>
+                  <a href="/company/export">
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                    Export
+                  </a>
+                </Button>
+                <Button size="sm" variant="outline" asChild>
+                  <a href="/company/import">
+                    <Upload className="mr-1.5 h-3.5 w-3.5" />
+                    Import
+                  </a>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button size="sm" variant="outline" type="button" disabled>
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Export
+                </Button>
+                <Button size="sm" variant="outline" type="button" disabled>
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                  Import
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

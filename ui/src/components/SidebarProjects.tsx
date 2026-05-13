@@ -17,6 +17,7 @@ import { useDialog } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
 import { authApi } from "../api/auth";
 import { projectsApi } from "../api/projects";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, projectRouteRef } from "../lib/utils";
 import { useProjectOrder } from "../hooks/useProjectOrder";
@@ -143,6 +144,13 @@ export function SidebarProjects() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canCreateProjects = sidebarBadges?.canCreateProjects ?? false;
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
@@ -230,16 +238,19 @@ export function SidebarProjects() {
               />
               <span className="flex-1 truncate">Projects</span>
             </Link>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                openNewProject();
-              }}
-              className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
-              aria-label="New project"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
+            {canCreateProjects ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openNewProject();
+                }}
+                className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
+                aria-label="New project"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

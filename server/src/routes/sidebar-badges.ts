@@ -38,8 +38,9 @@ export function sidebarBadgeRoutes(db: Db) {
       joinRequests: joinRequestCount,
     });
     let canReadCommandCenter = false;
-    let canReadTasks = false;
-    let canCreateTasks = false;
+  let canReadTasks = false;
+  let canCreateTasks = false;
+  let canCreateProjects = false;
     let canReadHybridOrg = false;
     let canEditHybridOrg = false;
     let canImportHybridOrg = false;
@@ -76,6 +77,10 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "tasks.create"));
+      canCreateProjects =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "projects.create"));
       canReadHybridOrg =
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
@@ -189,6 +194,12 @@ export function sidebarBadgeRoutes(db: Db) {
         "agent",
         req.actor.agentId,
         "tasks.create",
+      );
+      canCreateProjects = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "projects.create",
       );
       canReadHybridOrg = await access.hasPermission(
         companyId,
@@ -352,6 +363,7 @@ export function sidebarBadgeRoutes(db: Db) {
     badges.canReadCommandCenter = canReadCommandCenter;
     badges.canReadTasks = canReadTasks;
     badges.canCreateTasks = canCreateTasks;
+    badges.canCreateProjects = canCreateProjects;
     badges.canReadHybridOrg = canReadHybridOrg;
     badges.canEditHybridOrg = canEditHybridOrg;
     badges.canImportHybridOrg = canImportHybridOrg;

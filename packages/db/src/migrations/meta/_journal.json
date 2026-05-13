@@ -477,6 +477,20 @@
       "when": 1777000000000,
       "tag": "0067_stripe_billing_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1777100000000,
+      "tag": "0068_users_deactivate_delete_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1777200000000,
+      "tag": "0069_projects_create_grant",
+      "breakpoints": true
     }
   ]
 }

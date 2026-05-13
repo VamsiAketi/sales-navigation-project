@@ -865,3 +865,17 @@ a.paperclip-project-mention-chip {
 [class*="_toolbarNodeKindSelectContainer_"] {
   z-index: 81 !important;
 }
+
+/* Disabled pill switches / radix switch: never keep saturated track colors */
+fieldset:disabled [data-slot="toggle"],
+button[data-slot="toggle"]:disabled,
+[role="switch"][data-slot="toggle"]:disabled,
+button[data-slot="toggle"][aria-disabled="true"],
+[role="switch"][data-slot="toggle"][aria-disabled="true"],
+fieldset:disabled [data-slot="switch"],
+button[data-slot="switch"]:disabled,
+[role="switch"][data-slot="switch"]:disabled,
+button[data-slot="switch"][aria-disabled="true"],
+[role="switch"][data-slot="switch"][aria-disabled="true"] {
+  background-color: var(--muted) !important;
+}

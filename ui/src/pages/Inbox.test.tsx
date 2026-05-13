@@ -137,6 +137,66 @@ describe("FailedRunInboxRow", () => {
       root.unmount();
     });
   });
+
+  it("hides retry and dismiss when hideRetryAndDismiss is true", () => {
+    const root = createRoot(container);
+    const run = {
+      id: "run-1",
+      companyId: "company-1",
+      agentId: "agent-1",
+      invocationSource: "assignment",
+      triggerDetail: null,
+      status: "failed",
+      error: "boom",
+      wakeupRequestId: null,
+      exitCode: null,
+      signal: null,
+      usageJson: null,
+      resultJson: null,
+      sessionIdBefore: null,
+      sessionIdAfter: null,
+      logStore: null,
+      logRef: null,
+      logBytes: null,
+      logSha256: null,
+      logCompressed: false,
+      errorCode: null,
+      externalRunId: null,
+      processPid: null,
+      processStartedAt: null,
+      retryOfRunId: null,
+      processLossRetryCount: 0,
+      stdoutExcerpt: null,
+      stderrExcerpt: null,
+      contextSnapshot: null,
+      startedAt: new Date("2026-03-11T00:00:00.000Z"),
+      finishedAt: null,
+      createdAt: new Date("2026-03-11T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-11T00:00:00.000Z"),
+    } as const;
+
+    act(() => {
+      root.render(
+        <FailedRunInboxRow
+          run={run}
+          issueById={new Map()}
+          agentName="Agent"
+          issueLinkState={null}
+          onDismiss={() => {}}
+          onRetry={() => {}}
+          isRetrying={false}
+          hideRetryAndDismiss
+        />,
+      );
+    });
+
+    expect(container.querySelector('button[aria-label="Dismiss"]')).toBeNull();
+    expect([...container.querySelectorAll("button")].some((b) => b.textContent?.includes("Retry"))).toBe(false);
+
+    act(() => {
+      root.unmount();
+    });
+  });
 });
 
 describe("InboxIssueMetaLeading", () => {
