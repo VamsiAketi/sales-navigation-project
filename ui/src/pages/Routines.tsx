@@ -663,7 +663,7 @@ export function Routines() {
                             disabled={isStatusPending || isArchived}
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                               enabled ? "bg-foreground" : "bg-muted"
-                            } ${isStatusPending || isArchived ? "cursor-not-allowed opacity-50" : ""}`}
+                            } ${isStatusPending || isArchived ? "cursor-not-allowed" : ""}`}
                             onClick={() =>
                               updateRoutineStatus.mutate({
                                 id: routine.id,

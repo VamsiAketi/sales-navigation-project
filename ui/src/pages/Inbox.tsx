@@ -383,6 +383,7 @@ export function FailedRunInboxRow({
   archiveDisabled,
   selected = false,
   className,
+  hideRetryAndDismiss = false,
 }: {
   run: HeartbeatRun;
   issueById: Map<string, Issue>;
@@ -397,6 +398,8 @@ export function FailedRunInboxRow({
   archiveDisabled?: boolean;
   selected?: boolean;
   className?: string;
+  /** When true (e.g. org Reader role), hide Retry and row dismiss — view-only queue. */
+  hideRetryAndDismiss?: boolean;
 }) {
   const issueId = readIssueIdFromRun(run);
   const issue = issueId ? issueById.get(issueId) ?? null : null;
@@ -476,7 +479,34 @@ export function FailedRunInboxRow({
             </span>
           </span>
         </Link>
-        <div className="hidden shrink-0 items-center gap-2 sm:flex">
+        {!hideRetryAndDismiss ? (
+          <div className="hidden shrink-0 items-center gap-2 sm:flex">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 px-2.5"
+              onClick={onRetry}
+              disabled={isRetrying}
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              {isRetrying ? "Retrying…" : "Retry"}
+            </Button>
+            {!showUnreadSlot && (
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ) : null}
+      </div>
+      {!hideRetryAndDismiss ? (
+        <div className="mt-3 flex gap-2 sm:hidden">
           <Button
             type="button"
             variant="outline"
@@ -492,37 +522,14 @@ export function FailedRunInboxRow({
             <button
               type="button"
               onClick={onDismiss}
-              className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+              className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
               aria-label="Dismiss"
             >
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
-      </div>
-      <div className="mt-3 flex gap-2 sm:hidden">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 px-2.5"
-          onClick={onRetry}
-          disabled={isRetrying}
-        >
-          <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-          {isRetrying ? "Retrying…" : "Retry"}
-        </Button>
-        {!showUnreadSlot && (
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            aria-label="Dismiss"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -847,6 +854,13 @@ export function Inbox() {
     queryFn: () => authApi.getSession(),
   });
 
+  const { data: accessMembers } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.access.members(selectedCompanyId) : ["access", "members", "none"],
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 15_000,
+  });
+
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
@@ -1028,6 +1042,17 @@ export function Inbox() {
     [availableIssueColumnSet, visibleIssueColumnSet],
   );
   const currentUserId = session?.user.id ?? session?.session.userId ?? null;
+
+  const isCurrentUserReaderOrgRole = useMemo(() => {
+    if (!currentUserId || !accessMembers) return false;
+    const member = accessMembers.find(
+      (m) =>
+        m.principalType === "user" &&
+        m.principalId === currentUserId &&
+        (m.status === "active" || m.status === "suspended"),
+    );
+    return (member?.membershipRole ?? "").trim().toLowerCase() === "reader";
+  }, [accessMembers, currentUserId]);
 
   const failedRuns = useMemo(
     () => getLatestFailedRunsByAgent(heartbeatRuns ?? []).filter((r) => !dismissed.has(`run:${r.id}`)),
@@ -1865,6 +1890,7 @@ export function Inbox() {
                       onDismiss={() => dismiss(runKey)}
                       onRetry={() => retryRunMutation.mutate(item.run)}
                       isRetrying={retryingRunIds.has(item.run.id)}
+                      hideRetryAndDismiss={isCurrentUserReaderOrgRole}
                       unreadState={nonIssueUnreadState(runKey)}
                       onMarkRead={() => handleMarkNonIssueRead(runKey)}
                       onArchive={canArchiveFromTab ? () => handleArchiveNonIssue(runKey) : undefined}

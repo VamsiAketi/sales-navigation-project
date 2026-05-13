@@ -6,6 +6,7 @@ export interface SidebarBadges {
   canReadCommandCenter?: boolean;
   canReadTasks?: boolean;
   canCreateTasks?: boolean;
+  canCreateProjects?: boolean;
   canReadHybridOrg?: boolean;
   canEditHybridOrg?: boolean;
   canImportHybridOrg?: boolean;

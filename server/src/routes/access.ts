@@ -1734,6 +1734,33 @@ export function accessRoutes(
     throw badRequest("Owner accounts cannot be deactivated or deleted. Transfer ownership first.");
   }
 
+  async function assertBoardActorNotDeactivatingOrDeletingOwnAccount(
+    req: Request,
+    companyId: string,
+    memberId: string,
+  ) {
+    if (req.actor.type !== "board") return;
+    if (isLocalImplicit(req)) return;
+    const userId = req.actor.userId;
+    if (!userId) return;
+    const target = await db
+      .select({
+        principalType: companyMemberships.principalType,
+        principalId: companyMemberships.principalId,
+      })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.id, memberId),
+          eq(companyMemberships.companyId, companyId),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+    if (!target || target.principalType !== "user") return;
+    if (target.principalId !== userId) return;
+    throw badRequest("You cannot deactivate or delete your own account.");
+  }
+
   router.get("/board-claim/:token", async (req, res) => {
     const token = (req.params.token as string).trim();
     const code =
@@ -1969,6 +1996,11 @@ export function accessRoutes(
     if (allowed) return;
     // Backward-compatible fallback: legacy teams managers may still only have users:manage_permissions.
     if (permissionKey === "teams.read" || permissionKey === "teams.edit") {
+      const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
+      if (legacyAllowed) return;
+    }
+    // Legacy user managers may still only have users:manage_permissions for deactivate/delete.
+    if (permissionKey === "users:deactivate" || permissionKey === "users:delete") {
       const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
       if (legacyAllowed) return;
     }
@@ -3842,7 +3874,7 @@ export function accessRoutes(
     async (req, res) => {
       const companyId = req.params.companyId as string;
       const memberId  = req.params.memberId  as string;
-      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+      await assertCompanyPermission(req, companyId, "users:deactivate");
 
       const { status } = req.body as { status?: unknown };
       if (status !== "active" && status !== "suspended") {
@@ -3851,6 +3883,7 @@ export function accessRoutes(
       }
 
       if (status === "suspended") {
+        await assertBoardActorNotDeactivatingOrDeletingOwnAccount(req, companyId, memberId);
         await assertMemberCanBeDeactivatedOrDeleted(companyId, memberId);
       }
 
@@ -3866,7 +3899,8 @@ export function accessRoutes(
     async (req, res) => {
       const companyId = req.params.companyId as string;
       const memberId  = req.params.memberId  as string;
-      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+      await assertCompanyPermission(req, companyId, "users:delete");
+      await assertBoardActorNotDeactivatingOrDeletingOwnAccount(req, companyId, memberId);
       await assertMemberCanBeDeactivatedOrDeleted(companyId, memberId);
 
       const deleted = await access.softDeleteMember(companyId, memberId);
