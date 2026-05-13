@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { DndContext, PointerSensor, rectIntersection, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { dashboardApi } from "../api/dashboard";
@@ -22,7 +22,9 @@ import { queryKeys } from "../lib/queryKeys";
 import { authApi } from "../api/auth";
 import {
   DASHBOARD_SECTION_IDS,
+  loadDashboardProjectOrder,
   loadDashboardSectionOrder,
+  saveDashboardProjectOrder,
   saveDashboardSectionOrder,
   type DashboardSectionId,
 } from "../lib/dashboard-layout-storage";
@@ -293,24 +295,18 @@ function GoalsSection({
   );
 }
 
-function countProjectClosedIssuesWithin(issues: Issue[], projectId: string, hours: number, nowMs: number): number {
-  const windowMs = hours * 60 * 60 * 1000;
+function countClosedIssuesInLastCalendarDays(
+  issues: Issue[],
+  days: number,
+  projectId?: string,
+): number {
+  const daySet = new Set(getRecentDayKeys(days));
   return issues.filter((issue) => {
-    if (issue.projectId !== projectId) return false;
+    if (projectId && issue.projectId !== projectId) return false;
     if (issue.status !== "done" || !issue.completedAt) return false;
-    const completedAtMs = new Date(issue.completedAt).getTime();
-    if (Number.isNaN(completedAtMs)) return false;
-    return nowMs - completedAtMs <= windowMs;
-  }).length;
-}
-
-function countClosedIssuesWithin(issues: Issue[], hours: number, nowMs: number): number {
-  const windowMs = hours * 60 * 60 * 1000;
-  return issues.filter((issue) => {
-    if (issue.status !== "done" || !issue.completedAt) return false;
-    const completedAtMs = new Date(issue.completedAt).getTime();
-    if (Number.isNaN(completedAtMs)) return false;
-    return nowMs - completedAtMs <= windowMs;
+    const completed = new Date(issue.completedAt);
+    if (Number.isNaN(completed.getTime())) return false;
+    return daySet.has(isoDateKeyLocal(completed));
   }).length;
 }
 
@@ -484,11 +480,53 @@ function ProjectDoneBarChart({ data }: { data: Array<{ day: string; count: numbe
   );
 }
 
+function SortableProjectCard({ projectId, children }: { projectId: string; children: ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: projectId });
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerMovedRef = useRef(false);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      onPointerDownCapture={(e) => {
+        pointerDownRef.current = { x: e.clientX, y: e.clientY };
+        pointerMovedRef.current = false;
+      }}
+      onPointerMoveCapture={(e) => {
+        const start = pointerDownRef.current;
+        if (!start) return;
+        const dx = Math.abs(e.clientX - start.x);
+        const dy = Math.abs(e.clientY - start.y);
+        if (dx + dy >= 4) pointerMovedRef.current = true;
+      }}
+      onPointerUpCapture={() => {
+        pointerDownRef.current = null;
+      }}
+      onPointerCancelCapture={() => {
+        pointerDownRef.current = null;
+        pointerMovedRef.current = false;
+      }}
+      onClickCapture={(e) => {
+        if (isDragging || pointerMovedRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        pointerMovedRef.current = false;
+      }}
+      {...attributes}
+      {...listeners}
+      className={cn(isDragging ? "z-50 opacity-60" : "")}
+    >
+      {children}
+    </div>
+  );
+}
+
 function TasksOverviewSection({ issues }: { issues: Issue[] }) {
-  const nowMs = Date.now();
-  const closed24h = countClosedIssuesWithin(issues, 24, nowMs);
-  const closed48h = countClosedIssuesWithin(issues, 48, nowMs);
-  const closed5d = countClosedIssuesWithin(issues, 24 * 5, nowMs);
+  const closed24h = countClosedIssuesInLastCalendarDays(issues, 1);
+  const closed48h = countClosedIssuesInLastCalendarDays(issues, 2);
+  const closed5d = countClosedIssuesInLastCalendarDays(issues, 5);
   const backlogCount = issues.filter((issue) => issue.status === "backlog").length;
 
   const cards: Array<{ value: number; label: string; to: string }> = [
@@ -519,6 +557,13 @@ function TasksOverviewSection({ issues }: { issues: Issue[] }) {
 }
 
 function ProjectsSection({ projects, issues }: { projects: Project[]; issues: Issue[] }) {
+  const { selectedCompanyId } = useCompany();
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    staleTime: 60_000,
+  });
+  const layoutUserId = session?.user?.id ?? null;
   const activeProjects = useMemo(
     () =>
       projects.filter(
@@ -529,7 +574,6 @@ function ProjectsSection({ projects, issues }: { projects: Project[]; issues: Is
       ),
     [projects],
   );
-  const nowMs = Date.now();
   const totalTasksByProjectId = useMemo(() => {
     const map = new Map<string, number>();
     for (const issue of issues) {
@@ -539,6 +583,45 @@ function ProjectsSection({ projects, issues }: { projects: Project[]; issues: Is
     return map;
   }, [issues]);
   const dayKeys = useMemo(() => getRecentDayKeys(5), []);
+  const [projectOrder, setProjectOrder] = useState<string[]>([]);
+  const projectSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 16 } }));
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    const ids = activeProjects.map((p) => p.id);
+    setProjectOrder(loadDashboardProjectOrder(layoutUserId, selectedCompanyId, ids));
+  }, [layoutUserId, selectedCompanyId, activeProjects]);
+
+  const orderedProjects = useMemo(() => {
+    if (projectOrder.length === 0) return activeProjects;
+    const byId = new Map(activeProjects.map((p) => [p.id, p]));
+    const ordered: Project[] = [];
+    for (const id of projectOrder) {
+      const p = byId.get(id);
+      if (p) ordered.push(p);
+    }
+    for (const p of activeProjects) {
+      if (!ordered.some((x) => x.id === p.id)) ordered.push(p);
+    }
+    return ordered;
+  }, [activeProjects, projectOrder]);
+
+  function handleProjectCardDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!selectedCompanyId || !over || active.id === over.id) return;
+    setProjectOrder((prev) => {
+      const source = prev.length > 0 ? prev : activeProjects.map((p) => p.id);
+      const from = source.indexOf(String(active.id));
+      const to = source.indexOf(String(over.id));
+      if (from < 0 || to < 0) return source;
+      const next = [...source];
+      const tmp = next[from];
+      next[from] = next[to];
+      next[to] = tmp;
+      saveDashboardProjectOrder(layoutUserId, selectedCompanyId, next);
+      return next;
+    });
+  }
 
   if (activeProjects.length === 0) {
     return (
@@ -559,56 +642,61 @@ function ProjectsSection({ projects, issues }: { projects: Project[]; issues: Is
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-      {activeProjects.map((project) => (
-        <Link
-          key={project.id}
-          to={projectUrl({ id: project.id, name: project.name })}
-          className={cn(
-            DASHBOARD_TILE_SURFACE,
-            "block overflow-hidden no-underline text-inherit transition-colors hover:bg-accent/15",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          )}
-        >
-          <div className="flex items-start justify-between gap-3 p-4 pb-3">
-            <h3 className="min-w-0 text-sm font-semibold truncate">{project.name}</h3>
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shadow-sm",
-                (PROJECT_STATUS_CONFIG[project.status]?.badgeCls ?? PROJECT_STATUS_CONFIG.backlog.badgeCls),
-              )}
-            >
-              {PROJECT_STATUS_CONFIG[project.status]?.label ?? project.status}
-            </span>
-          </div>
-          <div className="px-4 pb-1">
-            <p className="mt-1 text-xs font-medium text-muted-foreground">Tickets closed</p>
-          </div>
-          <div className="relative z-[1] grid grid-cols-3 border-y border-border/60 bg-muted/45 px-1 py-2 dark:bg-muted/25">
-            <ProjectClosedWindowCell
-              count={countProjectClosedIssuesWithin(issues, project.id, 24, nowMs)}
-              totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
-              label="24h"
-              title="Closed in last 24 Hours"
-            />
-            <ProjectClosedWindowCell
-              count={countProjectClosedIssuesWithin(issues, project.id, 48, nowMs)}
-              totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
-              label="48h"
-              title="Closed in last 48 Hours"
-              withBorder
-            />
-            <ProjectClosedWindowCell
-              count={countProjectClosedIssuesWithin(issues, project.id, 24 * 5, nowMs)}
-              totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
-              label="5d"
-              title="Closed in last 5 Days"
-            />
-          </div>
-          <ProjectDoneBarChart data={doneSeriesLastDaysByProject(issues, project.id, dayKeys)} />
-        </Link>
-      ))}
-    </div>
+    <DndContext sensors={projectSensors} collisionDetection={rectIntersection} onDragEnd={handleProjectCardDragEnd}>
+      <SortableContext items={orderedProjects.map((p) => p.id)} strategy={rectSortingStrategy}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {orderedProjects.map((project) => (
+            <SortableProjectCard key={project.id} projectId={project.id}>
+              <Link
+                to={projectUrl({ id: project.id, name: project.name })}
+                className={cn(
+                  DASHBOARD_TILE_SURFACE,
+                  "block overflow-hidden no-underline text-inherit transition-colors hover:bg-accent/15",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                )}
+              >
+                <div className="flex items-start justify-between gap-3 p-4 pb-3">
+                  <h3 className="min-w-0 text-sm font-semibold truncate">{project.name}</h3>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shadow-sm",
+                      (PROJECT_STATUS_CONFIG[project.status]?.badgeCls ?? PROJECT_STATUS_CONFIG.backlog.badgeCls),
+                    )}
+                  >
+                    {PROJECT_STATUS_CONFIG[project.status]?.label ?? project.status}
+                  </span>
+                </div>
+                <div className="px-4 pb-1">
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">Tickets closed</p>
+                </div>
+                <div className="relative z-[1] grid grid-cols-3 border-y border-border/60 bg-muted/45 px-1 py-2 dark:bg-muted/25">
+                  <ProjectClosedWindowCell
+                    count={countClosedIssuesInLastCalendarDays(issues, 1, project.id)}
+                    totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
+                    label="24h"
+                    title="Closed in last 24 Hours"
+                  />
+                  <ProjectClosedWindowCell
+                    count={countClosedIssuesInLastCalendarDays(issues, 2, project.id)}
+                    totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
+                    label="48h"
+                    title="Closed in last 48 Hours"
+                    withBorder
+                  />
+                  <ProjectClosedWindowCell
+                    count={countClosedIssuesInLastCalendarDays(issues, 5, project.id)}
+                    totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
+                    label="5d"
+                    title="Closed in last 5 Days"
+                  />
+                </div>
+                <ProjectDoneBarChart data={doneSeriesLastDaysByProject(issues, project.id, dayKeys)} />
+              </Link>
+            </SortableProjectCard>
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
 
@@ -644,7 +732,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
                 >
                   <Identity name={row.agentName ?? row.agentId} size="sm" className="min-w-0" />
                   <div className="text-right shrink-0">
-                    <div className="text-sm font-medium tabular-nums">{formatCents(row.costCents)}</div>
+                    <div className="text-sm font-medium tabular-nums">{formatCents(row.modelCostCents)}</div>
                     <div className="text-[10px] text-muted-foreground tabular-nums">
                       {formatTokens(row.inputTokens + row.cachedInputTokens + row.outputTokens)} tok
                     </div>
@@ -686,7 +774,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
                   className="flex items-center justify-between gap-3 px-4 py-2 no-underline text-inherit transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span className="text-sm truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
-                  <span className="text-sm font-medium tabular-nums shrink-0">{formatCents(row.costCents)}</span>
+                  <span className="text-sm font-medium tabular-nums shrink-0">{formatCents(row.modelCostCents)}</span>
                 </Link>
               ))}
             </div>
