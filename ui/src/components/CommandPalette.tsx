@@ -96,6 +96,7 @@ export function CommandPalette() {
   });
   const canCreateTasks = sidebarBadges?.canCreateTasks ?? true;
   const canCreateProjects = sidebarBadges?.canCreateProjects ?? false;
+  const canReadBilling = sidebarBadges?.canReadBilling ?? false;
 
   function go(path: string) {
     setOpen(false);
@@ -196,10 +197,12 @@ export function CommandPalette() {
             <DollarSign className="mr-2 h-4 w-4" />
             Costs
           </CommandItem>
-          <CommandItem onSelect={() => go("/company/billing")}>
-            <CreditCard className="mr-2 h-4 w-4" />
-            Billing
-          </CommandItem>
+          {canReadBilling ? (
+            <CommandItem onSelect={() => go("/company/billing")}>
+              <CreditCard className="mr-2 h-4 w-4" />
+              Billing
+            </CommandItem>
+          ) : null}
           <CommandItem onSelect={() => go("/activity")}>
             <History className="mr-2 h-4 w-4" />
             Audit Log

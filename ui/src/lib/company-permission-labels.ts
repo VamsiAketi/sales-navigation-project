@@ -1,0 +1,51 @@
+import type { PermissionKey } from "@paperclipai/shared";
+
+/** Short titles used in role UI and permission-denied messaging (keep in sync with product language). */
+export const COMPANY_PERMISSION_TITLE = {
+  "agents.read": "View agents",
+  "agents.edit": "Edit agents",
+  "agents:create": "Create agents",
+  "users:invite": "Invite human",
+  "users:manage_permissions": "Manage roles & access",
+  "users:reset_password": "Reset passwords",
+  "users:deactivate": "Deactivate user",
+  "users:delete": "Delete user",
+  "tasks.read": "View tasks",
+  "tasks.create": "Create tasks",
+  "tasks:assign": "Assign work",
+  "tasks:assign_scope": "Control assignment scope",
+  "joins:approve": "Approve join requests",
+  "projects.create": "Create projects",
+  "command_center.read": "View Command Center",
+  "hybrid_org.read": "View Hybrid Org Chart",
+  "hybrid_org.edit": "Edit Hybrid Org Chart",
+  "hybrid_org.import": "Import Hybrid Org Chart",
+  "hybrid_org.export": "Export Hybrid Org Chart",
+  "skills.read": "View Skills",
+  "skills.edit": "Edit Skills",
+  "goals.read": "View Goals",
+  "goals.write": "Edit Goals",
+  "costs.read": "View Costs",
+  "billing.read": "View Billing",
+  "billing.invoices.read": "View Billing Invoices",
+  "billing.payments.manage": "Manage Billing Payments",
+  "attention_queue.read": "View Attention Queue",
+  "teams.read": "View Teams",
+  "teams.edit": "Edit Teams",
+  "teams.title_create": "Create titles",
+  "teams.title_assign": "Assign titles",
+  "teams.title_manage": "Manage titles",
+  "audit_logs.read": "View Audit Logs",
+  "company_settings.read": "View Company Settings",
+  "company_settings.general": "Edit Company Settings: General",
+  "company_settings.appearance": "Edit Company Settings: Appearance",
+  "company_settings.security_access": "Edit Company Settings: Security & Access",
+  "company_settings.hiring": "Edit Company Settings: Hiring",
+  "company_settings.invites": "Edit Company Settings: Invites",
+  "company_settings.secrets": "Edit Company Settings: Secrets",
+  "company_settings.packages": "Edit Company Settings: Company Packages",
+} satisfies Record<PermissionKey, string>;
+
+export function companyPermissionTitle(key: PermissionKey): string {
+  return COMPANY_PERMISSION_TITLE[key];
+}

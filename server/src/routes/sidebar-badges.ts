@@ -50,6 +50,9 @@ export function sidebarBadgeRoutes(db: Db) {
     let canReadGoals = false;
     let canWriteGoals = false;
     let canReadCosts = false;
+    let canReadBilling = false;
+    let canReadBillingInvoices = false;
+    let canManageBillingPayments = false;
     let canReadAttentionQueue = false;
     let canReadTeams = false;
     let canEditTeams = false;
@@ -117,6 +120,18 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "costs.read"));
+      canReadBilling =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "billing.read"));
+      canReadBillingInvoices =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "billing.invoices.read"));
+      canManageBillingPayments =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "billing.payments.manage"));
       canReadAttentionQueue =
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
@@ -255,6 +270,24 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.agentId,
         "costs.read",
       );
+      canReadBilling = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "billing.read",
+      );
+      canReadBillingInvoices = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "billing.invoices.read",
+      );
+      canManageBillingPayments = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "billing.payments.manage",
+      );
       canReadAttentionQueue = await access.hasPermission(
         companyId,
         "agent",
@@ -373,6 +406,9 @@ export function sidebarBadgeRoutes(db: Db) {
     badges.canReadGoals = canReadGoals;
     badges.canWriteGoals = canWriteGoals;
     badges.canReadCosts = canReadCosts;
+    badges.canReadBilling = canReadBilling;
+    badges.canReadBillingInvoices = canReadBillingInvoices;
+    badges.canManageBillingPayments = canManageBillingPayments;
     badges.canReadAttentionQueue = canReadAttentionQueue;
     badges.canReadTeams = canReadTeams;
     badges.canEditTeams = canEditTeams;

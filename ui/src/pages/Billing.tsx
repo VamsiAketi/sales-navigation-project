@@ -251,10 +251,13 @@ export function Billing() {
     enabled: Boolean(selectedCompanyId),
     staleTime: 10_000,
   });
-  const canReadBilling = sidebarBadges?.canReadCompanySettings ?? true;
+  const canReadBilling = sidebarBadges?.canReadBilling ?? true;
   const canReadCosts = sidebarBadges?.canReadCosts ?? true;
+  const canReadBillingInvoices = sidebarBadges?.canReadBillingInvoices ?? true;
+  const canManageBillingPayments = sidebarBadges?.canManageBillingPayments ?? true;
 
   const costsEnabled = Boolean(selectedCompanyId && canReadCosts);
+  const billingPrepaidEnabled = Boolean(selectedCompanyId && canReadBilling);
 
   const { data: costSummary, isLoading: summaryLoading } = useQuery({
     queryKey: ["costs", "billing-summary", selectedCompanyId, monthRange.from, monthRange.to],
@@ -277,7 +280,7 @@ export function Billing() {
   const prepaidQuery = useQuery({
     queryKey: queryKeys.billingPrepaidBalance(selectedCompanyId!),
     queryFn: () => costsApi.prepaidBalance(selectedCompanyId!),
-    enabled: costsEnabled,
+    enabled: billingPrepaidEnabled,
   });
   const { data: prepaidBalance, isLoading: prepaidLoading, isError: prepaidError } = prepaidQuery;
   const { data: stripeStatus, isLoading: stripeStatusLoading } = useQuery({
@@ -290,7 +293,7 @@ export function Billing() {
   const { data: stripeInvoicesData, isLoading: stripeInvoicesLoading, isError: stripeInvoicesError } = useQuery({
     queryKey: selectedCompanyId ? queryKeys.billingStripeInvoices(selectedCompanyId) : ["billing", "stripe-invoices", "none"],
     queryFn: () => costsApi.stripeInvoices(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId && canReadBilling && stripeReadyForCheckout),
+    enabled: Boolean(selectedCompanyId && canReadBillingInvoices && stripeReadyForCheckout),
   });
   const stripePortalMutation = useMutation({
     mutationFn: () => costsApi.createStripePortalSession(selectedCompanyId!),
@@ -535,9 +538,7 @@ export function Billing() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!canReadCosts ? (
-              <p className="text-sm text-muted-foreground">Costs permission required.</p>
-            ) : prepaidLoading ? (
+            {prepaidLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : prepaidError ? (
               <p className="text-sm text-destructive">Could not load account credit.</p>
@@ -650,11 +651,18 @@ export function Billing() {
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                disabled={stripeStatusLoading || !stripeReadyForCheckout || stripePortalMutation.isPending}
+                disabled={
+                  stripeStatusLoading ||
+                  !stripeReadyForCheckout ||
+                  !canManageBillingPayments ||
+                  stripePortalMutation.isPending
+                }
                 title={
-                  !stripeReadyForCheckout
-                    ? "Set STRIPE_SECRET_KEY (or PAPERCLIP_STRIPE_SECRET_KEY) on the server to enable Stripe."
-                    : undefined
+                  !canManageBillingPayments
+                    ? "You do not have permission to manage billing payments."
+                    : !stripeReadyForCheckout
+                      ? "Set STRIPE_SECRET_KEY (or PAPERCLIP_STRIPE_SECRET_KEY) on the server to enable Stripe."
+                      : undefined
                 }
                 onClick={() => stripePortalMutation.mutate()}
               >
@@ -665,11 +673,18 @@ export function Billing() {
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                disabled={stripeStatusLoading || !stripeReadyForCheckout || stripeTopUpMutation.isPending}
+                disabled={
+                  stripeStatusLoading ||
+                  !stripeReadyForCheckout ||
+                  !canManageBillingPayments ||
+                  stripeTopUpMutation.isPending
+                }
                 title={
-                  !stripeReadyForCheckout
-                    ? "Set STRIPE_SECRET_KEY (or PAPERCLIP_STRIPE_SECRET_KEY) on the server to enable Stripe checkout."
-                    : undefined
+                  !canManageBillingPayments
+                    ? "You do not have permission to manage billing payments."
+                    : !stripeReadyForCheckout
+                      ? "Set STRIPE_SECRET_KEY (or PAPERCLIP_STRIPE_SECRET_KEY) on the server to enable Stripe checkout."
+                      : undefined
                 }
                 onClick={() => stripeTopUpMutation.mutate()}
               >
@@ -677,6 +692,11 @@ export function Billing() {
               </Button>
             </div>
           </div>
+          {!canManageBillingPayments && stripeReadyForCheckout ? (
+            <p className="text-xs text-muted-foreground">
+              You do not have permission to open the Stripe customer portal or run checkout from this account.
+            </p>
+          ) : null}
           {stripeStatusLoading ? (
             <p className="text-xs text-muted-foreground">Checking Stripe configuration…</p>
           ) : !stripeReadyForCheckout ? (
@@ -837,6 +857,7 @@ export function Billing() {
               </CardDescription>
             </div>
             {stripeReadyForCheckout &&
+            canReadBillingInvoices &&
             !stripeInvoicesLoading &&
             !stripeInvoicesError &&
             (stripeInvoicesData?.invoices?.length ?? 0) > 0 ? (
@@ -860,7 +881,11 @@ export function Billing() {
         </CardHeader>
         <CardContent>
           <div className="max-h-[26rem] overflow-x-auto overflow-y-auto rounded-md border border-border [scrollbar-width:thin] [scrollbar-color:hsl(var(--border)/0.85)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border">
-            {!stripeReadyForCheckout ? (
+            {!canReadBillingInvoices ? (
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                You do not have permission to view billing invoices for this company.
+              </div>
+            ) : !stripeReadyForCheckout ? (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                 Configure Stripe on the server to load invoices.
               </div>
