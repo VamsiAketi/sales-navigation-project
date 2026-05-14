@@ -219,7 +219,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
         actor,
       ))
     ) {
-      throw forbidden("Project permission denied");
+      throw forbidden(`Missing project permission: ${normalizedPermission}`);
     }
   }
 

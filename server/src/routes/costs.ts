@@ -118,6 +118,43 @@ export function costRoutes(db: Db) {
     if (!allowed) throw forbidden("Missing permission: costs.read");
   }
 
+  async function assertBillingReadAccess(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId, "billing.read");
+      if (!allowed) throw forbidden("Missing permission: billing.read");
+      return;
+    }
+    if (!req.actor.agentId) throw forbidden("Agent authentication required");
+    const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, "billing.read");
+    if (!allowed) throw forbidden("Missing permission: billing.read");
+  }
+
+  async function assertBoardBillingRead(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+    const allowed = await access.canUser(companyId, req.actor.userId!, "billing.read");
+    if (!allowed) throw forbidden("Missing permission: billing.read");
+  }
+
+  async function assertBoardBillingInvoicesRead(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+    const allowed = await access.canUser(companyId, req.actor.userId!, "billing.invoices.read");
+    if (!allowed) throw forbidden("Missing permission: billing.invoices.read");
+  }
+
+  async function assertBoardBillingPaymentsManage(req: Request, companyId: string) {
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+    const allowed = await access.canUser(companyId, req.actor.userId!, "billing.payments.manage");
+    if (!allowed) throw forbidden("Missing permission: billing.payments.manage");
+  }
+
   router.post("/companies/:companyId/cost-events", validate(createCostEventSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -207,8 +244,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/billing/prepaid-balance", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    await assertCostsReadAccess(req, companyId);
+    await assertBillingReadAccess(req, companyId);
     const wallet = await getCompanyWalletTotals(db, companyId);
     const prepaidCents = wallet.creditCents;
     const usedModelCents = wallet.debitCents;
@@ -220,8 +256,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/billing/stripe-status", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertBoardBillingRead(req, companyId);
     const { stripeSecretKey, stripeWebhookSecret } = stripeSecretsFromEnv();
     res.json({
       enabled: Boolean(stripeSecretKey),
@@ -231,8 +266,7 @@ export function costRoutes(db: Db) {
 
   router.get("/companies/:companyId/billing/stripe/invoices", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertBoardBillingInvoicesRead(req, companyId);
     const { stripeSecretKey } = stripeSecretsFromEnv();
     const stripe = getStripeFromConfig({ stripeSecretKey });
     if (!stripe) {
@@ -257,8 +291,7 @@ export function costRoutes(db: Db) {
   
   router.post("/companies/:companyId/billing/stripe/portal-session", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertBoardBillingPaymentsManage(req, companyId);
     const { stripeSecretKey } = stripeSecretsFromEnv();
     const stripe = getStripeFromConfig({ stripeSecretKey });
     if (!stripe) {
@@ -294,8 +327,7 @@ export function costRoutes(db: Db) {
     validate(createStripeCheckoutSessionSchema),
     async (req, res) => {
       const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
-      assertBoard(req);
+      await assertBoardBillingPaymentsManage(req, companyId);
       const { stripeSecretKey } = stripeSecretsFromEnv();
       const stripe = getStripeFromConfig({ stripeSecretKey });
       if (!stripe) {
@@ -375,8 +407,7 @@ export function costRoutes(db: Db) {
   router.get("/companies/:companyId/billing/stripe/checkout-session/:sessionId/status", async (req, res) => {
     const companyId = req.params.companyId as string;
     const sessionId = req.params.sessionId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertBoardBillingPaymentsManage(req, companyId);
     const { stripeSecretKey } = stripeSecretsFromEnv();
     const stripe = getStripeFromConfig({ stripeSecretKey });
     if (!stripe) {
@@ -565,7 +596,9 @@ export function costRoutes(db: Db) {
         "project:edit Budget",
       );
       if (!manage && !viaProject) {
-        throw forbidden("Permission denied");
+        throw forbidden(
+          "Missing permission: users:manage_permissions or project:edit Budget",
+        );
       }
     }
     const company = await companies.update(companyId, { budgetMonthlyCents: req.body.budgetMonthlyCents });

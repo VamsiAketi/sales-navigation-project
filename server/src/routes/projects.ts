@@ -48,7 +48,7 @@ export function projectRoutes(db: Db) {
   ) {
     const actor = projectAuthActorFromRequest(req);
     if (!(await access.satisfiesProjectPermission(companyId, projectId, permission, actor))) {
-      throw forbidden("Project permission denied");
+      throw forbidden(`Missing project permission: ${permission}`);
     }
   }
 

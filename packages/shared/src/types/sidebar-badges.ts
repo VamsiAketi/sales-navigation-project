@@ -16,6 +16,9 @@ export interface SidebarBadges {
   canReadGoals?: boolean;
   canWriteGoals?: boolean;
   canReadCosts?: boolean;
+  canReadBilling?: boolean;
+  canReadBillingInvoices?: boolean;
+  canManageBillingPayments?: boolean;
   canReadAttentionQueue?: boolean;
   canReadTeams?: boolean;
   canEditTeams?: boolean;

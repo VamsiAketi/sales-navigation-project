@@ -30,6 +30,7 @@ import { issuesApi } from "../api/issues";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
+import { COMPANY_PERMISSION_TITLE } from "../lib/company-permission-labels";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -135,6 +136,8 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "company_settings.invites": "company_settings.read",
   "company_settings.secrets": "company_settings.read",
   "company_settings.packages": "company_settings.read",
+  "billing.invoices.read": "billing.read",
+  "billing.payments.manage": "billing.read",
 };
 
 function normalizePermissionSelection(keys: PermissionKey[]): PermissionKey[] {
@@ -194,6 +197,9 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "company_settings.invites",
     "company_settings.secrets",
     "company_settings.packages",
+    "billing.read",
+    "billing.invoices.read",
+    "billing.payments.manage",
   ],
   manager: [
     "agents.read",
@@ -215,10 +221,15 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "goals.read",
     "goals.write",
     "costs.read",
+    "billing.read",
+    "billing.invoices.read",
+    "billing.payments.manage",
     "attention_queue.read",
     "teams.read",
     "teams.edit",
     "teams.title_assign",
+    "teams.title_create",
+    "teams.title_manage",
     "company_settings.read",
   ],
   contributor: [
@@ -251,125 +262,12 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
   ],
 };
 
-const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
-  "agents.read": {
-    title: "View agents",
-  },
-  "agents.edit": {
-    title: "Edit agents",
-  },
-  "agents:create": {
-    title: "Create agents",
-  },
-  "users:invite": {
-    title: "Invite human",
-  },
-  "users:manage_permissions": {
-    title: "Manage roles & access",
-  },
-  "users:reset_password": {
-    title: "Reset passwords",
-  },
-  "users:deactivate": {
-    title: "Deactivate user",
-  },
-  "users:delete": {
-    title: "Delete user",
-  },
-  "tasks.read": {
-    title: "View tasks",
-  },
-  "tasks.create": {
-    title: "Create tasks",
-  },
-  "tasks:assign": {
-    title: "Assign work",
-  },
-  "tasks:assign_scope": {
-    title: "Control assignment scope",
-  },
-  "joins:approve": {
-    title: "Approve join requests",
-  },
-  "projects.create": {
-    title: "Create projects",
-  },
-  "command_center.read": {
-    title: "View Command Center",
-  },
-  "hybrid_org.read": {
-    title: "View Hybrid Org Chart",
-  },
-  "hybrid_org.edit": {
-    title: "Edit Hybrid Org Chart",
-  },
-  "hybrid_org.import": {
-    title: "Import Hybrid Org Chart",
-  },
-  "hybrid_org.export": {
-    title: "Export Hybrid Org Chart",
-  },
-  "skills.read": {
-    title: "View Skills",
-  },
-  "skills.edit": {
-    title: "Edit Skills",
-  },
-  "goals.read": {
-    title: "View Goals",
-  },
-  "goals.write": {
-    title: "Edit Goals",
-  },
-  "costs.read": {
-    title: "View Costs",
-  },
-  "attention_queue.read": {
-    title: "View Attention Queue",
-  },
-  "teams.read": {
-    title: "View Teams",
-  },
-  "teams.edit": {
-    title: "Edit Teams",
-  },
-  "teams.title_create": {
-    title: "Create titles",
-  },
-  "teams.title_assign": {
-    title: "Assign titles",
-  },
-  "teams.title_manage": {
-    title: "Manage titles",
-  },
-  "audit_logs.read": {
-    title: "View Audit Logs",
-  },
-  "company_settings.read": {
-    title: "View Company Settings",
-  },
-  "company_settings.general": {
-    title: "Edit Company Settings: General",
-  },
-  "company_settings.appearance": {
-    title: "Edit Company Settings: Appearance",
-  },
-  "company_settings.security_access": {
-    title: "Edit Company Settings: Security & Access",
-  },
-  "company_settings.hiring": {
-    title: "Edit Company Settings: Hiring",
-  },
-  "company_settings.invites": {
-    title: "Edit Company Settings: Invites",
-  },
-  "company_settings.secrets": {
-    title: "Edit Company Settings: Secrets",
-  },
-  "company_settings.packages": {
-    title: "Edit Company Settings: Company Packages",
-  },
-};
+const PERMISSION_UI: Record<PermissionKey, { title: string }> = Object.fromEntries(
+  (Object.entries(COMPANY_PERMISSION_TITLE) as [PermissionKey, string][]).map(([key, title]) => [
+    key,
+    { title },
+  ]),
+) as Record<PermissionKey, { title: string }>;
 
 const PERMISSION_CATEGORY_DEFS: {
   id: string;
@@ -427,6 +325,11 @@ const PERMISSION_CATEGORY_DEFS: {
     id: "costs",
     title: "Costs",
     keys: ["costs.read"],
+  },
+  {
+    id: "billing",
+    title: "Billing",
+    keys: ["billing.read", "billing.invoices.read", "billing.payments.manage"],
   },
   {
     id: "attention_queue",
@@ -666,6 +569,22 @@ function readHumanRolePermissions(companyId: string) {
         typeof k === "string" && (PERMISSION_KEYS as readonly string[]).includes(k),
       );
       next[role] = valid;
+    }
+    // One-time additive fix: older browsers stored Manager without title catalog keys.
+    const managerTitleExtras = ["teams.title_create", "teams.title_manage"] as const;
+    for (const [role, keys] of Object.entries(next)) {
+      if (normalizeRoleLabel(role).trim().toLowerCase() !== "manager") continue;
+      const set = new Set(keys);
+      let changed = false;
+      for (const k of managerTitleExtras) {
+        if (!set.has(k)) {
+          set.add(k);
+          changed = true;
+        }
+      }
+      if (changed) {
+        next[role] = normalizePermissionSelection([...set]);
+      }
     }
     return next;
   } catch {

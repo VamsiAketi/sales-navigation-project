@@ -1975,7 +1975,7 @@ export function accessRoutes(
         req.actor.agentId,
         permissionKey
       );
-      if (!allowed) throw forbidden("Permission denied");
+      if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
       return;
     }
     if (req.actor.type !== "board") throw unauthorized();
@@ -1996,7 +1996,7 @@ export function accessRoutes(
       const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
       if (legacyAllowed) return;
     }
-    throw forbidden("Permission denied");
+    throw forbidden(`Missing permission: ${permissionKey}`);
   }
 
   async function assertCanGenerateOpenClawInvitePrompt(
@@ -2020,7 +2020,7 @@ export function accessRoutes(
     const allowed =
       (await access.canUser(companyId, req.actor.userId, "company_settings.invites")) ||
       (await access.canUser(companyId, req.actor.userId, "users:invite"));
-    if (!allowed) throw forbidden("Permission denied");
+    if (!allowed) throw forbidden("Missing permission: company_settings.invites or users:invite");
   }
 
   async function assertCanCreateHumanInvite(req: Request, companyId: string) {
@@ -2033,13 +2033,13 @@ export function accessRoutes(
         req.actor.agentId,
         "users:invite",
       );
-      if (!allowed) throw forbidden("Permission denied");
+      if (!allowed) throw forbidden("Missing permission: users:invite");
       return;
     }
     if (req.actor.type !== "board") throw unauthorized();
     if (isLocalImplicit(req)) return;
     const allowed = await access.canUser(companyId, req.actor.userId, "users:invite");
-    if (!allowed) throw forbidden("Permission denied");
+    if (!allowed) throw forbidden("Missing permission: users:invite");
   }
 
   async function createCompanyInviteForCompany(input: {
@@ -3397,9 +3397,10 @@ export function accessRoutes(
         throw forbidden("Board access required");
       }
       const actorUserId = req.actor.userId;
-      const [canManageOrgConfig, canAssignTitle] = await Promise.all([
+      const [canManageOrgConfig, canAssignTitle, canInviteHumans] = await Promise.all([
         access.canUser(companyId, actorUserId, "users:manage_permissions"),
         access.canUser(companyId, actorUserId, "teams.title_assign"),
+        access.canUser(companyId, actorUserId, "users:invite"),
       ]);
 
       const allMembers = await db
@@ -3428,12 +3429,46 @@ export function accessRoutes(
       const managerTargetsUpdateRequested = req.body.managedAgentMemberIds !== undefined;
       const titleUpdateRequested = req.body.title !== undefined;
 
-      if ((roleUpdateRequested || reportsToUpdateRequested || managerTargetsUpdateRequested) && !canManageOrgConfig) {
-        throw forbidden("Permission denied");
+      const needsOrgPower =
+        roleUpdateRequested || reportsToUpdateRequested || managerTargetsUpdateRequested;
+
+      /** Managers can invite but lack users:manage_permissions; allow one-time org line setup for brand-new humans. */
+      const INVITE_BOOTSTRAP_MAX_AGE_MS = 30 * 60 * 1000;
+      let allowInviteBootstrap = false;
+      if (
+        needsOrgPower &&
+        !canManageOrgConfig &&
+        canInviteHumans &&
+        member.principalType === "user" &&
+        !managerTargetsUpdateRequested
+      ) {
+        const createdAt =
+          member.createdAt instanceof Date ? member.createdAt : new Date(String(member.createdAt));
+        const recentInvite = Number.isFinite(createdAt.getTime())
+          ? Date.now() - createdAt.getTime() <= INVITE_BOOTSTRAP_MAX_AGE_MS
+          : false;
+        if (recentInvite) {
+          const pendingPasswordSetup = await db
+            .select({ userId: instanceUserRoles.userId })
+            .from(instanceUserRoles)
+            .where(
+              and(
+                eq(instanceUserRoles.userId, member.principalId),
+                eq(instanceUserRoles.role, "must_change_password"),
+              ),
+            )
+            .limit(1)
+            .then((rows) => rows.length > 0);
+          allowInviteBootstrap = pendingPasswordSetup;
+        }
+      }
+
+      if (needsOrgPower && !canManageOrgConfig && !allowInviteBootstrap) {
+        throw forbidden("Missing permission: users:manage_permissions");
       }
 
       if (titleUpdateRequested && !(canAssignTitle || canManageOrgConfig)) {
-        throw forbidden("Permission denied");
+        throw forbidden("Missing permission: teams.title_assign or users:manage_permissions");
       }
 
       if (roleUpdateRequested && isOwnerMembershipRole(nextRole)) {
@@ -3802,7 +3837,7 @@ export function accessRoutes(
       actor,
     );
     if (!companyManage && !projectManage) {
-      throw forbidden("Permission denied");
+      throw forbidden("Missing permission: users:manage_permissions or project members:manage");
     }
     const rows = await access.listProjectPrincipalGrants(projectId, companyId);
     res.json(rows);
@@ -3827,7 +3862,7 @@ export function accessRoutes(
         actor,
       );
       if (!companyManage && !projectManage) {
-        throw forbidden("Permission denied");
+        throw forbidden("Missing permission: users:manage_permissions or project members:manage");
       }
       const ok = await access.setProjectPrincipalGrantsForPrincipal(
         companyId,
