@@ -66,6 +66,10 @@ import {
 } from "../board-claim.js";
 import { LOCAL_BOARD_USER_EMAIL } from "../local-board-defaults.js";
 import { isOwnerMembershipRole, membershipRoleLabel, normalizeMembershipRole } from "../lib/membership-role.js";
+import {
+  MEMBER_INVITE_ORG_BOOTSTRAP_MAX_AGE_MS,
+  mayApplyInviteOrgBootstrapPower,
+} from "../lib/member-invite-org-bootstrap.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -3432,8 +3436,11 @@ export function accessRoutes(
       const needsOrgPower =
         roleUpdateRequested || reportsToUpdateRequested || managerTargetsUpdateRequested;
 
-      /** Managers can invite but lack users:manage_permissions; allow one-time org line setup for brand-new humans. */
-      const INVITE_BOOTSTRAP_MAX_AGE_MS = 30 * 60 * 1000;
+      /**
+       * Invite → org-config bootstrap: see `member-invite-org-bootstrap.ts`.
+       * Intentional product behavior — do not revert without redesigning Manager invite UX
+       * (avoids 403 + global permission toast after a successful human invite).
+       */
       let allowInviteBootstrap = false;
       if (
         needsOrgPower &&
@@ -3444,23 +3451,33 @@ export function accessRoutes(
       ) {
         const createdAt =
           member.createdAt instanceof Date ? member.createdAt : new Date(String(member.createdAt));
-        const recentInvite = Number.isFinite(createdAt.getTime())
-          ? Date.now() - createdAt.getTime() <= INVITE_BOOTSTRAP_MAX_AGE_MS
+        const nowMs = Date.now();
+        const withinAge =
+          Number.isFinite(createdAt.getTime()) &&
+          nowMs - createdAt.getTime() <= MEMBER_INVITE_ORG_BOOTSTRAP_MAX_AGE_MS;
+        const hasMustChangePasswordRole = withinAge
+          ? await db
+              .select({ userId: instanceUserRoles.userId })
+              .from(instanceUserRoles)
+              .where(
+                and(
+                  eq(instanceUserRoles.userId, member.principalId),
+                  eq(instanceUserRoles.role, "must_change_password"),
+                ),
+              )
+              .limit(1)
+              .then((rows) => rows.length > 0)
           : false;
-        if (recentInvite) {
-          const pendingPasswordSetup = await db
-            .select({ userId: instanceUserRoles.userId })
-            .from(instanceUserRoles)
-            .where(
-              and(
-                eq(instanceUserRoles.userId, member.principalId),
-                eq(instanceUserRoles.role, "must_change_password"),
-              ),
-            )
-            .limit(1)
-            .then((rows) => rows.length > 0);
-          allowInviteBootstrap = pendingPasswordSetup;
-        }
+        allowInviteBootstrap = mayApplyInviteOrgBootstrapPower({
+          needsOrgPower,
+          canManageOrgConfig,
+          canInviteHumans,
+          managerTargetsUpdateRequested,
+          memberPrincipalType: member.principalType,
+          membershipCreatedAt: createdAt,
+          nowMs,
+          hasMustChangePasswordRole,
+        });
       }
 
       if (needsOrgPower && !canManageOrgConfig && !allowInviteBootstrap) {
