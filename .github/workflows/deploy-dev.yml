@@ -127,11 +127,11 @@ jobs:
           --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
           --set server.paperclip.instanceId="dev" \
           --set-string server.paperclip.publicUrl="${{ env.DEV_PUBLIC_URL }}" \
-          --set-string server.extraEnv.SMTP_HOST="smtp.agentmail.to" \
-          --set-string server.extraEnv.SMTP_PORT="465" \
-          --set-string server.extraEnv.SMTP_SECURE="true" \
+          --set-string server.extraEnv.SMTP_HOST="smtp.office365.com" \
+          --set-string server.extraEnv.SMTP_PORT="587" \
+          --set-string server.extraEnv.SMTP_SECURE="false" \
           --set-string server.extraEnv.SMTP_USER="support@ai-harness.com" \
-          --set-string server.extraEnv.SMTP_PASS="am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9" \
+          --set-string server.extraEnv.SMTP_PASS="S3pp0rt@13245" \
           --set-string server.extraEnv.SMTP_FROM="support@ai-harness.com" \
           --set-string server.database.externalUrl="${DATABASE_URL}" \
           --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
@@ -331,9 +331,9 @@ jobs:
         if: steps.capture_invite.outputs.invite_url != '' && steps.bootstrap_ceo.outcome == 'success'
         uses: dawidd6/action-send-mail@v4
         with:
-          server_address: smtp.agentmail.to
-          server_port: 465
-          secure: true
+          server_address: smtp.office365.com
+          server_port: 587
+          secure: false
           username: "support@ai-harness.com"
           password: ${{ secrets.SMTP_PASSWORD }}
           from: "AI-Harness Support <support@ai-harness.com>"

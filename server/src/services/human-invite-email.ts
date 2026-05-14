@@ -205,6 +205,40 @@ function createSocket(config: SmtpConfig): Promise<net.Socket | tls.TLSSocket> {
   });
 }
 
+function parseStartTlsPreference(): boolean | null {
+  const raw = process.env.SMTP_STARTTLS?.trim();
+  if (raw === undefined || raw === "") return null;
+  const normalized = raw.toLowerCase();
+  if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+  if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
+  return null;
+}
+
+function shouldUseStartTlsAfterEhlo(input: { connectionIsPlain: boolean; ehloLines: string[] }): boolean {
+  if (!input.connectionIsPlain) return false;
+  if (parseStartTlsPreference() === false) return false;
+  return input.ehloLines.some((line) => /\bSTARTTLS\b/i.test(line));
+}
+
+function upgradePlainSocketWithStartTls(plainSocket: net.Socket, host: string): Promise<tls.TLSSocket> {
+  return new Promise((resolve, reject) => {
+    plainSocket.write("STARTTLS\r\n");
+    readSmtpResponse(plainSocket)
+      .then((response) => {
+        if (response.code !== 220) {
+          reject(new Error(`STARTTLS failed: ${response.lines.join(" | ")}`));
+          return;
+        }
+        const secureSocket = tls.connect(
+          { socket: plainSocket, servername: host, rejectUnauthorized: true },
+          () => resolve(secureSocket),
+        );
+        secureSocket.once("error", reject);
+      })
+      .catch(reject);
+  });
+}
+
 async function readSmtpResponse(
   socket: net.Socket | tls.TLSSocket
 ): Promise<{ code: number; lines: string[] }> {
@@ -264,18 +298,34 @@ async function sendViaSmtp(input: {
   textBody: string;
   htmlBody?: string;
 }) {
-  const socket = await createSocket(input.config);
+  let socket: net.Socket | tls.TLSSocket = await createSocket(input.config);
   try {
     const greeting = await readSmtpResponse(socket);
     if (greeting.code !== 220) {
       throw new Error(`SMTP greeting failed: ${greeting.lines.join(" | ")}`);
     }
 
-    await sendSmtpCommand({
-      socket,
-      command: `EHLO ${input.config.heloHost}`,
-      expect: [250]
-    });
+    socket.write(`EHLO ${input.config.heloHost}\r\n`);
+    const ehloAfterConnect = await readSmtpResponse(socket);
+    if (ehloAfterConnect.code !== 250) {
+      throw new Error(`EHLO failed: ${ehloAfterConnect.lines.join(" | ")}`);
+    }
+
+    const connectionIsPlain = !input.config.secure;
+    if (
+      shouldUseStartTlsAfterEhlo({
+        connectionIsPlain,
+        ehloLines: ehloAfterConnect.lines,
+      })
+    ) {
+      // Plain SMTP path uses `net.connect`; `tls.TLSSocket` subclasses `net.Socket`, so avoid `instanceof net.Socket` here.
+      socket = await upgradePlainSocketWithStartTls(socket as net.Socket, input.config.host);
+      socket.write(`EHLO ${input.config.heloHost}\r\n`);
+      const ehloAfterTls = await readSmtpResponse(socket);
+      if (ehloAfterTls.code !== 250) {
+        throw new Error(`EHLO after STARTTLS failed: ${ehloAfterTls.lines.join(" | ")}`);
+      }
+    }
 
     if (input.config.auth) {
       await sendSmtpCommand({

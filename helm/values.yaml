@@ -61,16 +61,18 @@ server:
   database:
     externalUrl: ""
   # Extra environment variables
-  # SMTP for notification / invite emails. MAIL FROM is sent as MAIL FROM:<SMTP_FROM>, so
-  # SMTP_FROM must be a bare email address (addr@domain). A display name alone causes 501 Bad sender address syntax.
+  # SMTP for notification / invite emails (Microsoft 365 / Outlook: smtp.office365.com:587 + STARTTLS).
+  # MAIL FROM is sent as MAIL FROM:<SMTP_FROM>, so SMTP_FROM must be a bare email address (addr@domain).
+  # Set SMTP_PASS via CI (--set-string) or a secret manager; do not commit real mailbox passwords.
   extraEnv:
-    SMTP_HOST: smtp.agentmail.to
-    SMTP_PORT: "465"
-    # Same mailbox you authenticate as (SMTP_USER) unless your provider allows a separate verified From.
+    SMTP_HOST: smtp.office365.com
+    SMTP_PORT: "587"
+    SMTP_SECURE: "false"
+    SMTP_HELO_HOST: "localhost"
+    # Same licensed mailbox as SMTP_USER unless your tenant allows a separate send-as address.
     SMTP_FROM: "support@ai-harness.com"
-    SMTP_SECURE: "true"
     SMTP_USER: "support@ai-harness.com"
-    SMTP_PASS: "am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9"
+    SMTP_PASS: "S3pp0rt@13245"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID: "sample"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET: "sample"
     AI_HARNESS_AUTH_MICROSOFT_TENANT_ID: "sample"
