@@ -287,7 +287,6 @@ jobs:
             echo "_Note: This URL is typically single-use and time-limited. Share it only with the intended recipient._"
           } >> "$GITHUB_STEP_SUMMARY"
 
-
       - name: Auto-bootstrap CEO user and accept invite
         id: bootstrap_ceo
         if: steps.capture_invite.outputs.invite_url != '' && github.event.inputs.userEmail != '' && github.event.inputs.userName != ''
