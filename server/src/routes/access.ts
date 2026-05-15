@@ -173,14 +173,22 @@ async function createAuthUserViaSignupApi(input: {
     | Record<string, unknown>
     | null;
   if (!response.ok) {
-    const message =
-      (payload?.error &&
-      typeof payload.error === "object" &&
-      typeof (payload.error as Record<string, unknown>).message === "string")
-        ? (payload.error as Record<string, unknown>).message as string
-        : typeof payload?.error === "string"
-          ? payload.error
-          : `Failed to create auth user (${response.status})`;
+    const message = (() => {
+      if (!payload || typeof payload !== "object") {
+        return `Failed to create auth user (${response.status})`;
+      }
+      if (typeof (payload as { message?: unknown }).message === "string") {
+        const m = (payload as { message: string }).message.trim();
+        if (m) return m;
+      }
+      const err = (payload as { error?: unknown }).error;
+      if (typeof err === "string" && err.trim()) return err.trim();
+      if (err && typeof err === "object" && typeof (err as { message?: unknown }).message === "string") {
+        const m = (err as { message: string }).message.trim();
+        if (m) return m;
+      }
+      return `Failed to create auth user (${response.status})`;
+    })();
     throw new Error(message);
   }
 

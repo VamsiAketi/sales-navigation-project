@@ -152,12 +152,10 @@ jobs:
             --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
             --set server.paperclip.instanceId="${TENANT}" \
             --set server.paperclip.publicUrl="https://${HOST}" \
-            --set-string server.extraEnv.SMTP_HOST="smtp.agentmail.to" \
-            --set-string server.extraEnv.SMTP_PORT="465" \
-            --set-string server.extraEnv.SMTP_SECURE="true" \
-            --set-string server.extraEnv.SMTP_USER="support@ai-harness.com" \
-            --set-string server.extraEnv.SMTP_PASS="am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9" \
-            --set-string server.extraEnv.SMTP_FROM="support@ai-harness.com" \
+            --set-string server.extraEnv.MS_TENANT_ID="${{ secrets.MS_TENANT_ID }}" \
+            --set-string server.extraEnv.MS_CLIENT_ID="${{ secrets.MS_CLIENT_ID }}" \
+            --set-string server.extraEnv.MS_CLIENT_SECRET="${{ secrets.MS_CLIENT_SECRET }}" \
+            --set-string server.extraEnv.MS_SENDER_EMAIL="${{ secrets.MS_SENDER_EMAIL }}" \
             --set ingress.enabled=true \
             --set ingress.hosts[0].host="${HOST}" \
             --set ingress.hosts[0].paths[0].path="/" \
@@ -365,30 +363,106 @@ jobs:
 
       - name: Send CEO credentials email
         if: steps.capture_invite.outputs.invite_url != '' && github.event.inputs.userEmail != '' && github.event.inputs.userName != ''
-        uses: dawidd6/action-send-mail@v4
-        with:
-          server_address: smtp.agentmail.to
-          server_port: 465
-          secure: true
-          username: "support@ai-harness.com"
-          password: ${{ secrets.SMTP_PASSWORD }}
-          from: "AI-Harness Support <support@ai-harness.com>"
-          to: ${{ github.event.inputs.userEmail }}
-          subject: "Your AI-Harness access is ready"
-          body: |
-            Hi ${{ github.event.inputs.userName }},
+        env:
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
+          MS_SENDER_EMAIL: ${{ secrets.MS_SENDER_EMAIL }}
+          CEO_NAME: ${{ github.event.inputs.userName }}
+          CEO_EMAIL: ${{ github.event.inputs.userEmail }}
+          USER_PASSWORD: ${{ steps.bootstrap_ceo.outputs.user_password }}
+          TENANT: ${{ github.event.inputs.tenant }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import ssl
+          import urllib.error
+          import urllib.parse
+          import urllib.request
 
-            Your AI-Harness tenant (${{ github.event.inputs.tenant }}) is ready.
+          ctx = ssl.create_default_context()
 
-            You can sign in at:
-            https://${{ github.event.inputs.tenant }}.app.ai-harness.com
+          def http_json(req: urllib.request.Request):
+              with urllib.request.urlopen(req, context=ctx) as r:
+                  raw = r.read().decode("utf-8", errors="replace")
+                  return r.status, (json.loads(raw) if raw.strip() else {})
 
-            Your initial login credentials are:
-            - Email: ${{ github.event.inputs.userEmail }}
-            - Password: ${{ steps.bootstrap_ceo.outputs.user_password }}
+          tenant_id = os.environ["MS_TENANT_ID"]
+          cid = os.environ["MS_CLIENT_ID"]
+          sec = os.environ["MS_CLIENT_SECRET"]
+          sender = os.environ["MS_SENDER_EMAIL"]
+          ceo_name = os.environ["CEO_NAME"]
+          ceo_email = os.environ["CEO_EMAIL"]
+          user_password = os.environ["USER_PASSWORD"]
+          tenant = os.environ["TENANT"]
+          tenant_url = f"https://{tenant}.app.ai-harness.com"
 
-            For security, please sign in and change your password as soon as possible.
+          token_body = urllib.parse.urlencode(
+              {
+                  "client_id": cid,
+                  "client_secret": sec,
+                  "scope": "https://graph.microsoft.com/.default",
+                  "grant_type": "client_credentials",
+              }
+          ).encode("utf-8")
+          token_req = urllib.request.Request(
+              f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+              data=token_body,
+              method="POST",
+              headers={"Content-Type": "application/x-www-form-urlencoded"},
+          )
+          try:
+              t_status, tok = http_json(token_req)
+          except urllib.error.HTTPError as e:
+              err = e.read().decode("utf-8", errors="replace")
+              raise SystemExit(f"Graph token HTTP {e.code}: {err[:4000]}") from None
+          if t_status != 200:
+              raise SystemExit(f"Graph token unexpected status {t_status}: {tok}")
+          access = tok.get("access_token")
+          if not access:
+              raise SystemExit(f"Graph token missing access_token: {json.dumps(tok)[:2000]}")
 
-            Thanks,
-            AI-Harness Support
-
+          body = "\n".join(
+              [
+                  f"Hi {ceo_name},",
+                  "",
+                  f"Your AI-Harness tenant ({tenant}) is ready.",
+                  "",
+                  "You can sign in at:",
+                  tenant_url,
+                  "",
+                  "Your initial login credentials are:",
+                  f"- Email: {ceo_email}",
+                  f"- Password: {user_password}",
+                  "",
+                  "For security, please sign in and change your password as soon as possible.",
+                  "",
+                  "Thanks,",
+                  "AI-Harness Support",
+              ]
+          )
+          msg = {
+              "message": {
+                  "subject": "Your AI-Harness access is ready",
+                  "body": {"contentType": "Text", "content": body},
+                  "toRecipients": [{"emailAddress": {"address": ceo_email}}],
+              },
+              "saveToSentItems": True,
+          }
+          enc = urllib.parse.quote(sender, safe="")
+          send_req = urllib.request.Request(
+              f"https://graph.microsoft.com/v1.0/users/{enc}/sendMail",
+              data=json.dumps(msg).encode("utf-8"),
+              method="POST",
+              headers={"Authorization": f"Bearer {access}", "Content-Type": "application/json"},
+          )
+          try:
+              with urllib.request.urlopen(send_req, context=ctx) as r2:
+                  if r2.status != 202:
+                      text = r2.read().decode("utf-8", errors="replace")
+                      raise SystemExit(f"sendMail expected 202, got {r2.status}: {text[:4000]}")
+          except urllib.error.HTTPError as e:
+              err = e.read().decode("utf-8", errors="replace")
+              raise SystemExit(f"Graph sendMail HTTP {e.code}: {err[:4000]}") from None
+          PY

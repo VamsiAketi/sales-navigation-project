@@ -32,10 +32,12 @@ import {
   documentService,
   issueNotificationService,
   logActivity,
+  projectIssueStatusService,
   projectService,
   routineService,
   workProductService,
 } from "../services/index.js";
+import { buildHeartbeatProjectWorkflowContext } from "../services/heartbeat-project-workflow.js";
 import { logger } from "../middleware/logger.js";
 import { forbidden, HttpError, unauthorized, unprocessable } from "../errors.js";
 import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
@@ -66,6 +68,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
   const heartbeat = heartbeatService(db);
   const agentsSvc = agentService(db);
   const projectsSvc = projectService(db);
+  const projectIssueStatusesSvc = projectIssueStatusService(db);
   const goalsSvc = goalService(db);
   const issueApprovalsSvc = issueApprovalService(db);
   const executionWorkspacesSvc = executionWorkspaceService(db);
@@ -521,11 +524,16 @@ export function issueRoutes(db: Db, storage: StorageService) {
         ? req.query.wakeCommentId.trim()
         : null;
 
-    const [{ project, goal }, ancestors, commentCursor, wakeComment] = await Promise.all([
+    const [{ project, goal }, ancestors, commentCursor, wakeComment, projectWorkflow] = await Promise.all([
       resolveIssueProjectAndGoal(issue),
       svc.getAncestors(issue.id),
       svc.getCommentCursor(issue.id),
       wakeCommentId ? svc.getComment(wakeCommentId) : null,
+      issue.projectId
+        ? projectIssueStatusesSvc.list(issue.projectId).then((statuses) =>
+            buildHeartbeatProjectWorkflowContext(statuses, issue.status),
+          )
+        : Promise.resolve(null),
     ]);
 
     res.json({
@@ -556,6 +564,14 @@ export function issueRoutes(db: Db, storage: StorageService) {
             name: project.name,
             status: project.status,
             targetDate: project.targetDate,
+            primaryWorkspace: project.primaryWorkspace
+              ? {
+                  id: project.primaryWorkspace.id,
+                  cwd: project.primaryWorkspace.cwd,
+                  repoUrl: project.primaryWorkspace.repoUrl,
+                  repoRef: project.primaryWorkspace.repoRef,
+                }
+              : null,
           }
         : null,
       goal: goal
@@ -567,6 +583,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
             parentId: goal.parentId,
           }
         : null,
+      projectWorkflow,
       commentCursor,
       wakeComment:
         wakeComment && wakeComment.issueId === issue.id
@@ -1925,7 +1942,12 @@ export function issueRoutes(db: Db, storage: StorageService) {
     res.setHeader("Content-Length", String(attachment.byteSize || object.contentLength || 0));
     res.setHeader("Cache-Control", "private, max-age=60");
     const filename = attachment.originalFilename ?? "attachment";
-    res.setHeader("Content-Disposition", `inline; filename=\"${filename.replaceAll("\"", "")}\"`);
+    const safeFilename = filename.replaceAll("\"", "");
+    const downloadRaw = req.query.download;
+    const downloadParam = Array.isArray(downloadRaw) ? downloadRaw[0] : downloadRaw;
+    const forceDownload = downloadParam === "1" || downloadParam === "true";
+    const disposition = forceDownload ? "attachment" : "inline";
+    res.setHeader("Content-Disposition", `${disposition}; filename=\"${safeFilename}\"`);
 
     object.stream.on("error", (err) => {
       next(err);

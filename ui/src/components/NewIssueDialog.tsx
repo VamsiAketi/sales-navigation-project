@@ -1306,60 +1306,62 @@ export function NewIssueDialog() {
                 }}
               />
               <span>in</span>
-              <InlineEntitySelector
-                ref={projectSelectorRef}
-                value={projectId}
-                options={projectOptions}
-                placeholder="Select Project"
-                className="w-[150px]"
-                disablePortal
-                noneLabel="No project"
-                includeNoneOption={false}
-                triggerAriaLabel={projectFieldLabel}
-                triggerAriaRequired
-                triggerAriaInvalid={Boolean(projectValidationError)}
-                triggerAdornment={<span className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>}
-                searchPlaceholder="Search projects..."
-                emptyMessage="No projects found."
-                onChange={handleProjectChange}
-                onConfirm={() => {
-                  descriptionEditorRef.current?.focus();
-                }}
-                renderTriggerValue={(option) =>
-                  option && currentProject ? (
-                    <>
-                      {/*
-                      <span
-                        className={cn(
-                          "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
-                          projectStatusSwatchClass(currentProject.status),
-                        )}
-                      />
-                      */}
-                      <span className="truncate" title={option.label}>{option.label}</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      Select Project
-                    </span>
-                  )
-                }
-                renderOption={(option) => {
-                  if (!option.id) return <span className="truncate" title={option.label}>{option.label}</span>;
-                  const project = orderedProjects.find((item) => item.id === option.id);
-                  return (
-                    <>
-                      <span
-                        className={cn(
-                          "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
-                          projectStatusSwatchClass(project?.status),
-                        )}
-                      />
-                      <span className="truncate" title={option.label}>{option.label}</span>
-                    </>
-                  );
-                }}
-              />
+              <span className="inline-flex items-center gap-1">
+                <InlineEntitySelector
+                  ref={projectSelectorRef}
+                  value={projectId}
+                  options={projectOptions}
+                  placeholder="Select Project"
+                  className="w-[150px]"
+                  disablePortal
+                  noneLabel="No project"
+                  includeNoneOption={false}
+                  triggerAriaLabel={projectFieldLabel}
+                  triggerAriaRequired
+                  triggerAriaInvalid={Boolean(projectValidationError)}
+                  searchPlaceholder="Search projects..."
+                  emptyMessage="No projects found."
+                  onChange={handleProjectChange}
+                  onConfirm={() => {
+                    descriptionEditorRef.current?.focus();
+                  }}
+                  renderTriggerValue={(option) =>
+                    option && currentProject ? (
+                      <>
+                        {/*
+                        <span
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                            projectStatusSwatchClass(currentProject.status),
+                          )}
+                        />
+                        */}
+                        <span className="truncate" title={option.label}>{option.label}</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Select Project
+                      </span>
+                    )
+                  }
+                  renderOption={(option) => {
+                    if (!option.id) return <span className="truncate" title={option.label}>{option.label}</span>;
+                    const project = orderedProjects.find((item) => item.id === option.id);
+                    return (
+                      <>
+                        <span
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                            projectStatusSwatchClass(project?.status),
+                          )}
+                        />
+                        <span className="truncate" title={option.label}>{option.label}</span>
+                      </>
+                    );
+                  }}
+                />
+                <span className={projectMarkerClassName} aria-hidden="true">{REQUIRED_FIELD_MARKER}</span>
+              </span>
             </div>
           </div>
         </div>

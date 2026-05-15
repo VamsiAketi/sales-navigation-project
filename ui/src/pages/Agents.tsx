@@ -56,6 +56,12 @@ function filterOrgTree(nodes: OrgNode[], tab: FilterTab, showTerminated: boolean
   return nodes
     .reduce<OrgNode[]>((acc, node) => {
       const filteredReports = filterOrgTree(node.reports, tab, showTerminated);
+      const isHumanNode = node.nodeType === "human";
+      if (isHumanNode) {
+        // Agents page should only render agent nodes; promote nested agent reports.
+        acc.push(...filteredReports);
+        return acc;
+      }
       if (matchesFilter(node.status, tab, showTerminated) || filteredReports.length > 0) {
         acc.push({ ...node, reports: filteredReports });
       }

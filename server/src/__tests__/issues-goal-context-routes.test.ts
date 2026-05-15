@@ -23,6 +23,10 @@ const mockGoalService = vi.hoisted(() => ({
   getDefaultCompanyGoal: vi.fn(),
 }));
 
+const mockProjectIssueStatusService = vi.hoisted(() => ({
+  list: vi.fn(),
+}));
+
 vi.mock("../services/index.js", () => ({
   accessService: () => ({
     canUser: vi.fn(),
@@ -51,6 +55,7 @@ vi.mock("../services/index.js", () => ({
   issueApprovalService: () => ({}),
   issueService: () => mockIssueService,
   logActivity: vi.fn(async () => undefined),
+  projectIssueStatusService: () => mockProjectIssueStatusService,
   projectService: () => mockProjectService,
   routineService: () => ({
     syncRunStatusForIssue: vi.fn(async () => undefined),
@@ -169,6 +174,22 @@ describe("issue goal context routes", () => {
       updatedAt: new Date("2026-03-20T00:00:00Z"),
     });
     mockProjectService.listByIds.mockResolvedValue([]);
+    mockProjectIssueStatusService.list.mockResolvedValue([
+      {
+        value: "todo",
+        name: "Todo",
+        allowedNextStatusValues: ["in_progress", "done"],
+        allowedActors: "human_and_agent",
+        isHumanApproval: false,
+      },
+      {
+        value: "in_progress",
+        name: "In Progress",
+        allowedNextStatusValues: ["done"],
+        allowedActors: "agent_only",
+        isHumanApproval: false,
+      },
+    ]);
     mockGoalService.getById.mockImplementation(async (id: string) =>
       id === projectGoal.id ? projectGoal : null,
     );
@@ -202,6 +223,18 @@ describe("issue goal context routes", () => {
         title: projectGoal.title,
       }),
     );
+    expect(res.body.projectWorkflow).toEqual({
+      currentStage: {
+        value: "todo",
+        name: "Todo",
+        allowedNextStatusValues: ["in_progress", "done"],
+        allowedActors: "human_and_agent",
+        isHumanApproval: false,
+      },
+      checkoutStage: {
+        allowedActors: "agent_only",
+      },
+    });
     expect(mockGoalService.getDefaultCompanyGoal).not.toHaveBeenCalled();
   });
 
