@@ -438,9 +438,9 @@ export function NewProjectDialog() {
           {createProject.isError ? (
             <p className="text-xs text-destructive">Failed to create project.</p>
           ) : submitDisabled ? (
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              Complete required fields to continue: {missingRequiredFields.join(", ")}.
-            </p>
+            <span className="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300">
+              Required: {missingRequiredFields.join(", ")}
+            </span>
           ) : (
             <span />
           )}

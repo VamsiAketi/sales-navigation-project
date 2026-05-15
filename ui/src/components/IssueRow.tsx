@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useMemo } from "react";
 import type { Issue, ProjectIssueStatus } from "@paperclipai/shared";
 import { Link, useLocation } from "@/lib/router";
@@ -14,6 +14,7 @@ interface IssueRowProps {
   issue: Issue;
   selected?: boolean;
   issueLinkState?: unknown;
+  /** Pass `false` to remove the mobile leading slot entirely. */
   mobileLeading?: ReactNode;
   desktopMetaLeading?: ReactNode;
   desktopLeadingSpacer?: boolean;
@@ -29,6 +30,12 @@ interface IssueRowProps {
   showNewBadge?: boolean;
   /** Custom project statuses to display for status icon */
   projectStatuses?: ProjectIssueStatus[];
+  /** Optional fixed/flexible width styling for desktop title column. */
+  desktopTitleStyle?: CSSProperties;
+  /** Keep trailing metadata docked right; disable for fixed table-like layouts. */
+  alignDesktopTrailingRight?: boolean;
+  /** Keep the default left padding before trailing desktop metadata. */
+  desktopTrailingPaddingLeft?: boolean;
 }
 
 export function IssueRow({
@@ -46,6 +53,9 @@ export function IssueRow({
   className,
   showNewBadge = false,
   projectStatuses,
+  desktopTitleStyle,
+  alignDesktopTrailingRight = true,
+  desktopTrailingPaddingLeft = true,
 }: IssueRowProps) {
   const location = useLocation();
   const issuePathId = issue.identifier ?? issue.id;
@@ -57,6 +67,24 @@ export function IssueRow({
   const identifier = issue.identifier ?? issue.id.slice(0, 8);
   const showUnreadSlot = unreadState !== null;
   const showUnreadDot = unreadState === "visible" || unreadState === "fading";
+  const showMobileLeading = mobileLeading !== false;
+  const desktopTitleVars = useMemo<CSSProperties | undefined>(() => {
+    if (!desktopTitleStyle) return undefined;
+    const vars: CSSProperties = {};
+    if (desktopTitleStyle.width != null) {
+      vars["--issue-row-title-width" as keyof CSSProperties] =
+        typeof desktopTitleStyle.width === "number"
+          ? `${desktopTitleStyle.width}px`
+          : desktopTitleStyle.width;
+    }
+    if (desktopTitleStyle.minWidth != null) {
+      vars["--issue-row-title-min-width" as keyof CSSProperties] =
+        typeof desktopTitleStyle.minWidth === "number"
+          ? `${desktopTitleStyle.minWidth}px`
+          : desktopTitleStyle.minWidth;
+    }
+    return vars;
+  }, [desktopTitleStyle]);
 
   return (
     <Link
@@ -65,16 +93,27 @@ export function IssueRow({
       to={issueHref}
       state={rowLinkState}
       className={cn(
-        "flex items-start gap-2 border-b border-border py-2.5 pl-2 pr-3 text-sm no-underline text-inherit transition-colors hover:bg-accent/50 last:border-b-0 sm:items-center sm:py-2 sm:pl-1",
+        "flex items-start border-b border-border py-2.5 pl-2 pr-3 text-sm no-underline text-inherit transition-colors hover:bg-accent/50 first:pt-0 last:border-b-0 sm:items-center sm:gap-2 sm:py-2 sm:pl-1 sm:first:pt-0",
+        showMobileLeading ? "gap-2" : "gap-0",
         selected && "bg-accent hover:bg-transparent",
         className,
       )}
     >
-      <span className="shrink-0 pt-px sm:hidden">
-        {mobileLeading ?? <StatusIcon status={issue.status} projectStatuses={projectStatuses} />}
-      </span>
+      {showMobileLeading ? (
+        <span className="shrink-0 pt-px sm:hidden">
+          {mobileLeading ?? <StatusIcon status={issue.status} projectStatuses={projectStatuses} />}
+        </span>
+      ) : null}
       <span className="flex min-w-0 flex-1 flex-col gap-1 sm:contents">
-        <span className="line-clamp-2 text-sm sm:order-2 sm:min-w-0 sm:flex-1 sm:truncate sm:line-clamp-none">
+        <span
+          className={cn(
+            "line-clamp-2 text-sm sm:order-2 sm:min-w-0 sm:truncate sm:line-clamp-none",
+            desktopTitleStyle
+              ? "sm:flex-none sm:[width:var(--issue-row-title-width)] sm:[min-width:var(--issue-row-title-min-width)]"
+              : "sm:flex-1",
+          )}
+          style={desktopTitleVars}
+        >
           {issue.title}
         </span>
         <span className="flex items-center gap-2 sm:order-1 sm:shrink-0">
@@ -118,7 +157,13 @@ export function IssueRow({
         </span>
       </span>
       {(desktopTrailing || trailingMeta) ? (
-        <span className="ml-auto hidden shrink-0 items-center gap-2 sm:order-3 sm:flex sm:gap-3 sm:pl-3">
+        <span
+          className={cn(
+            "hidden shrink-0 items-center gap-2 sm:order-3 sm:flex sm:gap-3",
+            alignDesktopTrailingRight && "ml-auto",
+            desktopTrailingPaddingLeft && "sm:pl-3",
+          )}
+        >
           {desktopTrailing}
           {trailingMeta ? (
             <span className="text-xs text-muted-foreground">{trailingMeta}</span>

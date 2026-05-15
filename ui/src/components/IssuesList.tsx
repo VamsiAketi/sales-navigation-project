@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { useDialog } from "../context/DialogContext";
@@ -23,7 +23,6 @@ import { PriorityIcon } from "./PriorityIcon";
 import { EmptyState } from "./EmptyState";
 import { Identity } from "./Identity";
 import { IssueRow } from "./IssueRow";
-import { ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS } from "../lib/issue-list-layout";
 import { PageSkeleton } from "./PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -131,9 +130,64 @@ function workflowStatusGroupLabel(value: string, projectStatuses: ProjectIssueSt
   return row?.name ?? statusLabel(value);
 }
 
-/** Fixed column widths for list header + row trailing cells (sm+). */
-const LIST_TRAILING_GRID =
-  "grid shrink-0 grid-cols-[116px_184px_144px_108px_96px] items-center gap-3";
+type ListColumnKey =
+  | "status"
+  | "id"
+  | "title"
+  | "priority"
+  | "labels"
+  | "assignee"
+  | "reporter"
+  | "created";
+
+const DEFAULT_LIST_COLUMN_WIDTH_WEIGHTS: Record<ListColumnKey, number> = {
+  status: 100,
+  id: 50,
+  title: 200,
+  priority: 85,
+  labels: 100,
+  assignee: 100,
+  reporter: 100,
+  created: 100,
+};
+
+const LIST_COLUMN_MIN_WIDTHS: Record<ListColumnKey, number> = {
+  status: 94,
+  id: 30,
+  title: 100,
+  priority: 75,
+  labels: 80,
+  assignee: 80,
+  reporter: 80,
+  created: 90,
+};
+
+// Gaps between resizable columns in the list header/row layout.
+const LIST_HEADER_FIXED_GAPS_PX = 24 + 48;
+
+const DEFAULT_LIST_COLUMN_WIDTH_TOTAL = Object.values(DEFAULT_LIST_COLUMN_WIDTH_WEIGHTS).reduce(
+  (sum, value) => sum + value,
+  0,
+);
+
+function defaultListColumnWidthsFromAvailableWidth(availableWidth: number): Record<ListColumnKey, number> {
+  const usableWidth = Math.max(320, availableWidth - LIST_HEADER_FIXED_GAPS_PX);
+  const result = {} as Record<ListColumnKey, number>;
+  (Object.keys(DEFAULT_LIST_COLUMN_WIDTH_WEIGHTS) as ListColumnKey[]).forEach((column) => {
+    const ratio = DEFAULT_LIST_COLUMN_WIDTH_WEIGHTS[column] / DEFAULT_LIST_COLUMN_WIDTH_TOTAL;
+    const proposed = Math.round(usableWidth * ratio);
+    result[column] = Math.max(LIST_COLUMN_MIN_WIDTHS[column], proposed);
+  });
+  return result;
+}
+
+function getInitialDefaultListColumnWidths(): Record<ListColumnKey, number> {
+  if (typeof window === "undefined") {
+    return { ...DEFAULT_LIST_COLUMN_WIDTH_WEIGHTS };
+  }
+  // Approximate main content width before we can measure the rendered header.
+  return defaultListColumnWidthsFromAvailableWidth(window.innerWidth * 0.72);
+}
 
 /** Group keys with items: workflow order first (same as board), then any other statuses lexically. */
 function orderedStatusGroupEntries(
@@ -214,6 +268,21 @@ function arraysEqual(a: string[], b: string[]): boolean {
 
 function toggleInArray(arr: string[], value: string): string[] {
   return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
+}
+
+function isElementMostlyVisible(el: HTMLElement): boolean {
+  const viewport = el.ownerDocument.documentElement;
+  const rect = el.getBoundingClientRect();
+  const viewportRect = {
+    top: 0,
+    left: 0,
+    right: viewport.clientWidth,
+    bottom: viewport.clientHeight,
+  };
+
+  const verticalVisible = rect.bottom > viewportRect.top + 24 && rect.top < viewportRect.bottom - 24;
+  const horizontalVisible = rect.right > viewportRect.left + 16 && rect.left < viewportRect.right - 16;
+  return verticalVisible && horizontalVisible;
 }
 
 function applyFilters(
@@ -613,7 +682,58 @@ export function IssuesList({
   const normalizedIssueSearch = debouncedIssueSearch.trim();
   const [highlightIssueId, setHighlightIssueId] = useState<string | null>(null);
   const [newBadgeIssueId, setNewBadgeIssueId] = useState<string | null>(null);
+  const [listColumnWidths, setListColumnWidths] = useState<Record<ListColumnKey, number>>(
+    () => getInitialDefaultListColumnWidths(),
+  );
+  const [didCalibrateDefaultWidths, setDidCalibrateDefaultWidths] = useState(false);
   const focusHandledRef = useRef<string | null>(null);
+  const listHeaderRef = useRef<HTMLDivElement | null>(null);
+  const hasUserResizedColumnsRef = useRef(false);
+  const resizeSessionRef = useRef<{
+    column: ListColumnKey;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  const onColumnResizeMove = useCallback((event: MouseEvent) => {
+    const session = resizeSessionRef.current;
+    if (!session) return;
+    const delta = event.clientX - session.startX;
+    const minWidth = LIST_COLUMN_MIN_WIDTHS[session.column];
+    const next = Math.max(minWidth, Math.round(session.startWidth + delta));
+    setListColumnWidths((prev) => {
+      if (prev[session.column] === next) return prev;
+      return { ...prev, [session.column]: next };
+    });
+  }, []);
+
+  const stopColumnResize = useCallback(() => {
+    resizeSessionRef.current = null;
+    window.removeEventListener("mousemove", onColumnResizeMove);
+    window.removeEventListener("mouseup", stopColumnResize);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, [onColumnResizeMove]);
+
+  const startColumnResize = useCallback(
+    (column: ListColumnKey, event: ReactMouseEvent<HTMLSpanElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hasUserResizedColumnsRef.current = true;
+      resizeSessionRef.current = {
+        column,
+        startX: event.clientX,
+        startWidth: listColumnWidths[column],
+      };
+      window.addEventListener("mousemove", onColumnResizeMove);
+      window.addEventListener("mouseup", stopColumnResize);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [listColumnWidths, onColumnResizeMove, stopColumnResize],
+  );
+
+  useEffect(() => stopColumnResize, [stopColumnResize]);
 
   useEffect(() => {
     setIssueSearch(initialSearch ?? "");
@@ -709,6 +829,15 @@ export function IssuesList({
     fixedStatusFilter,
     pastBoardClosedRetentionDays,
   ]);
+
+  useEffect(() => {
+    if (didCalibrateDefaultWidths) return;
+    if (hasUserResizedColumnsRef.current) return;
+    const headerWidth = listHeaderRef.current?.clientWidth ?? 0;
+    if (headerWidth <= 0) return;
+    setListColumnWidths(defaultListColumnWidthsFromAvailableWidth(headerWidth));
+    setDidCalibrateDefaultWidths(true);
+  }, [didCalibrateDefaultWidths, isLoading, forceListView, viewState.viewMode, filtered.length]);
 
   const boardIssues = useMemo(() => {
     if (boardClosedRetentionDays === undefined) return filtered;
@@ -808,27 +937,20 @@ export function IssuesList({
   useLayoutEffect(() => {
     if (!highlightIssueId) return;
 
-    let alive = true;
-    const scrollToTask = () => {
-      if (!alive) return;
+    const rafId = requestAnimationFrame(() => {
       const el = document.getElementById(`issue-surface-${highlightIssueId}`);
       if (!el) return;
-      el.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-        inline: "center",
-      });
-    };
 
-    scrollToTask();
-    const outerRaf = requestAnimationFrame(() => {
-      requestAnimationFrame(scrollToTask);
+      if (isElementMostlyVisible(el)) return;
+      el.scrollIntoView({
+        behavior: "auto",
+        block: "nearest",
+        inline: viewState.viewMode === "board" ? "center" : "nearest",
+      });
     });
-    const retryTimer = window.setTimeout(scrollToTask, 280);
+
     return () => {
-      alive = false;
-      cancelAnimationFrame(outerRaf);
-      window.clearTimeout(retryTimer);
+      cancelAnimationFrame(rafId);
     };
   }, [highlightIssueId, viewState.viewMode, viewState.collapsedGroups, filtered]);
 
@@ -906,11 +1028,45 @@ export function IssuesList({
   const statusFilterCount = hideStatusFilter
     ? 0
     : viewState.statuses.length + (viewState.showHidden ? 1 : 0);
+  const hasAnyTaskInProject = issues.length > 0;
+  const showBoardNoTasksOverlay =
+    !forceListView
+    && viewState.viewMode === "board"
+    && !(isLoading || (viewState.showHidden && hiddenLoading))
+    && !viewState.showHidden
+    && !hasAnyTaskInProject;
   const canSortStatus = !(fixedStatusFilter && fixedStatusFilter.length === 1);
   const priorityFilterCount = viewState.priorities.length;
   const reporterFilterCount = viewState.reporters.length;
   const labelFilterCount = viewState.labels.length;
   const projectFilterCount = viewState.projects.length;
+  const listTrailingGridStyle = useMemo(
+    () => ({
+      gridTemplateColumns: `${listColumnWidths.priority}px ${listColumnWidths.labels}px ${listColumnWidths.assignee}px ${listColumnWidths.reporter}px ${listColumnWidths.created}px`,
+    }),
+    [listColumnWidths],
+  );
+  const listTitleColumnStyle = useMemo(
+    () => ({
+      width: `${listColumnWidths.title}px`,
+      minWidth: `${LIST_COLUMN_MIN_WIDTHS.title}px`,
+    }),
+    [listColumnWidths.title],
+  );
+  const renderColumnResizer = useCallback(
+    (column: ListColumnKey, label: string) => (
+      <span
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={label}
+        className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none"
+        onMouseDown={(event) => startColumnResize(column, event)}
+      >
+        <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 transition-colors hover:bg-foreground/70" />
+      </span>
+    ),
+    [startColumnResize],
+  );
 
   const groupedContent = useMemo(() => {
     if (viewState.groupBy === "none") {
@@ -974,11 +1130,11 @@ export function IssuesList({
     <div className="space-y-4">
       {/* Toolbar */}
       <div
-        className="sticky top-0 z-60 -mx-4 border-b border-border/80 bg-background/95 px-4 py-2 backdrop-blur supports-backdrop-filter:bg-background/80 md:-mx-6 md:px-6"
-        style={{ willChange: 'transform' }}
+        className="-mx-4 border-b border-border/80 bg-background/95 px-4 py-2 backdrop-blur supports-backdrop-filter:bg-background/80 md:sticky md:top-0 md:z-60 md:-mx-6 md:px-6"
+        style={{ willChange: "transform" }}
       >
-        <div className="flex items-center gap-2.5">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
+        <div className="flex items-center gap-2.5 overflow-x-auto whitespace-nowrap scrollbar-auto-hide md:overflow-visible md:whitespace-normal">
+          <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
           {/* View mode toggle */}
           {!forceListView && (
             <div className="flex h-9 items-center overflow-hidden rounded-md border border-border">
@@ -1022,7 +1178,7 @@ export function IssuesList({
           )}
           </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           {/* Top-level filter dropdowns */}
           {!hideStatusFilter && (
           <Popover>
@@ -1390,7 +1546,7 @@ export function IssuesList({
                     ["priority", "Priority"],
                     ["title", "Title"],
                     ["assignee", "Assignee"],
-                    ["reporter", "Reported by"],
+                    ["reporter", "Reporter"],
                     ["created", "Created"],
                     ["updated", "Updated"],
                   ] as const).map(([field, label]) => (
@@ -1475,7 +1631,9 @@ export function IssuesList({
               ? "No hidden tasks."
               : pastBoardClosedRetentionDays
                 ? "No Done or Cancelled tasks past the board retention window."
-                : "No tasks match the current filters or search."
+                : hasAnyTaskInProject
+                  ? "No tasks match the current filters or search."
+                  : "No task in this project."
           }
           action={viewState.showHidden || pastBoardClosedRetentionDays || !canCreateTask ? undefined : "Create Task"}
           onAction={
@@ -1487,194 +1645,238 @@ export function IssuesList({
       )}
 
       {!isLoading && filtered.length > 0 && (forceListView || viewState.viewMode === "list") && (
-        <div className="sticky top-[3.25rem] z-50 hidden sm:flex items-center gap-2 border-b border-border bg-background/95 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/90 select-none">
-          <span className="w-3.5 shrink-0" />
-          <span className="flex shrink-0 items-center gap-2">
+        <div
+          ref={listHeaderRef}
+          className="sticky top-[3.25rem] z-50 hidden sm:flex items-center gap-2 border-b border-border bg-background/95 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/90 select-none"
+        >
+          <span
+            className="relative inline-flex shrink-0 truncate text-left"
+            style={{ width: `${listColumnWidths.status}px`, minWidth: `${LIST_COLUMN_MIN_WIDTHS.status}px` }}
+          >
             {canSortStatus ? (
               <button
                 type="button"
-                className={cn("inline-flex shrink-0 truncate text-left hover:text-foreground", ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS)}
+                className="w-full truncate text-left hover:text-foreground"
                 onClick={() => applySort("status")}
               >
                 Status {viewState.sortField === "status" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
               </button>
             ) : (
-              <span className={cn("shrink-0 truncate text-left", ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS)}>Status</span>
+              <span className="w-full truncate text-left">Status</span>
             )}
+            {renderColumnResizer("status", "Resize Status column")}
+          </span>
+          <span
+            className="relative shrink-0"
+            style={{ width: `${listColumnWidths.id}px`, minWidth: `${LIST_COLUMN_MIN_WIDTHS.id}px` }}
+          >
             <button
               type="button"
-              className="w-[84px] shrink-0 truncate text-left font-mono text-xs tabular-nums hover:text-foreground"
+              className="w-full truncate text-left font-mono text-xs tabular-nums hover:text-foreground"
               onClick={() => applySort("id")}
             >
               ID {viewState.sortField === "id" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
             </button>
-            <span className="w-[76px] shrink-0" aria-hidden />
+            {renderColumnResizer("id", "Resize ID column")}
           </span>
-          <button
-            type="button"
-            className="min-w-0 flex-1 pr-3 text-left hover:text-foreground"
-            onClick={() => applySort("title")}
-          >
-            Title {viewState.sortField === "title" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
-          </button>
-          <div className={cn(LIST_TRAILING_GRID, "ml-auto border-l border-border/70 pl-3")}>
+          <span className="relative shrink-0" style={listTitleColumnStyle}>
             <button
               type="button"
-              className="shrink-0 text-left hover:text-foreground"
-              onClick={() => applySort("priority")}
+              className="w-full truncate text-left hover:text-foreground"
+              onClick={() => applySort("title")}
             >
-              Priority {viewState.sortField === "priority" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+              Title {viewState.sortField === "title" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
             </button>
-            <span className="min-w-0 shrink-0 truncate">Labels</span>
-            <button
-              type="button"
-              className="shrink-0 px-2 text-left hover:text-foreground"
-              onClick={() => applySort("assignee")}
-            >
-              Assignee {viewState.sortField === "assignee" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
-            </button>
-            <button
-              type="button"
-              className="min-w-0 shrink-0 truncate text-left hover:text-foreground"
-              onClick={() => applySort("reporter")}
-            >
-              Reported by {viewState.sortField === "reporter" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
-            </button>
-            <button
-              type="button"
-              className="shrink-0 text-right hover:text-foreground"
-              onClick={() => applySort("created")}
-            >
-              Created {viewState.sortField === "created" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
-            </button>
+            {renderColumnResizer("title", "Resize Title column")}
+          </span>
+          <div className="grid shrink-0 items-center gap-3" style={listTrailingGridStyle}>
+            <span className="relative">
+              <button
+                type="button"
+                className="w-full truncate text-left hover:text-foreground"
+                onClick={() => applySort("priority")}
+              >
+                Priority {viewState.sortField === "priority" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              {renderColumnResizer("priority", "Resize Priority column")}
+            </span>
+            <span className="relative min-w-0 truncate">
+              Labels
+              {renderColumnResizer("labels", "Resize Labels column")}
+            </span>
+            <span className="relative">
+              <button
+                type="button"
+                className="w-full truncate text-left hover:text-foreground"
+                onClick={() => applySort("assignee")}
+              >
+                Assignee {viewState.sortField === "assignee" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              {renderColumnResizer("assignee", "Resize Assignee column")}
+            </span>
+            <span className="relative min-w-0 truncate">
+              <button
+                type="button"
+                className="w-full truncate text-left hover:text-foreground"
+                onClick={() => applySort("reporter")}
+              >
+                Reporter {viewState.sortField === "reporter" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              {renderColumnResizer("reporter", "Resize Reporter column")}
+            </span>
+            <span className="relative">
+              <button
+                type="button"
+                className="w-full text-left hover:text-foreground"
+                onClick={() => applySort("created")}
+              >
+                Created {viewState.sortField === "created" ? (viewState.sortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              {renderColumnResizer("created", "Resize Created column")}
+            </span>
           </div>
         </div>
       )}
 
       {!forceListView && viewState.viewMode === "board" ? (
-        <KanbanBoard
-          issues={boardIssues}
-          agents={agents}
-          members={humanMembers}
-          liveIssueIds={liveIssueIds}
-          onUpdateIssue={onUpdateIssue}
-          projectStatuses={projectStatuses}
-          issueLinkState={issueLinkState}
-          highlightIssueId={highlightIssueId}
-          newBadgeIssueId={newBadgeIssueId}
-        />
-      ) : (
-        groupedContent.map((group) => (
-          <Collapsible
-            key={group.key}
-            open={!viewState.collapsedGroups.includes(group.key)}
-            onOpenChange={(open) => {
-              updateView({
-                collapsedGroups: open
-                  ? viewState.collapsedGroups.filter((k) => k !== group.key)
-                  : [...viewState.collapsedGroups, group.key],
-              });
-            }}
-          >
-            {group.label && (
-              <div className="flex items-center py-1.5 pl-1 pr-3">
-                <CollapsibleTrigger className="flex items-center gap-1.5">
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform [[data-state=open]>&]:rotate-90" />
-                  <span className="text-sm font-semibold uppercase tracking-wide">
-                    {group.label}
-                  </span>
-                </CollapsibleTrigger>
+        <div className="relative min-h-[420px]">
+          <div className={cn(showBoardNoTasksOverlay ? "pointer-events-none select-none" : undefined)}>
+            <KanbanBoard
+              issues={boardIssues}
+              agents={agents}
+              members={humanMembers}
+              liveIssueIds={liveIssueIds}
+              onUpdateIssue={onUpdateIssue}
+              projectStatuses={projectStatuses}
+              issueLinkState={issueLinkState}
+              highlightIssueId={highlightIssueId}
+              newBadgeIssueId={newBadgeIssueId}
+            />
+          </div>
+          {showBoardNoTasksOverlay ? (
+            <div className="absolute inset-0 z-20 flex items-center justify-center px-4">
+              <div className="w-full max-w-sm rounded-lg border border-border/80 bg-card/95 p-5 text-center shadow-sm backdrop-blur">
+                <p className="text-sm font-medium text-foreground">No task in this project</p>
                 {canCreateTask ? (
                   <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="ml-auto text-muted-foreground"
-                    onClick={() => openNewIssue(newIssueDefaults(group.key))}
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => openNewIssue(newIssueDefaults())}
                   >
-                    <Plus className="h-3 w-3" />
+                    Create New Task
                   </Button>
                 ) : null}
               </div>
-            )}
-            <CollapsibleContent>
-              {group.items.map((issue) => (
-                <IssueRow
-                  key={issue.id}
-                  issue={issue}
-                  issueLinkState={issueLinkState}
-                  showNewBadge={newBadgeIssueId === issue.id}
-                  className={
-                    highlightIssueId === issue.id
-                      ? "relative z-1 ring-2 ring-inset ring-primary/80 bg-primary/6 motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]"
-                      : undefined
-                  }
-                  desktopLeadingSpacer
-                  mobileLeading={(
-                    <span
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="sm:-mt-2">
+          {groupedContent.map((group) => (
+            <Collapsible
+              key={group.key}
+              open={!viewState.collapsedGroups.includes(group.key)}
+              onOpenChange={(open) => {
+                updateView({
+                  collapsedGroups: open
+                    ? viewState.collapsedGroups.filter((k) => k !== group.key)
+                    : [...viewState.collapsedGroups, group.key],
+                });
+              }}
+            >
+              {group.label && (
+                <div className="flex items-center py-1.5 pl-1 pr-3">
+                  <CollapsibleTrigger className="flex items-center gap-1.5">
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform [[data-state=open]>&]:rotate-90" />
+                    <span className="text-sm font-semibold uppercase tracking-wide">
+                      {group.label}
+                    </span>
+                  </CollapsibleTrigger>
+                  {canCreateTask ? (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="ml-auto text-muted-foreground"
+                      onClick={() => openNewIssue(newIssueDefaults(group.key))}
                     >
-                      <StatusIcon
-                        status={issue.status}
-                        onChange={(s) => onUpdateIssue(issue.id, { status: s })}
-                        projectStatuses={projectStatuses}
-                      />
-                    </span>
-                  )}
-                  desktopMetaLeading={(
-                    <>
-                      <span
-                        className={cn(
-                          "hidden items-center justify-start sm:inline-flex",
-                          ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
-                        )}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                      >
-                        <span className="min-w-0 max-w-full">
-                          <StatusIcon
-                            status={issue.status}
-                            onChange={(s) => onUpdateIssue(issue.id, { status: s })}
-                            projectStatuses={projectStatuses}
-                          />
-                        </span>
-                      </span>
-                      <span className="w-[84px] shrink-0 truncate font-mono text-xs text-muted-foreground">
-                        {issue.identifier ?? issue.id.slice(0, 8)}
-                      </span>
-                      <span className="hidden w-[76px] shrink-0 items-center justify-start sm:inline-flex">
-                        {liveIssueIds?.has(issue.id) ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 sm:gap-1.5 sm:px-2">
-                            <span className="relative flex h-2 w-2">
-                              <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
-                              <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-                            </span>
-                            <span className="hidden text-[11px] font-medium text-blue-600 dark:text-blue-400 sm:inline">
-                              Live
-                            </span>
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  ) : null}
+                </div>
+              )}
+              <CollapsibleContent>
+                {group.items.map((issue) => (
+                  <IssueRow
+                    key={issue.id}
+                    issue={issue}
+                    issueLinkState={issueLinkState}
+                    showNewBadge={newBadgeIssueId === issue.id}
+                    className={
+                      highlightIssueId === issue.id
+                        ? "relative z-1 ring-2 ring-inset ring-primary/80 bg-primary/6 motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]"
+                        : undefined
+                    }
+                    mobileLeading={false}
+                    desktopMetaLeading={(
+                      <>
+                        <span
+                          className="hidden shrink-0 items-center justify-start sm:inline-flex"
+                          style={{ width: `${listColumnWidths.status}px`, minWidth: `${LIST_COLUMN_MIN_WIDTHS.status}px` }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                        >
+                          <span className="min-w-0 max-w-full">
+                            <StatusIcon
+                              status={issue.status}
+                              onChange={(s) => onUpdateIssue(issue.id, { status: s })}
+                              projectStatuses={projectStatuses}
+                            />
                           </span>
-                        ) : null}
+                        </span>
+                        <span
+                          className="shrink-0 truncate font-mono text-xs text-muted-foreground"
+                          style={{ width: `${listColumnWidths.id}px`, minWidth: `${LIST_COLUMN_MIN_WIDTHS.id}px` }}
+                        >
+                          <span className="inline-flex max-w-full items-center gap-1.5">
+                            <span className="truncate">{issue.identifier ?? issue.id.slice(0, 8)}</span>
+                            {liveIssueIds?.has(issue.id) ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
+                                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+                                </span>
+                                <span className="hidden text-[11px] font-medium text-blue-600 dark:text-blue-400 lg:inline">
+                                  Live
+                                </span>
+                              </span>
+                            ) : null}
+                          </span>
+                        </span>
+                      </>
+                    )}
+                    desktopTitleStyle={listTitleColumnStyle}
+                    mobileMeta={(
+                      <span className="inline-flex max-w-full flex-wrap items-center gap-x-1">
+                        <span className="capitalize">{issue.status.replace(/_/g, " ")}</span>
+                        <span className="text-muted-foreground/80" aria-hidden>
+                          ·
+                        </span>
+                        <span className="capitalize">{issue.priority.replace(/_/g, " ")}</span>
+                        <span className="text-muted-foreground/80" aria-hidden>
+                          ·
+                        </span>
+                        <span className="max-w-36 truncate">{reporterLabelForIssue(issue)}</span>
+                        <span className="text-muted-foreground/80" aria-hidden>
+                          ·
+                        </span>
+                        <span>{timeAgo(issue.updatedAt)}</span>
                       </span>
-                    </>
-                  )}
-                  mobileMeta={(
-                    <span className="inline-flex max-w-full flex-wrap items-center gap-x-1">
-                      <span className="capitalize">{issue.priority.replace(/_/g, " ")}</span>
-                      <span className="text-muted-foreground/80" aria-hidden>
-                        ·
-                      </span>
-                      <span className="max-w-36 truncate">{reporterLabelForIssue(issue)}</span>
-                      <span className="text-muted-foreground/80" aria-hidden>
-                        ·
-                      </span>
-                      <span>{timeAgo(issue.updatedAt)}</span>
-                    </span>
-                  )}
-                  desktopTrailing={(() => {
+                    )}
+                    alignDesktopTrailingRight={false}
+                    desktopTrailingPaddingLeft={false}
+                    desktopTrailing={(() => {
                     const issueLabelIds = issue.labelIds ?? issue.labels?.map((l) => l.id) ?? [];
                     const issueLabels = issue.labels ?? [];
                     const labelsOpen = labelPickerIssueId === issue.id;
@@ -1690,8 +1892,38 @@ export function IssuesList({
                       const next = toggleIssueLabelSelection(issueLabelIds, labelId);
                       onUpdateIssue(issue.id, { labelIds: next });
                     };
+                    const availableLabelWidth = Math.max(LIST_COLUMN_MIN_WIDTHS.labels, listColumnWidths.labels) - 8;
+                    const gapPx = 4;
+                    const estimateChipWidth = (name: string) => Math.min(136, Math.max(56, 26 + name.length * 6));
+                    const estimateCounterWidth = (count: number) => Math.max(20, 12 + String(count).length * 6);
+                    let showSecondInlineLabel = false;
+                    if (issueLabels.length > 1) {
+                      const secondLabelWidth = estimateChipWidth(issueLabels[1]!.name);
+                      const counterAfterSecond =
+                        issueLabels.length > 2 ? estimateCounterWidth(issueLabels.length - 2) + gapPx : 0;
+                      const remainingForFirst = availableLabelWidth - gapPx - secondLabelWidth - counterAfterSecond;
+                      showSecondInlineLabel = remainingForFirst >= 72;
+                    }
+                    const inlineVisibleLabels = showSecondInlineLabel ? issueLabels.slice(0, 2) : issueLabels.slice(0, 1);
+                    const inlineHiddenLabelCount = Math.max(0, issueLabels.length - inlineVisibleLabels.length);
+                    const counterWidth = inlineHiddenLabelCount > 0 ? estimateCounterWidth(inlineHiddenLabelCount) : 0;
+                    const secondLabelWidthEstimate =
+                      inlineVisibleLabels.length > 1 ? estimateChipWidth(inlineVisibleLabels[1]!.name) : 0;
+                    const firstLabelMaxWidth = Math.max(
+                      56,
+                      availableLabelWidth
+                        - (inlineVisibleLabels.length > 1 ? gapPx + secondLabelWidthEstimate : 0)
+                        - (inlineHiddenLabelCount > 0 ? gapPx + counterWidth : 0),
+                    );
+                    const secondLabelMaxWidth = Math.max(
+                      56,
+                      availableLabelWidth
+                        - firstLabelMaxWidth
+                        - (inlineHiddenLabelCount > 0 ? gapPx + counterWidth : 0)
+                        - (inlineVisibleLabels.length > 1 ? gapPx : 0),
+                    );
                     return (
-                      <div className={LIST_TRAILING_GRID}>
+                      <div className="grid shrink-0 items-center gap-3" style={listTrailingGridStyle}>
                         <span
                           className="flex min-w-0 items-center justify-start"
                           onClick={(e) => {
@@ -1753,23 +1985,24 @@ export function IssuesList({
                                       </span>
                                     </>
                                   ) : (
-                                    <span className="flex min-w-0 flex-wrap items-center gap-1">
-                                      {issueLabels.slice(0, 3).map((label) => (
+                                    <span className="flex min-w-0 items-center gap-1 overflow-hidden">
+                                      {inlineVisibleLabels.map((label) => (
                                         <span
                                           key={label.id}
-                                          className="inline-flex max-w-full shrink items-center truncate rounded-full border px-2 py-0.5 text-xs font-medium"
+                                          className="inline-flex min-w-0 shrink-0 items-center truncate rounded-full border px-2 py-0.5 text-xs font-medium"
                                           style={{
                                             borderColor: label.color,
                                             backgroundColor: `${label.color}22`,
                                             color: pickTextColorForPillBg(label.color, 0.13),
+                                            maxWidth: `${inlineVisibleLabels[0]?.id === label.id ? firstLabelMaxWidth : secondLabelMaxWidth}px`,
                                           }}
                                         >
-                                          {label.name}
+                                          <span className="truncate">{label.name}</span>
                                         </span>
                                       ))}
-                                      {issueLabels.length > 3 && (
+                                      {inlineHiddenLabelCount > 0 && (
                                         <span className="shrink-0 text-xs text-muted-foreground">
-                                          +{issueLabels.length - 3}
+                                          +{inlineHiddenLabelCount}
                                         </span>
                                       )}
                                     </span>
@@ -1847,7 +2080,7 @@ export function IssuesList({
                             <button
                               type="button"
                               className={cn(
-                                "flex w-full min-w-0 max-w-[180px] items-center gap-1 text-left text-xs transition-colors",
+                                "flex w-full min-w-0 items-center gap-1 text-left text-xs transition-colors",
                                 assigneeOpen
                                   ? "h-8 justify-between rounded-md border border-border bg-background px-2 py-1 hover:bg-accent/50"
                                   : "justify-start rounded px-1 py-0.5 hover:bg-accent/50",
@@ -1870,24 +2103,28 @@ export function IssuesList({
                             >
                               <span className="min-w-0 flex-1 truncate">
                                 {issue.assigneeAgentId && agentName(issue.assigneeAgentId) ? (
-                                  <Identity name={agentName(issue.assigneeAgentId)!} size="sm" />
+                                  <Identity
+                                    name={agentName(issue.assigneeAgentId)!}
+                                    size="sm"
+                                    className="min-w-0 max-w-full"
+                                  />
                                 ) : issue.assigneeUserId ? (
-                                  <span className="inline-flex items-center gap-1.5">
+                                  <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
                                     <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
                                       <User className="h-3 w-3" />
                                     </span>
-                                    <span className="truncate">
+                                    <span className="min-w-0 truncate">
                                       {humanMembers.find((m) => m.id === issue.assigneeUserId)?.name
                                         ?? userLabel(issue.assigneeUserId)
                                         ?? "User"}
                                     </span>
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                  <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-muted-foreground">
                                     <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
                                       <User className="h-3 w-3" />
                                     </span>
-                                    Unassigned
+                                    <span className="truncate">Unassigned</span>
                                   </span>
                                 )}
                               </span>
@@ -1990,12 +2227,12 @@ export function IssuesList({
                           </PopoverContent>
                         </Popover>
                         <span
-                          className="min-w-0 truncate text-left text-xs text-muted-foreground"
+                          className="block min-w-0 max-w-full truncate text-left text-xs text-muted-foreground"
                           title={reporterLabelForIssue(issue)}
                         >
                           {reporterLabelForIssue(issue)}
                         </span>
-                        <div className="flex min-w-0 flex-col items-end gap-1 text-right sm:flex-row sm:items-center sm:justify-end">
+                        <div className="flex min-w-0 flex-col items-start gap-1 text-left sm:flex-row sm:items-center sm:justify-start">
                           <span className="text-xs text-muted-foreground">{formatDate(issue.createdAt)}</span>
                           {viewState.showHidden ? (
                             <button
@@ -2017,12 +2254,13 @@ export function IssuesList({
                       </div>
                     );
                   })()}
-                  projectStatuses={projectStatuses}
-                />
-              ))}
-            </CollapsibleContent>
-          </Collapsible>
-        ))
+                    projectStatuses={projectStatuses}
+                  />
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
+        </div>
       )}
     </div>
   );

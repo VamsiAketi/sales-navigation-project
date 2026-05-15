@@ -42,6 +42,7 @@ import { getDefaultCompanyGoal } from "./goals.js";
 
 const ALL_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"];
 const MAX_ISSUE_COMMENT_PAGE_LIMIT = 500;
+const PROJECT_STATUSES_AUTO_PROMOTE_ON_NEW_ISSUE = ["backlog", "planned"] as const;
 
 /** List-only stages (e.g. backlog) may have no assignee; every other stage requires one. */
 function assertAssigneeRequiredUnlessListOnlyStage(
@@ -1027,15 +1028,23 @@ export function issueService(db: Db) {
         // issues that have no project (e.g. ad-hoc tasks).
         let issueNumber: number;
         let identifier: string;
+        let shouldPromoteProjectToInProgress = false;
 
         if (issueData.projectId) {
           const [project] = await tx
             .update(projects)
             .set({ issueCounter: sql`${projects.issueCounter} + 1` })
             .where(and(eq(projects.id, issueData.projectId), eq(projects.companyId, companyId)))
-            .returning({ issueCounter: projects.issueCounter, issuePrefix: projects.issuePrefix });
+            .returning({
+              issueCounter: projects.issueCounter,
+              issuePrefix: projects.issuePrefix,
+              status: projects.status,
+            });
 
           issueNumber = project.issueCounter;
+          shouldPromoteProjectToInProgress = PROJECT_STATUSES_AUTO_PROMOTE_ON_NEW_ISSUE.includes(
+            project.status as (typeof PROJECT_STATUSES_AUTO_PROMOTE_ON_NEW_ISSUE)[number],
+          );
           identifier = project.issuePrefix
             ? `${project.issuePrefix}-${issueNumber}`
             : (() => {
@@ -1069,6 +1078,9 @@ export function issueService(db: Db) {
           issueNumber,
           identifier,
         } as typeof issues.$inferInsert;
+        if (shouldPromoteProjectToInProgress) {
+          values.status = "todo";
+        }
         if (values.status === "in_progress" && !values.startedAt) {
           values.startedAt = new Date();
         }
@@ -1111,6 +1123,21 @@ export function issueService(db: Db) {
 
         const [issue] = await tx.insert(issues).values(values).returning();
         await promoteGoalToActiveIfPlanned(tx, companyId, values.goalId);
+        if (shouldPromoteProjectToInProgress && issueData.projectId) {
+          await tx
+            .update(projects)
+            .set({
+              status: "in_progress",
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(projects.id, issueData.projectId),
+                eq(projects.companyId, companyId),
+                inArray(projects.status, Array.from(PROJECT_STATUSES_AUTO_PROMOTE_ON_NEW_ISSUE)),
+              ),
+            );
+        }
         if (inputLabelIds) {
           await syncIssueLabels(issue.id, companyId, inputLabelIds, tx);
         }

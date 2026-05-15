@@ -402,6 +402,7 @@ async function postControlPlaneCostingPayload(payload: {
   runStartTime: string;
   runEndTime: string;
   agentId: string;
+  tenantId: string;
   modelCostCents: number;
 }) {
   const endpoint = process.env.CONTROL_PLANE_COSTING_API_URL?.trim();
@@ -1638,6 +1639,7 @@ export function heartbeatService(db: Db) {
           runStartTime: updated.startedAt ? new Date(updated.startedAt).toISOString() : "",
           runEndTime: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : "",
           agentId: updated.agentId,
+          tenantId: updated.companyId,
           modelCostCents: readModelCostCentsFromUsage(updated.usageJson),
         });
       }
