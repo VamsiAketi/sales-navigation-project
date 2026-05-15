@@ -101,7 +101,7 @@ describe("POST /companies/:companyId/human-invites", () => {
     mockLogActivity.mockResolvedValue(undefined);
     mockSendHumanInviteEmail.mockResolvedValue({
       status: "skipped",
-      message: "SMTP not configured",
+      message: "Microsoft Graph mail is not configured",
     });
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
