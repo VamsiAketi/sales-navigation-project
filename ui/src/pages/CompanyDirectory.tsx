@@ -27,7 +27,7 @@ import { useToast } from "../context/ToastContext";
 import { accessApi, type CompanyMember } from "../api/access";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
-import { sidebarBadgesApi } from "../api/sidebarBadges";
+import { useCompanySidebarBadges } from "../hooks/useCompanySidebarBadges";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
 import { COMPANY_PERMISSION_TITLE } from "../lib/company-permission-labels";
@@ -816,14 +816,9 @@ export function CompanyDirectory() {
     queryFn: () => accessApi.listMembers(selectedCompanyId!),
     enabled: !!selectedCompanyId
   });
-  const { data: sidebarBadges } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
-    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
-    staleTime: 10_000,
-  });
-  const canReadTeams = sidebarBadges?.canReadTeams ?? true;
-  const canEditTeams = sidebarBadges?.canEditTeams ?? true;
+  const { accessReady: sidebarAccessReady, badge: sidebarBadge } = useCompanySidebarBadges(selectedCompanyId);
+  const canReadTeamsFromBadges = sidebarBadge("canReadTeams");
+  const canEditTeams = sidebarBadge("canEditTeams");
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: authApi.getSession,
@@ -903,14 +898,12 @@ export function CompanyDirectory() {
     () => new Set((currentUserMember?.grants ?? []).map((grant) => grant.permissionKey as PermissionKey)),
     [currentUserMember?.grants],
   );
-  const currentUserMembershipRoleKey = normalizeRoleLabel(currentUserMember?.membershipRole ?? "").toLowerCase();
-  /** Org role Reader is view-only in Teams even if legacy grants or badges suggest edit access. */
-  const isCurrentUserReaderOrgRole = currentUserMembershipRoleKey === "reader";
   const canInviteHumans = currentUserPermissionSet.has("users:invite");
+  const canManageUserPermissions = currentUserPermissionSet.has("users:manage_permissions");
   const canCreateTitles = currentUserPermissionSet.has("teams.title_create");
   const canAssignTitles = currentUserPermissionSet.has("teams.title_assign");
   const canManageTitles = currentUserPermissionSet.has("teams.title_manage");
-  const canManageRoles = canEditTeams && !isCurrentUserReaderOrgRole;
+  const canManageRoles = canEditTeams;
   const canResetPassword = currentUserPermissionSet.has("users:reset_password");
   const canDeactivateUsers =
     currentUserPermissionSet.has("users:deactivate") ||
@@ -918,11 +911,27 @@ export function CompanyDirectory() {
   const canDeleteUsers =
     currentUserPermissionSet.has("users:delete") ||
     currentUserPermissionSet.has("users:manage_permissions");
+  const canShowDeactivateUserActions = canDeactivateUsers;
+  const canShowDeleteUserActions = canDeleteUsers;
+  const canReadTeams =
+    sidebarAccessReady &&
+    (canReadTeamsFromBadges ||
+      canInviteHumans ||
+      canResetPassword ||
+      canDeactivateUsers ||
+      canDeleteUsers ||
+      canAssignTitles ||
+      canCreateTitles ||
+      canManageTitles);
+  const teamsPageAccessPending =
+    Boolean(selectedCompanyId) && (!sidebarAccessReady || (membersLoading && companyMembers === undefined));
   const hasTitleAccess = canCreateTitles || canAssignTitles || canManageTitles;
-  const canOpenRolesAndTitlesDialog = (canEditTeams || hasTitleAccess) && !isCurrentUserReaderOrgRole;
-  const canEditHumanTeamRowTitle = canAssignTitles && !isCurrentUserReaderOrgRole;
-  const canEditHumanTeamRowOrgFields = canEditTeams && !isCurrentUserReaderOrgRole;
-  const canEditAgentTeamRows = canEditTeams && !isCurrentUserReaderOrgRole;
+  const canOpenRolesAndTitlesDialog = canEditTeams || hasTitleAccess;
+  const canEditHumanTeamRowTitle = canAssignTitles;
+  const canEditHumanTeamRowOrgFields = canEditTeams;
+  const canEditAgentTeamRows = canEditTeams;
+  const canAssignTasks =
+    currentUserPermissionSet.has("tasks:assign") || currentUserPermissionSet.has("tasks.create");
 
   const filteredHumanMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1178,7 +1187,7 @@ export function CompanyDirectory() {
                 <span className="font-medium text-foreground">{issue.identifier}</span>{" "}
                 <span className="text-muted-foreground">- {issue.title}</span>
               </Link>
-              {isCurrentUserReaderOrgRole ? (
+              {!canAssignTasks ? (
                 <div className="inline-flex h-9 w-full min-w-0 items-center rounded-md border border-border/60 bg-muted/25 px-2 text-xs text-muted-foreground">
                   {reassignOption ? (
                     <span className="inline-flex min-w-0 items-center gap-2">
@@ -1549,7 +1558,6 @@ export function CompanyDirectory() {
 
   function saveHumanRowEdits(member: CompanyMember, nextRole: string, nextTitle: string, nextManagerId: string) {
     if (!selectedCompanyId) return;
-    if (isCurrentUserReaderOrgRole) return;
     const managerPrincipalType = nextManagerId ? memberPrincipalTypeById.get(nextManagerId) : null;
     if (nextManagerId && managerPrincipalType === "agent") {
       setMemberSaveState(member.id, "error");
@@ -1596,7 +1604,6 @@ export function CompanyDirectory() {
 
   function saveHumanTitleEdit(member: CompanyMember, nextTitle: string) {
     if (!selectedCompanyId) return;
-    if (isCurrentUserReaderOrgRole) return;
     setMemberSaveState(member.id, "saving");
     humanSaveMutation.mutate(
       {
@@ -1624,7 +1631,6 @@ export function CompanyDirectory() {
 
   function saveAgentRowEdits(member: CompanyMember, nextRole: string, nextReportsTo: string) {
     if (!selectedCompanyId) return;
-    if (isCurrentUserReaderOrgRole) return;
     setMemberSaveState(member.id, "saving");
     agentSaveMutation.mutate(
       {
@@ -1660,7 +1666,7 @@ export function CompanyDirectory() {
   // Autosave (debounced) for selected human
   useEffect(() => {
     if (!selectedCompanyId || !selectedHumanMember) return;
-    if (!canEditTeams || isCurrentUserReaderOrgRole) return;
+    if (!canEditTeams) return;
     if (selectedHumanManagerIsAgent) {
       setMemberSaveState(selectedHumanMember.id, "error");
       setMemberSaveErrors((prev) => ({
@@ -1711,7 +1717,6 @@ export function CompanyDirectory() {
   }, [
     selectedCompanyId,
     canEditTeams,
-    isCurrentUserReaderOrgRole,
     selectedHumanMember?.id,
     memberRoleDrafts[selectedHumanMember?.id ?? ""],
     memberTitleDrafts[selectedHumanMember?.id ?? ""],
@@ -1722,7 +1727,7 @@ export function CompanyDirectory() {
   // Keep user permissions in sync with selected role on Teams page.
   useEffect(() => {
     if (!selectedCompanyId || !selectedHumanMember) return;
-    if (!canEditTeams || isCurrentUserReaderOrgRole) return;
+    if (!canEditTeams) return;
     if (!selectedHumanRoleDraft) return;
     const currentRole = (selectedHumanMember.membershipRole ?? "").trim();
     if (selectedHumanRoleDraft === currentRole) return;
@@ -1733,7 +1738,7 @@ export function CompanyDirectory() {
         scope: null,
       })),
     });
-  }, [selectedCompanyId, selectedHumanMember, selectedHumanRoleDraft, canEditTeams, isCurrentUserReaderOrgRole]);
+  }, [selectedCompanyId, selectedHumanMember, selectedHumanRoleDraft, canEditTeams]);
 
   function SaveStatusPill({ state }: { state: SaveState }) {
     if (state === "idle") return null;
@@ -2307,11 +2312,17 @@ export function CompanyDirectory() {
       ) : null}
 
       <div className="space-y-4">
-        {!canReadTeams ? (
+        {teamsPageAccessPending ? (
+          <div className="flex h-[72vh] min-h-[36rem] items-center justify-center rounded-md border border-border/70 bg-background shadow-sm">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden />
+            <span className="sr-only">Loading Teams access…</span>
+          </div>
+        ) : !canReadTeams ? (
           <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
             <div className="font-medium text-foreground">You do not have permission to view Teams.</div>
             <div className="mt-2">
-              Ask a company admin for the <code>teams.read</code> permission.
+              Ask a company admin for the <code>teams.read</code> permission, or a Teams member-management
+              permission such as <code>users:deactivate</code> or <code>users:delete</code>.
             </div>
           </div>
         ) : null}
@@ -2319,7 +2330,8 @@ export function CompanyDirectory() {
           <div className="rounded-2xl border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-sm ring-1 ring-border/30">
             <div className="font-medium text-foreground">You do not have permission to view Teams members.</div>
             <div className="mt-2">
-              Ask a company admin for the <code>teams.read</code> permission.
+              Ask a company admin for the <code>teams.read</code> permission, or a Teams member-management
+              permission such as <code>users:deactivate</code> or <code>users:delete</code>.
             </div>
           </div>
         ) : null}
@@ -2794,7 +2806,6 @@ export function CompanyDirectory() {
                       {!selectedHumanIsOwner ? (
                         <div className="pt-2 space-y-2">
                         {canResetPassword &&
-                          !isCurrentUserReaderOrgRole &&
                           selectedHumanMember &&
                           currentUserId &&
                           selectedHumanMember.principalId !== currentUserId ? (
@@ -2822,7 +2833,7 @@ export function CompanyDirectory() {
                           </Button>
                         ) : null}
                         {selectedHumanMember.status === "suspended" ? (
-                          canDeactivateUsers && !isCurrentUserReaderOrgRole && !selectedHumanIsCurrentUser ? (
+                          canShowDeactivateUserActions && !selectedHumanIsCurrentUser ? (
                           <Button
                             type="button"
                             size="sm"
@@ -2846,8 +2857,7 @@ export function CompanyDirectory() {
                           ) : null
                         ) : (
                           !selectedHumanIsOwner &&
-                          canDeactivateUsers &&
-                          !isCurrentUserReaderOrgRole &&
+                          canShowDeactivateUserActions &&
                           !selectedHumanIsCurrentUser ? (
                             <Button
                               type="button"
@@ -2864,7 +2874,7 @@ export function CompanyDirectory() {
                             </Button>
                           ) : null
                         )}
-                        {canDeleteUsers && !isCurrentUserReaderOrgRole && !selectedHumanIsOwner && !selectedHumanIsCurrentUser ? (
+                        {canShowDeleteUserActions && !selectedHumanIsOwner && !selectedHumanIsCurrentUser ? (
                           <Button
                             type="button"
                             size="sm"
@@ -2879,7 +2889,7 @@ export function CompanyDirectory() {
                             Delete user
                           </Button>
                         ) : null}
-                        {!selectedHumanIsOwner && !isCurrentUserReaderOrgRole && showResetDefaultPermissionsButton ? (
+                        {!selectedHumanIsOwner && canManageUserPermissions && showResetDefaultPermissionsButton ? (
                           <Button
                             type="button"
                             size="sm"
@@ -2941,7 +2951,7 @@ export function CompanyDirectory() {
                                 selectedHumanMember.grants.map((grant) => grant.permissionKey as PermissionKey),
                               )
                         }
-                        disabled={!selectedCompanyId || isCurrentUserReaderOrgRole}
+                        disabled={!selectedCompanyId || !canManageUserPermissions}
                         onKeysChange={(keys) => {
                           if (!selectedCompanyId) return;
                           const nextGrants = keys.map((permissionKey) => ({

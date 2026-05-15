@@ -12,8 +12,7 @@ import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
-import { authApi } from "../api/auth";
-import { accessApi } from "../api/access";
+import { useCurrentUserCompanyPermissions } from "../hooks/useCurrentUserCompanyPermissions";
 import { ApiError } from "../api/client";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { activityApi } from "../api/activity";
@@ -590,28 +589,8 @@ export function AgentDetail() {
   });
   const canReadAgents = sidebarBadges?.canReadAgents ?? true;
   const membershipCompanyId = routeCompanyId ?? selectedCompanyId ?? null;
-  const { data: session } = useQuery({
-    queryKey: queryKeys.auth.session,
-    queryFn: authApi.getSession,
-    staleTime: 10_000,
-  });
-  const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
-  const { data: accessMembers } = useQuery({
-    queryKey: membershipCompanyId ? queryKeys.access.members(membershipCompanyId) : ["access", "members", "none"],
-    queryFn: () => accessApi.listMembers(membershipCompanyId!),
-    enabled: Boolean(membershipCompanyId),
-    staleTime: 15_000,
-  });
-  const isCurrentUserReaderOrgRole = useMemo(() => {
-    if (!currentUserId || !accessMembers) return false;
-    const member = accessMembers.find(
-      (m) =>
-        m.principalType === "user" &&
-        m.principalId === currentUserId &&
-        (m.status === "active" || m.status === "suspended"),
-    );
-    return (member?.membershipRole ?? "").trim().toLowerCase() === "reader";
-  }, [accessMembers, currentUserId]);
+  const { canEditAgents, canAssignTasks } = useCurrentUserCompanyPermissions(membershipCompanyId);
+  const agentDetailReadOnly = !canEditAgents;
   const canonicalAgentRef = agent ? agentRouteRef(agent) : routeAgentRef;
   const agentLookupRef = agent?.id ?? routeAgentRef;
   const resolvedAgentId = agent?.id ?? null;
@@ -874,7 +853,7 @@ export function AgentDetail() {
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          {isCurrentUserReaderOrgRole ? (
+          {agentDetailReadOnly ? (
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
               <AgentIcon icon={agent.icon} className="h-6 w-6" />
             </div>
@@ -900,7 +879,7 @@ export function AgentDetail() {
           <Button
             variant="outline"
             size="sm"
-            disabled={isCurrentUserReaderOrgRole}
+            disabled={!canAssignTasks}
             onClick={() => openNewIssue({ assigneeAgentId: agent.id })}
           >
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
@@ -908,14 +887,14 @@ export function AgentDetail() {
           </Button>
           <RunButton
             onClick={() => agentAction.mutate("invoke")}
-            disabled={agentAction.isPending || isPendingApproval || isCurrentUserReaderOrgRole}
+            disabled={agentAction.isPending || isPendingApproval || !canEditAgents}
             label="Run Heartbeat"
           />
           <PauseResumeButton
             isPaused={agent.status === "paused"}
             onPause={() => agentAction.mutate("pause")}
             onResume={() => agentAction.mutate("resume")}
-            disabled={agentAction.isPending || isPendingApproval || isCurrentUserReaderOrgRole}
+            disabled={agentAction.isPending || isPendingApproval || !canEditAgents}
           />
           <span className="hidden sm:inline"><StatusBadge status={agent.status} /></span>
           {mobileLiveRun && (
@@ -951,7 +930,7 @@ export function AgentDetail() {
               </button>
               <button
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 disabled:pointer-events-none disabled:opacity-40"
-                disabled={isCurrentUserReaderOrgRole}
+                disabled={!canEditAgents}
                 onClick={() => {
                   resetTaskSession.mutate(null);
                   setMoreOpen(false);
@@ -963,7 +942,7 @@ export function AgentDetail() {
               <button
                 type="button"
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive disabled:pointer-events-none disabled:opacity-40"
-                disabled={isCurrentUserReaderOrgRole}
+                disabled={!canEditAgents}
                 onClick={() => {
                   setMoreOpen(false);
                   setTerminateConfirmOpen(true);
@@ -991,7 +970,7 @@ export function AgentDetail() {
                 <Button
                   type="button"
                   variant="destructive"
-                  disabled={agentAction.isPending || isCurrentUserReaderOrgRole}
+                  disabled={agentAction.isPending || !canEditAgents}
                   onClick={() => {
                     agentAction.mutate("terminate");
                     setTerminateConfirmOpen(false);
@@ -1047,14 +1026,14 @@ export function AgentDetail() {
               variant="ghost"
               size="sm"
               onClick={() => cancelConfigActionRef.current?.()}
-              disabled={configSaving || isCurrentUserReaderOrgRole}
+              disabled={configSaving || agentDetailReadOnly}
             >
               Cancel
             </Button>
             <Button
               size="sm"
               onClick={() => saveConfigActionRef.current?.()}
-              disabled={configSaving || isCurrentUserReaderOrgRole}
+              disabled={configSaving || agentDetailReadOnly}
             >
               {configSaving ? "Saving…" : "Save"}
             </Button>
@@ -1073,14 +1052,14 @@ export function AgentDetail() {
               variant="ghost"
               size="sm"
               onClick={() => cancelConfigActionRef.current?.()}
-              disabled={configSaving || isCurrentUserReaderOrgRole}
+              disabled={configSaving || agentDetailReadOnly}
             >
               Cancel
             </Button>
             <Button
               size="sm"
               onClick={() => saveConfigActionRef.current?.()}
-              disabled={configSaving || isCurrentUserReaderOrgRole}
+              disabled={configSaving || agentDetailReadOnly}
             >
               {configSaving ? "Saving…" : "Save"}
             </Button>
@@ -1104,7 +1083,7 @@ export function AgentDetail() {
         <PromptsTab
           agent={agent}
           companyId={resolvedCompanyId ?? undefined}
-          readOnly={isCurrentUserReaderOrgRole}
+          readOnly={agentDetailReadOnly}
           onDirtyChange={setConfigDirty}
           onSaveActionChange={setSaveConfigAction}
           onCancelActionChange={setCancelConfigAction}
@@ -1117,7 +1096,7 @@ export function AgentDetail() {
           agent={agent}
           agentId={agent.id}
           companyId={resolvedCompanyId ?? undefined}
-          readOnly={isCurrentUserReaderOrgRole}
+          readOnly={agentDetailReadOnly}
           onDirtyChange={setConfigDirty}
           onSaveActionChange={setSaveConfigAction}
           onCancelActionChange={setCancelConfigAction}
@@ -1130,7 +1109,7 @@ export function AgentDetail() {
         <AgentSkillsTab
           agent={agent}
           companyId={resolvedCompanyId ?? undefined}
-          readOnly={isCurrentUserReaderOrgRole}
+          readOnly={agentDetailReadOnly}
         />
       )}
 
@@ -1142,7 +1121,7 @@ export function AgentDetail() {
           agentRouteId={canonicalAgentRef}
           selectedRunId={urlRunId ?? null}
           adapterType={agent.adapterType}
-          readOnly={isCurrentUserReaderOrgRole}
+          readOnly={agentDetailReadOnly}
         />
       )}
 
@@ -1151,7 +1130,7 @@ export function AgentDetail() {
           <BudgetPolicyCard
             summary={agentBudgetSummary}
             isSaving={budgetMutation.isPending}
-            onSave={isCurrentUserReaderOrgRole ? undefined : (amount) => budgetMutation.mutate(amount)}
+            onSave={canEditAgents ? (amount) => budgetMutation.mutate(amount) : undefined}
             variant="plain"
           />
         </div>
