@@ -126,6 +126,12 @@ export interface Project {
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;
+  /**
+   * Derived creator metadata from the earliest "project.created" activity event.
+   * Optional because legacy records may not have a matching activity row.
+   */
+  createdByUserId?: string | null;
+  createdByAgentId?: string | null;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

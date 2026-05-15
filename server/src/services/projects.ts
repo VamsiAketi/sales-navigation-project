@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { projects, projectGoals, goals, projectWorkspaces, workspaceRuntimeServices } from "@paperclipai/db";
+import { projects, projectGoals, goals, projectWorkspaces, workspaceRuntimeServices, activityLog } from "@paperclipai/db";
 import {
   projectNotificationConfigSchema,
   deriveProjectUrlKey,
@@ -55,6 +55,8 @@ interface ProjectWithGoals extends Omit<
   codebase: ProjectCodebase;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;
+  createdByUserId?: string | null;
+  createdByAgentId?: string | null;
 }
 
 interface ProjectShortnameRow {
@@ -105,6 +107,58 @@ async function attachGoals(db: Db, rows: ProjectRow[]): Promise<ProjectWithGoals
       executionWorkspacePolicy: parseProjectExecutionWorkspacePolicy(r.executionWorkspacePolicy),
       notificationConfig: parsedNotificationConfig.success ? parsedNotificationConfig.data : null,
     } as ProjectWithGoals;
+  });
+}
+
+/** Batch-load project creators from earliest project.created activity rows. */
+async function attachProjectCreators(
+  db: Db,
+  rows: ProjectWithGoals[],
+): Promise<ProjectWithGoals[]> {
+  if (rows.length === 0) return rows;
+
+  const projectIds = rows.map((r) => r.id);
+  const createdEvents = await db
+    .select({
+      projectId: activityLog.entityId,
+      actorType: activityLog.actorType,
+      actorId: activityLog.actorId,
+      agentId: activityLog.agentId,
+    })
+    .from(activityLog)
+    .where(
+      and(
+        eq(activityLog.entityType, "project"),
+        eq(activityLog.action, "project.created"),
+        inArray(activityLog.entityId, projectIds),
+      ),
+    )
+    .orderBy(asc(activityLog.createdAt));
+
+  const byProjectId = new Map<
+    string,
+    { createdByUserId: string | null; createdByAgentId: string | null }
+  >();
+  for (const event of createdEvents) {
+    if (byProjectId.has(event.projectId)) continue;
+    let createdByUserId: string | null = null;
+    let createdByAgentId: string | null = null;
+    if (event.actorType === "user") {
+      createdByUserId = event.actorId;
+    } else if (event.actorType === "agent") {
+      createdByAgentId = event.agentId ?? event.actorId;
+    }
+    byProjectId.set(event.projectId, { createdByUserId, createdByAgentId });
+  }
+
+  return rows.map((row) => {
+    const createdBy = byProjectId.get(row.id);
+    if (!createdBy) return row;
+    return {
+      ...row,
+      createdByUserId: createdBy.createdByUserId,
+      createdByAgentId: createdBy.createdByAgentId,
+    };
   });
 }
 
@@ -434,7 +488,8 @@ export function projectService(db: Db) {
     list: async (companyId: string): Promise<ProjectWithGoals[]> => {
       const rows = await db.select().from(projects).where(eq(projects.companyId, companyId));
       const withGoals = await attachGoals(db, rows);
-      return attachWorkspaces(db, withGoals);
+      const withWorkspaces = await attachWorkspaces(db, withGoals);
+      return attachProjectCreators(db, withWorkspaces);
     },
 
     listByIds: async (companyId: string, ids: string[]): Promise<ProjectWithGoals[]> => {
@@ -446,7 +501,8 @@ export function projectService(db: Db) {
         .where(and(eq(projects.companyId, companyId), inArray(projects.id, dedupedIds)));
       const withGoals = await attachGoals(db, rows);
       const withWorkspaces = await attachWorkspaces(db, withGoals);
-      const byId = new Map(withWorkspaces.map((project) => [project.id, project]));
+      const withCreators = await attachProjectCreators(db, withWorkspaces);
+      const byId = new Map(withCreators.map((project) => [project.id, project]));
       return dedupedIds.map((id) => byId.get(id)).filter((project): project is ProjectWithGoals => Boolean(project));
     },
 
@@ -460,7 +516,9 @@ export function projectService(db: Db) {
       const [withGoals] = await attachGoals(db, [row]);
       if (!withGoals) return null;
       const [enriched] = await attachWorkspaces(db, [withGoals]);
-      return enriched ?? null;
+      if (!enriched) return null;
+      const [withCreator] = await attachProjectCreators(db, [enriched]);
+      return withCreator ?? null;
     },
 
     create: async (
@@ -511,7 +569,9 @@ export function projectService(db: Db) {
 
       const [withGoals] = await attachGoals(db, [row]);
       const [enriched] = withGoals ? await attachWorkspaces(db, [withGoals]) : [];
-      return enriched!;
+      if (!enriched) return withGoals!;
+      const [withCreator] = await attachProjectCreators(db, [enriched]);
+      return withCreator ?? enriched;
     },
 
     update: async (
@@ -564,7 +624,9 @@ export function projectService(db: Db) {
 
       const [withGoals] = await attachGoals(db, [row]);
       const [enriched] = withGoals ? await attachWorkspaces(db, [withGoals]) : [];
-      return enriched ?? null;
+      if (!enriched) return null;
+      const [withCreator] = await attachProjectCreators(db, [enriched]);
+      return withCreator ?? null;
     },
 
     remove: (id: string) =>

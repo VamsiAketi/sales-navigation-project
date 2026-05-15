@@ -402,10 +402,20 @@ async function postControlPlaneCostingPayload(payload: {
   runStartTime: string;
   runEndTime: string;
   agentId: string;
+  tenantId: string;
   modelCostCents: number;
 }) {
-  const endpoint = process.env.CONTROL_PLANE_COSTING_API_URL?.trim();
-  if (!endpoint) return;
+  const controlPlaneBaseUrl = process.env.CONTROL_PLANE_URL?.trim();
+  if (!controlPlaneBaseUrl) return;
+  const internalSecret = process.env.INTERNAL_SECRET?.trim();
+  if (!internalSecret) {
+    logger.warn(
+      { runId: payload.runId, agentId: payload.agentId },
+      "CONTROL_PLANE_URL set but INTERNAL_SECRET missing; skipping cost callback",
+    );
+    return;
+  }
+  const endpoint = `${controlPlaneBaseUrl.replace(/\/+$/, "")}/api/internal/agent-run-complete`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CONTROL_PLANE_COSTING_TIMEOUT_MS);
   try {
@@ -413,6 +423,7 @@ async function postControlPlaneCostingPayload(payload: {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "x-internal-secret": internalSecret,
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
@@ -1638,6 +1649,7 @@ export function heartbeatService(db: Db) {
           runStartTime: updated.startedAt ? new Date(updated.startedAt).toISOString() : "",
           runEndTime: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : "",
           agentId: updated.agentId,
+          tenantId: updated.companyId,
           modelCostCents: readModelCostCentsFromUsage(updated.usageJson),
         });
       }
