@@ -6,6 +6,7 @@ import { projectsApi } from "../api/projects";
 import { agentsApi } from "../api/agents";
 import { goalsApi } from "../api/goals";
 import { assetsApi } from "../api/assets";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
 import {
   Dialog,
@@ -67,6 +68,14 @@ export function NewProjectDialog() {
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId && newProjectOpen,
   });
+
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canCreateProjects = sidebarBadges?.canCreateProjects ?? false;
 
   const mentionOptions = useMemo<MentionOption[]>(() => {
     const options: MentionOption[] = [];
@@ -210,9 +219,16 @@ export function NewProjectDialog() {
     }
   }, [newProjectOpen, goals, goalIds.length]);
 
+  useEffect(() => {
+    if (newProjectOpen && !canCreateProjects) {
+      reset();
+      closeNewProject();
+    }
+  }, [newProjectOpen, canCreateProjects, closeNewProject]);
+
   return (
     <Dialog
-      open={newProjectOpen}
+      open={newProjectOpen && canCreateProjects}
       onOpenChange={(open) => {
         if (!open) {
           reset();

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { DndContext, PointerSensor, rectIntersection, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { dashboardApi } from "../api/dashboard";
 import { activityApi } from "../api/activity";
 import { accessApi } from "../api/access";
@@ -21,11 +22,13 @@ import { queryKeys } from "../lib/queryKeys";
 import { authApi } from "../api/auth";
 import {
   DASHBOARD_SECTION_IDS,
+  loadDashboardProjectOrder,
   loadDashboardSectionOrder,
+  saveDashboardProjectOrder,
   saveDashboardSectionOrder,
   type DashboardSectionId,
 } from "../lib/dashboard-layout-storage";
-import { DASHBOARD_TILE_SURFACE } from "../lib/dashboard-tile-styles";
+import { DASHBOARD_CHART_INSET, DASHBOARD_TILE_SURFACE } from "../lib/dashboard-tile-styles";
 import { MetricCard } from "../components/MetricCard";
 import { EmptyState } from "../components/EmptyState";
 import { StatusIcon } from "../components/StatusIcon";
@@ -60,6 +63,29 @@ const GOAL_STATUS_CONFIG: Record<GoalStatus, { label: string; color: string; bad
   achieved:  { label: "Achieved",  color: "#22c55e", badgeCls: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300", barCls: "bg-green-500" },
   planned:   { label: "Planned",   color: "#f59e0b", badgeCls: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300", barCls: "bg-amber-500" },
   cancelled: { label: "Cancelled", color: "#6b7280", badgeCls: "bg-muted text-muted-foreground", barCls: "bg-muted-foreground/50" },
+};
+
+const PROJECT_STATUS_CONFIG: Record<string, { label: string; badgeCls: string }> = {
+  backlog: {
+    label: "Backlog",
+    badgeCls: "bg-muted text-muted-foreground",
+  },
+  planned: {
+    label: "Planned",
+    badgeCls: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+  },
+  in_progress: {
+    label: "In Progress",
+    badgeCls: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-200",
+  },
+  completed: {
+    label: "Completed",
+    badgeCls: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
+  },
+  cancelled: {
+    label: "Cancelled",
+    badgeCls: "bg-muted text-muted-foreground",
+  },
 };
 
 function computeGoalDashboardStats(goalId: string, issues: Issue[], projects: Project[]) {
@@ -269,6 +295,411 @@ function GoalsSection({
   );
 }
 
+function countClosedIssuesInLastCalendarDays(
+  issues: Issue[],
+  days: number,
+  projectId?: string,
+): number {
+  const daySet = new Set(getRecentDayKeys(days));
+  return issues.filter((issue) => {
+    if (projectId && issue.projectId !== projectId) return false;
+    if (issue.status !== "done" || !issue.completedAt) return false;
+    const completed = new Date(issue.completedAt);
+    if (Number.isNaN(completed.getTime())) return false;
+    return daySet.has(isoDateKeyLocal(completed));
+  }).length;
+}
+
+function closedCountColorStyle(closedCount: number, totalTasks: number): { color: string } {
+  if (closedCount <= 0) {
+    return { color: "oklch(0.64 0 0)" };
+  }
+  const cap = Math.max(1, Math.ceil(totalTasks * 0.2));
+  const ratio = Math.max(0, Math.min(1, closedCount / cap));
+  const from = { r: 0x31, g: 0x2e, b: 0x81 };
+  const to = { r: 0x06, g: 0xb6, b: 0xd4 };
+  const r = Math.round(from.r + (to.r - from.r) * ratio);
+  const g = Math.round(from.g + (to.g - from.g) * ratio);
+  const b = Math.round(from.b + (to.b - from.b) * ratio);
+  return { color: `rgb(${r} ${g} ${b})` };
+}
+
+function isoDateKeyLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function getRecentDayKeys(days: number): string[] {
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - (days - 1 - i));
+    return isoDateKeyLocal(d);
+  });
+}
+
+function formatDayTickLong(isoDate: string): string {
+  const d = new Date(`${isoDate}T12:00:00`);
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  return `${month}/${day}`;
+}
+
+function doneSeriesLastDaysByProject(
+  issues: Issue[],
+  projectId: string,
+  dayKeys: string[],
+): Array<{ day: string; count: number }> {
+  const counts = new Map(dayKeys.map((day) => [day, 0]));
+  for (const issue of issues) {
+    if (issue.projectId !== projectId) continue;
+    if (issue.status !== "done" || !issue.completedAt) continue;
+    const completed = new Date(issue.completedAt);
+    if (Number.isNaN(completed.getTime())) continue;
+    const day = isoDateKeyLocal(completed);
+    if (!counts.has(day)) continue;
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  return dayKeys.map((day) => ({ day, count: counts.get(day) ?? 0 }));
+}
+
+function ProjectClosedWindowCell({
+  count,
+  totalTasks,
+  label,
+  title,
+  withBorder,
+}: {
+  count: number;
+  totalTasks: number;
+  label: string;
+  title: string;
+  withBorder?: boolean;
+}) {
+  const countStyle = closedCountColorStyle(count, totalTasks);
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center rounded-md px-1 py-2",
+        withBorder ? "border-x border-border/50" : "",
+      )}
+      aria-label={title}
+      title={title}
+    >
+      <p className="text-2xl font-semibold tabular-nums leading-none" style={countStyle}>{count}</p>
+      <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+function ProjectDoneBarChart({ data }: { data: Array<{ day: string; count: number }> }) {
+  const max = Math.max(1, ...data.map((d) => d.count));
+  const yAxisRaw = Math.max(5, Math.ceil(max / 5) * 5);
+  const yAxisMax = yAxisRaw % 2 === 0 ? yAxisRaw : yAxisRaw + 1;
+  const yTicks = [0, Math.round(yAxisMax / 2), yAxisMax];
+  const chartData = data.map((point) => {
+    const isToday = point.day === isoDateKeyLocal(new Date());
+    return {
+      ...point,
+      label: formatDayTickLong(point.day),
+      barColor: isToday ? "#166534" : "#6366f1",
+    };
+  });
+  const tickStyle = { fontSize: 10, fill: "var(--muted-foreground)", fontFamily: "inherit" } as const;
+  const renderTooltip = (props: any) => {
+    const { active, payload } = props;
+    if (!active || !payload?.length) return null;
+    const row = payload[0];
+    const value =
+      typeof row?.value === "number"
+        ? row.value
+        : typeof row?.value === "string"
+          ? Number(row.value) || 0
+          : 0;
+    const dateLabel = row?.payload?.label ?? "";
+    return (
+      <div className="min-w-[86px] rounded-sm border border-border bg-card px-3 py-2 text-[11px] shadow-md ring-1 ring-foreground/[0.04]">
+        <p className="mb-1.5 font-medium text-muted-foreground">{dateLabel}</p>
+        <p className="font-semibold tabular-nums text-foreground">{value} Tasks Closed</p>
+      </div>
+    );
+  };
+
+  return (
+    <div className="border-t border-border/60 px-3 py-3">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-foreground/85">
+        Daily closures - last 5 days
+      </p>
+      <div className={cn(DASHBOARD_CHART_INSET, "px-2 pt-2 pb-0.5")}>
+        <ResponsiveContainer width="100%" height={138}>
+          <BarChart data={chartData} margin={{ top: 12, right: 8, left: 0, bottom: 8 }}>
+            <CartesianGrid stroke="var(--border)" strokeOpacity={0.55} vertical horizontal strokeDasharray="0" />
+            <XAxis
+              dataKey="label"
+              tick={tickStyle}
+              tickLine={false}
+              axisLine={{ stroke: "var(--border)", strokeOpacity: 0.8 }}
+              interval={0}
+              height={16}
+            />
+            <YAxis
+              width={26}
+              tick={tickStyle}
+              tickLine={false}
+              axisLine={false}
+              allowDecimals={false}
+              tickMargin={4}
+              domain={[0, yAxisMax]}
+              ticks={yTicks}
+            />
+            <Tooltip
+              content={renderTooltip}
+              cursor={{ fill: "var(--accent)", fillOpacity: 0.2 }}
+            />
+            <Bar dataKey="count" radius={[2, 2, 0, 0]} maxBarSize={24}>
+              {chartData.map((point) => (
+                <Cell key={point.day} fill={point.barColor} />
+              ))}
+              <LabelList
+                dataKey="count"
+                position="top"
+                formatter={(value: unknown) =>
+                  typeof value === "number" && value > 0 ? value : ""
+                }
+                fill="var(--foreground)"
+                fontSize={10}
+                fontWeight={600}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function SortableProjectCard({ projectId, children }: { projectId: string; children: ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: projectId });
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerMovedRef = useRef(false);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      onPointerDownCapture={(e) => {
+        pointerDownRef.current = { x: e.clientX, y: e.clientY };
+        pointerMovedRef.current = false;
+      }}
+      onPointerMoveCapture={(e) => {
+        const start = pointerDownRef.current;
+        if (!start) return;
+        const dx = Math.abs(e.clientX - start.x);
+        const dy = Math.abs(e.clientY - start.y);
+        if (dx + dy >= 4) pointerMovedRef.current = true;
+      }}
+      onPointerUpCapture={() => {
+        pointerDownRef.current = null;
+      }}
+      onPointerCancelCapture={() => {
+        pointerDownRef.current = null;
+        pointerMovedRef.current = false;
+      }}
+      onClickCapture={(e) => {
+        if (isDragging || pointerMovedRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        pointerMovedRef.current = false;
+      }}
+      {...attributes}
+      {...listeners}
+      className={cn(isDragging ? "z-50 opacity-60" : "")}
+    >
+      {children}
+    </div>
+  );
+}
+
+function TasksOverviewSection({ issues }: { issues: Issue[] }) {
+  const closed24h = countClosedIssuesInLastCalendarDays(issues, 1);
+  const closed48h = countClosedIssuesInLastCalendarDays(issues, 2);
+  const closed5d = countClosedIssuesInLastCalendarDays(issues, 5);
+  const backlogCount = issues.filter((issue) => issue.status === "backlog").length;
+
+  const cards: Array<{ value: number; label: string; to: string }> = [
+    { value: closed24h, label: "Tasks Closed in last 24 Hours", to: "/issues?status=done" },
+    { value: closed48h, label: "Tasks Closed in last 48 Hours", to: "/issues?status=done" },
+    { value: closed5d, label: "Tasks Closed in last 5 Days", to: "/issues?status=done" },
+    { value: backlogCount, label: "Tasks in Backlog", to: "/issues?status=backlog" },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+      {cards.map((card) => (
+        <Link
+          key={card.label}
+          to={card.to}
+          className={cn(
+            DASHBOARD_TILE_SURFACE,
+            "block p-4 no-underline text-inherit transition-colors hover:bg-accent/20",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          )}
+        >
+          <p className="text-2xl font-semibold tabular-nums leading-none text-foreground">{card.value}</p>
+          <p className="mt-2 text-xs font-medium text-muted-foreground">{card.label}</p>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function ProjectsSection({ projects, issues }: { projects: Project[]; issues: Issue[] }) {
+  const { selectedCompanyId } = useCompany();
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+    staleTime: 60_000,
+  });
+  const layoutUserId = session?.user?.id ?? null;
+  const activeProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) =>
+          !project.archivedAt &&
+          project.status !== "cancelled" &&
+          project.status !== "completed",
+      ),
+    [projects],
+  );
+  const totalTasksByProjectId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const issue of issues) {
+      if (!issue.projectId) continue;
+      map.set(issue.projectId, (map.get(issue.projectId) ?? 0) + 1);
+    }
+    return map;
+  }, [issues]);
+  const dayKeys = useMemo(() => getRecentDayKeys(5), []);
+  const [projectOrder, setProjectOrder] = useState<string[]>([]);
+  const projectSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 16 } }));
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    const ids = activeProjects.map((p) => p.id);
+    setProjectOrder(loadDashboardProjectOrder(layoutUserId, selectedCompanyId, ids));
+  }, [layoutUserId, selectedCompanyId, activeProjects]);
+
+  const orderedProjects = useMemo(() => {
+    if (projectOrder.length === 0) return activeProjects;
+    const byId = new Map(activeProjects.map((p) => [p.id, p]));
+    const ordered: Project[] = [];
+    for (const id of projectOrder) {
+      const p = byId.get(id);
+      if (p) ordered.push(p);
+    }
+    for (const p of activeProjects) {
+      if (!ordered.some((x) => x.id === p.id)) ordered.push(p);
+    }
+    return ordered;
+  }, [activeProjects, projectOrder]);
+
+  function handleProjectCardDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!selectedCompanyId || !over || active.id === over.id) return;
+    setProjectOrder((prev) => {
+      const source = prev.length > 0 ? prev : activeProjects.map((p) => p.id);
+      const from = source.indexOf(String(active.id));
+      const to = source.indexOf(String(over.id));
+      if (from < 0 || to < 0) return source;
+      const next = [...source];
+      const tmp = next[from];
+      next[from] = next[to];
+      next[to] = tmp;
+      saveDashboardProjectOrder(layoutUserId, selectedCompanyId, next);
+      return next;
+    });
+  }
+
+  if (activeProjects.length === 0) {
+    return (
+      <Link
+        to="/projects"
+        className={cn(
+          DASHBOARD_TILE_SURFACE,
+          "block p-4 no-underline text-inherit transition-colors hover:bg-accent/30 hover:border-border",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        )}
+      >
+        <p className="text-sm text-muted-foreground">No projects yet.</p>
+        <p className="mt-2 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+          Open projects <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+        </p>
+      </Link>
+    );
+  }
+
+  return (
+    <DndContext sensors={projectSensors} collisionDetection={rectIntersection} onDragEnd={handleProjectCardDragEnd}>
+      <SortableContext items={orderedProjects.map((p) => p.id)} strategy={rectSortingStrategy}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {orderedProjects.map((project) => (
+            <SortableProjectCard key={project.id} projectId={project.id}>
+              <Link
+                to={projectUrl({ id: project.id, name: project.name })}
+                className={cn(
+                  DASHBOARD_TILE_SURFACE,
+                  "block overflow-hidden no-underline text-inherit transition-colors hover:bg-accent/15",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                )}
+              >
+                <div className="flex items-start justify-between gap-3 p-4 pb-3">
+                  <h3 className="min-w-0 text-sm font-semibold truncate">{project.name}</h3>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shadow-sm",
+                      (PROJECT_STATUS_CONFIG[project.status]?.badgeCls ?? PROJECT_STATUS_CONFIG.backlog.badgeCls),
+                    )}
+                  >
+                    {PROJECT_STATUS_CONFIG[project.status]?.label ?? project.status}
+                  </span>
+                </div>
+                <div className="px-4 pb-1">
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">Tickets closed</p>
+                </div>
+                <div className="relative z-[1] grid grid-cols-3 border-y border-border/60 bg-muted/45 px-1 py-2 dark:bg-muted/25">
+                  <ProjectClosedWindowCell
+                    count={countClosedIssuesInLastCalendarDays(issues, 1, project.id)}
+                    totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
+                    label="24h"
+                    title="Closed in last 24 Hours"
+                  />
+                  <ProjectClosedWindowCell
+                    count={countClosedIssuesInLastCalendarDays(issues, 2, project.id)}
+                    totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
+                    label="48h"
+                    title="Closed in last 48 Hours"
+                    withBorder
+                  />
+                  <ProjectClosedWindowCell
+                    count={countClosedIssuesInLastCalendarDays(issues, 5, project.id)}
+                    totalTasks={totalTasksByProjectId.get(project.id) ?? 0}
+                    label="5d"
+                    title="Closed in last 5 Days"
+                  />
+                </div>
+                <ProjectDoneBarChart data={doneSeriesLastDaysByProject(issues, project.id, dayKeys)} />
+              </Link>
+            </SortableProjectCard>
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
 // ── Cost breakdown section ─────────────────────────────────────────────────
 
 function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; byProject: CostByProject[] }) {
@@ -301,7 +732,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
                 >
                   <Identity name={row.agentName ?? row.agentId} size="sm" className="min-w-0" />
                   <div className="text-right shrink-0">
-                    <div className="text-sm font-medium tabular-nums">{formatCents(row.costCents)}</div>
+                    <div className="text-sm font-medium tabular-nums">{formatCents(row.modelCostCents)}</div>
                     <div className="text-[10px] text-muted-foreground tabular-nums">
                       {formatTokens(row.inputTokens + row.cachedInputTokens + row.outputTokens)} tok
                     </div>
@@ -343,7 +774,7 @@ function CostBreakdownSection({ byAgent, byProject }: { byAgent: CostByAgent[]; 
                   className="flex items-center justify-between gap-3 px-4 py-2 no-underline text-inherit transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span className="text-sm truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
-                  <span className="text-sm font-medium tabular-nums shrink-0">{formatCents(row.costCents)}</span>
+                  <span className="text-sm font-medium tabular-nums shrink-0">{formatCents(row.modelCostCents)}</span>
                 </Link>
               ))}
             </div>
@@ -873,6 +1304,25 @@ export function Dashboard() {
                   </DraggableSection>
                 ) : null;
               }
+              if (id === "projects") {
+                return (
+                  <DraggableSection
+                    key="projects"
+                    id="projects"
+                    title="Projects"
+                    headerRight={
+                      <Link
+                        to="/projects"
+                        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        View all <ArrowRight className="h-3 w-3" aria-hidden />
+                      </Link>
+                    }
+                  >
+                    <ProjectsSection projects={projects ?? []} issues={issues ?? []} />
+                  </DraggableSection>
+                );
+              }
               if (id === "charts") {
                 return (
                   <DraggableSection key="charts" id="charts">
@@ -917,6 +1367,25 @@ export function Dashboard() {
                     <div className={data ? "border-t border-border/60 pt-4" : ""}>
                       <CostBreakdownSection byAgent={costData?.byAgent ?? []} byProject={costData?.byProject ?? []} />
                     </div>
+                  </DraggableSection>
+                );
+              }
+              if (id === "tasks") {
+                return (
+                  <DraggableSection
+                    key="tasks"
+                    id="tasks"
+                    title="Tasks"
+                    headerRight={
+                      <Link
+                        to="/issues"
+                        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        View all <ArrowRight className="h-3 w-3" aria-hidden />
+                      </Link>
+                    }
+                  >
+                    <TasksOverviewSection issues={issues ?? []} />
                   </DraggableSection>
                 );
               }

@@ -60,8 +60,11 @@ const GRANT_READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "teams.edit": "teams.read",
   "users:invite": "teams.read",
   "joins:approve": "teams.read",
+  "projects.create": "teams.read",
   "users:manage_permissions": "teams.read",
   "users:reset_password": "teams.read",
+  "users:deactivate": "teams.read",
+  "users:delete": "teams.read",
   "company_settings.general": "company_settings.read",
   "company_settings.appearance": "company_settings.read",
   "company_settings.security_access": "company_settings.read",
@@ -69,6 +72,8 @@ const GRANT_READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "company_settings.invites": "company_settings.read",
   "company_settings.secrets": "company_settings.read",
   "company_settings.packages": "company_settings.read",
+  "billing.invoices.read": "billing.read",
+  "billing.payments.manage": "billing.read",
 };
 
 function normalizeGrantsWithReadDependencies(grants: GrantInput[]): GrantInput[] {

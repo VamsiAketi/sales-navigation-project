@@ -18,6 +18,8 @@ describe("MarkdownBody", () => {
     expect(html).toContain('alt=""');
     expect(html).toContain('class="cursor-zoom-in rounded transition-opacity hover:opacity-90"');
     expect(html).toContain('title="Click to enlarge"');
+    expect(html).toContain("Download");
+    expect(html).toContain("/api/attachments/test/content?download=1");
   });
 
   it("resolves relative image paths when a resolver is provided", () => {

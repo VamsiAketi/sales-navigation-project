@@ -30,6 +30,7 @@ import { issuesApi } from "../api/issues";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { PERMISSION_KEYS, type Agent, type PermissionKey } from "@paperclipai/shared";
 import { queryKeys } from "../lib/queryKeys";
+import { COMPANY_PERMISSION_TITLE } from "../lib/company-permission-labels";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -55,6 +56,7 @@ import {
 import { cn } from "@/lib/utils";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 import { authApi } from "../api/auth";
+import { COMPANY_ROLE_STORAGE_PREFIX, TEAMS_BUILTIN_HUMAN_ROLES } from "../lib/company-team-human-roles";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 type TeamSortKey = "displayName" | "principal" | "type" | "role" | "title" | "reportsTo" | "status";
@@ -69,7 +71,7 @@ function parseTeamTypeFilterFromTab(tab: string | null): TeamTypeFilter | null {
   return null;
 }
 
-const HUMAN_ROLE_OPTIONS = ["Admin", "Manager", "Contributor", "Reader"] as const;
+const HUMAN_ROLE_OPTIONS = TEAMS_BUILTIN_HUMAN_ROLES;
 
 const AGENT_ROLE_OPTIONS = [
   "SREEngineer",
@@ -86,7 +88,6 @@ const AGENT_ROLE_OPTIONS = [
   "ResearchEngineer"
 ] as const;
 
-const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const COMPANY_TITLE_STORAGE_PREFIX = "paperclip.companyTitles";
 const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
 const DEFAULT_TITLE_OPTIONS = [
@@ -123,8 +124,11 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "teams.title_manage": "teams.read",
   "users:invite": "teams.read",
   "joins:approve": "teams.read",
+  "projects.create": "teams.read",
   "users:manage_permissions": "teams.read",
   "users:reset_password": "teams.read",
+  "users:deactivate": "teams.read",
+  "users:delete": "teams.read",
   "company_settings.general": "company_settings.read",
   "company_settings.appearance": "company_settings.read",
   "company_settings.security_access": "company_settings.read",
@@ -132,6 +136,8 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "company_settings.invites": "company_settings.read",
   "company_settings.secrets": "company_settings.read",
   "company_settings.packages": "company_settings.read",
+  "billing.invoices.read": "billing.read",
+  "billing.payments.manage": "billing.read",
 };
 
 function normalizePermissionSelection(keys: PermissionKey[]): PermissionKey[] {
@@ -160,11 +166,14 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "users:invite",
     "users:manage_permissions",
     "users:reset_password",
+    "users:deactivate",
+    "users:delete",
     "tasks.read",
     "tasks.create",
     "tasks:assign",
     "tasks:assign_scope",
     "joins:approve",
+    "projects.create",
     "command_center.read",
     "hybrid_org.read",
     "hybrid_org.edit",
@@ -188,16 +197,21 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "company_settings.invites",
     "company_settings.secrets",
     "company_settings.packages",
+    "billing.read",
+    "billing.invoices.read",
+    "billing.payments.manage",
   ],
   manager: [
     "agents.read",
     "agents.edit",
     "agents:create",
+    "users:invite",
     "tasks.read",
     "tasks.create",
     "tasks:assign",
     "tasks:assign_scope",
     "joins:approve",
+    "projects.create",
     "command_center.read",
     "hybrid_org.read",
     "hybrid_org.import",
@@ -207,10 +221,15 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "goals.read",
     "goals.write",
     "costs.read",
+    "billing.read",
+    "billing.invoices.read",
+    "billing.payments.manage",
     "attention_queue.read",
     "teams.read",
     "teams.edit",
     "teams.title_assign",
+    "teams.title_create",
+    "teams.title_manage",
     "company_settings.read",
   ],
   contributor: [
@@ -243,116 +262,12 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
   ],
 };
 
-const PERMISSION_UI: Record<PermissionKey, { title: string }> = {
-  "agents.read": {
-    title: "View agents",
-  },
-  "agents.edit": {
-    title: "Edit agents",
-  },
-  "agents:create": {
-    title: "Create agents",
-  },
-  "users:invite": {
-    title: "Invite teammates",
-  },
-  "users:manage_permissions": {
-    title: "Manage roles & access",
-  },
-  "users:reset_password": {
-    title: "Reset passwords",
-  },
-  "tasks.read": {
-    title: "View tasks",
-  },
-  "tasks.create": {
-    title: "Create tasks",
-  },
-  "tasks:assign": {
-    title: "Assign work",
-  },
-  "tasks:assign_scope": {
-    title: "Control assignment scope",
-  },
-  "joins:approve": {
-    title: "Approve join requests",
-  },
-  "command_center.read": {
-    title: "View Command Center",
-  },
-  "hybrid_org.read": {
-    title: "View Hybrid Org Chart",
-  },
-  "hybrid_org.edit": {
-    title: "Edit Hybrid Org Chart",
-  },
-  "hybrid_org.import": {
-    title: "Import Hybrid Org Chart",
-  },
-  "hybrid_org.export": {
-    title: "Export Hybrid Org Chart",
-  },
-  "skills.read": {
-    title: "View Skills",
-  },
-  "skills.edit": {
-    title: "Edit Skills",
-  },
-  "goals.read": {
-    title: "View Goals",
-  },
-  "goals.write": {
-    title: "Edit Goals",
-  },
-  "costs.read": {
-    title: "View Costs",
-  },
-  "attention_queue.read": {
-    title: "View Attention Queue",
-  },
-  "teams.read": {
-    title: "View Teams",
-  },
-  "teams.edit": {
-    title: "Edit Teams",
-  },
-  "teams.title_create": {
-    title: "Create titles",
-  },
-  "teams.title_assign": {
-    title: "Assign titles",
-  },
-  "teams.title_manage": {
-    title: "Manage titles",
-  },
-  "audit_logs.read": {
-    title: "View Audit Logs",
-  },
-  "company_settings.read": {
-    title: "View Company Settings",
-  },
-  "company_settings.general": {
-    title: "Edit Company Settings: General",
-  },
-  "company_settings.appearance": {
-    title: "Edit Company Settings: Appearance",
-  },
-  "company_settings.security_access": {
-    title: "Edit Company Settings: Security & Access",
-  },
-  "company_settings.hiring": {
-    title: "Edit Company Settings: Hiring",
-  },
-  "company_settings.invites": {
-    title: "Edit Company Settings: Invites",
-  },
-  "company_settings.secrets": {
-    title: "Edit Company Settings: Secrets",
-  },
-  "company_settings.packages": {
-    title: "Edit Company Settings: Company Packages",
-  },
-};
+const PERMISSION_UI: Record<PermissionKey, { title: string }> = Object.fromEntries(
+  (Object.entries(COMPANY_PERMISSION_TITLE) as [PermissionKey, string][]).map(([key, title]) => [
+    key,
+    { title },
+  ]),
+) as Record<PermissionKey, { title: string }>;
 
 const PERMISSION_CATEGORY_DEFS: {
   id: string;
@@ -361,13 +276,16 @@ const PERMISSION_CATEGORY_DEFS: {
 }[] = [
   {
     id: "team",
-    title: "Team & access",
+    title: "Team permissions",
     keys: [
       "teams.read",
       "users:manage_permissions",
       "users:reset_password",
+      "users:deactivate",
+      "users:delete",
       "users:invite",
       "joins:approve",
+      "projects.create",
       "teams.title_create",
       "teams.title_assign",
       "teams.title_manage",
@@ -407,6 +325,11 @@ const PERMISSION_CATEGORY_DEFS: {
     id: "costs",
     title: "Costs",
     keys: ["costs.read"],
+  },
+  {
+    id: "billing",
+    title: "Billing",
+    keys: ["billing.read", "billing.invoices.read", "billing.payments.manage"],
   },
   {
     id: "attention_queue",
@@ -645,7 +568,23 @@ function readHumanRolePermissions(companyId: string) {
       const valid = keys.filter((k): k is PermissionKey =>
         typeof k === "string" && (PERMISSION_KEYS as readonly string[]).includes(k),
       );
-      if (valid.length > 0) next[role] = valid;
+      next[role] = valid;
+    }
+    // One-time additive fix: older browsers stored Manager without title catalog keys.
+    const managerTitleExtras = ["teams.title_create", "teams.title_manage"] as const;
+    for (const [role, keys] of Object.entries(next)) {
+      if (normalizeRoleLabel(role).trim().toLowerCase() !== "manager") continue;
+      const set = new Set(keys);
+      let changed = false;
+      for (const k of managerTitleExtras) {
+        if (!set.has(k)) {
+          set.add(k);
+          changed = true;
+        }
+      }
+      if (changed) {
+        next[role] = normalizePermissionSelection([...set]);
+      }
     }
     return next;
   } catch {
@@ -850,7 +789,11 @@ export function CompanyDirectory() {
     temporaryPassword: string;
   } | null>(null);
   const [humanInviteCredentialsCopied, setHumanInviteCredentialsCopied] = useState(false);
-  const normalizedManagerRoleByCompanyRef = useRef<Record<string, boolean>>({});
+  /**
+   * After hydrating company-scoped prefs from localStorage, the next runs of the persist
+   * effects would see stale state and overwrite storage. Skip one run per persisted slice.
+   */
+  const hydrationLocalStorageWritesRemaining = useRef(0);
 
   useEffect(() => {
     if (!requestedHumanMemberId) return;
@@ -897,7 +840,8 @@ export function CompanyDirectory() {
   useEffect(() => {
     if (!selectedCompanyId) return;
     const prefs = readCompanyRolePrefs(selectedCompanyId);
-    setCustomHumanRoles([]);
+    hydrationLocalStorageWritesRemaining.current = 3;
+    setCustomHumanRoles(prefs.human);
     setCustomAgentRoles(prefs.agent);
     setCustomTitles(readCompanyTitlePrefs(selectedCompanyId));
     setHumanRolePermissions(readHumanRolePermissions(selectedCompanyId));
@@ -905,16 +849,28 @@ export function CompanyDirectory() {
 
   useEffect(() => {
     if (!selectedCompanyId) return;
+    if (hydrationLocalStorageWritesRemaining.current > 0) {
+      hydrationLocalStorageWritesRemaining.current -= 1;
+      return;
+    }
     writeCompanyRolePrefs(selectedCompanyId, { human: customHumanRoles, agent: customAgentRoles });
   }, [selectedCompanyId, customHumanRoles, customAgentRoles]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
+    if (hydrationLocalStorageWritesRemaining.current > 0) {
+      hydrationLocalStorageWritesRemaining.current -= 1;
+      return;
+    }
     writeCompanyTitlePrefs(selectedCompanyId, customTitles);
   }, [selectedCompanyId, customTitles]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
+    if (hydrationLocalStorageWritesRemaining.current > 0) {
+      hydrationLocalStorageWritesRemaining.current -= 1;
+      return;
+    }
     writeHumanRolePermissions(selectedCompanyId, humanRolePermissions);
   }, [selectedCompanyId, humanRolePermissions]);
 
@@ -947,12 +903,26 @@ export function CompanyDirectory() {
     () => new Set((currentUserMember?.grants ?? []).map((grant) => grant.permissionKey as PermissionKey)),
     [currentUserMember?.grants],
   );
+  const currentUserMembershipRoleKey = normalizeRoleLabel(currentUserMember?.membershipRole ?? "").toLowerCase();
+  /** Org role Reader is view-only in Teams even if legacy grants or badges suggest edit access. */
+  const isCurrentUserReaderOrgRole = currentUserMembershipRoleKey === "reader";
+  const canInviteHumans = currentUserPermissionSet.has("users:invite");
   const canCreateTitles = currentUserPermissionSet.has("teams.title_create");
   const canAssignTitles = currentUserPermissionSet.has("teams.title_assign");
   const canManageTitles = currentUserPermissionSet.has("teams.title_manage");
+  const canManageRoles = canEditTeams && !isCurrentUserReaderOrgRole;
   const canResetPassword = currentUserPermissionSet.has("users:reset_password");
+  const canDeactivateUsers =
+    currentUserPermissionSet.has("users:deactivate") ||
+    currentUserPermissionSet.has("users:manage_permissions");
+  const canDeleteUsers =
+    currentUserPermissionSet.has("users:delete") ||
+    currentUserPermissionSet.has("users:manage_permissions");
   const hasTitleAccess = canCreateTitles || canAssignTitles || canManageTitles;
-  const canOpenRolesAndTitlesDialog = canEditTeams || canCreateTitles || canAssignTitles || canManageTitles;
+  const canOpenRolesAndTitlesDialog = (canEditTeams || hasTitleAccess) && !isCurrentUserReaderOrgRole;
+  const canEditHumanTeamRowTitle = canAssignTitles && !isCurrentUserReaderOrgRole;
+  const canEditHumanTeamRowOrgFields = canEditTeams && !isCurrentUserReaderOrgRole;
+  const canEditAgentTeamRows = canEditTeams && !isCurrentUserReaderOrgRole;
 
   const filteredHumanMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1062,10 +1032,20 @@ export function CompanyDirectory() {
     [agentsList],
   );
 
-  const manageHumanRoleOptions = useMemo(
-    () => [...HUMAN_ROLE_OPTIONS] as string[],
-    [],
-  );
+  const manageHumanRoleOptions = useMemo(() => {
+    const base = [...HUMAN_ROLE_OPTIONS] as string[];
+    const seen = new Set(base.map((r) => r.toLowerCase()));
+    const extras: string[] = [];
+    for (const raw of customHumanRoles) {
+      const normalized = normalizeRoleLabel(raw);
+      if (!normalized || normalized === "owner") continue;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      extras.push(normalized);
+    }
+    return [...base, ...extras];
+  }, [customHumanRoles]);
   const inviteHumanRoleOptions = useMemo(
     () => manageHumanRoleOptions.filter((role) => role.toLowerCase() !== "owner"),
     [manageHumanRoleOptions],
@@ -1098,8 +1078,13 @@ export function CompanyDirectory() {
 
   const permissionsForRole = (role: string | null | undefined): PermissionKey[] => {
     if (!role) return [];
-    const override = humanRolePermissions[role];
-    if (override && override.length > 0) return normalizePermissionSelection(override);
+    if (Object.hasOwn(humanRolePermissions, role)) {
+      return normalizePermissionSelection(humanRolePermissions[role] ?? []);
+    }
+    const isCustomOrgRole = customHumanRoles.some(
+      (r) => normalizeRoleLabel(r) === normalizeRoleLabel(role),
+    );
+    if (isCustomOrgRole) return [];
     return defaultPermissionsForRole(role);
   };
 
@@ -1107,6 +1092,9 @@ export function CompanyDirectory() {
     selectedHumanMemberId ? activeHumanMembers.find((m) => m.id === selectedHumanMemberId) ?? null : null;
   const selectedHumanIsOwner = normalizeRoleLabel(selectedHumanMember?.membershipRole ?? "") === "owner";
   const selectedHumanPrincipalId = selectedHumanMember?.principalId ?? null;
+  const selectedHumanIsCurrentUser = Boolean(
+    currentUserId && selectedHumanMember?.principalId === currentUserId,
+  );
 
   const offboardingReassignOptions = useMemo(
     () =>
@@ -1175,7 +1163,13 @@ export function CompanyDirectory() {
           Optionally choose a replacement assignee for each ticket before you continue.
         </p>
         <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
-          {issues.map((issue) => (
+          {issues.map((issue) => {
+            const reassignDraftId = offboardingIssueReassignDrafts[issue.id] ?? "";
+            const reassignOption =
+              reassignDraftId.length > 0
+                ? offboardingReassignOptions.find((o) => o.id === reassignDraftId) ?? null
+                : null;
+            return (
             <div key={issue.id} className="grid gap-2 rounded-md border border-border/50 bg-background p-2 md:grid-cols-[1fr_220px]">
               <Link
                 to={`/issues/${issue.id}`}
@@ -1184,8 +1178,25 @@ export function CompanyDirectory() {
                 <span className="font-medium text-foreground">{issue.identifier}</span>{" "}
                 <span className="text-muted-foreground">- {issue.title}</span>
               </Link>
+              {isCurrentUserReaderOrgRole ? (
+                <div className="inline-flex h-9 w-full min-w-0 items-center rounded-md border border-border/60 bg-muted/25 px-2 text-xs text-muted-foreground">
+                  {reassignOption ? (
+                    <span className="inline-flex min-w-0 items-center gap-2">
+                      <span
+                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                        style={{ backgroundColor: boardAvatarColorFromName(reassignOption.label) }}
+                      >
+                        {initialsFromLabel(reassignOption.label)}
+                      </span>
+                      <span className="truncate">{reassignOption.label}</span>
+                    </span>
+                  ) : (
+                    <span>Keep auto-assignee</span>
+                  )}
+                </div>
+              ) : (
               <InlineEntitySelector
-                value={offboardingIssueReassignDrafts[issue.id] ?? ""}
+                value={reassignDraftId}
                 options={offboardingReassignOptions}
                 placeholder="Reassign to"
                 noneLabel="Keep auto-assignee"
@@ -1231,8 +1242,10 @@ export function CompanyDirectory() {
                 className="h-9 w-full justify-between rounded-md border-border/60 bg-background text-xs"
                 triggerAriaLabel={`Reassign ${issue.identifier}`}
               />
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -1340,67 +1353,6 @@ export function CompanyDirectory() {
       queryKey: queryKeys.agents.list(selectedCompanyId!)
     });
   };
-
-  useEffect(() => {
-    if (!selectedCompanyId) return;
-    if (normalizedManagerRoleByCompanyRef.current[selectedCompanyId]) return;
-
-    const membersToConvert = activeHumanMembers.filter((member) => {
-      const role = normalizeRoleLabel(member.membershipRole ?? "");
-      return role.toLowerCase() !== "owner" && role.toLowerCase() !== "manager";
-    });
-
-    if (membersToConvert.length === 0) {
-      normalizedManagerRoleByCompanyRef.current[selectedCompanyId] = true;
-      return;
-    }
-
-    let cancelled = false;
-    const managerGrants = permissionsForRole("Manager").map((permissionKey) => ({
-      permissionKey,
-      scope: null as Record<string, unknown> | null,
-    }));
-
-    (async () => {
-      try {
-        await Promise.all(
-          membersToConvert.map((member) =>
-            accessApi.updateMemberOrgConfig(selectedCompanyId, member.id, {
-              membershipRole: "Manager",
-              reportsToMembershipId: member.reportsToMembershipId ?? null,
-            }),
-          ),
-        );
-        await Promise.all(
-          membersToConvert.map((member) =>
-            accessApi.updateMemberPermissions(selectedCompanyId, member.id, managerGrants),
-          ),
-        );
-        if (!cancelled) {
-          await invalidateMembers();
-          pushToast({
-            title: "Roles updated",
-            body: "All non-owner users were converted to Manager.",
-            tone: "success",
-          });
-        }
-      } catch (error) {
-        if (!cancelled) {
-          pushToast({
-            title: "Role update failed",
-            body: apiErrorMessage(error),
-            tone: "error",
-          });
-        }
-      } finally {
-        normalizedManagerRoleByCompanyRef.current[selectedCompanyId] = true;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCompanyId, activeHumanMembers]);
 
   const humanInviteMutation = useMutation({
     mutationFn: () =>
@@ -1557,6 +1509,33 @@ export function CompanyDirectory() {
   const selectedHumanRoleDraft = selectedHumanMember
     ? (memberRoleDrafts[selectedHumanMember.id] ?? "").trim()
     : "";
+  const selectedHumanCurrentPermissionKeys = useMemo(() => {
+    if (!selectedHumanMember) return [] as PermissionKey[];
+    if (
+      humanPermissionMutation.isPending &&
+      humanPermissionMutation.variables?.memberId === selectedHumanMember.id
+    ) {
+      return normalizePermissionSelection(
+        humanPermissionMutation.variables.grants.map((grant) => grant.permissionKey),
+      );
+    }
+    return normalizePermissionSelection(
+      selectedHumanMember.grants.map((grant) => grant.permissionKey as PermissionKey),
+    );
+  }, [
+    humanPermissionMutation.isPending,
+    humanPermissionMutation.variables,
+    selectedHumanMember,
+  ]);
+  const selectedHumanDefaultPermissionKeys = useMemo(
+    () => permissionsForRole(selectedHumanMember?.membershipRole),
+    [selectedHumanMember?.membershipRole, humanRolePermissions, customHumanRoles],
+  );
+  const showResetDefaultPermissionsButton =
+    selectedHumanCurrentPermissionKeys.length !== selectedHumanDefaultPermissionKeys.length ||
+    selectedHumanCurrentPermissionKeys.some(
+      (key, index) => key !== selectedHumanDefaultPermissionKeys[index],
+    );
   const selectedHumanManagerIsAgent =
     !!selectedHumanManagerId && memberPrincipalTypeById.get(selectedHumanManagerId) === "agent";
 
@@ -1570,6 +1549,7 @@ export function CompanyDirectory() {
 
   function saveHumanRowEdits(member: CompanyMember, nextRole: string, nextTitle: string, nextManagerId: string) {
     if (!selectedCompanyId) return;
+    if (isCurrentUserReaderOrgRole) return;
     const managerPrincipalType = nextManagerId ? memberPrincipalTypeById.get(nextManagerId) : null;
     if (nextManagerId && managerPrincipalType === "agent") {
       setMemberSaveState(member.id, "error");
@@ -1616,6 +1596,7 @@ export function CompanyDirectory() {
 
   function saveHumanTitleEdit(member: CompanyMember, nextTitle: string) {
     if (!selectedCompanyId) return;
+    if (isCurrentUserReaderOrgRole) return;
     setMemberSaveState(member.id, "saving");
     humanSaveMutation.mutate(
       {
@@ -1643,6 +1624,7 @@ export function CompanyDirectory() {
 
   function saveAgentRowEdits(member: CompanyMember, nextRole: string, nextReportsTo: string) {
     if (!selectedCompanyId) return;
+    if (isCurrentUserReaderOrgRole) return;
     setMemberSaveState(member.id, "saving");
     agentSaveMutation.mutate(
       {
@@ -1678,7 +1660,7 @@ export function CompanyDirectory() {
   // Autosave (debounced) for selected human
   useEffect(() => {
     if (!selectedCompanyId || !selectedHumanMember) return;
-    if (!canEditTeams) return;
+    if (!canEditTeams || isCurrentUserReaderOrgRole) return;
     if (selectedHumanManagerIsAgent) {
       setMemberSaveState(selectedHumanMember.id, "error");
       setMemberSaveErrors((prev) => ({
@@ -1729,6 +1711,7 @@ export function CompanyDirectory() {
   }, [
     selectedCompanyId,
     canEditTeams,
+    isCurrentUserReaderOrgRole,
     selectedHumanMember?.id,
     memberRoleDrafts[selectedHumanMember?.id ?? ""],
     memberTitleDrafts[selectedHumanMember?.id ?? ""],
@@ -1739,6 +1722,7 @@ export function CompanyDirectory() {
   // Keep user permissions in sync with selected role on Teams page.
   useEffect(() => {
     if (!selectedCompanyId || !selectedHumanMember) return;
+    if (!canEditTeams || isCurrentUserReaderOrgRole) return;
     if (!selectedHumanRoleDraft) return;
     const currentRole = (selectedHumanMember.membershipRole ?? "").trim();
     if (selectedHumanRoleDraft === currentRole) return;
@@ -1749,7 +1733,7 @@ export function CompanyDirectory() {
         scope: null,
       })),
     });
-  }, [selectedCompanyId, selectedHumanMember?.id, selectedHumanRoleDraft]);
+  }, [selectedCompanyId, selectedHumanMember, selectedHumanRoleDraft, canEditTeams, isCurrentUserReaderOrgRole]);
 
   function SaveStatusPill({ state }: { state: SaveState }) {
     if (state === "idle") return null;
@@ -1815,6 +1799,7 @@ export function CompanyDirectory() {
             options={roleOptions}
             placeholder="Role"
             noneLabel="None"
+            includeNoneOption={false}
             searchPlaceholder="Search roles..."
             emptyMessage="No roles found."
             onChange={(next) => setMemberRoleDrafts((prev) => ({ ...prev, [member.id]: next }))}
@@ -1832,7 +1817,76 @@ export function CompanyDirectory() {
   return (
     <div className="space-y-6">
       <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-            <DialogContent className="flex max-h-[min(92dvh,44rem)] w-full max-w-2xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
+        <DialogContent className="flex max-h-[min(92dvh,44rem)] w-full max-w-2xl flex-col gap-0 overflow-hidden rounded-3xl border-border/60 p-0 shadow-xl">
+          {humanInviteCredentials ? (
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
+              <div className="mx-auto w-full max-w-xl">
+                <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
+                  <p className="text-sm font-medium text-foreground">Temporary credentials (share securely)</p>
+                  <p>
+                    Name: <span className="font-mono">{humanInviteCredentials.name}</span>
+                  </p>
+                  <p>
+                    Email: <span className="font-mono">{humanInviteCredentials.email}</span>
+                  </p>
+                  <p>
+                    Username:{" "}
+                    <span className="font-mono">
+                      {humanInviteCredentials.temporaryUsername}
+                    </span>
+                  </p>
+                  <p>
+                    Password:{" "}
+                    <span className="font-mono">
+                      {humanInviteCredentials.temporaryPassword}
+                    </span>
+                  </p>
+                  <div className="pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-full px-5 shadow-sm"
+                      onClick={async () => {
+                        const credentialsText = [
+                          `Name: ${humanInviteCredentials.name}`,
+                          `Email: ${humanInviteCredentials.email}`,
+                          `Username: ${humanInviteCredentials.temporaryUsername}`,
+                          `Password: ${humanInviteCredentials.temporaryPassword}`,
+                        ].join("\n");
+                        try {
+                          await navigator.clipboard.writeText(credentialsText);
+                          setHumanInviteCredentialsCopied(true);
+                          window.setTimeout(() => setHumanInviteCredentialsCopied(false), 2000);
+                          pushToast({
+                            title: "Credentials copied",
+                            body: "Temporary login details were copied to clipboard.",
+                            tone: "success",
+                          });
+                        } catch {
+                          pushToast({
+                            title: "Copy failed",
+                            body: "Clipboard is unavailable. Copy the details manually.",
+                            tone: "error",
+                          });
+                        }
+                      }}
+                    >
+                      {humanInviteCredentialsCopied ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Check className="h-4 w-4" />
+                          Copied
+                        </span>
+                      ) : (
+                        "Copy credentials"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
               <div className="shrink-0 space-y-2 px-6 pt-6 pr-14">
                 <DialogHeader>
                   <DialogTitle>Invite Human</DialogTitle>
@@ -1898,70 +1952,6 @@ export function CompanyDirectory() {
                         />
                       </div>
                     </div>
-                    {humanInviteCredentials && (
-                      <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs ring-1 ring-border/30">
-                        <p className="font-medium text-foreground">Temporary credentials (share securely)</p>
-                        <p>
-                          Name: <span className="font-mono">{humanInviteCredentials.name}</span>
-                        </p>
-                        <p>
-                          Email: <span className="font-mono">{humanInviteCredentials.email}</span>
-                        </p>
-                        <p>
-                          Username:{" "}
-                          <span className="font-mono">
-                            {humanInviteCredentials.temporaryUsername}
-                          </span>
-                        </p>
-                        <p>
-                          Password:{" "}
-                          <span className="font-mono">
-                            {humanInviteCredentials.temporaryPassword}
-                          </span>
-                        </p>
-                        <div className="pt-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="rounded-full px-5 shadow-sm"
-                            onClick={async () => {
-                              const credentialsText = [
-                                `Name: ${humanInviteCredentials.name}`,
-                                `Email: ${humanInviteCredentials.email}`,
-                                `Username: ${humanInviteCredentials.temporaryUsername}`,
-                                `Password: ${humanInviteCredentials.temporaryPassword}`,
-                              ].join("\n");
-                              try {
-                                await navigator.clipboard.writeText(credentialsText);
-                                setHumanInviteCredentialsCopied(true);
-                                window.setTimeout(() => setHumanInviteCredentialsCopied(false), 2000);
-                                pushToast({
-                                  title: "Credentials copied",
-                                  body: "Temporary login details were copied to clipboard.",
-                                  tone: "success",
-                                });
-                              } catch {
-                                pushToast({
-                                  title: "Copy failed",
-                                  body: "Clipboard is unavailable. Copy the details manually.",
-                                  tone: "error",
-                                });
-                              }
-                            }}
-                          >
-                            {humanInviteCredentialsCopied ? (
-                              <span className="inline-flex items-center gap-1.5">
-                                <Check className="h-4 w-4" />
-                                Copied
-                              </span>
-                            ) : (
-                              "Copy credentials"
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </section>
                   <section className="min-w-0 space-y-3">
                     <h3 className="text-sm font-semibold tracking-tight text-foreground">Role permissions</h3>
@@ -1991,23 +1981,25 @@ export function CompanyDirectory() {
                     className="rounded-full px-8 shadow-sm text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
                     style={{ backgroundColor: "#6569E1" }}
                     onClick={() => {
-                      if (!canEditTeams) return;
+                      if (!canInviteHumans) return;
                       setHumanInviteSubmitAttempted(true);
                       if (!humanInviteName.trim() || !humanInviteEmail.trim()) return;
                       humanInviteMutation.mutate();
                     }}
                     disabled={
-                      humanInviteMutation.isPending || !selectedCompanyId || !canEditTeams
+                      humanInviteMutation.isPending || !selectedCompanyId || !canInviteHumans
                     }
                   >
                     {humanInviteMutation.isPending ? "Creating..." : "Create invite"}
                   </Button>
                 </div>
               </div>
-            </DialogContent>
+            </>
+          )}
+        </DialogContent>
       </Dialog>
 
-      {rolesDialogOpen ? (
+      {rolesDialogOpen && canOpenRolesAndTitlesDialog ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
           <div
             className="absolute inset-0"
@@ -2018,9 +2010,19 @@ export function CompanyDirectory() {
             <div className="shrink-0 border-b border-border/60 px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
-                  <h2 className="text-lg font-semibold text-foreground">Manage roles</h2>
+                  <h2 className="text-lg font-semibold text-foreground">
+                    {canManageRoles && hasTitleAccess
+                      ? "Manage roles & titles"
+                      : canManageRoles
+                        ? "Manage roles"
+                        : "Manage titles"}
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    Add reusable roles for your org. These appear in human and agent role dropdowns.
+                    {canManageRoles && hasTitleAccess
+                      ? "Add reusable human and agent roles, edit role permissions, and maintain title suggestions for the team grid."
+                      : canManageRoles
+                        ? "Add reusable roles for your org. These appear in human and agent role dropdowns."
+                        : "Create and maintain reusable titles for teammates."}
                   </p>
                 </div>
                 <Button
@@ -2039,104 +2041,126 @@ export function CompanyDirectory() {
               <Tabs defaultValue="humans" className="min-h-0 h-full">
                 <TabsList variant="line" className="px-0">
                   <TabsTrigger value="humans">Humans</TabsTrigger>
-                  <TabsTrigger value="agents">Agents</TabsTrigger>
+                  {canManageRoles ? <TabsTrigger value="agents">Agents</TabsTrigger> : null}
                 </TabsList>
 
                 <TabsContent value="humans" className="mt-4 h-[calc(88vh-12rem)] min-h-0">
-                  <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(20rem,26rem)_1fr]">
+                  <div
+                    className={cn(
+                      "grid h-full min-h-0 gap-4",
+                      canManageRoles ? "lg:grid-cols-[minmax(20rem,26rem)_1fr]" : "lg:grid-cols-1",
+                    )}
+                  >
                     <section className="space-y-3 overflow-y-auto rounded-2xl border border-border/60 bg-muted/15 p-4">
-                      <div className="text-sm font-medium text-foreground">Create role</div>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={newHumanRole}
-                          onChange={(e) => setNewHumanRole(e.target.value)}
-                          placeholder="Add a role (e.g. Sales Lead)"
-                          className="h-10 rounded-lg border-border/60"
-                        />
-                        <Button
-                          type="button"
-                          className="rounded-full"
-                          onClick={() => {
-                            if (!selectedCompanyId) return;
-                            const next = normalizeRoleLabel(newHumanRole);
-                            if (!next) return;
-                            setNewHumanRole("");
-                            setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
-                            setSelectedManageHumanRole(next);
-                            setHumanRolePermissions((prev) => {
-                              if (prev[next]) return prev;
-                              return { ...prev, [next]: permissionsForRole(next) };
-                            });
-                          }}
-                          disabled={!normalizeRoleLabel(newHumanRole)}
-                        >
-                          Add
-                        </Button>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="text-xs text-muted-foreground">Select role to manage</div>
-                        <InlineEntitySelector
-                          value={selectedManageHumanRole}
-                          options={manageHumanRoleOptions.map((role) => ({
-                            id: normalizeRoleLabel(role),
-                            label: roleDisplayLabel(role),
-                          }))}
-                          placeholder="Select role"
-                          noneLabel="None"
-                          includeNoneOption={false}
-                          searchPlaceholder="Search roles..."
-                          emptyMessage="No roles found."
-                          onChange={setSelectedManageHumanRole}
-                          className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {manageHumanRoleOptions.map((role) => {
-                          const selected = role === selectedManageHumanRole;
-                          return (
-                            <button
-                              key={role}
+                      {canManageRoles ? (
+                        <>
+                          <div className="text-sm font-medium text-foreground">Create role</div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={newHumanRole}
+                              onChange={(e) => setNewHumanRole(e.target.value)}
+                              placeholder="Add a role (e.g. Sales Lead)"
+                              className="h-10 rounded-lg border-border/60"
+                            />
+                            <Button
                               type="button"
-                              className={cn(
-                                "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                                selected
-                                  ? "border-primary/40 bg-primary/10 text-foreground"
-                                  : "border-border bg-background text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                              )}
-                              onClick={() => setSelectedManageHumanRole(role)}
+                              className="rounded-full"
+                              onClick={() => {
+                                if (!selectedCompanyId) return;
+                                const next = normalizeRoleLabel(newHumanRole);
+                                if (!next) return;
+                                setNewHumanRole("");
+                                setCustomHumanRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
+                                setSelectedManageHumanRole(next);
+                                setHumanRolePermissions((prev) => {
+                                  if (Object.hasOwn(prev, next)) return prev;
+                                  return { ...prev, [next]: [] };
+                                });
+                              }}
+                              disabled={!normalizeRoleLabel(newHumanRole)}
                             >
-                              {roleDisplayLabel(role)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {selectedManageHumanRole &&
-                      !(HUMAN_ROLE_OPTIONS as readonly string[]).includes(selectedManageHumanRole) ? (
-                        <div className="pt-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            className="rounded-full"
-                            onClick={() => {
-                              const roleToRemove = selectedManageHumanRole;
-                              setCustomHumanRoles((prev) => prev.filter((r) => r !== roleToRemove));
-                              setHumanRolePermissions((prev) => {
-                                const next = { ...prev };
-                                delete next[roleToRemove];
-                                return next;
-                              });
-                              const fallback = manageHumanRoleOptions.find((r) => r !== roleToRemove) ?? "";
-                              setSelectedManageHumanRole(fallback);
-                            }}
-                          >
-                            Delete role
-                          </Button>
-                        </div>
+                              Add
+                            </Button>
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="text-xs text-muted-foreground">Select role to manage</div>
+                            <InlineEntitySelector
+                              value={selectedManageHumanRole}
+                              options={manageHumanRoleOptions.map((role) => ({
+                                id: normalizeRoleLabel(role),
+                                label: roleDisplayLabel(role),
+                              }))}
+                              placeholder="Select role"
+                              noneLabel="None"
+                              includeNoneOption={false}
+                              searchPlaceholder="Search roles..."
+                              emptyMessage="No roles found."
+                              onChange={setSelectedManageHumanRole}
+                              className="h-10 w-full justify-between rounded-lg border-border/60 bg-background"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {manageHumanRoleOptions.map((role) => {
+                              const selected = role === selectedManageHumanRole;
+                              const isBuiltin = (HUMAN_ROLE_OPTIONS as readonly string[]).includes(role);
+                              return (
+                                <span
+                                  key={role}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs",
+                                    selected
+                                      ? "border-primary/40 bg-primary/10 text-foreground"
+                                      : "border-border bg-background text-muted-foreground",
+                                  )}
+                                >
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      "min-w-0 truncate text-left text-xs font-medium transition-colors",
+                                      selected ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                                    )}
+                                    onClick={() => setSelectedManageHumanRole(role)}
+                                  >
+                                    {roleDisplayLabel(role)}
+                                  </button>
+                                  {!isBuiltin ? (
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/15 hover:text-foreground"
+                                      aria-label={`Remove ${roleDisplayLabel(role)}`}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const roleToRemove = role;
+                                        setCustomHumanRoles((prev) =>
+                                          prev.filter(
+                                            (r) => normalizeRoleLabel(r) !== normalizeRoleLabel(roleToRemove),
+                                          ),
+                                        );
+                                        setHumanRolePermissions((prev) => {
+                                          const next = { ...prev };
+                                          delete next[roleToRemove];
+                                          return next;
+                                        });
+                                        setSelectedManageHumanRole((cur) => {
+                                          if (cur !== roleToRemove) return cur;
+                                          const remaining = manageHumanRoleOptions.filter((r) => r !== roleToRemove);
+                                          return remaining[0] ?? HUMAN_ROLE_OPTIONS[0] ?? "";
+                                        });
+                                      }}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  ) : null}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </>
                       ) : null}
 
                       {canCreateTitles || canManageTitles ? (
-                        <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
+                        <div className={cn("space-y-3", canManageRoles ? "mt-4 border-t border-border/60 pt-4" : "")}>
                           <div className="text-sm font-medium text-foreground">Manage titles</div>
                           <div className="flex items-center gap-2">
                             <Input
@@ -2195,72 +2219,87 @@ export function CompanyDirectory() {
                             Use Add to create title suggestions and x to remove custom ones.
                           </p>
                         </div>
+                      ) : hasTitleAccess ? (
+                        <p
+                          className={cn(
+                            "text-sm text-muted-foreground",
+                            canManageRoles ? "mt-4 border-t border-border/60 pt-4" : "",
+                          )}
+                        >
+                          You can assign titles on the team grid. Ask an admin for title create or manage permissions
+                          to edit this catalog.
+                        </p>
                       ) : null}
                     </section>
-                    <section className="space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-muted/10 p-3">
-                      <div className="text-sm font-medium text-foreground">
-                        Role permissions{selectedManageHumanRole ? `: ${selectedManageHumanRole}` : ""}
-                      </div>
-                      <div className="rounded-lg border border-border/50 bg-background/60 p-2.5">
+                    {canManageRoles ? (
+                      <section className="space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-muted/10 p-3">
+                        <div className="text-sm font-medium text-foreground">
+                          Role permissions{selectedManageHumanRole ? `: ${selectedManageHumanRole}` : ""}
+                        </div>
+                        <div className="rounded-lg border border-border/50 bg-background/60 p-2.5">
                         <HumanPermissionsPanel
+                          key={selectedManageHumanRole || "none"}
                           idPrefix={`human-role-${selectedManageHumanRole || "none"}`}
-                          enabledKeys={permissionsForRole(selectedManageHumanRole)}
-                          onKeysChange={(keys) => {
-                            if (!selectedManageHumanRole) return;
-                            setHumanRolePermissions((prev) => ({
-                              ...prev,
-                              [selectedManageHumanRole]: keys,
-                            }));
-                          }}
-                          intro={null}
-                        />
-                      </div>
-                    </section>
+                            enabledKeys={permissionsForRole(selectedManageHumanRole)}
+                            onKeysChange={(keys) => {
+                              if (!selectedManageHumanRole) return;
+                              setHumanRolePermissions((prev) => ({
+                                ...prev,
+                                [selectedManageHumanRole]: keys,
+                              }));
+                            }}
+                            intro={null}
+                          />
+                        </div>
+                      </section>
+                    ) : null}
                   </div>
                 </TabsContent>
 
-                <TabsContent value="agents" className="mt-4 overflow-y-auto">
-                  <div className="space-y-3">
-                    <div className="text-sm font-medium text-foreground">Custom agent role labels</div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={newAgentRole}
-                        onChange={(e) => setNewAgentRole(e.target.value)}
-                        placeholder="Add a role label (e.g. SalesOpsAgent)"
-                      />
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedCompanyId) return;
-                          const next = normalizeRoleLabel(newAgentRole);
-                          if (!next) return;
-                          setNewAgentRole("");
-                          setCustomAgentRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
-                        }}
-                        disabled={!normalizeRoleLabel(newAgentRole)}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    {customAgentRoles.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {customAgentRoles.map((role) => (
-                          <button
-                            key={role}
-                            type="button"
-                            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-                            title="Remove"
-                            onClick={() => setCustomAgentRoles((prev) => prev.filter((r) => r !== role))}
-                          >
-                            {role}
-                          </button>
-                        ))}
+                {canManageRoles ? (
+                  <TabsContent value="agents" className="mt-4 overflow-y-auto">
+                    <div className="space-y-3">
+                      <div className="text-sm font-medium text-foreground">Custom agent role labels</div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={newAgentRole}
+                          onChange={(e) => setNewAgentRole(e.target.value)}
+                          placeholder="Add a role label (e.g. SalesOpsAgent)"
+                        />
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedCompanyId) return;
+                            const next = normalizeRoleLabel(newAgentRole);
+                            if (!next) return;
+                            setNewAgentRole("");
+                            setCustomAgentRoles((prev) => (prev.includes(next) ? prev : [...prev, next]));
+                          }}
+                          disabled={!normalizeRoleLabel(newAgentRole)}
+                        >
+                          Add
+                        </Button>
                       </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No custom role labels yet.</div>
-                    )}
-                  </div>
-                </TabsContent>
+                      {customAgentRoles.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {customAgentRoles.map((role) => (
+                            <button
+                              key={role}
+                              type="button"
+                              className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                              title="Remove"
+                              onClick={() => setCustomAgentRoles((prev) => prev.filter((r) => r !== role))}
+                            >
+                              {role}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">No custom role labels yet.</div>
+                      )}
+                    </div>
+                  </TabsContent>
+                ) : null}
               </Tabs>
             </div>
           </div>
@@ -2342,7 +2381,7 @@ export function CompanyDirectory() {
                         className="h-9 rounded-lg border-border/60 bg-background"
                       />
                     </div>
-                    {canEditTeams ? (
+                    {canInviteHumans ? (
                       <Button
                         type="button"
                         className="h-9 rounded-md border border-indigo-500 bg-indigo-500 px-4 text-white hover:border-indigo-600 hover:bg-indigo-600"
@@ -2356,10 +2395,14 @@ export function CompanyDirectory() {
                       <Button
                         type="button"
                         variant="secondary"
-                        className="h-9 rounded-md border border-border/70 bg-background px-4 text-foreground hover:bg-muted"
+                        className="h-9 rounded-md border border-border/70 bg-background px-4 font-semibold text-foreground hover:bg-muted"
                         onClick={() => setRolesDialogOpen(true)}
                       >
-                        {hasTitleAccess ? "Manage roles & titles" : "Manage roles"}
+                        {canEditTeams
+                          ? hasTitleAccess
+                            ? "Manage roles & titles"
+                            : "Manage roles"
+                          : "Manage titles"}
                       </Button>
                     ) : null}
                     {hasActiveTeamFilters ? (
@@ -2494,7 +2537,7 @@ export function CompanyDirectory() {
                           <span className="truncate text-sm font-medium">{memberDisplayName(member)}</span>
                         </span>
                         <span onClick={(event) => event.stopPropagation()} className="min-w-0">
-                          {canAssignTitles ? (
+                          {canEditHumanTeamRowTitle ? (
                             <InlineEntitySelector
                               value={(memberTitleDrafts[member.id] ?? member.title ?? "").trim()}
                               options={availableTitleOptions.map((title) => ({
@@ -2527,7 +2570,7 @@ export function CompanyDirectory() {
                             <span className="inline-flex h-8 w-[150px] max-w-full items-center rounded-md px-2 text-xs font-medium text-foreground">
                               Owner
                             </span>
-                          ) : (
+                          ) : canEditHumanTeamRowOrgFields ? (
                             <InlineEntitySelector
                               value={roleValue}
                               options={manageHumanRoleOptions.map((role) => ({
@@ -2536,6 +2579,7 @@ export function CompanyDirectory() {
                               }))}
                               placeholder="Role"
                               noneLabel="None"
+                              includeNoneOption={false}
                               searchPlaceholder="Search roles..."
                               emptyMessage="No roles found."
                               onChange={(next) => {
@@ -2546,6 +2590,10 @@ export function CompanyDirectory() {
                               }}
                               className="h-8 w-[150px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                             />
+                          ) : (
+                            <span className="inline-flex h-8 w-[150px] max-w-full items-center rounded-md px-2 text-xs font-medium text-muted-foreground">
+                              {roleDisplayLabel(roleValue) || "None"}
+                            </span>
                           )}
                         </span>
                         <span onClick={(event) => event.stopPropagation()} className="min-w-0">
@@ -2553,7 +2601,7 @@ export function CompanyDirectory() {
                             <span className="inline-flex h-8 w-[140px] max-w-full items-center rounded-md px-2 text-xs font-medium text-foreground">
                               {reportsToLabel}
                             </span>
-                          ) : (
+                          ) : canEditHumanTeamRowOrgFields ? (
                             <InlineEntitySelector
                               value={reportsToValue}
                               options={activeHumanMembers
@@ -2575,6 +2623,10 @@ export function CompanyDirectory() {
                               }}
                               className="h-8 w-[140px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                             />
+                          ) : (
+                            <span className="inline-flex h-8 w-[140px] max-w-full items-center rounded-md px-2 text-xs font-medium text-muted-foreground">
+                              {reportsToLabel}
+                            </span>
                           )}
                         </span>
                         <span
@@ -2591,6 +2643,11 @@ export function CompanyDirectory() {
 
                   const roleValue = (memberRoleDrafts[member.id] ?? member.membershipRole ?? "").trim();
                   const reportsToValue = (agentReportsDrafts[member.id] ?? agentByPrincipalId.get(member.principalId)?.reportsTo ?? "").trim();
+                  const reportsToAgentMember =
+                    reportsToValue.length > 0
+                      ? activeAgentMembers.find((candidate) => candidate.principalId === reportsToValue) ?? null
+                      : null;
+                  const reportsToAgentLabel = reportsToAgentMember ? memberDisplayName(reportsToAgentMember) : "None";
                   const rowInvalidManagers = descendantsOf(member.principalId, agentChildrenByPrincipalId);
                   rowInvalidManagers.add(member.principalId);
                   return (
@@ -2603,6 +2660,7 @@ export function CompanyDirectory() {
                         <span className="truncate text-sm font-medium">{memberDisplayName(member)}</span>
                       </span>
                       <span onClick={(event) => event.stopPropagation()} className="min-w-0">
+                        {canEditAgentTeamRows ? (
                         <InlineEntitySelector
                           value={roleValue}
                           options={assignableAgentRoleOptions.map((role) => ({
@@ -2611,6 +2669,7 @@ export function CompanyDirectory() {
                           }))}
                           placeholder="Role"
                           noneLabel="None"
+                          includeNoneOption={false}
                           searchPlaceholder="Search roles..."
                           emptyMessage="No roles found."
                           onChange={(next) => {
@@ -2620,8 +2679,14 @@ export function CompanyDirectory() {
                           }}
                           className="h-8 w-[150px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                         />
+                        ) : (
+                          <span className="inline-flex h-8 w-[150px] max-w-full items-center rounded-md px-2 text-xs font-medium text-muted-foreground">
+                            {roleDisplayLabel(roleValue) || "None"}
+                          </span>
+                        )}
                       </span>
                       <span onClick={(event) => event.stopPropagation()} className="min-w-0">
+                        {canEditAgentTeamRows ? (
                         <InlineEntitySelector
                           value={reportsToValue}
                           options={activeAgentMembers
@@ -2645,6 +2710,11 @@ export function CompanyDirectory() {
                           }}
                           className="h-8 w-[140px] max-w-full justify-between rounded-md border-border/60 bg-background text-xs"
                         />
+                        ) : (
+                          <span className="inline-flex h-8 w-[140px] max-w-full items-center rounded-md px-2 text-xs font-medium text-muted-foreground">
+                            {reportsToAgentLabel}
+                          </span>
+                        )}
                       </span>
                     </div>
                   );
@@ -2724,6 +2794,7 @@ export function CompanyDirectory() {
                       {!selectedHumanIsOwner ? (
                         <div className="pt-2 space-y-2">
                         {canResetPassword &&
+                          !isCurrentUserReaderOrgRole &&
                           selectedHumanMember &&
                           currentUserId &&
                           selectedHumanMember.principalId !== currentUserId ? (
@@ -2751,6 +2822,7 @@ export function CompanyDirectory() {
                           </Button>
                         ) : null}
                         {selectedHumanMember.status === "suspended" ? (
+                          canDeactivateUsers && !isCurrentUserReaderOrgRole && !selectedHumanIsCurrentUser ? (
                           <Button
                             type="button"
                             size="sm"
@@ -2771,8 +2843,12 @@ export function CompanyDirectory() {
                           >
                             Activate user
                           </Button>
+                          ) : null
                         ) : (
-                          !selectedHumanIsOwner ? (
+                          !selectedHumanIsOwner &&
+                          canDeactivateUsers &&
+                          !isCurrentUserReaderOrgRole &&
+                          !selectedHumanIsCurrentUser ? (
                             <Button
                               type="button"
                               size="sm"
@@ -2788,7 +2864,7 @@ export function CompanyDirectory() {
                             </Button>
                           ) : null
                         )}
-                        {!selectedHumanIsOwner ? (
+                        {canDeleteUsers && !isCurrentUserReaderOrgRole && !selectedHumanIsOwner && !selectedHumanIsCurrentUser ? (
                           <Button
                             type="button"
                             size="sm"
@@ -2801,6 +2877,50 @@ export function CompanyDirectory() {
                             }}
                           >
                             Delete user
+                          </Button>
+                        ) : null}
+                        {!selectedHumanIsOwner && !isCurrentUserReaderOrgRole && showResetDefaultPermissionsButton ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-full justify-start rounded-md border-border/70 bg-background px-2 text-xs font-medium text-foreground hover:bg-muted"
+                            disabled={
+                              !selectedCompanyId ||
+                              deactivateHumanMutation.isPending ||
+                              reactivateHumanMutation.isPending ||
+                              removeHumanMutation.isPending
+                            }
+                            onClick={() => {
+                              if (!selectedCompanyId) return;
+                              humanPermissionMutation.mutate(
+                                {
+                                  memberId: selectedHumanMember.id,
+                                  grants: selectedHumanDefaultPermissionKeys.map((permissionKey) => ({
+                                    permissionKey,
+                                    scope: null,
+                                  })),
+                                },
+                                {
+                                  onSuccess: () => {
+                                    pushToast({
+                                      title: "Permissions reset",
+                                      body: "Default permissions restored for this user role.",
+                                      tone: "success",
+                                    });
+                                  },
+                                  onError: (err) => {
+                                    pushToast({
+                                      title: "Reset failed",
+                                      body: apiErrorMessage(err),
+                                      tone: "error",
+                                    });
+                                  },
+                                },
+                              );
+                            }}
+                          >
+                            Reset default permissions
                           </Button>
                         ) : null}
                         </div>
@@ -2821,7 +2941,7 @@ export function CompanyDirectory() {
                                 selectedHumanMember.grants.map((grant) => grant.permissionKey as PermissionKey),
                               )
                         }
-                        disabled={!selectedCompanyId}
+                        disabled={!selectedCompanyId || isCurrentUserReaderOrgRole}
                         onKeysChange={(keys) => {
                           if (!selectedCompanyId) return;
                           const nextGrants = keys.map((permissionKey) => ({
@@ -2835,11 +2955,6 @@ export function CompanyDirectory() {
                         }}
                         intro={null}
                       />
-                      {humanPermissionMutation.isError ? (
-                        <div className="mt-3 text-xs text-destructive">
-                          {apiErrorMessage(humanPermissionMutation.error)}
-                        </div>
-                      ) : null}
                     </section>
                   ) : null}
                 </div>
@@ -3026,7 +3141,10 @@ export function CompanyDirectory() {
               className="rounded-md border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
               disabled={deactivateHumanMutation.isPending || offboardingSubmitPending}
               onClick={async () => {
-                if (!selectedHumanMember) return;
+                if (!selectedHumanMember || selectedHumanIsCurrentUser) {
+                  setDeactivateDialogOpen(false);
+                  return;
+                }
                 setOffboardingSubmitPending(true);
                 try {
                   const reassignedCount = await applyOffboardingIssueReassignments();
@@ -3086,7 +3204,10 @@ export function CompanyDirectory() {
               variant="destructive"
               disabled={removeHumanMutation.isPending || offboardingSubmitPending}
               onClick={async () => {
-                if (!selectedHumanMember) return;
+                if (!selectedHumanMember || selectedHumanIsCurrentUser) {
+                  setDeleteDialogOpen(false);
+                  return;
+                }
                 setOffboardingSubmitPending(true);
                 try {
                   const reassignedCount = await applyOffboardingIssueReassignments();

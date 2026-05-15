@@ -113,6 +113,10 @@ export interface Config {
   microsoftAuthTenantId: string | undefined;
   microsoftAuthClientId: string | undefined;
   microsoftAuthClientSecret: string | undefined;
+  /** Stripe secret API key (`sk_live_…` / `sk_test_…`). Enables the Stripe Node SDK when set. */
+  stripeSecretKey: string | undefined;
+  stripeReconciliationEnabled: boolean;
+  stripeReconciliationIntervalMs: number;
 }
 
 export function loadConfig(): Config {
@@ -260,6 +264,8 @@ export function loadConfig(): Config {
     process.env.MICROSOFT_CLIENT_SECRET?.trim() ||
     process.env.CLIENT_SECRET?.trim() ||
     undefined;
+  const stripeSecretKey =
+    process.env.PAPERCLIP_STRIPE_SECRET_KEY?.trim() || process.env.STRIPE_SECRET_KEY?.trim() || undefined;
   const databaseBackupEnabled =
     process.env.PAPERCLIP_DB_BACKUP_ENABLED !== undefined
       ? process.env.PAPERCLIP_DB_BACKUP_ENABLED === "true"
@@ -330,5 +336,11 @@ export function loadConfig(): Config {
     microsoftAuthTenantId,
     microsoftAuthClientId,
     microsoftAuthClientSecret,
+    stripeSecretKey,
+    stripeReconciliationEnabled: process.env.PAPERCLIP_STRIPE_RECONCILIATION_ENABLED !== "false",
+    stripeReconciliationIntervalMs: Math.max(
+      30_000,
+      Number(process.env.PAPERCLIP_STRIPE_RECONCILIATION_INTERVAL_MS) || 5 * 60 * 1000,
+    ),
   };
 }

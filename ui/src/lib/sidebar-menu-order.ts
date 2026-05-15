@@ -21,7 +21,7 @@ export const DEFAULT_PRIMARY_NAV_IDS = [
 
 export const ROUTINES_NAV_ID = "routines" as const;
 
-export const DEFAULT_COMPANY_NAV_IDS = ["audit", "settings"] as const;
+export const DEFAULT_COMPANY_NAV_IDS = ["audit", "billing", "settings"] as const;
 
 type OrderUpdatedDetail = {
   storageKey: string;

@@ -52,6 +52,7 @@ const mockCostService = vi.hoisted(() => ({
   byBiller: vi.fn().mockResolvedValue([]),
   windowSpend: vi.fn().mockResolvedValue([]),
   byProject: vi.fn().mockResolvedValue([]),
+  totalModelCostCentsAllCompanies: vi.fn().mockResolvedValue(0),
 }));
 const mockFinanceService = vi.hoisted(() => ({
   createEvent: vi.fn(),
@@ -72,6 +73,30 @@ const mockBudgetService = vi.hoisted(() => ({
   upsertPolicy: vi.fn(),
   resolveIncident: vi.fn(),
 }));
+const mockInstanceSettingsService = vi.hoisted(() => ({
+  getGeneral: vi.fn().mockResolvedValue({
+    censorUsernameInLogs: false,
+    keyboardShortcuts: false,
+    feedbackDataSharingPreference: "prompt",
+    billingPrepaidCents: 0,
+  }),
+}));
+const mockStripeBilling = vi.hoisted(() => ({
+  createCheckoutIntentRecord: vi.fn(),
+  findStripeCustomerByCompanyId: vi.fn(),
+  getCompanyWalletTotals: vi.fn().mockResolvedValue({ creditCents: 0, debitCents: 0, netCents: 0 }),
+  getOrCreateStripeCustomerForCompany: vi.fn(),
+  hasWalletCreditForCheckoutSession: vi.fn().mockResolvedValue(false),
+  markCheckoutIntentLifecycle: vi.fn(),
+  stripeBillingBrandingFromEnv: vi.fn().mockReturnValue({
+    businessName: "AI-HARNESS",
+    businessDescription: "Human-Led. AI-Powered. One Team.",
+  }),
+  stripeSecretsFromEnv: vi.fn().mockReturnValue({
+    stripeSecretKey: undefined,
+    stripeWebhookSecret: undefined,
+  }),
+}));
 
 vi.mock("../services/index.js", () => ({
   accessService: () => ({
@@ -79,6 +104,7 @@ vi.mock("../services/index.js", () => ({
     listProjectIdsVisibleToActor: vi.fn(async () => null),
     principalHasAnyProjectPermission: vi.fn(async () => true),
     canUser: vi.fn(async () => true),
+    hasPermission: vi.fn(async () => true),
   }),
   budgetService: () => mockBudgetService,
   costService: () => mockCostService,
@@ -86,12 +112,15 @@ vi.mock("../services/index.js", () => ({
   companyService: () => mockCompanyService,
   agentService: () => mockAgentService,
   heartbeatService: () => mockHeartbeatService,
+  instanceSettingsService: () => mockInstanceSettingsService,
   logActivity: mockLogActivity,
 }));
 
 vi.mock("../services/quota-windows.js", () => ({
   fetchAllQuotaWindows: mockFetchAllQuotaWindows,
 }));
+
+vi.mock("../services/stripe-billing.js", () => mockStripeBilling);
 
 function createApp() {
   const app = express();
@@ -187,6 +216,36 @@ describe("cost routes", () => {
       .query({ limit: "25" });
     expect(res.status).toBe(200);
     expect(mockFinanceService.list).toHaveBeenCalledWith("company-1", undefined, 25);
+  });
+
+  it("returns prepaid balance from instance settings and aggregate model cost", async () => {
+    mockStripeBilling.getCompanyWalletTotals.mockResolvedValueOnce({
+      creditCents: 100_000,
+      debitCents: 25_000,
+      netCents: 75_000,
+    });
+    const app = createApp();
+    const res = await request(app).get("/api/companies/company-1/billing/prepaid-balance");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      prepaidCents: 100_000,
+      usedModelCents: 25_000,
+      remainingCents: 75_000,
+      deficitCents: 0,
+    });
+  });
+
+  it("clamps prepaid remaining at zero when usage exceeds prepaid", async () => {
+    mockStripeBilling.getCompanyWalletTotals.mockResolvedValueOnce({
+      creditCents: 10_000,
+      debitCents: 50_000,
+      netCents: -40_000,
+    });
+    const app = createApp();
+    const res = await request(app).get("/api/companies/company-1/billing/prepaid-balance");
+    expect(res.status).toBe(200);
+    expect(res.body.remainingCents).toBe(0);
+    expect(res.body.deficitCents).toBe(40_000);
   });
 
   it("rejects company budget updates for board users outside the company", async () => {

@@ -225,6 +225,6 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
       .send({});
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe("Permission denied");
+    expect(res.body.error).toBe("Missing permission: company_settings.invites or users:invite");
   });
 });

@@ -48,8 +48,25 @@ export function projectRoutes(db: Db) {
   ) {
     const actor = projectAuthActorFromRequest(req);
     if (!(await access.satisfiesProjectPermission(companyId, projectId, permission, actor))) {
-      throw forbidden("Project permission denied");
+      throw forbidden(`Missing project permission: ${permission}`);
     }
+  }
+
+  async function assertCanCreateCompanyProject(req: Request, companyId: string) {
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      if (!(await access.canUser(companyId, req.actor.userId, "projects.create"))) {
+        throw forbidden("Missing permission: projects.create");
+      }
+      return;
+    }
+    if (req.actor.type === "agent" && req.actor.agentId) {
+      if (!(await access.hasPermission(companyId, "agent", req.actor.agentId, "projects.create"))) {
+        throw forbidden("Missing permission: projects.create");
+      }
+      return;
+    }
+    throw forbidden("Missing permission: projects.create");
   }
 
   async function resolveCompanyIdForProjectReference(req: Request) {
@@ -117,6 +134,7 @@ export function projectRoutes(db: Db) {
   router.post("/companies/:companyId/projects", validate(createProjectSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    await assertCanCreateCompanyProject(req, companyId);
     type CreateProjectPayload = Parameters<typeof svc.create>[1] & {
       workspace?: Parameters<typeof svc.createWorkspace>[1];
     };

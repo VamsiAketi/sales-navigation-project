@@ -28,6 +28,7 @@ import {
   Inbox,
   DollarSign,
   History,
+  CreditCard,
   SquarePen,
   Plus,
 } from "lucide-react";
@@ -40,7 +41,7 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const location = useLocation();
   const { selectedCompanyId } = useCompany();
-  const { openNewIssue, openNewAgent } = useDialog();
+  const { openNewIssue, openNewAgent, openNewProject } = useDialog();
   const { isMobile, setSidebarOpen } = useSidebar();
   const searchQuery = query.trim();
 
@@ -94,6 +95,8 @@ export function CommandPalette() {
     staleTime: 10_000,
   });
   const canCreateTasks = sidebarBadges?.canCreateTasks ?? true;
+  const canCreateProjects = sidebarBadges?.canCreateProjects ?? false;
+  const canReadBilling = sidebarBadges?.canReadBilling ?? false;
 
   function go(path: string) {
     setOpen(false);
@@ -150,10 +153,17 @@ export function CommandPalette() {
             <Plus className="mr-2 h-4 w-4" />
             Create new agent
           </CommandItem>
-          <CommandItem onSelect={() => go("/projects")}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create new project
-          </CommandItem>
+          {canCreateProjects ? (
+            <CommandItem
+              onSelect={() => {
+                setOpen(false);
+                openNewProject();
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create new project
+            </CommandItem>
+          ) : null}
         </CommandGroup>
 
         <CommandSeparator />
@@ -187,6 +197,12 @@ export function CommandPalette() {
             <DollarSign className="mr-2 h-4 w-4" />
             Costs
           </CommandItem>
+          {canReadBilling ? (
+            <CommandItem onSelect={() => go("/company/billing")}>
+              <CreditCard className="mr-2 h-4 w-4" />
+              Billing
+            </CommandItem>
+          ) : null}
           <CommandItem onSelect={() => go("/activity")}>
             <History className="mr-2 h-4 w-4" />
             Audit Log

@@ -12,6 +12,8 @@ import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
+import { authApi } from "../api/auth";
+import { accessApi } from "../api/access";
 import { ApiError } from "../api/client";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { activityApi } from "../api/activity";
@@ -125,6 +127,16 @@ const JWT_VALUE_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-
 
 function redactPathText(value: string, censorUsernameInLogs: boolean) {
   return redactHomePathUserSegments(value, { enabled: censorUsernameInLogs });
+}
+
+function hasUiPathLikeText(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) return false;
+  return (
+    /(^|[\s"'`(])(?:\/|~\/|\.\.?\/)[^\s"'`)]{2,}/.test(normalized)
+    || /(^|[\s"'`(])[A-Za-z]:\\[^\s"'`)]{2,}/.test(normalized)
+    || /\b(?:cwd|working\s*dir|worktree|repo\s*root|file(?:\s*path)?|path)\s*[:=]\s*\S+/i.test(normalized)
+  );
 }
 
 function redactPathValue<T>(value: T, censorUsernameInLogs: boolean): T {
@@ -577,6 +589,29 @@ export function AgentDetail() {
     staleTime: 10_000,
   });
   const canReadAgents = sidebarBadges?.canReadAgents ?? true;
+  const membershipCompanyId = routeCompanyId ?? selectedCompanyId ?? null;
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: authApi.getSession,
+    staleTime: 10_000,
+  });
+  const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+  const { data: accessMembers } = useQuery({
+    queryKey: membershipCompanyId ? queryKeys.access.members(membershipCompanyId) : ["access", "members", "none"],
+    queryFn: () => accessApi.listMembers(membershipCompanyId!),
+    enabled: Boolean(membershipCompanyId),
+    staleTime: 15_000,
+  });
+  const isCurrentUserReaderOrgRole = useMemo(() => {
+    if (!currentUserId || !accessMembers) return false;
+    const member = accessMembers.find(
+      (m) =>
+        m.principalType === "user" &&
+        m.principalId === currentUserId &&
+        (m.status === "active" || m.status === "suspended"),
+    );
+    return (member?.membershipRole ?? "").trim().toLowerCase() === "reader";
+  }, [accessMembers, currentUserId]);
   const canonicalAgentRef = agent ? agentRouteRef(agent) : routeAgentRef;
   const agentLookupRef = agent?.id ?? routeAgentRef;
   const resolvedAgentId = agent?.id ?? null;
@@ -839,6 +874,11 @@ export function AgentDetail() {
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
+          {isCurrentUserReaderOrgRole ? (
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <AgentIcon icon={agent.icon} className="h-6 w-6" />
+            </div>
+          ) : (
           <AgentIconPicker
             value={agent.icon}
             onChange={(icon) => updateIcon.mutate(icon)}
@@ -847,6 +887,7 @@ export function AgentDetail() {
               <AgentIcon icon={agent.icon} className="h-6 w-6" />
             </button>
           </AgentIconPicker>
+          )}
           <div className="min-w-0">
             <h2 className="text-2xl font-bold truncate">{agent.name}</h2>
             <p className="text-sm text-muted-foreground truncate">
@@ -859,6 +900,7 @@ export function AgentDetail() {
           <Button
             variant="outline"
             size="sm"
+            disabled={isCurrentUserReaderOrgRole}
             onClick={() => openNewIssue({ assigneeAgentId: agent.id })}
           >
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
@@ -866,14 +908,14 @@ export function AgentDetail() {
           </Button>
           <RunButton
             onClick={() => agentAction.mutate("invoke")}
-            disabled={agentAction.isPending || isPendingApproval}
+            disabled={agentAction.isPending || isPendingApproval || isCurrentUserReaderOrgRole}
             label="Run Heartbeat"
           />
           <PauseResumeButton
             isPaused={agent.status === "paused"}
             onPause={() => agentAction.mutate("pause")}
             onResume={() => agentAction.mutate("resume")}
-            disabled={agentAction.isPending || isPendingApproval}
+            disabled={agentAction.isPending || isPendingApproval || isCurrentUserReaderOrgRole}
           />
           <span className="hidden sm:inline"><StatusBadge status={agent.status} /></span>
           {mobileLiveRun && (
@@ -908,7 +950,8 @@ export function AgentDetail() {
                 Copy Agent ID
               </button>
               <button
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 disabled:pointer-events-none disabled:opacity-40"
+                disabled={isCurrentUserReaderOrgRole}
                 onClick={() => {
                   resetTaskSession.mutate(null);
                   setMoreOpen(false);
@@ -919,7 +962,8 @@ export function AgentDetail() {
               </button>
               <button
                 type="button"
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive disabled:pointer-events-none disabled:opacity-40"
+                disabled={isCurrentUserReaderOrgRole}
                 onClick={() => {
                   setMoreOpen(false);
                   setTerminateConfirmOpen(true);
@@ -947,7 +991,7 @@ export function AgentDetail() {
                 <Button
                   type="button"
                   variant="destructive"
-                  disabled={agentAction.isPending}
+                  disabled={agentAction.isPending || isCurrentUserReaderOrgRole}
                   onClick={() => {
                     agentAction.mutate("terminate");
                     setTerminateConfirmOpen(false);
@@ -1003,14 +1047,14 @@ export function AgentDetail() {
               variant="ghost"
               size="sm"
               onClick={() => cancelConfigActionRef.current?.()}
-              disabled={configSaving}
+              disabled={configSaving || isCurrentUserReaderOrgRole}
             >
               Cancel
             </Button>
             <Button
               size="sm"
               onClick={() => saveConfigActionRef.current?.()}
-              disabled={configSaving}
+              disabled={configSaving || isCurrentUserReaderOrgRole}
             >
               {configSaving ? "Saving…" : "Save"}
             </Button>
@@ -1029,14 +1073,14 @@ export function AgentDetail() {
               variant="ghost"
               size="sm"
               onClick={() => cancelConfigActionRef.current?.()}
-              disabled={configSaving}
+              disabled={configSaving || isCurrentUserReaderOrgRole}
             >
               Cancel
             </Button>
             <Button
               size="sm"
               onClick={() => saveConfigActionRef.current?.()}
-              disabled={configSaving}
+              disabled={configSaving || isCurrentUserReaderOrgRole}
             >
               {configSaving ? "Saving…" : "Save"}
             </Button>
@@ -1060,6 +1104,7 @@ export function AgentDetail() {
         <PromptsTab
           agent={agent}
           companyId={resolvedCompanyId ?? undefined}
+          readOnly={isCurrentUserReaderOrgRole}
           onDirtyChange={setConfigDirty}
           onSaveActionChange={setSaveConfigAction}
           onCancelActionChange={setCancelConfigAction}
@@ -1072,6 +1117,7 @@ export function AgentDetail() {
           agent={agent}
           agentId={agent.id}
           companyId={resolvedCompanyId ?? undefined}
+          readOnly={isCurrentUserReaderOrgRole}
           onDirtyChange={setConfigDirty}
           onSaveActionChange={setSaveConfigAction}
           onCancelActionChange={setCancelConfigAction}
@@ -1084,6 +1130,7 @@ export function AgentDetail() {
         <AgentSkillsTab
           agent={agent}
           companyId={resolvedCompanyId ?? undefined}
+          readOnly={isCurrentUserReaderOrgRole}
         />
       )}
 
@@ -1095,6 +1142,7 @@ export function AgentDetail() {
           agentRouteId={canonicalAgentRef}
           selectedRunId={urlRunId ?? null}
           adapterType={agent.adapterType}
+          readOnly={isCurrentUserReaderOrgRole}
         />
       )}
 
@@ -1103,7 +1151,7 @@ export function AgentDetail() {
           <BudgetPolicyCard
             summary={agentBudgetSummary}
             isSaving={budgetMutation.isPending}
-            onSave={(amount) => budgetMutation.mutate(amount)}
+            onSave={isCurrentUserReaderOrgRole ? undefined : (amount) => budgetMutation.mutate(amount)}
             variant="plain"
           />
         </div>
@@ -1359,6 +1407,7 @@ function AgentConfigurePage({
   agent,
   agentId,
   companyId,
+  readOnly,
   onDirtyChange,
   onSaveActionChange,
   onCancelActionChange,
@@ -1368,6 +1417,7 @@ function AgentConfigurePage({
   agent: AgentDetailRecord;
   agentId: string;
   companyId?: string;
+  readOnly?: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onSaveActionChange: (save: (() => void) | null) => void;
   onCancelActionChange: (cancel: (() => void) | null) => void;
@@ -1395,6 +1445,7 @@ function AgentConfigurePage({
     <div className="max-w-3xl space-y-6">
       <ConfigurationTab
         agent={agent}
+        readOnly={readOnly}
         onDirtyChange={onDirtyChange}
         onSaveActionChange={onSaveActionChange}
         onCancelActionChange={onCancelActionChange}
@@ -1406,7 +1457,7 @@ function AgentConfigurePage({
       />
       <div>
         <h3 className="text-sm font-medium mb-3">API Keys</h3>
-        <KeysTab agentId={agentId} companyId={companyId} />
+        <KeysTab agentId={agentId} companyId={companyId} readOnly={readOnly} />
       </div>
 
       {/* Configuration Revisions — collapsible at the bottom */}
@@ -1443,7 +1494,7 @@ function AgentConfigurePage({
                         variant="outline"
                         className="h-7 px-2.5 text-xs"
                         onClick={() => rollbackConfig.mutate(revision.id)}
-                        disabled={rollbackConfig.isPending}
+                        disabled={readOnly || rollbackConfig.isPending}
                       >
                         Restore
                       </Button>
@@ -1468,6 +1519,7 @@ function AgentConfigurePage({
 function ConfigurationTab({
   agent,
   companyId,
+  readOnly,
   onDirtyChange,
   onSaveActionChange,
   onCancelActionChange,
@@ -1478,6 +1530,7 @@ function ConfigurationTab({
 }: {
   agent: AgentDetailRecord;
   companyId?: string;
+  readOnly?: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onSaveActionChange: (save: (() => void) | null) => void;
   onCancelActionChange: (cancel: (() => void) | null) => void;
@@ -1550,6 +1603,10 @@ function ConfigurationTab({
 
   return (
     <div className="space-y-6">
+      <fieldset
+        disabled={readOnly}
+        className="min-w-0 space-y-6 border-0 p-0 m-0 disabled:[&_button]:pointer-events-none"
+      >
       <AgentConfigForm
         mode="edit"
         agent={agent}
@@ -1567,7 +1624,7 @@ function ConfigurationTab({
 
       <div>
         <h3 className="text-sm font-medium mb-3">Permissions</h3>
-        <div className="border border-border rounded-lg p-4 space-y-4">
+        <div className={cn("border border-border rounded-lg p-4 space-y-4", readOnly && "text-muted-foreground")}>
           <div className="flex items-center justify-between gap-4 text-sm">
             <div className="space-y-1">
               <div>Can create new agents</div>
@@ -1581,7 +1638,7 @@ function ConfigurationTab({
               data-slot="toggle"
               aria-checked={canCreateAgents}
               className={cn(
-                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50",
+                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 disabled:cursor-not-allowed",
                 canCreateAgents ? "bg-green-600" : "bg-muted",
               )}
               onClick={() =>
@@ -1613,7 +1670,7 @@ function ConfigurationTab({
               data-slot="toggle"
               aria-checked={canAssignTasks}
               className={cn(
-                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50",
+                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 disabled:cursor-not-allowed",
                 canAssignTasks ? "bg-green-600" : "bg-muted",
               )}
               onClick={() =>
@@ -1634,6 +1691,7 @@ function ConfigurationTab({
           </div>
         </div>
       </div>
+      </fieldset>
     </div>
   );
 }
@@ -1643,6 +1701,7 @@ function ConfigurationTab({
 function PromptsTab({
   agent,
   companyId,
+  readOnly,
   onDirtyChange,
   onSaveActionChange,
   onCancelActionChange,
@@ -1650,6 +1709,7 @@ function PromptsTab({
 }: {
   agent: Agent;
   companyId?: string;
+  readOnly?: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onSaveActionChange: (save: (() => void) | null) => void;
   onCancelActionChange: (cancel: (() => void) | null) => void;
@@ -1658,6 +1718,7 @@ function PromptsTab({
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   const { isMobile } = useSidebar();
+  const ro = readOnly === true;
   const [selectedFile, setSelectedFile] = useState<string>("AGENTS.md");
   const [showFilePanel, setShowFilePanel] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
@@ -1693,6 +1754,13 @@ function PromptsTab({
     lastFileVersionRef.current = null;
     externalBundleRef.current = null;
   }, [agent.id]);
+
+  useEffect(() => {
+    if (!ro) return;
+    onSaveActionChange(null);
+    onCancelActionChange(null);
+    onDirtyChange(false);
+  }, [ro, onSaveActionChange, onCancelActionChange, onDirtyChange]);
 
   const isLocal =
     agent.adapterType === "claude_local" ||
@@ -1876,9 +1944,19 @@ function PromptsTab({
   const isSaving = updateBundle.isPending || saveFile.isPending || deleteFile.isPending || awaitingRefresh;
 
   useEffect(() => { onSavingChange(isSaving); }, [onSavingChange, isSaving]);
-  useEffect(() => { onDirtyChange(isDirty); }, [onDirtyChange, isDirty]);
+  useEffect(() => {
+    if (ro) {
+      onDirtyChange(false);
+      return;
+    }
+    onDirtyChange(isDirty);
+  }, [ro, onDirtyChange, isDirty]);
 
   useEffect(() => {
+    if (ro) {
+      onSaveActionChange(null);
+      return;
+    }
     onSaveActionChange(isDirty ? () => {
       const save = async () => {
         const shouldClearLegacy =
@@ -1901,6 +1979,7 @@ function PromptsTab({
       void save().catch(() => undefined);
     } : null);
   }, [
+    ro,
     bundle,
     bundleDirty,
     bundleDraft,
@@ -1914,6 +1993,10 @@ function PromptsTab({
   ]);
 
   useEffect(() => {
+    if (ro) {
+      onCancelActionChange(null);
+      return;
+    }
     onCancelActionChange(isDirty ? () => {
       setDraft(null);
       if (bundle) {
@@ -1924,7 +2007,7 @@ function PromptsTab({
         });
       }
     } : null);
-  }, [bundle, isDirty, onCancelActionChange, persistedMode, persistedRootPath]);
+  }, [ro, bundle, isDirty, onCancelActionChange, persistedMode, persistedRootPath]);
 
   const handleSeparatorDrag = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -2014,6 +2097,7 @@ function PromptsTab({
                       });
                       setSelectedFile(nextEntryFile);
                     }}
+                    disabled={ro}
                   >
                     Managed
                   </Button>
@@ -2031,6 +2115,7 @@ function PromptsTab({
                       });
                       setSelectedFile(externalBundle?.selectedFile ?? nextEntryFile);
                     }}
+                    disabled={ro}
                   >
                     External
                   </Button>
@@ -2076,6 +2161,7 @@ function PromptsTab({
                       }}
                       className="font-mono text-sm"
                       placeholder="/absolute/path/to/agent/prompts"
+                      readOnly={ro}
                     />
                     {currentRootPath && (
                       <CopyText text={currentRootPath} className="shrink-0">
@@ -2119,6 +2205,7 @@ function PromptsTab({
                     });
                   }}
                   className="font-mono text-sm"
+                  readOnly={ro}
                 />
               </label>
             </div>
@@ -2135,7 +2222,7 @@ function PromptsTab({
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-medium">Files</h4>
             <div className="flex items-center gap-1">
-              {!showNewFileInput && (
+              {!showNewFileInput && !ro && (
                 <Button
                   type="button"
                   size="icon"
@@ -2253,7 +2340,7 @@ function PromptsTab({
         </div>
 
         {/* Draggable separator */}
-        {!isMobile && (
+        {!isMobile && !ro && (
           <div
             className="w-1 shrink-0 cursor-col-resize hover:bg-border active:bg-primary/50 rounded transition-colors mx-1"
             onMouseDown={handleSeparatorDrag}
@@ -2300,7 +2387,7 @@ function PromptsTab({
                     });
                   }
                 }}
-                disabled={deleteFile.isPending}
+                disabled={deleteFile.isPending || ro}
               >
                 Delete
               </Button>
@@ -2310,6 +2397,13 @@ function PromptsTab({
           {selectedFileExists && fileLoading && !selectedFileDetail ? (
             <PromptEditorSkeleton />
           ) : isMarkdown(selectedOrEntryFile) ? (
+            ro ? (
+              <div className="min-h-[420px] max-h-[70vh] overflow-auto rounded-md border border-border bg-muted/15 px-3 py-2 text-sm">
+                <MarkdownBody className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                  {displayValue}
+                </MarkdownBody>
+              </div>
+            ) : (
             <MarkdownEditor
               key={selectedOrEntryFile}
               value={displayValue}
@@ -2322,6 +2416,11 @@ function PromptsTab({
                 return asset.contentPath;
               }}
             />
+            )
+          ) : ro ? (
+            <pre className="min-h-[420px] w-full overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/15 px-3 py-2 font-mono text-sm">
+              {displayValue}
+            </pre>
           ) : (
             <textarea
               value={displayValue}
@@ -2394,9 +2493,11 @@ function PromptEditorSkeleton() {
 function AgentSkillsTab({
   agent,
   companyId,
+  readOnly,
 }: {
   agent: Agent;
   companyId?: string;
+  readOnly?: boolean;
 }) {
   type SkillRow = {
     id: string;
@@ -2411,6 +2512,7 @@ function AgentSkillsTab({
     adapterEntry: AgentSkillEntry | null;
   };
 
+  const skillsTabReadOnly = readOnly === true;
   const queryClient = useQueryClient();
   const [skillDraft, setSkillDraft] = useState<string[]>([]);
   const [lastSavedSkills, setLastSavedSkills] = useState<string[]>([]);
@@ -2470,6 +2572,7 @@ function AgentSkillsTab({
 
   useEffect(() => {
     if (!skillSnapshot) return;
+    if (skillsTabReadOnly) return;
     if (skipNextSkillAutosaveRef.current) {
       skipNextSkillAutosaveRef.current = false;
       return;
@@ -2484,7 +2587,7 @@ function AgentSkillsTab({
     }, 250);
 
     return () => window.clearTimeout(timeout);
-  }, [skillDraft, skillSnapshot, syncSkills.isPending, syncSkills.mutate]);
+  }, [skillDraft, skillSnapshot, syncSkills.isPending, syncSkills.mutate, skillsTabReadOnly]);
 
   const companySkillByKey = useMemo(
     () => new Map((companySkills ?? []).map((skill) => [skill.key, skill])),
@@ -2672,7 +2775,7 @@ function AgentSkillsTab({
               }
 
               const checked = required || skillDraft.includes(skill.key);
-              const disabled = required || skillSnapshot?.mode === "unsupported";
+              const disabled = required || skillSnapshot?.mode === "unsupported" || skillsTabReadOnly;
               const checkbox = (
                 <input
                   type="checkbox"
@@ -2855,6 +2958,7 @@ function RunsTab({
   agentRouteId,
   selectedRunId,
   adapterType,
+  readOnly,
 }: {
   runs: HeartbeatRun[];
   companyId: string;
@@ -2862,6 +2966,7 @@ function RunsTab({
   agentRouteId: string;
   selectedRunId: string | null;
   adapterType: string;
+  readOnly?: boolean;
 }) {
   const { isMobile } = useSidebar();
 
@@ -2890,7 +2995,7 @@ function RunsTab({
             <ArrowLeft className="h-3.5 w-3.5" />
             Back to runs
           </Link>
-          <RunDetail key={selectedRun.id} run={selectedRun} agentRouteId={agentRouteId} adapterType={adapterType} />
+          <RunDetail key={selectedRun.id} run={selectedRun} agentRouteId={agentRouteId} adapterType={adapterType} readOnly={readOnly} />
         </div>
       );
     }
@@ -2921,7 +3026,7 @@ function RunsTab({
       {/* Right: run detail — natural height, page scrolls */}
       {selectedRun && (
         <div className="flex-1 min-w-0 pl-4">
-          <RunDetail key={selectedRun.id} run={selectedRun} agentRouteId={agentRouteId} adapterType={adapterType} />
+          <RunDetail key={selectedRun.id} run={selectedRun} agentRouteId={agentRouteId} adapterType={adapterType} readOnly={readOnly} />
         </div>
       )}
     </div>
@@ -2930,7 +3035,7 @@ function RunsTab({
 
 /* ---- Run Detail (expanded) ---- */
 
-function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: HeartbeatRun; agentRouteId: string; adapterType: string }) {
+function RunDetail({ run: initialRun, agentRouteId, adapterType, readOnly }: { run: HeartbeatRun; agentRouteId: string; adapterType: string; readOnly?: boolean }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: hydratedRun } = useQuery({
@@ -2939,6 +3044,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
     enabled: Boolean(initialRun.id),
   });
   const run = hydratedRun ?? initialRun;
+  const runDetailReadOnly = readOnly === true;
   const metrics = runMetrics(run);
   const [sessionOpen, setSessionOpen] = useState(false);
   const [claudeLoginResult, setClaudeLoginResult] = useState<ClaudeLoginResult | null>(null);
@@ -3094,7 +3200,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                   size="sm"
                   className="text-destructive hover:text-destructive text-xs h-6 px-2"
                   onClick={() => cancelRun.mutate()}
-                  disabled={cancelRun.isPending}
+                  disabled={cancelRun.isPending || runDetailReadOnly}
                 >
                   {cancelRun.isPending ? "Cancelling…" : "Cancel"}
                 </Button>
@@ -3105,7 +3211,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                   size="sm"
                   className="text-xs h-6 px-2"
                   onClick={() => resumeRun.mutate()}
-                  disabled={resumeRun.isPending}
+                  disabled={resumeRun.isPending || runDetailReadOnly}
                 >
                   <RotateCcw className="h-3.5 w-3.5 mr-1" />
                   {resumeRun.isPending ? "Resuming…" : "Resume"}
@@ -3117,7 +3223,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                   size="sm"
                   className="text-xs h-6 px-2"
                   onClick={() => retryRun.mutate()}
-                  disabled={retryRun.isPending}
+                  disabled={retryRun.isPending || runDetailReadOnly}
                 >
                   <RotateCcw className="h-3.5 w-3.5 mr-1" />
                   {retryRun.isPending ? "Retrying…" : "Retry"}
@@ -3165,7 +3271,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                   size="sm"
                   className="h-7 px-2 text-xs"
                   onClick={() => runClaudeLogin.mutate()}
-                  disabled={runClaudeLogin.isPending}
+                  disabled={runClaudeLogin.isPending || runDetailReadOnly}
                 >
                   {runClaudeLogin.isPending ? "Running claude login..." : "Login to Claude Code"}
                 </Button>
@@ -3266,7 +3372,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType }: { run: Heartb
                     <button
                       type="button"
                       className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-60"
-                      disabled={clearSessionsForTouchedIssues.isPending}
+                      disabled={clearSessionsForTouchedIssues.isPending || runDetailReadOnly}
                       onClick={() => {
                         const issueCount = touchedIssueIds.length;
                         const confirmed = window.confirm(
@@ -3707,15 +3813,20 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
     queryFn: () => instanceSettingsApi.getGeneral(),
   }).data?.censorUsernameInLogs === true;
 
-  const adapterInvokePayload = useMemo(() => {
-    const evt = events.find((e) => e.eventType === "adapter.invoke");
-    return redactPathValue(asRecord(evt?.payload ?? null), censorUsernameInLogs);
-  }, [censorUsernameInLogs, events]);
-
   const adapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
   const transcript = useMemo(
     () => buildTranscript(logLines, adapter.parseStdoutLine, { censorUsernameInLogs }),
     [adapter, censorUsernameInLogs, logLines],
+  );
+  const visibleEvents = useMemo(
+    () => events.filter((evt) => {
+      // UI-only hide: suppress verbose adapter invocation logs.
+      if (evt.eventType === "adapter.invoke") return false;
+      const message = evt.message ?? "";
+      const payloadText = evt.payload ? JSON.stringify(evt.payload) : "";
+      return !hasUiPathLikeText(message) && !hasUiPathLikeText(payloadText);
+    }),
+    [events],
   );
 
   useEffect(() => {
@@ -3744,74 +3855,12 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
 
   return (
     <div className="space-y-3">
+      {/* UI-only hide: workspace operation logs frequently contain file paths and cwd details. */}
       <WorkspaceOperationsSection
-        operations={workspaceOperations}
+        operations={[]}
         censorUsernameInLogs={censorUsernameInLogs}
       />
-      {adapterInvokePayload && (
-        <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">Invocation</div>
-          {typeof adapterInvokePayload.adapterType === "string" && (
-            <div className="text-xs"><span className="text-muted-foreground">Adapter: </span>{displayBrandSafe(adapterInvokePayload.adapterType)}</div>
-          )}
-          {typeof adapterInvokePayload.cwd === "string" && (
-            <div className="text-xs break-all"><span className="text-muted-foreground">Working dir: </span><span className="font-mono">{displayBrandSafe(adapterInvokePayload.cwd)}</span></div>
-          )}
-          {typeof adapterInvokePayload.command === "string" && (
-            <div className="text-xs break-all">
-              <span className="text-muted-foreground">Command: </span>
-              <span className="font-mono">
-                {displayBrandSafe([
-                  adapterInvokePayload.command,
-                  ...(Array.isArray(adapterInvokePayload.commandArgs)
-                    ? adapterInvokePayload.commandArgs.filter((v): v is string => typeof v === "string")
-                    : []),
-                ].join(" "))}
-              </span>
-            </div>
-          )}
-          {Array.isArray(adapterInvokePayload.commandNotes) && adapterInvokePayload.commandNotes.length > 0 && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Command notes</div>
-              <ul className="list-disc pl-5 space-y-1">
-                {adapterInvokePayload.commandNotes
-                  .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-                  .map((note, idx) => (
-                    <li key={`${idx}-${note}`} className="text-xs break-all font-mono">
-                      {displayBrandSafe(note)}
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          )}
-          {adapterInvokePayload.prompt !== undefined && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Prompt</div>
-              <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap">
-                {typeof adapterInvokePayload.prompt === "string"
-                  ? displayBrandSafe(redactPathText(adapterInvokePayload.prompt, censorUsernameInLogs))
-                  : displayBrandSafe(JSON.stringify(redactPathValue(adapterInvokePayload.prompt, censorUsernameInLogs), null, 2) ?? "")}
-              </pre>
-            </div>
-          )}
-          {adapterInvokePayload.context !== undefined && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Context</div>
-              <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap">
-                {displayBrandSafe(JSON.stringify(redactPathValue(adapterInvokePayload.context, censorUsernameInLogs), null, 2) ?? "")}
-              </pre>
-            </div>
-          )}
-          {adapterInvokePayload.env !== undefined && (
-            <div>
-              <div className="text-xs text-muted-foreground mb-1">Environment</div>
-              <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap font-mono">
-                {displayBrandSafe(formatEnvForDisplay(adapterInvokePayload.env, censorUsernameInLogs))}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
+      {/* UI-only hide: invocation details include cwd/command/context paths. */}
 
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
@@ -3912,11 +3961,11 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
         </div>
       )}
 
-      {events.length > 0 && (
+      {visibleEvents.length > 0 && (
         <div>
-          <div className="mb-2 text-xs font-medium text-muted-foreground">Events ({events.length})</div>
+          <div className="mb-2 text-xs font-medium text-muted-foreground">Events ({visibleEvents.length})</div>
           <div className="bg-neutral-100 dark:bg-neutral-950 rounded-lg p-3 font-mono text-xs space-y-0.5">
-            {events.map((evt) => {
+            {visibleEvents.map((evt) => {
               const color = evt.color
                 ?? (evt.level ? levelColors[evt.level] : null)
                 ?? (evt.stream ? streamColors[evt.stream] : null)
@@ -3949,8 +3998,9 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
 
 /* ---- Keys Tab ---- */
 
-function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }) {
+function KeysTab({ agentId, companyId, readOnly }: { agentId: string; companyId?: string; readOnly?: boolean }) {
   const queryClient = useQueryClient();
+  const ro = readOnly === true;
   const [newKeyName, setNewKeyName] = useState("");
   const [newToken, setNewToken] = useState<string | null>(null);
   const [tokenVisible, setTokenVisible] = useState(false);
@@ -4044,8 +4094,9 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
             className="h-8 text-sm"
+            readOnly={ro}
             onKeyDown={(e) => {
-              if (e.key === "Enter") createKey.mutate();
+              if (e.key === "Enter" && !ro) createKey.mutate();
             }}
           />
           <Button
@@ -4053,7 +4104,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
             className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
             style={{ backgroundColor: "#6569E1" }}
             onClick={() => createKey.mutate()}
-            disabled={createKey.isPending}
+            disabled={createKey.isPending || ro}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
             Create
@@ -4087,7 +4138,7 @@ function KeysTab({ agentId, companyId }: { agentId: string; companyId?: string }
                   size="sm"
                   className="text-destructive hover:text-destructive text-xs"
                   onClick={() => revokeKey.mutate(key.id)}
-                  disabled={revokeKey.isPending}
+                  disabled={revokeKey.isPending || ro}
                 >
                   Revoke
                 </Button>

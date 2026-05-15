@@ -61,16 +61,13 @@ server:
   database:
     externalUrl: ""
   # Extra environment variables
-  # SMTP for notification / invite emails. MAIL FROM is sent as MAIL FROM:<SMTP_FROM>, so
-  # SMTP_FROM must be a bare email address (addr@domain). A display name alone causes 501 Bad sender address syntax.
+  # Outbound email via Microsoft Graph (application permissions: Mail.Send, admin-consented).
+  # Set values via CI --set-string or Kubernetes secrets; do not commit client secrets.
   extraEnv:
-    SMTP_HOST: smtp.agentmail.to
-    SMTP_PORT: "465"
-    # Same mailbox you authenticate as (SMTP_USER) unless your provider allows a separate verified From.
-    SMTP_FROM: "support@ai-harness.com"
-    SMTP_SECURE: "true"
-    SMTP_USER: "support@ai-harness.com"
-    SMTP_PASS: "am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9"
+    MS_TENANT_ID: ""
+    MS_CLIENT_ID: ""
+    MS_CLIENT_SECRET: ""
+    MS_SENDER_EMAIL: ""
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID: "sample"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET: "sample"
     AI_HARNESS_AUTH_MICROSOFT_TENANT_ID: "sample"

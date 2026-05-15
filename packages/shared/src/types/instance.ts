@@ -4,6 +4,8 @@ export interface InstanceGeneralSettings {
   censorUsernameInLogs: boolean;
   keyboardShortcuts: boolean;
   feedbackDataSharingPreference: FeedbackDataSharingPreference;
+  /** Prepaid instance credit (USD cents). */
+  billingPrepaidCents: number;
 }
 
 export interface InstanceExperimentalSettings {

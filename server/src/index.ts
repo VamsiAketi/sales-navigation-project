@@ -27,6 +27,7 @@ import {
 } from "@paperclipai/db";
 import detectPort from "detect-port";
 import { createApp } from "./app.js";
+import { getStripeFromConfig } from "./stripe-client.js";
 import { parseMicrosoftSsoAutoProvisionFromEnv } from "./auth/microsoft-sso-provision.js";
 import { loadConfig } from "./config.js";
 import { logger } from "./middleware/logger.js";
@@ -37,6 +38,7 @@ import {
   reconcilePersistedRuntimeServicesOnStartup,
   routineService,
 } from "./services/index.js";
+import { runStripeBillingReconciliation, stripeSecretsFromEnv } from "./services/stripe-billing.js";
 import { createFeedbackTraceShareClientFromConfig } from "./services/feedback-share-client.js";
 import { createStorageServiceFromConfig } from "./storage/index.js";
 import { printStartupBanner } from "./startup-banner.js";
@@ -733,6 +735,21 @@ export async function startServer(): Promise<StartedServer> {
     setInterval(() => {
       void runScheduledBackup();
     }, backupIntervalMs);
+  }
+
+  if (config.stripeReconciliationEnabled) {
+    const { stripeSecretKey } = stripeSecretsFromEnv();
+    if (stripeSecretKey) {
+      const stripe = getStripeFromConfig({ stripeSecretKey });
+      if (stripe) {
+        setInterval(() => {
+          void runStripeBillingReconciliation({ db: db as any, stripe })
+            .catch((err) => {
+              logger.error({ err }, "stripe reconciliation tick failed");
+            });
+        }, config.stripeReconciliationIntervalMs);
+      }
+    }
   }
   
   await new Promise<void>((resolveListen, rejectListen) => {

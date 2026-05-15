@@ -34,6 +34,7 @@ import { mentionDeletionPlugin } from "../lib/mention-deletion";
 import { projectStatusSwatchClass } from "../lib/status-colors";
 import { cn } from "../lib/utils";
 import { displayBrandSafe } from "../lib/displayBrandSafe";
+import { markdownTokenForUploadedIssueFile } from "../lib/issue-attachment-file-accept";
 
 /* ---- Mention types ---- */
 
@@ -60,6 +61,7 @@ interface MarkdownEditorProps {
   className?: string;
   contentClassName?: string;
   onBlur?: () => void;
+  /** Upload issue attachment (any allowed MIME); images become `![](url)`, other files `[name](url)`. */
   imageUploadHandler?: (file: File) => Promise<string>;
   bordered?: boolean;
   /** List of mentionable entities. Enables @-mention autocomplete. */
@@ -70,6 +72,8 @@ interface MarkdownEditorProps {
 
 export interface MarkdownEditorRef {
   focus: () => void;
+  /** Inserts markdown at the current selection and syncs the controlled `value` via `onChange`. */
+  insertMarkdown: (markdown: string) => void;
 }
 
 function escapeRegExp(value: string): string {
@@ -209,11 +213,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
   const latestValueRef = useRef(value);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [fileDropBusy, setFileDropBusy] = useState(false);
   const dragDepthRef = useRef(0);
 
   // Stable ref for imageUploadHandler so plugins don't recreate on every render
   const imageUploadHandlerRef = useRef(imageUploadHandler);
   imageUploadHandlerRef.current = imageUploadHandler;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   // Mention state (ref kept in sync so callbacks always see the latest value)
   const [mentionState, setMentionState] = useState<MentionState | null>(null);
@@ -246,6 +253,20 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
   useImperativeHandle(forwardedRef, () => ({
     focus: () => {
       ref.current?.focus(undefined, { defaultSelection: "rootEnd" });
+    },
+    insertMarkdown: (md: string) => {
+      const instance = ref.current;
+      if (!instance || !md.trim()) return;
+      const root = containerRef.current;
+      const active = document.activeElement;
+      const editorFocused = Boolean(root && active && root.contains(active));
+      if (!editorFocused) {
+        instance.focus(undefined, { defaultSelection: "rootEnd" });
+      }
+      instance.insertMarkdown(md);
+      const next = instance.getMarkdown();
+      latestValueRef.current = next;
+      onChangeRef.current(next);
     },
   }), []);
 
@@ -289,7 +310,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
             }, 100);
             return src;
           } catch (err) {
-            const message = err instanceof Error ? err.message : "Image upload failed";
+            const message = err instanceof Error ? err.message : "Upload failed";
             setUploadError(message);
             throw err;
           }
@@ -491,7 +512,42 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
     return Array.from(evt.dataTransfer?.types ?? []).includes("Files");
   }
 
-  const canDropImage = Boolean(imageUploadHandler);
+  const canDropFiles = Boolean(imageUploadHandler);
+
+  const handleDroppedFiles = useCallback(async (e: DragEvent<HTMLDivElement>) => {
+    const handler = imageUploadHandlerRef.current;
+    if (!handler) return;
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDragOver(false);
+
+    setFileDropBusy(true);
+    setUploadError(null);
+    try {
+      const pieces: string[] = [];
+      for (const file of files) {
+        const url = await handler(file);
+        pieces.push(markdownTokenForUploadedIssueFile(file, url));
+      }
+      const block = pieces.join("\n\n");
+      const cur = latestValueRef.current.trimEnd();
+      const next = cur ? `${cur}\n\n${block}\n\n` : `${block}\n\n`;
+      latestValueRef.current = next;
+      ref.current?.setMarkdown(next);
+      onChangeRef.current(next);
+      requestAnimationFrame(() => {
+        ref.current?.focus(undefined, { defaultSelection: "rootEnd" });
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "File upload failed";
+      setUploadError(message);
+    } finally {
+      setFileDropBusy(false);
+    }
+  }, []);
 
   return (
     <div
@@ -499,9 +555,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       className={cn(
         "relative paperclip-mdxeditor-scope",
         bordered ? "rounded-md border border-border bg-transparent" : "bg-transparent",
-        isDragOver && "ring-1 ring-primary/60 bg-accent/20",
+        (isDragOver || fileDropBusy) && "ring-1 ring-primary/60 bg-accent/20",
         className,
       )}
+      onDropCapture={(e) => {
+        if (!imageUploadHandlerRef.current || !e.dataTransfer?.files?.length) return;
+        void handleDroppedFiles(e);
+      }}
       onKeyDownCapture={(e) => {
         // Cmd/Ctrl+Enter to submit
         if (onSubmit && e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -551,17 +611,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
         }
       }}
       onDragEnter={(evt) => {
-        if (!canDropImage || !hasFilePayload(evt)) return;
+        if (!canDropFiles || !hasFilePayload(evt)) return;
         dragDepthRef.current += 1;
         setIsDragOver(true);
       }}
       onDragOver={(evt) => {
-        if (!canDropImage || !hasFilePayload(evt)) return;
+        if (!canDropFiles || !hasFilePayload(evt)) return;
         evt.preventDefault();
         evt.dataTransfer.dropEffect = "copy";
       }}
       onDragLeave={() => {
-        if (!canDropImage) return;
+        if (!canDropFiles) return;
         dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
         if (dragDepthRef.current === 0) setIsDragOver(false);
       }}
@@ -646,14 +706,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
         </div>
       )}
 
-      {isDragOver && canDropImage && (
+      {(isDragOver || fileDropBusy) && canDropFiles && (
         <div
           className={cn(
             "pointer-events-none absolute inset-1 z-40 flex items-center justify-center rounded-md border border-dashed border-primary/80 bg-primary/10 text-xs font-medium text-primary",
             !bordered && "inset-0 rounded-sm",
           )}
         >
-          Drop image to upload
+          {fileDropBusy ? "Uploading…" : "Drop files to upload"}
         </div>
       )}
       {uploadError && (

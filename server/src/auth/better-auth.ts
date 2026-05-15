@@ -140,7 +140,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         if (delivery.status === "skipped") {
           logger.warn(
             { email, reason: delivery.message, url: params.url },
-            "Better Auth: SMTP not configured; reset password email not delivered",
+            "Better Auth: outbound email not configured; reset password email not delivered",
           );
           return;
         }
@@ -213,7 +213,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
           if (delivery.status === "skipped") {
             logger.warn(
               { email, reason: delivery.message, type: input.type, otp: input.otp },
-              "Better Auth: SMTP not configured; sign-in OTP email not delivered",
+              "Better Auth: outbound email not configured; sign-in OTP email not delivered",
             );
             return;
           }

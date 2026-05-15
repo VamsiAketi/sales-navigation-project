@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectsApi } from "../api/projects";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -54,6 +55,14 @@ export function Projects() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canCreateProjects = sidebarBadges?.canCreateProjects ?? false;
+
   const projects = useMemo(() => {
     let list = (allProjects ?? []).filter((p) => !p.archivedAt);
     if (goalIdFilter) {
@@ -81,10 +90,12 @@ export function Projects() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-end">
-        <Button size="sm" variant="outline" onClick={openNewProject}>
-          <Plus className="h-4 w-4 mr-1" />
-          Add Project
-        </Button>
+        {canCreateProjects ? (
+          <Button size="sm" variant="outline" onClick={openNewProject}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Project
+          </Button>
+        ) : null}
       </div>
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
@@ -93,8 +104,7 @@ export function Projects() {
         <EmptyState
           icon={Hexagon}
           message="No projects yet."
-          action="Add Project"
-          onAction={openNewProject}
+          {...(canCreateProjects ? { action: "Add Project", onAction: openNewProject } : {})}
         />
       )}
 

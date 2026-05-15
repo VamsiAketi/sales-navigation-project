@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, ZoomIn, ZoomOut } from "lucide-react";
+import { Download, X, ZoomIn, ZoomOut } from "lucide-react";
 
 const ZOOM_STEP = 0.25;
 const ZOOM_MIN  = 0.5;
@@ -8,11 +8,14 @@ const ZOOM_MAX  = 4;
 export interface ImageLightboxState {
   src: string;
   alt: string;
+  /** When set, toolbar shows a download control (e.g. `?download=1` on issue attachment URLs). */
+  downloadHref?: string;
 }
 
 export function ImageLightbox({
   src,
   alt,
+  downloadHref,
   onClose,
 }: ImageLightboxState & { onClose: () => void }) {
   const [zoom, setZoom] = useState(1);
@@ -60,8 +63,7 @@ export function ImageLightbox({
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Title bar ────────────────────────────────────────────────────── */}
-        <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#222228] px-4 py-2">
-          {/* Zoom controls — left side */}
+        <div className="flex w-full shrink-0 items-center gap-2 border-b border-white/10 bg-[#222228] px-4 py-2">
           <div className="flex items-center gap-1">
             <button
               onClick={zoomOut}
@@ -86,21 +88,33 @@ export function ImageLightbox({
             </button>
           </div>
 
-          {/* Alt text / filename — center */}
-          {alt && (
-            <span className="max-w-[50%] truncate text-xs text-white/40 select-none">
-              {alt}
-            </span>
-          )}
+          <div className="flex min-w-0 flex-1 justify-center px-2">
+            {alt ? (
+              <span className="max-w-full truncate text-xs text-white/40 select-none">{alt}</span>
+            ) : null}
+          </div>
 
-          {/* Close — right */}
-          <button
-            onClick={onClose}
-            title="Close (Esc)"
-            className="flex h-7 w-7 items-center justify-center rounded text-white/60 hover:bg-white/10 hover:text-white transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {downloadHref ? (
+              <a
+                href={downloadHref}
+                download
+                rel="noreferrer"
+                title="Download"
+                className="flex h-7 w-7 items-center justify-center rounded text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Download className="h-3.5 w-3.5" />
+              </a>
+            ) : null}
+            <button
+              onClick={onClose}
+              title="Close (Esc)"
+              className="flex h-7 w-7 items-center justify-center rounded text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* ── Image area ───────────────────────────────────────────────────── */}

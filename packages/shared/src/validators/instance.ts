@@ -8,6 +8,8 @@ export const instanceGeneralSettingsSchema = z.object({
   feedbackDataSharingPreference: feedbackDataSharingPreferenceSchema.default(
     DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
   ),
+  /** Total prepaid account credit for the instance (USD cents). Drawn down by all companies' model-based usage. */
+  billingPrepaidCents: z.number().int().nonnegative().default(0),
 }).strict();
 
 export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema.partial();
