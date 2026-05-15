@@ -10,6 +10,11 @@ import { assetsApi } from "../api/assets";
 import { secretsApi } from "../api/secrets";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
+import {
+  buildTeamsHumanRoleIds,
+  teamsHumanRoleDisplayLabel,
+  TEAMS_BUILTIN_HUMAN_ROLES,
+} from "../lib/company-team-human-roles";
 import { Button } from "@/components/ui/button";
 import type { CompanyProjectAccessMode } from "@paperclipai/shared";
 import { Settings, Check, Download, Upload, Shield } from "lucide-react";
@@ -86,7 +91,9 @@ export function CompanySettings() {
   const [projectAccessDraft, setProjectAccessDraft] = useState<CompanyProjectAccessMode>("open");
   const [ownerTransferDialogOpen, setOwnerTransferDialogOpen] = useState(false);
   const [selectedNewOwnerMemberId, setSelectedNewOwnerMemberId] = useState("");
-  const [selectedCurrentOwnerNextRole, setSelectedCurrentOwnerNextRole] = useState("admin");
+  const [selectedCurrentOwnerNextRole, setSelectedCurrentOwnerNextRole] = useState<string>(
+    TEAMS_BUILTIN_HUMAN_ROLES[0] ?? "Admin",
+  );
 
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
@@ -118,7 +125,19 @@ export function CompanySettings() {
     () => activeHumanMembers.filter((member) => member.id !== currentUserMember?.id),
     [activeHumanMembers, currentUserMember?.id],
   );
-  const ownerTransferRoleOptions = ["admin", "operator", "viewer", "member"] as const;
+
+  const teamsHumanRoleIdsForTransfer = useMemo(
+    () => buildTeamsHumanRoleIds(selectedCompanyId ?? null),
+    [selectedCompanyId],
+  );
+
+  useEffect(() => {
+    const roles = teamsHumanRoleIdsForTransfer;
+    if (roles.length === 0) return;
+    if (!roles.includes(selectedCurrentOwnerNextRole)) {
+      setSelectedCurrentOwnerNextRole(roles[0]!);
+    }
+  }, [teamsHumanRoleIdsForTransfer, selectedCurrentOwnerNextRole]);
 
   useEffect(() => {
     if (ownerTransferCandidates.length === 0) {
@@ -396,11 +415,11 @@ export function CompanySettings() {
   );
   const ownerNextRoleOptions = useMemo<InlineEntityOption[]>(
     () =>
-      ownerTransferRoleOptions.map((role) => ({
+      teamsHumanRoleIdsForTransfer.map((role) => ({
         id: role,
-        label: role.charAt(0).toUpperCase() + role.slice(1),
+        label: teamsHumanRoleDisplayLabel(role),
       })),
-    [ownerTransferRoleOptions],
+    [teamsHumanRoleIdsForTransfer],
   );
 
   return (
@@ -796,7 +815,7 @@ export function CompanySettings() {
               Result: <span className="font-medium text-foreground">{selectedNewOwnerLabel}</span> becomes{" "}
               <span className="font-medium text-foreground">Owner</span>, and you become{" "}
               <span className="font-medium text-foreground">
-                {selectedCurrentOwnerNextRole.charAt(0).toUpperCase() + selectedCurrentOwnerNextRole.slice(1)}
+                {teamsHumanRoleDisplayLabel(selectedCurrentOwnerNextRole)}
               </span>
               .
             </p>
@@ -999,7 +1018,7 @@ export function CompanySettings() {
               This action will make <span className="font-medium text-foreground">{selectedNewOwnerLabel}</span> the
               new Owner. Your role will change to{" "}
               <span className="font-medium text-foreground">
-                {selectedCurrentOwnerNextRole.charAt(0).toUpperCase() + selectedCurrentOwnerNextRole.slice(1)}
+                {teamsHumanRoleDisplayLabel(selectedCurrentOwnerNextRole)}
               </span>
               .
             </DialogDescription>

@@ -56,6 +56,7 @@ import {
 import { cn } from "@/lib/utils";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 import { authApi } from "../api/auth";
+import { COMPANY_ROLE_STORAGE_PREFIX, TEAMS_BUILTIN_HUMAN_ROLES } from "../lib/company-team-human-roles";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 type TeamSortKey = "displayName" | "principal" | "type" | "role" | "title" | "reportsTo" | "status";
@@ -70,7 +71,7 @@ function parseTeamTypeFilterFromTab(tab: string | null): TeamTypeFilter | null {
   return null;
 }
 
-const HUMAN_ROLE_OPTIONS = ["Admin", "Manager", "Contributor", "Reader"] as const;
+const HUMAN_ROLE_OPTIONS = TEAMS_BUILTIN_HUMAN_ROLES;
 
 const AGENT_ROLE_OPTIONS = [
   "SREEngineer",
@@ -87,7 +88,6 @@ const AGENT_ROLE_OPTIONS = [
   "ResearchEngineer"
 ] as const;
 
-const COMPANY_ROLE_STORAGE_PREFIX = "paperclip.companyRoles";
 const COMPANY_TITLE_STORAGE_PREFIX = "paperclip.companyTitles";
 const COMPANY_HUMAN_ROLE_PERMISSIONS_STORAGE_PREFIX = "paperclip.companyHumanRolePermissions";
 const DEFAULT_TITLE_OPTIONS = [
