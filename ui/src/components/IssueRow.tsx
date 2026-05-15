@@ -9,6 +9,10 @@ import { StatusIcon } from "./StatusIcon";
 import { ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS } from "../lib/issue-list-layout";
 
 type UnreadState = "hidden" | "visible" | "fading";
+type IssueRowTitleVars = CSSProperties & {
+  "--issue-row-title-width"?: string;
+  "--issue-row-title-min-width"?: string;
+};
 
 interface IssueRowProps {
   issue: Issue;
@@ -68,17 +72,17 @@ export function IssueRow({
   const showUnreadSlot = unreadState !== null;
   const showUnreadDot = unreadState === "visible" || unreadState === "fading";
   const showMobileLeading = mobileLeading !== false;
-  const desktopTitleVars = useMemo<CSSProperties | undefined>(() => {
+  const desktopTitleVars = useMemo<IssueRowTitleVars | undefined>(() => {
     if (!desktopTitleStyle) return undefined;
-    const vars: CSSProperties = {};
+    const vars: IssueRowTitleVars = {};
     if (desktopTitleStyle.width != null) {
-      vars["--issue-row-title-width" as keyof CSSProperties] =
+      vars["--issue-row-title-width"] =
         typeof desktopTitleStyle.width === "number"
           ? `${desktopTitleStyle.width}px`
           : desktopTitleStyle.width;
     }
     if (desktopTitleStyle.minWidth != null) {
-      vars["--issue-row-title-min-width" as keyof CSSProperties] =
+      vars["--issue-row-title-min-width"] =
         typeof desktopTitleStyle.minWidth === "number"
           ? `${desktopTitleStyle.minWidth}px`
           : desktopTitleStyle.minWidth;
