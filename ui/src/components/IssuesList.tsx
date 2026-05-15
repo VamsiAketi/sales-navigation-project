@@ -1186,7 +1186,7 @@ export function IssuesList({
               <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", statusFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
                 <span>Status</span>
                 {statusFilterCount > 0 && <span className="text-[10px] font-medium">{statusFilterCount}</span>}
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="hidden h-3.5 w-3.5 md:block" />
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -1379,7 +1379,7 @@ export function IssuesList({
               <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", priorityFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
                 <span>Priority</span>
                 {priorityFilterCount > 0 && <span className="text-[10px] font-medium">{priorityFilterCount}</span>}
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="hidden h-3.5 w-3.5 md:block" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-56 p-2">
@@ -1403,7 +1403,7 @@ export function IssuesList({
               <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", reporterFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
                 <span>Reporter</span>
                 {reporterFilterCount > 0 && <span className="text-[10px] font-medium">{reporterFilterCount}</span>}
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="hidden h-3.5 w-3.5 md:block" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-56 p-2">
@@ -1462,7 +1462,7 @@ export function IssuesList({
                 <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", labelFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
                   <span>Labels</span>
                   {labelFilterCount > 0 && <span className="text-[10px] font-medium">{labelFilterCount}</span>}
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  <ChevronDown className="hidden h-3.5 w-3.5 md:block" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-56 p-2">
@@ -1488,7 +1488,7 @@ export function IssuesList({
                 <Button variant="outline" size="sm" className={cn("h-9 gap-1.5 px-3 text-xs", projectFilterCount > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300")}>
                   <span>Project</span>
                   {projectFilterCount > 0 && <span className="text-[10px] font-medium">{projectFilterCount}</span>}
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  <ChevronDown className="hidden h-3.5 w-3.5 md:block" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-56 p-2">
