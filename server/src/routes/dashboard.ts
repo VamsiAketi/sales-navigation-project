@@ -16,11 +16,11 @@ export function dashboardRoutes(db: Db) {
     if (req.actor.type === "agent") {
       if (!req.actor.agentId) throw forbidden();
       const allowed = await access.hasPermission(companyId, "agent", req.actor.agentId, "command_center.read");
-      if (!allowed) throw forbidden("Permission denied");
+      if (!allowed) throw forbidden("Missing permission: command_center.read");
     } else if (req.actor.type === "board") {
       if (!(req.actor.source === "local_implicit" || req.actor.isInstanceAdmin)) {
         const allowed = await access.canUser(companyId, req.actor.userId, "command_center.read");
-        if (!allowed) throw forbidden("Permission denied");
+        if (!allowed) throw forbidden("Missing permission: command_center.read");
       }
     } else {
       throw unauthorized();

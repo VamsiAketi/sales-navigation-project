@@ -10,6 +10,11 @@ import { assetsApi } from "../api/assets";
 import { secretsApi } from "../api/secrets";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
+import {
+  buildTeamsHumanRoleIds,
+  teamsHumanRoleDisplayLabel,
+  TEAMS_BUILTIN_HUMAN_ROLES,
+} from "../lib/company-team-human-roles";
 import { Button } from "@/components/ui/button";
 import type { CompanyProjectAccessMode } from "@paperclipai/shared";
 import { Settings, Check, Download, Upload, Shield } from "lucide-react";
@@ -86,7 +91,9 @@ export function CompanySettings() {
   const [projectAccessDraft, setProjectAccessDraft] = useState<CompanyProjectAccessMode>("open");
   const [ownerTransferDialogOpen, setOwnerTransferDialogOpen] = useState(false);
   const [selectedNewOwnerMemberId, setSelectedNewOwnerMemberId] = useState("");
-  const [selectedCurrentOwnerNextRole, setSelectedCurrentOwnerNextRole] = useState("admin");
+  const [selectedCurrentOwnerNextRole, setSelectedCurrentOwnerNextRole] = useState<string>(
+    TEAMS_BUILTIN_HUMAN_ROLES[0] ?? "Admin",
+  );
 
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
@@ -109,11 +116,28 @@ export function CompanySettings() {
     [activeHumanMembers, currentUserId],
   );
   const isCurrentUserOwner = ((currentUserMember?.membershipRole ?? "").trim().toLowerCase() === "owner");
+  const isCurrentUserReaderOrgRole = useMemo(
+    () => (currentUserMember?.membershipRole ?? "").trim().toLowerCase() === "reader",
+    [currentUserMember?.membershipRole],
+  );
+  const canUseCompanyPackagesActions = canManageCompanySettingsPackages && !isCurrentUserReaderOrgRole;
   const ownerTransferCandidates = useMemo(
     () => activeHumanMembers.filter((member) => member.id !== currentUserMember?.id),
     [activeHumanMembers, currentUserMember?.id],
   );
-  const ownerTransferRoleOptions = ["admin", "operator", "viewer", "member"] as const;
+
+  const teamsHumanRoleIdsForTransfer = useMemo(
+    () => buildTeamsHumanRoleIds(selectedCompanyId ?? null),
+    [selectedCompanyId],
+  );
+
+  useEffect(() => {
+    const roles = teamsHumanRoleIdsForTransfer;
+    if (roles.length === 0) return;
+    if (!roles.includes(selectedCurrentOwnerNextRole)) {
+      setSelectedCurrentOwnerNextRole(roles[0]!);
+    }
+  }, [teamsHumanRoleIdsForTransfer, selectedCurrentOwnerNextRole]);
 
   useEffect(() => {
     if (ownerTransferCandidates.length === 0) {
@@ -391,11 +415,11 @@ export function CompanySettings() {
   );
   const ownerNextRoleOptions = useMemo<InlineEntityOption[]>(
     () =>
-      ownerTransferRoleOptions.map((role) => ({
+      teamsHumanRoleIdsForTransfer.map((role) => ({
         id: role,
-        label: role.charAt(0).toUpperCase() + role.slice(1),
+        label: teamsHumanRoleDisplayLabel(role),
       })),
-    [ownerTransferRoleOptions],
+    [teamsHumanRoleIdsForTransfer],
   );
 
   return (
@@ -454,83 +478,112 @@ export function CompanySettings() {
             <div className="flex-1 space-y-3">
               <Field
                 label="Logo"
-                hint="Upload a PNG, JPEG, WEBP, GIF, or SVG logo image."
+                hint={
+                  canManageCompanySettingsAppearance
+                    ? "Upload a PNG, JPEG, WEBP, GIF, or SVG logo image."
+                    : "Current logo for this company."
+                }
               >
-                <div className="space-y-2">
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                    disabled={!canManageCompanySettingsAppearance}
-                    onChange={handleLogoFileChange}
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
-                  />
-                  {logoUrl && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleClearLogo}
-                        disabled={clearLogoMutation.isPending || !canManageCompanySettingsAppearance}
-                      >
-                        {clearLogoMutation.isPending ? "Removing..." : "Remove logo"}
-                      </Button>
-                    </div>
-                  )}
-                  {(logoUploadMutation.isError || logoUploadError) && (
-                    <span className="text-xs text-destructive">
-                      {logoUploadError ??
-                        (logoUploadMutation.error instanceof Error
-                          ? logoUploadMutation.error.message
-                          : "Logo upload failed")}
-                    </span>
-                  )}
-                  {clearLogoMutation.isError && (
-                    <span className="text-xs text-destructive">
-                      {clearLogoMutation.error.message}
-                    </span>
-                  )}
-                  {logoUploadMutation.isPending && (
-                    <span className="text-xs text-muted-foreground">Uploading logo...</span>
-                  )}
-                </div>
+                {canManageCompanySettingsAppearance ? (
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                      onChange={handleLogoFileChange}
+                      className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
+                    />
+                    {logoUrl ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleClearLogo}
+                          disabled={clearLogoMutation.isPending}
+                        >
+                          {clearLogoMutation.isPending ? "Removing..." : "Remove logo"}
+                        </Button>
+                      </div>
+                    ) : null}
+                    {(logoUploadMutation.isError || logoUploadError) && (
+                      <span className="text-xs text-destructive">
+                        {logoUploadError ??
+                          (logoUploadMutation.error instanceof Error
+                            ? logoUploadMutation.error.message
+                            : "Logo upload failed")}
+                      </span>
+                    )}
+                    {clearLogoMutation.isError && (
+                      <span className="text-xs text-destructive">
+                        {clearLogoMutation.error.message}
+                      </span>
+                    )}
+                    {logoUploadMutation.isPending && (
+                      <span className="text-xs text-muted-foreground">Uploading logo...</span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {logoUrl
+                      ? "A custom logo is configured. The preview on the left reflects what the app uses."
+                      : "No custom logo. The icon uses the generated pattern from the company name."}
+                  </p>
+                )}
               </Field>
               <Field
                 label="Brand color"
-                hint="Sets the hue for the company icon. Leave empty for auto-generated color."
+                hint={
+                  canManageCompanySettingsAppearance
+                    ? "Sets the hue for the company icon. Leave empty for auto-generated color."
+                    : "Brand color applied to the company icon."
+                }
               >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={brandColor || "#6366f1"}
-                    disabled={!canManageCompanySettingsAppearance}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    className="h-8 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
-                  />
-                  <input
-                    type="text"
-                    value={brandColor}
-                    disabled={!canManageCompanySettingsAppearance}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "" || /^#[0-9a-fA-F]{0,6}$/.test(v)) {
-                        setBrandColor(v);
-                      }
-                    }}
-                    placeholder="Auto"
-                    className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
-                  />
-                  {brandColor && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={!canManageCompanySettingsAppearance}
-                      onClick={() => setBrandColor("")}
-                      className="text-xs text-muted-foreground"
-                    >
-                      Clear
-                    </Button>
-                  )}
-                </div>
+                {canManageCompanySettingsAppearance ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={brandColor || "#6366f1"}
+                      onChange={(e) => setBrandColor(e.target.value)}
+                      className="h-8 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
+                    />
+                    <input
+                      type="text"
+                      value={brandColor}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "" || /^#[0-9a-fA-F]{0,6}$/.test(v)) {
+                          setBrandColor(v);
+                        }
+                      }}
+                      placeholder="Auto"
+                      className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
+                    />
+                    {brandColor ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setBrandColor("")}
+                        className="text-xs text-muted-foreground"
+                      >
+                        Clear
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    {brandColor ? (
+                      <>
+                        <span
+                          className="h-7 w-7 shrink-0 rounded border border-border"
+                          style={{ backgroundColor: brandColor }}
+                          aria-hidden
+                        />
+                        <span className="font-mono text-foreground tabular-nums">{brandColor}</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">Auto (generated from company name)</span>
+                    )}
+                  </div>
+                )}
               </Field>
             </div>
           </div>
@@ -594,26 +647,27 @@ export function CompanySettings() {
               onChange={(e) => setNewSecretDescription(e.target.value)}
             />
             <div>
-              <Button
-                size="sm"
-                className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
-                style={{ backgroundColor: "#6569E1" }}
-                onClick={() =>
-                  createSecretMutation.mutate({
-                    name: newSecretName.trim(),
-                    value: newSecretValue,
-                    description: newSecretDescription.trim() || null,
-                  })
-                }
-                disabled={
-                  !canManageCompanySettingsSecrets ||
-                  createSecretMutation.isPending ||
-                  newSecretName.trim().length === 0 ||
-                  newSecretValue.length === 0
-                }
-              >
-                {createSecretMutation.isPending ? "Creating..." : "Create secret"}
-              </Button>
+              {canManageCompanySettingsSecrets ? (
+                <Button
+                  size="sm"
+                  className="text-white hover:brightness-105 active:brightness-95 disabled:opacity-100"
+                  style={{ backgroundColor: "#6569E1" }}
+                  onClick={() =>
+                    createSecretMutation.mutate({
+                      name: newSecretName.trim(),
+                      value: newSecretValue,
+                      description: newSecretDescription.trim() || null,
+                    })
+                  }
+                  disabled={
+                    createSecretMutation.isPending ||
+                    newSecretName.trim().length === 0 ||
+                    newSecretValue.length === 0
+                  }
+                >
+                  {createSecretMutation.isPending ? "Creating..." : "Create secret"}
+                </Button>
+              ) : null}
             </div>
             {createSecretMutation.isError && (
               <span className="text-xs text-destructive">
@@ -639,19 +693,21 @@ export function CompanySettings() {
                       {secret.description ?? "No description"}
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-destructive"
-                    disabled={deleteSecretMutation.isPending || !canManageCompanySettingsSecrets}
-                    onClick={() => {
-                      const confirmed = window.confirm(`Delete secret "${secret.name}"?`);
-                      if (!confirmed) return;
-                      deleteSecretMutation.mutate(secret.id);
-                    }}
-                  >
-                    Delete
-                  </Button>
+                  {canManageCompanySettingsSecrets ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 text-destructive"
+                      disabled={deleteSecretMutation.isPending}
+                      onClick={() => {
+                        const confirmed = window.confirm(`Delete secret "${secret.name}"?`);
+                        if (!confirmed) return;
+                        deleteSecretMutation.mutate(secret.id);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  ) : null}
                 </div>
               ))
             )}
@@ -683,24 +739,34 @@ export function CompanySettings() {
           </div>
           <Field
             label="Project access mode"
-            hint="Applies to every project in this company. New projects still grant full access to their creator while restricted."
+            hint={
+              canManageCompanySettingsSecurityAccess
+                ? "Applies to every project in this company. New projects still grant full access to their creator while restricted."
+                : "Current policy for this company."
+            }
           >
-            <select
-              className="w-full max-w-md rounded-md border border-border bg-background px-2.5 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
-              value={projectAccessDraft}
-              disabled={!canManageCompanySettingsSecurityAccess}
-              onChange={(e) => {
-                const nextMode = e.target.value as CompanyProjectAccessMode;
-                setProjectAccessDraft(nextMode);
-                if (!canManageCompanySettingsSecurityAccess) return;
-                if (!selectedCompanyId) return;
-                if (nextMode === (selectedCompany?.projectAccessMode ?? "open")) return;
-                projectAccessMutation.mutate(nextMode);
-              }}
-            >
-              <option value="open">Open, all company members see all projects</option>
-              <option value="restricted">Restricted, per-project grants required</option>
-            </select>
+            {canManageCompanySettingsSecurityAccess ? (
+              <select
+                className="w-full max-w-md rounded-md border border-border bg-background px-2.5 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+                value={projectAccessDraft}
+                onChange={(e) => {
+                  const nextMode = e.target.value as CompanyProjectAccessMode;
+                  setProjectAccessDraft(nextMode);
+                  if (!selectedCompanyId) return;
+                  if (nextMode === (selectedCompany?.projectAccessMode ?? "open")) return;
+                  projectAccessMutation.mutate(nextMode);
+                }}
+              >
+                <option value="open">Open, all company members see all projects</option>
+                <option value="restricted">Restricted, per-project grants required</option>
+              </select>
+            ) : (
+              <p className="text-sm text-foreground">
+                {(selectedCompany?.projectAccessMode ?? projectAccessDraft) === "restricted"
+                  ? "Restricted, per-project grants are required."
+                  : "Open, all company members see all projects."}
+              </p>
+            )}
           </Field>
           {projectAccessMutation.isPending ? (
             <span className="text-xs text-muted-foreground">Saving project access policy…</span>
@@ -749,7 +815,7 @@ export function CompanySettings() {
               Result: <span className="font-medium text-foreground">{selectedNewOwnerLabel}</span> becomes{" "}
               <span className="font-medium text-foreground">Owner</span>, and you become{" "}
               <span className="font-medium text-foreground">
-                {selectedCurrentOwnerNextRole.charAt(0).toUpperCase() + selectedCurrentOwnerNextRole.slice(1)}
+                {teamsHumanRoleDisplayLabel(selectedCurrentOwnerNextRole)}
               </span>
               .
             </p>
@@ -798,15 +864,17 @@ export function CompanySettings() {
             <HintIcon text="Creates a short-lived OpenClaw agent invite and renders a copy-ready prompt." />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => inviteMutation.mutate()}
-              disabled={inviteMutation.isPending || !canManageCompanySettingsInvites}
-            >
-              {inviteMutation.isPending
-                ? "Generating..."
-                : "Generate OpenClaw Invite Prompt"}
-            </Button>
+            {canManageCompanySettingsInvites ? (
+              <Button
+                size="sm"
+                onClick={() => inviteMutation.mutate()}
+                disabled={inviteMutation.isPending}
+              >
+                {inviteMutation.isPending
+                  ? "Generating..."
+                  : "Generate OpenClaw Invite Prompt"}
+              </Button>
+            ) : null}
           </div>
           {inviteError && (
             <p className="text-sm text-destructive">{inviteError}</p>
@@ -868,18 +936,22 @@ export function CompanySettings() {
             <a href="/org" className="underline hover:text-foreground">Hybrid Org Chart</a> header.
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" variant="outline" asChild disabled={!canManageCompanySettingsPackages}>
-              <a href="/company/export">
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                Export
-              </a>
-            </Button>
-            <Button size="sm" variant="outline" asChild disabled={!canManageCompanySettingsPackages}>
-              <a href="/company/import">
-                <Upload className="mr-1.5 h-3.5 w-3.5" />
-                Import
-              </a>
-            </Button>
+            {canUseCompanyPackagesActions ? (
+              <>
+                <Button size="sm" variant="outline" asChild>
+                  <a href="/company/export">
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                    Export
+                  </a>
+                </Button>
+                <Button size="sm" variant="outline" asChild>
+                  <a href="/company/import">
+                    <Upload className="mr-1.5 h-3.5 w-3.5" />
+                    Import
+                  </a>
+                </Button>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -946,7 +1018,7 @@ export function CompanySettings() {
               This action will make <span className="font-medium text-foreground">{selectedNewOwnerLabel}</span> the
               new Owner. Your role will change to{" "}
               <span className="font-medium text-foreground">
-                {selectedCurrentOwnerNextRole.charAt(0).toUpperCase() + selectedCurrentOwnerNextRole.slice(1)}
+                {teamsHumanRoleDisplayLabel(selectedCurrentOwnerNextRole)}
               </span>
               .
             </DialogDescription>

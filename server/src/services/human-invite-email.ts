@@ -1,5 +1,4 @@
-import net from "node:net";
-import tls from "node:tls";
+import { logger } from "../middleware/logger.js";
 
 export type HumanInviteEmailInput = {
   toEmail: string;
@@ -22,90 +21,186 @@ export type SystemEmailInput = {
   htmlBody?: string;
 };
 
-type SmtpConfig = {
-  host: string;
-  port: number;
-  secure: boolean;
-  from: string;
-  heloHost: string;
-  auth?: {
-    user: string;
-    pass: string;
-  };
+type GraphMailConfig = {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  senderEmail: string;
+  /** Optional Entra object id for the sender mailbox; avoids UPN path issues when set. */
+  senderObjectId?: string;
 };
 
-function parseBoolean(value: string | undefined): boolean | null {
-  if (value === undefined) return null;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "true" || normalized === "1" || normalized === "yes") {
-    return true;
+const GRAPH_SCOPE = "https://graph.microsoft.com/.default";
+const GRAPH_TOKEN_PATH = "/oauth2/v2.0/token";
+const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
+
+let warnedSenderLookupFallback = false;
+
+function resolveGraphMailConfig(): GraphMailConfig | null {
+  const tenantId = process.env.MS_TENANT_ID?.trim();
+  const clientId = process.env.MS_CLIENT_ID?.trim();
+  const clientSecret = process.env.MS_CLIENT_SECRET?.trim();
+  const senderEmail = process.env.MS_SENDER_EMAIL?.trim();
+  const senderObjectId = process.env.MS_SENDER_OBJECT_ID?.trim() || undefined;
+
+  const hasAny = Boolean(tenantId || clientId || clientSecret || senderEmail || senderObjectId);
+  if (!hasAny) return null;
+
+  if (!tenantId || !clientId || !clientSecret || !senderEmail) {
+    throw new Error(
+      "Microsoft Graph mail is partially configured. Set all of: MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET, MS_SENDER_EMAIL",
+    );
   }
-  if (normalized === "false" || normalized === "0" || normalized === "no") {
-    return false;
-  }
-  return null;
+
+  return { tenantId, clientId, clientSecret, senderEmail, senderObjectId };
 }
 
-function resolveSmtpConfig(): SmtpConfig | null {
-  const host = process.env.SMTP_HOST?.trim();
-  const portRaw = process.env.SMTP_PORT?.trim();
-  const from = process.env.SMTP_FROM?.trim();
-  const user = process.env.SMTP_USER?.trim();
-  const pass = process.env.SMTP_PASS?.trim();
-  const secureRaw = process.env.SMTP_SECURE;
-  const heloHost = process.env.SMTP_HELO_HOST?.trim() || "localhost";
+/** Redact obvious secrets before logging raw JSON/text. */
+function redactForLogs(raw: string): string {
+  return raw
+    .replace(/"access_token"\s*:\s*"[^"]*"/gi, '"access_token":"[redacted]"')
+    .replace(/"refresh_token"\s*:\s*"[^"]*"/gi, '"refresh_token":"[redacted]"')
+    .replace(/"client_secret"\s*:\s*"[^"]*"/gi, '"client_secret":"[redacted]"')
+    .slice(0, 8000);
+}
 
-  const hasAnyConfig =
-    Boolean(host) ||
-    Boolean(portRaw) ||
-    Boolean(from) ||
-    Boolean(user) ||
-    Boolean(pass) ||
-    secureRaw !== undefined;
-  if (!hasAnyConfig) return null;
+function logGraphJwtRolesIfDebug(accessToken: string): void {
+  if (process.env.MS_GRAPH_DEBUG?.trim().toLowerCase() !== "true") return;
+  try {
+    const parts = accessToken.split(".");
+    if (parts.length < 2) return;
+    const payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8")) as {
+      roles?: string[];
+      scp?: string;
+      appid?: string;
+    };
+    logger.info(
+      {
+        step: "graph_token_debug",
+        appid: payload.appid,
+        roles: payload.roles ?? null,
+        scp: payload.scp ?? null,
+      },
+      "Microsoft Graph token claims (MS_GRAPH_DEBUG)",
+    );
+  } catch {
+    logger.warn({ step: "graph_token_debug" }, "MS_GRAPH_DEBUG set but JWT payload could not be decoded");
+  }
+}
 
-  if (!host) {
-    throw new Error("SMTP_HOST is required when SMTP email is configured");
-  }
-  if (!portRaw) {
-    throw new Error("SMTP_PORT is required when SMTP email is configured");
-  }
-  const port = Number.parseInt(portRaw, 10);
-  if (!Number.isFinite(port) || port <= 0) {
-    throw new Error(`SMTP_PORT must be a positive integer (received: ${portRaw})`);
-  }
-  if (!from) {
-    throw new Error("SMTP_FROM is required when SMTP email is configured");
-  }
-  if ((user && !pass) || (!user && pass)) {
-    throw new Error("SMTP_USER and SMTP_PASS must be provided together");
+async function acquireGraphAccessToken(config: GraphMailConfig): Promise<string> {
+  const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}${GRAPH_TOKEN_PATH}`;
+  const body = new URLSearchParams({
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    scope: GRAPH_SCOPE,
+    grant_type: "client_credentials",
+  });
+
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  const payloadText = payload ? JSON.stringify(payload) : "";
+
+  if (!response.ok) {
+    logger.error(
+      {
+        step: "graph_token",
+        status: response.status,
+        body: redactForLogs(payloadText || "(empty)"),
+      },
+      "Microsoft Graph token request failed",
+    );
+    const errMsg =
+      payload && typeof payload.error_description === "string"
+        ? payload.error_description
+        : typeof payload?.error === "string"
+          ? payload.error
+          : `token endpoint HTTP ${response.status}`;
+    throw new Error(`Graph token: ${errMsg}`);
   }
 
-  const secureParsed = parseBoolean(secureRaw);
-  if (secureRaw !== undefined && secureParsed === null) {
-    throw new Error(`SMTP_SECURE must be true/false (received: ${secureRaw})`);
+  const token = typeof payload?.access_token === "string" ? payload.access_token : null;
+  if (!token) {
+    logger.error({ step: "graph_token", status: response.status, body: redactForLogs(payloadText) }, "Graph token response missing access_token");
+    throw new Error("Graph token response missing access_token");
   }
 
+  logGraphJwtRolesIfDebug(token);
+  return token;
+}
+
+/**
+ * Prefer mailbox object id in sendMail URL (Graph recommends id | UPN; id avoids some UPN/encoding issues).
+ * Requires User.Read.All or User.ReadBasic.All (application) unless lookup returns 403 — then we fall back to encoded UPN.
+ */
+async function resolveGraphSendMailUserSegment(config: GraphMailConfig, accessToken: string): Promise<string> {
+  if (config.senderObjectId) return config.senderObjectId;
+
+  const lookupUrl = `${GRAPH_BASE}/users/${encodeURIComponent(config.senderEmail)}?$select=id,mail,userPrincipalName`;
+  const lookup = await fetch(lookupUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (lookup.status === 200) {
+    const user = (await lookup.json().catch(() => null)) as { id?: string } | null;
+    if (typeof user?.id === "string" && user.id.length > 0) {
+      logger.info(
+        { step: "graph_sender_lookup", senderEmail: config.senderEmail, userId: user.id },
+        "Resolved MS_SENDER_EMAIL to Graph user id for sendMail",
+      );
+      return user.id;
+    }
+    throw new Error("Microsoft Graph: sender lookup returned 200 but no user id");
+  }
+
+  if (lookup.status === 404) {
+    const detail = await lookup.text().catch(() => "");
+    logger.error(
+      { step: "graph_sender_lookup", status: 404, senderEmail: config.senderEmail, body: detail.slice(0, 1500) },
+      "Microsoft Graph: sender mailbox not found in tenant",
+    );
+    throw new Error(
+      `Microsoft Graph: no user/mailbox found for MS_SENDER_EMAIL (${config.senderEmail}) in this tenant. Create the mailbox or fix the address.`,
+    );
+  }
+
+  if (lookup.status === 403) {
+    if (!warnedSenderLookupFallback) {
+      warnedSenderLookupFallback = true;
+      logger.warn(
+        { senderEmail: config.senderEmail },
+        "Graph GET /users/{sender} returned 403. Grant Application permission User.Read.All (or User.ReadBasic.All) so the server can resolve the sender to an object id, or set MS_SENDER_OBJECT_ID. Using encoded UPN in sendMail path.",
+      );
+    }
+    return encodeURIComponent(config.senderEmail);
+  }
+
+  const fallbackBody = await lookup.text().catch(() => "");
+  if (!warnedSenderLookupFallback) {
+    warnedSenderLookupFallback = true;
+    logger.warn(
+      {
+        step: "graph_sender_lookup",
+        status: lookup.status,
+        senderEmail: config.senderEmail,
+        body: redactForLogs(fallbackBody.slice(0, 1500)),
+      },
+      "Graph sender lookup unexpected status; using encoded UPN in sendMail path",
+    );
+  }
+  return encodeURIComponent(config.senderEmail);
+}
+
+function graphCorrelationHeaders(response: Response): Record<string, string | undefined> {
   return {
-    host,
-    port,
-    from,
-    secure: secureParsed ?? port === 465,
-    heloHost,
-    auth: user && pass ? { user, pass } : undefined
+    requestId: response.headers.get("request-id") ?? response.headers.get("x-ms-request-id") ?? undefined,
+    clientRequestId: response.headers.get("client-request-id") ?? undefined,
   };
-}
-
-function base64(input: string) {
-  return Buffer.from(input, "utf8").toString("base64");
-}
-
-function wrapBase64Body(b64: string): string {
-  const lines: string[] = [];
-  for (let i = 0; i < b64.length; i += 76) {
-    lines.push(b64.slice(i, i + 76));
-  }
-  return lines.join("\r\n");
 }
 
 function escapeHtml(text: string): string {
@@ -187,227 +282,92 @@ export function buildPasswordResetEmailBodies(input: { resetUrl: string; recipie
   return { textBody, htmlBody };
 }
 
-function createSocket(config: SmtpConfig): Promise<net.Socket | tls.TLSSocket> {
-  return new Promise((resolve, reject) => {
-    const onError = (error: Error) => reject(error);
-    if (config.secure) {
-      const socket = tls.connect(
-        { host: config.host, port: config.port, servername: config.host },
-        () => resolve(socket)
-      );
-      socket.once("error", onError);
-      return;
-    }
-    const socket = net.connect({ host: config.host, port: config.port }, () =>
-      resolve(socket)
-    );
-    socket.once("error", onError);
+async function sendViaGraphMail(config: GraphMailConfig, input: SystemEmailInput): Promise<void> {
+  const token = await acquireGraphAccessToken(config);
+  const userSegment = await resolveGraphSendMailUserSegment(config, token);
+  const sendUrl = `${GRAPH_BASE}/users/${userSegment}/sendMail`;
+
+  const bodyContent = input.htmlBody
+    ? { contentType: "HTML", content: input.htmlBody }
+    : { contentType: "Text", content: input.textBody };
+
+  const graphBody = {
+    message: {
+      subject: input.subject,
+      body: bodyContent,
+      toRecipients: [
+        {
+          emailAddress: {
+            address: input.toEmail,
+          },
+        },
+      ],
+    },
+    saveToSentItems: true,
+  };
+
+  const response = await fetch(sendUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(graphBody),
   });
-}
 
-function parseStartTlsPreference(): boolean | null {
-  const raw = process.env.SMTP_STARTTLS?.trim();
-  if (raw === undefined || raw === "") return null;
-  const normalized = raw.toLowerCase();
-  if (normalized === "false" || normalized === "0" || normalized === "no") return false;
-  if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
-  return null;
-}
-
-function shouldUseStartTlsAfterEhlo(input: { connectionIsPlain: boolean; ehloLines: string[] }): boolean {
-  if (!input.connectionIsPlain) return false;
-  if (parseStartTlsPreference() === false) return false;
-  return input.ehloLines.some((line) => /\bSTARTTLS\b/i.test(line));
-}
-
-function upgradePlainSocketWithStartTls(plainSocket: net.Socket, host: string): Promise<tls.TLSSocket> {
-  return new Promise((resolve, reject) => {
-    plainSocket.write("STARTTLS\r\n");
-    readSmtpResponse(plainSocket)
-      .then((response) => {
-        if (response.code !== 220) {
-          reject(new Error(`STARTTLS failed: ${response.lines.join(" | ")}`));
-          return;
-        }
-        const secureSocket = tls.connect(
-          { socket: plainSocket, servername: host, rejectUnauthorized: true },
-          () => resolve(secureSocket),
-        );
-        secureSocket.once("error", reject);
-      })
-      .catch(reject);
-  });
-}
-
-async function readSmtpResponse(
-  socket: net.Socket | tls.TLSSocket
-): Promise<{ code: number; lines: string[] }> {
-  return new Promise((resolve, reject) => {
-    let buffer = "";
-    const onData = (chunk: Buffer | string) => {
-      buffer += chunk.toString();
-      const lines = buffer
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-      if (lines.length === 0) return;
-      const lastLine = lines[lines.length - 1]!;
-      const match = /^(\d{3})([\s-])/.exec(lastLine);
-      if (!match) return;
-      if (match[2] === "-") return;
-      cleanup();
-      resolve({ code: Number.parseInt(match[1]!, 10), lines });
-    };
-    const onError = (error: Error) => {
-      cleanup();
-      reject(error);
-    };
-    const onEnd = () => {
-      cleanup();
-      reject(new Error("SMTP connection closed before response"));
-    };
-    const cleanup = () => {
-      socket.off("data", onData);
-      socket.off("error", onError);
-      socket.off("end", onEnd);
-    };
-    socket.on("data", onData);
-    socket.on("error", onError);
-    socket.on("end", onEnd);
-  });
-}
-
-async function sendSmtpCommand(input: {
-  socket: net.Socket | tls.TLSSocket;
-  command: string;
-  expect: number[];
-}) {
-  input.socket.write(`${input.command}\r\n`);
-  const response = await readSmtpResponse(input.socket);
-  if (!input.expect.includes(response.code)) {
-    throw new Error(
-      `SMTP command failed (${input.command.split(" ")[0]}): ${response.lines.join(" | ")}`
-    );
-  }
-}
-
-async function sendViaSmtp(input: {
-  config: SmtpConfig;
-  toEmail: string;
-  subject: string;
-  textBody: string;
-  htmlBody?: string;
-}) {
-  let socket: net.Socket | tls.TLSSocket = await createSocket(input.config);
+  const rawText = await response.text();
+  let logBody = rawText;
   try {
-    const greeting = await readSmtpResponse(socket);
-    if (greeting.code !== 220) {
-      throw new Error(`SMTP greeting failed: ${greeting.lines.join(" | ")}`);
-    }
-
-    socket.write(`EHLO ${input.config.heloHost}\r\n`);
-    const ehloAfterConnect = await readSmtpResponse(socket);
-    if (ehloAfterConnect.code !== 250) {
-      throw new Error(`EHLO failed: ${ehloAfterConnect.lines.join(" | ")}`);
-    }
-
-    const connectionIsPlain = !input.config.secure;
-    if (
-      shouldUseStartTlsAfterEhlo({
-        connectionIsPlain,
-        ehloLines: ehloAfterConnect.lines,
-      })
-    ) {
-      // Plain SMTP path uses `net.connect`; `tls.TLSSocket` subclasses `net.Socket`, so avoid `instanceof net.Socket` here.
-      socket = await upgradePlainSocketWithStartTls(socket as net.Socket, input.config.host);
-      socket.write(`EHLO ${input.config.heloHost}\r\n`);
-      const ehloAfterTls = await readSmtpResponse(socket);
-      if (ehloAfterTls.code !== 250) {
-        throw new Error(`EHLO after STARTTLS failed: ${ehloAfterTls.lines.join(" | ")}`);
-      }
-    }
-
-    if (input.config.auth) {
-      await sendSmtpCommand({
-        socket,
-        command: "AUTH LOGIN",
-        expect: [334]
-      });
-      await sendSmtpCommand({
-        socket,
-        command: base64(input.config.auth.user),
-        expect: [334]
-      });
-      await sendSmtpCommand({
-        socket,
-        command: base64(input.config.auth.pass),
-        expect: [235]
-      });
-    }
-
-    await sendSmtpCommand({
-      socket,
-      command: `MAIL FROM:<${input.config.from}>`,
-      expect: [250]
-    });
-    await sendSmtpCommand({
-      socket,
-      command: `RCPT TO:<${input.toEmail}>`,
-      expect: [250, 251]
-    });
-    await sendSmtpCommand({ socket, command: "DATA", expect: [354] });
-
-    let mimePayload: string;
-    if (input.htmlBody) {
-      const boundary = `pc_alt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-      const plainB64 = wrapBase64Body(Buffer.from(input.textBody, "utf8").toString("base64"));
-      const htmlB64 = wrapBase64Body(Buffer.from(input.htmlBody, "utf8").toString("base64"));
-      mimePayload = [
-        `From: ${input.config.from}`,
-        `To: ${input.toEmail}`,
-        `Subject: ${input.subject}`,
-        "MIME-Version: 1.0",
-        `Content-Type: multipart/alternative; boundary="${boundary}"`,
-        "",
-        `--${boundary}`,
-        "Content-Type: text/plain; charset=UTF-8",
-        "Content-Transfer-Encoding: base64",
-        "",
-        plainB64,
-        `--${boundary}`,
-        "Content-Type: text/html; charset=UTF-8",
-        "Content-Transfer-Encoding: base64",
-        "",
-        htmlB64,
-        `--${boundary}--`,
-        "",
-      ].join("\r\n");
-    } else {
-      mimePayload = [
-        `From: ${input.config.from}`,
-        `To: ${input.toEmail}`,
-        `Subject: ${input.subject}`,
-        "MIME-Version: 1.0",
-        "Content-Type: text/plain; charset=UTF-8",
-        "",
-        input.textBody.replace(/\r?\n/g, "\r\n"),
-      ].join("\r\n");
-    }
-    const escapedBody = mimePayload.replace(/^\./gm, "..");
-    socket.write(`${escapedBody}\r\n.\r\n`);
-    const dataResponse = await readSmtpResponse(socket);
-    if (dataResponse.code !== 250) {
-      throw new Error(`SMTP DATA failed: ${dataResponse.lines.join(" | ")}`);
-    }
-
-    await sendSmtpCommand({ socket, command: "QUIT", expect: [221, 250] });
-  } finally {
-    socket.destroy();
+    const parsed = JSON.parse(rawText) as Record<string, unknown>;
+    logBody = JSON.stringify(parsed);
+  } catch {
+    // keep rawText
   }
+
+  const correlation = graphCorrelationHeaders(response);
+
+  if (!response.ok) {
+    logger.error(
+      {
+        step: "graph_sendMail",
+        status: response.status,
+        toEmail: input.toEmail,
+        body: redactForLogs(logBody || "(empty)"),
+        ...correlation,
+      },
+      "Microsoft Graph sendMail failed",
+    );
+    let detail = `sendMail HTTP ${response.status}`;
+    try {
+      const errJson = JSON.parse(rawText) as {
+        error?: { message?: string; code?: string };
+      };
+      if (errJson?.error?.message) {
+        detail = `${errJson.error.code ?? "Error"}: ${errJson.error.message}`;
+      }
+    } catch {
+      if (rawText) detail = `${detail}: ${rawText.slice(0, 500)}`;
+    }
+    throw new Error(detail);
+  }
+
+  logger.info(
+    {
+      step: "graph_sendMail",
+      httpStatus: response.status,
+      sender: config.senderEmail,
+      sendAsUserSegment:
+        userSegment.includes("%40") || userSegment.includes("@") ? "encoded-upn" : "object-id",
+      toEmail: input.toEmail,
+      subject: input.subject,
+      ...correlation,
+    },
+    "Microsoft Graph sendMail accepted (Exchange still delivers/filters mail; use requestId with Microsoft support if needed)",
+  );
 }
 
 export async function sendHumanInviteEmail(
-  input: HumanInviteEmailInput
+  input: HumanInviteEmailInput,
 ): Promise<HumanInviteEmailDelivery> {
   const delivery = await sendSystemEmail({
     toEmail: input.toEmail,
@@ -421,46 +381,46 @@ export async function sendHumanInviteEmail(
       `Email: ${input.temporaryUsername}`,
       `Temporary password: ${input.temporaryPassword}`,
       "",
-      "Please sign in and change your password."
+      "Please sign in and change your password.",
     ].join("\n"),
   });
   if (delivery.status === "sent") {
-    return { ...delivery, message: `Invite email sent to ${input.toEmail}` };
+    return {
+      ...delivery,
+      message: `Invite email sent to ${input.toEmail} (Microsoft Graph accepted the request; if it does not arrive, check Spam/Junk and the sender mailbox Sent Items)`,
+    };
   }
   if (delivery.status === "failed") {
-    return { ...delivery, message: delivery.message.replace("Failed to send email:", "Failed to send invite email:") };
+    return {
+      ...delivery,
+      message: delivery.message.replace("Failed to send email:", "Failed to send invite email:"),
+    };
   }
   return delivery;
 }
 
 export async function sendSystemEmail(input: SystemEmailInput): Promise<HumanInviteEmailDelivery> {
   try {
-    const smtpConfig = resolveSmtpConfig();
-    if (!smtpConfig) {
+    const graphConfig = resolveGraphMailConfig();
+    if (!graphConfig) {
       return {
         status: "skipped",
         message:
-          "SMTP is not configured. Set SMTP_HOST/SMTP_PORT/SMTP_FROM to send invite emails automatically."
+          "Microsoft Graph mail is not configured. Set MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET, and MS_SENDER_EMAIL",
       };
     }
 
-    await sendViaSmtp({
-      config: smtpConfig,
-      toEmail: input.toEmail,
-      subject: input.subject,
-      textBody: input.textBody,
-      htmlBody: input.htmlBody,
-    });
+    await sendViaGraphMail(graphConfig, input);
 
     return {
       status: "sent",
-      message: `Email sent to ${input.toEmail}`
+      message: `Email sent to ${input.toEmail} (Microsoft Graph accepted the request; if it does not arrive, check Spam/Junk and the sender mailbox Sent Items)`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
       status: "failed",
-      message: `Failed to send email: ${message}`
+      message: `Failed to send email: ${message}`,
     };
   }
 }

@@ -66,6 +66,10 @@ import {
 } from "../board-claim.js";
 import { LOCAL_BOARD_USER_EMAIL } from "../local-board-defaults.js";
 import { isOwnerMembershipRole, membershipRoleLabel, normalizeMembershipRole } from "../lib/membership-role.js";
+import {
+  MEMBER_INVITE_ORG_BOOTSTRAP_MAX_AGE_MS,
+  mayApplyInviteOrgBootstrapPower,
+} from "../lib/member-invite-org-bootstrap.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -169,14 +173,22 @@ async function createAuthUserViaSignupApi(input: {
     | Record<string, unknown>
     | null;
   if (!response.ok) {
-    const message =
-      (payload?.error &&
-      typeof payload.error === "object" &&
-      typeof (payload.error as Record<string, unknown>).message === "string")
-        ? (payload.error as Record<string, unknown>).message as string
-        : typeof payload?.error === "string"
-          ? payload.error
-          : `Failed to create auth user (${response.status})`;
+    const message = (() => {
+      if (!payload || typeof payload !== "object") {
+        return `Failed to create auth user (${response.status})`;
+      }
+      if (typeof (payload as { message?: unknown }).message === "string") {
+        const m = (payload as { message: string }).message.trim();
+        if (m) return m;
+      }
+      const err = (payload as { error?: unknown }).error;
+      if (typeof err === "string" && err.trim()) return err.trim();
+      if (err && typeof err === "object" && typeof (err as { message?: unknown }).message === "string") {
+        const m = (err as { message: string }).message.trim();
+        if (m) return m;
+      }
+      return `Failed to create auth user (${response.status})`;
+    })();
     throw new Error(message);
   }
 
@@ -1726,6 +1738,33 @@ export function accessRoutes(
     throw badRequest("Owner accounts cannot be deactivated or deleted. Transfer ownership first.");
   }
 
+  async function assertBoardActorNotDeactivatingOrDeletingOwnAccount(
+    req: Request,
+    companyId: string,
+    memberId: string,
+  ) {
+    if (req.actor.type !== "board") return;
+    if (isLocalImplicit(req)) return;
+    const userId = req.actor.userId;
+    if (!userId) return;
+    const target = await db
+      .select({
+        principalType: companyMemberships.principalType,
+        principalId: companyMemberships.principalId,
+      })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.id, memberId),
+          eq(companyMemberships.companyId, companyId),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+    if (!target || target.principalType !== "user") return;
+    if (target.principalId !== userId) return;
+    throw badRequest("You cannot deactivate or delete your own account.");
+  }
+
   router.get("/board-claim/:token", async (req, res) => {
     const token = (req.params.token as string).trim();
     const code =
@@ -1948,7 +1987,7 @@ export function accessRoutes(
         req.actor.agentId,
         permissionKey
       );
-      if (!allowed) throw forbidden("Permission denied");
+      if (!allowed) throw forbidden(`Missing permission: ${permissionKey}`);
       return;
     }
     if (req.actor.type !== "board") throw unauthorized();
@@ -1964,7 +2003,12 @@ export function accessRoutes(
       const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
       if (legacyAllowed) return;
     }
-    throw forbidden("Permission denied");
+    // Legacy user managers may still only have users:manage_permissions for deactivate/delete.
+    if (permissionKey === "users:deactivate" || permissionKey === "users:delete") {
+      const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
+      if (legacyAllowed) return;
+    }
+    throw forbidden(`Missing permission: ${permissionKey}`);
   }
 
   async function assertCanGenerateOpenClawInvitePrompt(
@@ -1988,7 +2032,7 @@ export function accessRoutes(
     const allowed =
       (await access.canUser(companyId, req.actor.userId, "company_settings.invites")) ||
       (await access.canUser(companyId, req.actor.userId, "users:invite"));
-    if (!allowed) throw forbidden("Permission denied");
+    if (!allowed) throw forbidden("Missing permission: company_settings.invites or users:invite");
   }
 
   async function assertCanCreateHumanInvite(req: Request, companyId: string) {
@@ -2001,13 +2045,13 @@ export function accessRoutes(
         req.actor.agentId,
         "users:invite",
       );
-      if (!allowed) throw forbidden("Permission denied");
+      if (!allowed) throw forbidden("Missing permission: users:invite");
       return;
     }
     if (req.actor.type !== "board") throw unauthorized();
     if (isLocalImplicit(req)) return;
     const allowed = await access.canUser(companyId, req.actor.userId, "users:invite");
-    if (!allowed) throw forbidden("Permission denied");
+    if (!allowed) throw forbidden("Missing permission: users:invite");
   }
 
   async function createCompanyInviteForCompany(input: {
@@ -3365,9 +3409,10 @@ export function accessRoutes(
         throw forbidden("Board access required");
       }
       const actorUserId = req.actor.userId;
-      const [canManageOrgConfig, canAssignTitle] = await Promise.all([
+      const [canManageOrgConfig, canAssignTitle, canInviteHumans] = await Promise.all([
         access.canUser(companyId, actorUserId, "users:manage_permissions"),
         access.canUser(companyId, actorUserId, "teams.title_assign"),
+        access.canUser(companyId, actorUserId, "users:invite"),
       ]);
 
       const allMembers = await db
@@ -3396,12 +3441,59 @@ export function accessRoutes(
       const managerTargetsUpdateRequested = req.body.managedAgentMemberIds !== undefined;
       const titleUpdateRequested = req.body.title !== undefined;
 
-      if ((roleUpdateRequested || reportsToUpdateRequested || managerTargetsUpdateRequested) && !canManageOrgConfig) {
-        throw forbidden("Permission denied");
+      const needsOrgPower =
+        roleUpdateRequested || reportsToUpdateRequested || managerTargetsUpdateRequested;
+
+      /**
+       * Invite → org-config bootstrap: see `member-invite-org-bootstrap.ts`.
+       * Intentional product behavior — do not revert without redesigning Manager invite UX
+       * (avoids 403 + global permission toast after a successful human invite).
+       */
+      let allowInviteBootstrap = false;
+      if (
+        needsOrgPower &&
+        !canManageOrgConfig &&
+        canInviteHumans &&
+        member.principalType === "user" &&
+        !managerTargetsUpdateRequested
+      ) {
+        const createdAt =
+          member.createdAt instanceof Date ? member.createdAt : new Date(String(member.createdAt));
+        const nowMs = Date.now();
+        const withinAge =
+          Number.isFinite(createdAt.getTime()) &&
+          nowMs - createdAt.getTime() <= MEMBER_INVITE_ORG_BOOTSTRAP_MAX_AGE_MS;
+        const hasMustChangePasswordRole = withinAge
+          ? await db
+              .select({ userId: instanceUserRoles.userId })
+              .from(instanceUserRoles)
+              .where(
+                and(
+                  eq(instanceUserRoles.userId, member.principalId),
+                  eq(instanceUserRoles.role, "must_change_password"),
+                ),
+              )
+              .limit(1)
+              .then((rows) => rows.length > 0)
+          : false;
+        allowInviteBootstrap = mayApplyInviteOrgBootstrapPower({
+          needsOrgPower,
+          canManageOrgConfig,
+          canInviteHumans,
+          managerTargetsUpdateRequested,
+          memberPrincipalType: member.principalType,
+          membershipCreatedAt: createdAt,
+          nowMs,
+          hasMustChangePasswordRole,
+        });
+      }
+
+      if (needsOrgPower && !canManageOrgConfig && !allowInviteBootstrap) {
+        throw forbidden("Missing permission: users:manage_permissions");
       }
 
       if (titleUpdateRequested && !(canAssignTitle || canManageOrgConfig)) {
-        throw forbidden("Permission denied");
+        throw forbidden("Missing permission: teams.title_assign or users:manage_permissions");
       }
 
       if (roleUpdateRequested && isOwnerMembershipRole(nextRole)) {
@@ -3770,7 +3862,7 @@ export function accessRoutes(
       actor,
     );
     if (!companyManage && !projectManage) {
-      throw forbidden("Permission denied");
+      throw forbidden("Missing permission: users:manage_permissions or project members:manage");
     }
     const rows = await access.listProjectPrincipalGrants(projectId, companyId);
     res.json(rows);
@@ -3795,7 +3887,7 @@ export function accessRoutes(
         actor,
       );
       if (!companyManage && !projectManage) {
-        throw forbidden("Permission denied");
+        throw forbidden("Missing permission: users:manage_permissions or project members:manage");
       }
       const ok = await access.setProjectPrincipalGrantsForPrincipal(
         companyId,
@@ -3834,7 +3926,7 @@ export function accessRoutes(
     async (req, res) => {
       const companyId = req.params.companyId as string;
       const memberId  = req.params.memberId  as string;
-      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+      await assertCompanyPermission(req, companyId, "users:deactivate");
 
       const { status } = req.body as { status?: unknown };
       if (status !== "active" && status !== "suspended") {
@@ -3843,6 +3935,7 @@ export function accessRoutes(
       }
 
       if (status === "suspended") {
+        await assertBoardActorNotDeactivatingOrDeletingOwnAccount(req, companyId, memberId);
         await assertMemberCanBeDeactivatedOrDeleted(companyId, memberId);
       }
 
@@ -3858,7 +3951,8 @@ export function accessRoutes(
     async (req, res) => {
       const companyId = req.params.companyId as string;
       const memberId  = req.params.memberId  as string;
-      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+      await assertCompanyPermission(req, companyId, "users:delete");
+      await assertBoardActorNotDeactivatingOrDeletingOwnAccount(req, companyId, memberId);
       await assertMemberCanBeDeactivatedOrDeleted(companyId, memberId);
 
       const deleted = await access.softDeleteMember(companyId, memberId);

@@ -10,6 +10,7 @@ import { Link, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Project } from "@paperclipai/shared";
 import { projectsApi } from "../api/projects";
+import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { agentsApi } from "../api/agents";
 import { accessApi } from "../api/access";
 import { useCompany } from "../context/CompanyContext";
@@ -151,6 +152,14 @@ export function Projects() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+
+  const { data: sidebarBadges } = useQuery({
+    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
+    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+    staleTime: 10_000,
+  });
+  const canCreateProjects = sidebarBadges?.canCreateProjects ?? false;
   const { data: members } = useQuery({
     queryKey: queryKeys.access.members(selectedCompanyId!),
     queryFn: () => accessApi.listMembers(selectedCompanyId!),
@@ -594,10 +603,12 @@ export function Projects() {
               Clear filters
             </Button>
           ) : null}
-          <Button size="sm" variant="outline" className="h-9 shrink-0 px-3 md:ml-auto" onClick={openNewProject}>
-            <Plus className="h-4 w-4 sm:mr-1" />
-            <span>Add Project</span>
-          </Button>
+          {canCreateProjects ? (
+            <Button size="sm" variant="outline" className="h-9 shrink-0 px-3 md:ml-auto" onClick={openNewProject}>
+              <Plus className="h-4 w-4 sm:mr-1" />
+              <span>Add Project</span>
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -607,8 +618,9 @@ export function Projects() {
         <EmptyState
           icon={Hexagon}
           message={activeFilterCount > 0 ? "No projects match the current filters." : "No projects yet."}
-          action={activeFilterCount > 0 ? undefined : "Add Project"}
-          onAction={activeFilterCount > 0 ? undefined : openNewProject}
+          {...(activeFilterCount === 0 && canCreateProjects
+            ? { action: "Add Project", onAction: openNewProject }
+            : {})}
         />
       )}
 

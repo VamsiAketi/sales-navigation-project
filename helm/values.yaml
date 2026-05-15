@@ -61,18 +61,13 @@ server:
   database:
     externalUrl: ""
   # Extra environment variables
-  # SMTP for notification / invite emails (Microsoft 365 / Outlook: smtp.office365.com:587 + STARTTLS).
-  # MAIL FROM is sent as MAIL FROM:<SMTP_FROM>, so SMTP_FROM must be a bare email address (addr@domain).
-  # Set SMTP_PASS via CI (--set-string) or a secret manager; do not commit real mailbox passwords.
+  # Outbound email via Microsoft Graph (application permissions: Mail.Send, admin-consented).
+  # Set values via CI --set-string or Kubernetes secrets; do not commit client secrets.
   extraEnv:
-    SMTP_HOST: smtp.office365.com
-    SMTP_PORT: "587"
-    SMTP_SECURE: "false"
-    SMTP_HELO_HOST: "localhost"
-    # Same licensed mailbox as SMTP_USER unless your tenant allows a separate send-as address.
-    SMTP_FROM: "support@ai-harness.com"
-    SMTP_USER: "support@ai-harness.com"
-    SMTP_PASS: "S3pp0rt@13245"
+    MS_TENANT_ID: ""
+    MS_CLIENT_ID: ""
+    MS_CLIENT_SECRET: ""
+    MS_SENDER_EMAIL: ""
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID: "sample"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET: "sample"
     AI_HARNESS_AUTH_MICROSOFT_TENANT_ID: "sample"

@@ -303,6 +303,7 @@ export function SidebarCompanyNavSection() {
   });
   const canReadAuditLogs = sidebarBadges?.canReadAuditLogs ?? true;
   const canReadCompanySettings = sidebarBadges?.canReadCompanySettings ?? true;
+  const canReadBilling = sidebarBadges?.canReadBilling ?? true;
 
   const availableIds = useMemo(() => [...COMPANY_NAV_IDS], []);
   const { orderedIds, persistOrder } = useCompanySidebarNavOrder(
@@ -347,7 +348,7 @@ export function SidebarCompanyNavSection() {
           />
         );
       case "billing":
-        if (!canReadCompanySettings) return null;
+        if (!canReadBilling) return null;
         return (
           <SidebarNavItem
             to="/company/billing"
@@ -375,11 +376,32 @@ export function SidebarCompanyNavSection() {
     }
   };
 
+  const visibleOrderedIds = useMemo(
+    () =>
+      orderedIds.filter((id) => {
+        switch (id) {
+          case "audit":
+            return canReadAuditLogs;
+          case "billing":
+            return canReadBilling;
+          case "settings":
+            return canReadCompanySettings;
+          default:
+            return false;
+        }
+      }),
+    [orderedIds, canReadAuditLogs, canReadBilling, canReadCompanySettings],
+  );
+
+  if (visibleOrderedIds.length === 0) {
+    return null;
+  }
+
   return (
     <SidebarSection label="Company">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-          {orderedIds.map((id) => {
+        <SortableContext items={visibleOrderedIds} strategy={verticalListSortingStrategy}>
+          {visibleOrderedIds.map((id) => {
             const node = renderItem(id);
             if (!node) return null;
             return (
