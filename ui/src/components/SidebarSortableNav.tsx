@@ -31,8 +31,9 @@ import { PluginSlotOutlet } from "@/plugins/slots";
 import { useCompany } from "../context/CompanyContext";
 import { useSidebar } from "../context/SidebarContext";
 import { authApi } from "../api/auth";
-import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
+import { useCompanySidebarBadges } from "../hooks/useCompanySidebarBadges";
+import { SidebarNavAccessSkeleton } from "./SidebarNavAccessSkeleton";
 import { SHOW_BETA_UI } from "../lib/show-beta-ui";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 import {DEFAULT_PRIMARY_NAV_IDS, ROUTINES_NAV_ID} from "../lib/sidebar-menu-order";
@@ -100,21 +101,16 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
-  const { data: sidebarBadges } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
-    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
-    staleTime: 10_000,
-  });
+  const { accessReady, badge } = useCompanySidebarBadges(selectedCompanyId);
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
-  const canReadCommandCenter = sidebarBadges?.canReadCommandCenter ?? true;
-  const canReadTasks = sidebarBadges?.canReadTasks ?? true;
-  const canReadHybridOrg = sidebarBadges?.canReadHybridOrg ?? true;
-  const canReadSkills = sidebarBadges?.canReadSkills ?? true;
-  const canReadGoals = sidebarBadges?.canReadGoals ?? true;
-  const canReadCosts = sidebarBadges?.canReadCosts ?? true;
-  const canReadAttentionQueue = sidebarBadges?.canReadAttentionQueue ?? true;
-  const canReadTeams = sidebarBadges?.canReadTeams ?? true;
+  const canReadCommandCenter = badge("canReadCommandCenter");
+  const canReadTasks = badge("canReadTasks");
+  const canReadHybridOrg = badge("canReadHybridOrg");
+  const canReadSkills = badge("canReadSkills");
+  const canReadGoals = badge("canReadGoals");
+  const canReadCosts = badge("canReadCosts");
+  const canReadAttentionQueue = badge("canReadAttentionQueue");
+  const canReadTeams = badge("canReadTeams");
 
   const availableIds = useMemo((): string[] => {
     const ids: string[] = [...DEFAULT_PRIMARY_NAV_IDS];
@@ -255,6 +251,10 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
     }
   };
 
+  if (!accessReady) {
+    return <SidebarNavAccessSkeleton rows={orderedIds.length} />;
+  }
+
   return (
     <div className="flex shrink-0 flex-col gap-0.5 pb-0.5 [&>*]:shrink-0">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -295,15 +295,10 @@ export function SidebarCompanyNavSection() {
     queryFn: () => authApi.getSession(),
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
-  const { data: sidebarBadges } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],
-    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
-    staleTime: 10_000,
-  });
-  const canReadAuditLogs = sidebarBadges?.canReadAuditLogs ?? true;
-  const canReadCompanySettings = sidebarBadges?.canReadCompanySettings ?? true;
-  const canReadBilling = sidebarBadges?.canReadBilling ?? true;
+  const { accessReady, badge } = useCompanySidebarBadges(selectedCompanyId);
+  const canReadAuditLogs = badge("canReadAuditLogs");
+  const canReadCompanySettings = badge("canReadCompanySettings");
+  const canReadBilling = badge("canReadBilling");
 
   const availableIds = useMemo(() => [...COMPANY_NAV_IDS], []);
   const { orderedIds, persistOrder } = useCompanySidebarNavOrder(
@@ -392,6 +387,10 @@ export function SidebarCompanyNavSection() {
       }),
     [orderedIds, canReadAuditLogs, canReadBilling, canReadCompanySettings],
   );
+
+  if (!accessReady) {
+    return null;
+  }
 
   if (visibleOrderedIds.length === 0) {
     return null;

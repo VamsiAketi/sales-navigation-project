@@ -5,6 +5,7 @@ import { INBOX_MINE_ISSUE_STATUS_FILTER } from "@paperclipai/shared";
 import { approvalsApi } from "../api/approvals";
 import { accessApi } from "../api/access";
 import { authApi } from "../api/auth";
+import { useCurrentUserCompanyPermissions } from "../hooks/useCurrentUserCompanyPermissions";
 import { ApiError } from "../api/client";
 import { dashboardApi } from "../api/dashboard";
 import { executionWorkspacesApi } from "../api/execution-workspaces";
@@ -398,7 +399,7 @@ export function FailedRunInboxRow({
   archiveDisabled?: boolean;
   selected?: boolean;
   className?: string;
-  /** When true (e.g. org Reader role), hide Retry and row dismiss — view-only queue. */
+  /** When true, hide Retry and row dismiss — view-only attention queue (no task/agent mutation grants). */
   hideRetryAndDismiss?: boolean;
 }) {
   const issueId = readIssueIdFromRun(run);
@@ -854,12 +855,7 @@ export function Inbox() {
     queryFn: () => authApi.getSession(),
   });
 
-  const { data: accessMembers } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.access.members(selectedCompanyId) : ["access", "members", "none"],
-    queryFn: () => accessApi.listMembers(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
-    staleTime: 15_000,
-  });
+  const { canMutateAttentionQueue } = useCurrentUserCompanyPermissions(selectedCompanyId);
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -1042,17 +1038,6 @@ export function Inbox() {
     [availableIssueColumnSet, visibleIssueColumnSet],
   );
   const currentUserId = session?.user.id ?? session?.session.userId ?? null;
-
-  const isCurrentUserReaderOrgRole = useMemo(() => {
-    if (!currentUserId || !accessMembers) return false;
-    const member = accessMembers.find(
-      (m) =>
-        m.principalType === "user" &&
-        m.principalId === currentUserId &&
-        (m.status === "active" || m.status === "suspended"),
-    );
-    return (member?.membershipRole ?? "").trim().toLowerCase() === "reader";
-  }, [accessMembers, currentUserId]);
 
   const failedRuns = useMemo(
     () => getLatestFailedRunsByAgent(heartbeatRuns ?? []).filter((r) => !dismissed.has(`run:${r.id}`)),
@@ -1890,7 +1875,7 @@ export function Inbox() {
                       onDismiss={() => dismiss(runKey)}
                       onRetry={() => retryRunMutation.mutate(item.run)}
                       isRetrying={retryingRunIds.has(item.run.id)}
-                      hideRetryAndDismiss={isCurrentUserReaderOrgRole}
+                      hideRetryAndDismiss={!canMutateAttentionQueue}
                       unreadState={nonIssueUnreadState(runKey)}
                       onMarkRead={() => handleMarkNonIssueRead(runKey)}
                       onArchive={canArchiveFromTab ? () => handleArchiveNonIssue(runKey) : undefined}

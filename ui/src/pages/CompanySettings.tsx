@@ -116,11 +116,7 @@ export function CompanySettings() {
     [activeHumanMembers, currentUserId],
   );
   const isCurrentUserOwner = ((currentUserMember?.membershipRole ?? "").trim().toLowerCase() === "owner");
-  const isCurrentUserReaderOrgRole = useMemo(
-    () => (currentUserMember?.membershipRole ?? "").trim().toLowerCase() === "reader",
-    [currentUserMember?.membershipRole],
-  );
-  const canUseCompanyPackagesActions = canManageCompanySettingsPackages && !isCurrentUserReaderOrgRole;
+  const canUseCompanyPackagesActions = canManageCompanySettingsPackages;
   const ownerTransferCandidates = useMemo(
     () => activeHumanMembers.filter((member) => member.id !== currentUserMember?.id),
     [activeHumanMembers, currentUserMember?.id],

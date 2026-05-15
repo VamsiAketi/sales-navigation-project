@@ -1999,9 +1999,26 @@ export function accessRoutes(
     );
     if (allowed) return;
     // Backward-compatible fallback: legacy teams managers may still only have users:manage_permissions.
-    if (permissionKey === "teams.read" || permissionKey === "teams.edit") {
+    if (permissionKey === "teams.edit") {
       const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
       if (legacyAllowed) return;
+    }
+    if (permissionKey === "teams.read") {
+      const legacyAllowed = await access.canUser(companyId, req.actor.userId, "users:manage_permissions");
+      if (legacyAllowed) return;
+      // Members with only invite / lifecycle grants still need the roster to use Teams actions.
+      const teamsReadViaMemberOps = [
+        "users:invite",
+        "users:reset_password",
+        "users:deactivate",
+        "users:delete",
+        "teams.title_assign",
+        "teams.title_create",
+        "teams.title_manage",
+      ] as const;
+      for (const key of teamsReadViaMemberOps) {
+        if (await access.canUser(companyId, req.actor.userId, key)) return;
+      }
     }
     // Legacy user managers may still only have users:manage_permissions for deactivate/delete.
     if (permissionKey === "users:deactivate" || permissionKey === "users:delete") {

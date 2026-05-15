@@ -140,7 +140,14 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "teams.read")) ||
-        (await access.canUser(companyId, req.actor.userId, "users:manage_permissions"));
+        (await access.canUser(companyId, req.actor.userId, "users:manage_permissions")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:invite")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:reset_password")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:deactivate")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:delete")) ||
+        (await access.canUser(companyId, req.actor.userId, "teams.title_assign")) ||
+        (await access.canUser(companyId, req.actor.userId, "teams.title_create")) ||
+        (await access.canUser(companyId, req.actor.userId, "teams.title_manage"));
       canEditTeams =
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
