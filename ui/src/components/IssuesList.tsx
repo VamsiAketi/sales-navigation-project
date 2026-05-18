@@ -1757,15 +1757,6 @@ export function IssuesList({
             <div className="absolute inset-0 z-20 flex items-center justify-center px-4">
               <div className="w-full max-w-sm rounded-lg border border-border/80 bg-card/95 p-5 text-center shadow-sm backdrop-blur">
                 <p className="text-sm font-medium text-foreground">No task in this project</p>
-                {canCreateTask ? (
-                  <Button
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => openNewIssue(newIssueDefaults())}
-                  >
-                    Create New Task
-                  </Button>
-                ) : null}
               </div>
             </div>
           ) : null}
