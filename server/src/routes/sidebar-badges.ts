@@ -67,6 +67,9 @@ export function sidebarBadgeRoutes(db: Db) {
     let canManageCompanySettingsInvites = false;
     let canManageCompanySettingsSecrets = false;
     let canManageCompanySettingsPackages = false;
+    let canReadConnectors = false;
+    let canManageConnectors = false;
+    let canManageConnectorBindings = false;
     if (req.actor.type === "board") {
       canReadCommandCenter =
         req.actor.source === "local_implicit" ||
@@ -198,6 +201,18 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "company_settings.packages"));
+      canReadConnectors =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "connectors.read"));
+      canManageConnectors =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "connectors.manage"));
+      canManageConnectorBindings =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "connectors.bindings.manage"));
     } else if (req.actor.type === "agent" && req.actor.agentId) {
       canReadCommandCenter = await access.hasPermission(
         companyId,
@@ -393,6 +408,24 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.agentId,
         "company_settings.packages",
       );
+      canReadConnectors = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "connectors.read",
+      );
+      canManageConnectors = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "connectors.manage",
+      );
+      canManageConnectorBindings = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "connectors.bindings.manage",
+      );
     }
     const summary = await dashboard.summary(companyId);
     const hasFailedRuns = badges.failedRuns > 0;
@@ -430,6 +463,9 @@ export function sidebarBadgeRoutes(db: Db) {
     badges.canManageCompanySettingsInvites = canManageCompanySettingsInvites;
     badges.canManageCompanySettingsSecrets = canManageCompanySettingsSecrets;
     badges.canManageCompanySettingsPackages = canManageCompanySettingsPackages;
+    badges.canReadConnectors = canReadConnectors;
+    badges.canManageConnectors = canManageConnectors;
+    badges.canManageConnectorBindings = canManageConnectorBindings;
 
     res.json(badges);
   });

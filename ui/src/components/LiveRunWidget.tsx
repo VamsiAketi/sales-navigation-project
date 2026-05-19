@@ -67,7 +67,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
     );
   }, [activeRun, issueId, liveRuns]);
 
-  const { transcriptByRun, hasOutputForRun } = useLiveRunTranscripts({ runs, companyId });
+  const { transcriptByRun, hasOutputForRun, verboseAgentRunLogs } = useLiveRunTranscripts({ runs, companyId });
 
   const handleCancelRun = async (runId: string) => {
     setCancellingRunIds((prev) => new Set(prev).add(runId));
@@ -148,6 +148,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
                   limit={8}
                   streaming={isActive}
                   collapseStdout
+                  verbose={verboseAgentRunLogs}
                   emptyMessage={hasOutputForRun(run.id) ? "Waiting for transcript parsing..." : "Waiting for run output..."}
                 />
               </div>

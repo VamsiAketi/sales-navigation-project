@@ -212,6 +212,57 @@ export function joinPromptSections(
     .join(separator);
 }
 
+function readNonEmptyContextString(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+export function buildAdapterInvocationPrompt(input: {
+  context: Record<string, unknown>;
+  promptTemplate: string;
+  templateData: Record<string, unknown>;
+  bootstrapPromptTemplate?: string;
+  sessionHandoffNote?: string;
+  sessionId?: string | null;
+  leadingSections?: Array<string | null | undefined>;
+}) {
+  const wakeReason = readNonEmptyContextString(input.context.wakeReason);
+  const wakeupPrompt = readNonEmptyContextString(input.context.wakeupPrompt);
+  if (wakeReason === "connector_event" && wakeupPrompt) {
+    const actionsGuide = readNonEmptyContextString(input.context.connectorActionsGuide);
+    const prompt = actionsGuide ? joinPromptSections([wakeupPrompt, actionsGuide]) : wakeupPrompt;
+    return {
+      prompt,
+      renderedBootstrapPrompt: "",
+      renderedHeartbeatPrompt: "",
+      sessionHandoffNote: "",
+      connectorWakePrompt: prompt,
+    };
+  }
+
+  const bootstrapPromptTemplate = input.bootstrapPromptTemplate ?? "";
+  const renderedBootstrapPrompt =
+    !input.sessionId && bootstrapPromptTemplate.trim().length > 0
+      ? renderTemplate(bootstrapPromptTemplate, input.templateData).trim()
+      : "";
+  const sessionHandoffNote = readNonEmptyContextString(input.sessionHandoffNote);
+  const renderedHeartbeatPrompt = renderTemplate(input.promptTemplate, input.templateData);
+  const prompt = joinPromptSections([
+    ...(input.leadingSections ?? []),
+    renderedBootstrapPrompt,
+    sessionHandoffNote,
+    renderedHeartbeatPrompt,
+  ]);
+
+  return {
+    prompt,
+    renderedBootstrapPrompt,
+    renderedHeartbeatPrompt,
+    sessionHandoffNote,
+    connectorWakePrompt: "",
+  };
+}
+
 export function redactEnvForLogs(env: Record<string, string>): Record<string, string> {
   const redacted: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {

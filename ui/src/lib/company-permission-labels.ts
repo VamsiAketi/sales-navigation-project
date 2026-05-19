@@ -44,6 +44,9 @@ export const COMPANY_PERMISSION_TITLE = {
   "company_settings.invites": "Edit Company Settings: Invites",
   "company_settings.secrets": "Edit Company Settings: Secrets",
   "company_settings.packages": "Edit Company Settings: Company Packages",
+  "connectors.read": "View Connectors",
+  "connectors.manage": "Manage Connectors",
+  "connectors.bindings.manage": "Manage Connector Event Bindings",
 } satisfies Record<PermissionKey, string>;
 
 export function companyPermissionTitle(key: PermissionKey): string {

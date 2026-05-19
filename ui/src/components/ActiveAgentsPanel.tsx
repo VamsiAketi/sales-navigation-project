@@ -44,7 +44,7 @@ export function ActiveAgentsPanel({ companyId }: ActiveAgentsPanelProps) {
     return map;
   }, [issues]);
 
-  const { transcriptByRun, hasOutputForRun } = useLiveRunTranscripts({
+  const { transcriptByRun, hasOutputForRun, verboseAgentRunLogs } = useLiveRunTranscripts({
     runs,
     companyId,
     maxChunksPerRun: 120,
@@ -69,6 +69,7 @@ export function ActiveAgentsPanel({ companyId }: ActiveAgentsPanelProps) {
               transcript={transcriptByRun.get(run.id) ?? []}
               hasOutput={hasOutputForRun(run.id)}
               isActive={isRunActive(run)}
+              verboseAgentRunLogs={verboseAgentRunLogs}
             />
           ))}
         </div>
@@ -83,12 +84,14 @@ function AgentRunCard({
   transcript,
   hasOutput,
   isActive,
+  verboseAgentRunLogs,
 }: {
   run: LiveRunForIssue;
   issue?: Issue;
   transcript: TranscriptEntry[];
   hasOutput: boolean;
   isActive: boolean;
+  verboseAgentRunLogs: boolean;
 }) {
   return (
     <div className={cn(
@@ -148,6 +151,7 @@ function AgentRunCard({
           limit={5}
           streaming={isActive}
           collapseStdout
+          verbose={verboseAgentRunLogs}
           thinkingClassName="!text-[10px] !leading-4"
           emptyMessage={hasOutput ? "Waiting for transcript parsing..." : isActive ? "Waiting for output..." : "No transcript captured."}
         />

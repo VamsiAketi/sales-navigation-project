@@ -512,6 +512,13 @@
       "when": 1777500000000,
       "tag": "0072_manager_title_catalog_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1777600000000,
+      "tag": "0073_connector_module",
+      "breakpoints": true
     }
   ]
 }

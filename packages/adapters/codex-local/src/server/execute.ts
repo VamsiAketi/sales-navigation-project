@@ -18,8 +18,7 @@ import {
   readPaperclipRuntimeSkillEntries,
   resolveCommandForLogs,
   resolvePaperclipDesiredSkillNames,
-  renderTemplate,
-  joinPromptSections,
+  buildAdapterInvocationPrompt,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
 import { DEFAULT_CODEX_LOCAL_MODEL } from "../index.js";
@@ -463,24 +462,28 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     run: { id: runId, source: "on_demand" },
     context,
   };
-  const renderedPrompt = renderTemplate(promptTemplate, templateData);
-  const renderedBootstrapPrompt =
-    !sessionId && bootstrapPromptTemplate.trim().length > 0
-      ? renderTemplate(bootstrapPromptTemplate, templateData).trim()
-      : "";
   const sessionHandoffNote = asString(context.paperclipSessionHandoffMarkdown, "").trim();
-  const prompt = joinPromptSections([
-    instructionsPrefix,
+  const {
+    prompt,
     renderedBootstrapPrompt,
+    renderedHeartbeatPrompt,
+    connectorWakePrompt,
+  } = buildAdapterInvocationPrompt({
+    context,
+    promptTemplate,
+    templateData,
+    bootstrapPromptTemplate,
     sessionHandoffNote,
-    renderedPrompt,
-  ]);
+    sessionId,
+    leadingSections: [instructionsPrefix],
+  });
   const promptMetrics = {
     promptChars: prompt.length,
     instructionsChars,
     bootstrapPromptChars: renderedBootstrapPrompt.length,
     sessionHandoffChars: sessionHandoffNote.length,
-    heartbeatPromptChars: renderedPrompt.length,
+    heartbeatPromptChars: renderedHeartbeatPrompt.length,
+    connectorWakePromptChars: connectorWakePrompt.length,
   };
 
   const buildArgs = (resumeSessionId: string | null) => {

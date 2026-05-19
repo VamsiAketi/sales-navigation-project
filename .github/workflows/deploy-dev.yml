@@ -140,6 +140,14 @@ jobs:
           --set-string server.extraEnv.AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID="${{ secrets.MICROSOFT_CLIENT_ID }}" \
           --set-string server.extraEnv.AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET="${{ secrets.MICROSOFT_CLIENT_SECRET }}" \
           --set-string server.extraEnv.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID="${{ secrets.MICROSOFT_TENANT_ID }}" \
+          --set-string server.extraEnv.PAPERCLIP_DEFAULT_ADAPTER_TYPE="${{ secrets.PAPERCLIP_DEFAULT_ADAPTER_TYPE || 'codex_local' }}" \
+          --set-string server.extraEnv.CURSOR_API_KEY="${{ secrets.CURSOR_API_KEY || 'YOUR_CURSOR_API_KEY' }}" \
+          --set-string server.extraEnv.PAPERCLIP_GMAIL_OAUTH_CLIENT_ID="${{ secrets.PAPERCLIP_GMAIL_OAUTH_CLIENT_ID }}" \
+          --set-string server.extraEnv.PAPERCLIP_GMAIL_OAUTH_CLIENT_SECRET="${{ secrets.PAPERCLIP_GMAIL_OAUTH_CLIENT_SECRET }}" \
+          --set-string server.extraEnv.PAPERCLIP_GMAIL_OAUTH_REDIRECT_URI="${{ secrets.PAPERCLIP_GMAIL_OAUTH_REDIRECT_URI }}" \
+          --set-string server.extraEnv.MICROSOFT_OUTLOOK_OAUTH_CLIENT_ID="${{ secrets.MICROSOFT_OUTLOOK_OAUTH_CLIENT_ID }}" \
+          --set-string server.extraEnv.MICROSOFT_OUTLOOK_OAUTH_CLIENT_SECRET="${{ secrets.MICROSOFT_OUTLOOK_OAUTH_CLIENT_SECRET }}" \
+          --set-string server.extraEnv.MICROSOFT_OUTLOOK_OAUTH_TENANT_ID="${{ secrets.MICROSOFT_OUTLOOK_OAUTH_TENANT_ID }}" \
           ${FORCE_CONFLICTS_ARG}
       - name: Capture CEO invite URL from logs
         id: capture_invite

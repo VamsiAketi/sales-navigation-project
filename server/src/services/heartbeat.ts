@@ -295,7 +295,7 @@ async function withAgentStartLock<T>(agentId: string, fn: () => Promise<T>) {
 }
 
 interface WakeupOptions {
-  source?: "timer" | "assignment" | "on_demand" | "automation";
+  source?: "timer" | "assignment" | "on_demand" | "automation" | "event";
   triggerDetail?: "manual" | "ping" | "callback" | "system";
   reason?: string | null;
   payload?: Record<string, unknown> | null;
@@ -812,6 +812,13 @@ function enrichWakeContextSnapshot(input: {
   }
   if (!readNonEmptyString(contextSnapshot["wakeTriggerDetail"]) && triggerDetail) {
     contextSnapshot.wakeTriggerDetail = triggerDetail;
+  }
+  const payloadPrompt = readNonEmptyString(payload?.prompt);
+  if (payloadPrompt) {
+    contextSnapshot.wakeupPrompt = payloadPrompt;
+  }
+  if (payload?.connectorEvent !== undefined && payload?.connectorEvent !== null) {
+    contextSnapshot.connectorEvent = payload.connectorEvent;
   }
 
   return {
@@ -4234,7 +4241,7 @@ export function heartbeatService(db: Db) {
 
     invoke: async (
       agentId: string,
-      source: "timer" | "assignment" | "on_demand" | "automation" = "on_demand",
+      source: "timer" | "assignment" | "on_demand" | "automation" | "event" = "on_demand",
       contextSnapshot: Record<string, unknown> = {},
       triggerDetail: "manual" | "ping" | "callback" | "system" = "manual",
       actor?: { actorType?: "user" | "agent" | "system"; actorId?: string | null },

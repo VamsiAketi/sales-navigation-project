@@ -538,6 +538,79 @@ function WorkspaceOperationsSection({
   );
 }
 
+function AdapterInvocationSection({
+  payload,
+  censorUsernameInLogs,
+}: {
+  payload: Record<string, unknown>;
+  censorUsernameInLogs: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2">
+      <div className="text-xs font-medium text-muted-foreground">Invocation</div>
+      {typeof payload.adapterType === "string" && (
+        <div className="text-xs"><span className="text-muted-foreground">Adapter: </span>{payload.adapterType}</div>
+      )}
+      {typeof payload.cwd === "string" && (
+        <div className="text-xs break-all"><span className="text-muted-foreground">Working dir: </span><span className="font-mono">{payload.cwd}</span></div>
+      )}
+      {typeof payload.command === "string" && (
+        <div className="text-xs break-all">
+          <span className="text-muted-foreground">Command: </span>
+          <span className="font-mono">
+            {[
+              payload.command,
+              ...(Array.isArray(payload.commandArgs)
+                ? payload.commandArgs.filter((value): value is string => typeof value === "string")
+                : []),
+            ].join(" ")}
+          </span>
+        </div>
+      )}
+      {Array.isArray(payload.commandNotes) && payload.commandNotes.length > 0 && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Command notes</div>
+          <ul className="list-disc pl-5 space-y-1">
+            {payload.commandNotes
+              .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+              .map((note, index) => (
+                <li key={`${index}-${note}`} className="text-xs break-all font-mono">
+                  {note}
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+      {payload.prompt !== undefined && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Prompt</div>
+          <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap">
+            {typeof payload.prompt === "string"
+              ? redactPathText(payload.prompt, censorUsernameInLogs)
+              : JSON.stringify(redactPathValue(payload.prompt, censorUsernameInLogs), null, 2)}
+          </pre>
+        </div>
+      )}
+      {payload.context !== undefined && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Context</div>
+          <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap">
+            {JSON.stringify(redactPathValue(payload.context, censorUsernameInLogs), null, 2)}
+          </pre>
+        </div>
+      )}
+      {payload.env !== undefined && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Environment</div>
+          <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-2 text-xs overflow-x-auto whitespace-pre-wrap font-mono">
+            {formatEnvForDisplay(payload.env, censorUsernameInLogs)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AgentDetail() {
   const { companyPrefix, agentId, tab: urlTab, runId: urlRunId } = useParams<{
     companyPrefix?: string;
@@ -3787,10 +3860,18 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
     };
   }, [isLive, run.companyId, run.id, run.agentId]);
 
-  const censorUsernameInLogs = useQuery({
+  const { data: generalSettings } = useQuery({
     queryKey: queryKeys.instance.generalSettings,
     queryFn: () => instanceSettingsApi.getGeneral(),
-  }).data?.censorUsernameInLogs === true;
+  });
+  const censorUsernameInLogs = generalSettings?.censorUsernameInLogs === true;
+  const verboseAgentRunLogs = generalSettings?.verboseAgentRunLogs === true;
+
+  const adapterInvokePayload = useMemo(() => {
+    if (!verboseAgentRunLogs) return null;
+    const evt = events.find((event) => event.eventType === "adapter.invoke");
+    return redactPathValue(asRecord(evt?.payload ?? null), censorUsernameInLogs);
+  }, [censorUsernameInLogs, events, verboseAgentRunLogs]);
 
   const adapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
   const transcript = useMemo(
@@ -3799,13 +3880,15 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
   );
   const visibleEvents = useMemo(
     () => events.filter((evt) => {
-      // UI-only hide: suppress verbose adapter invocation logs.
       if (evt.eventType === "adapter.invoke") return false;
-      const message = evt.message ?? "";
-      const payloadText = evt.payload ? JSON.stringify(evt.payload) : "";
-      return !hasUiPathLikeText(message) && !hasUiPathLikeText(payloadText);
+      if (!verboseAgentRunLogs) {
+        const message = evt.message ?? "";
+        const payloadText = evt.payload ? JSON.stringify(evt.payload) : "";
+        return !hasUiPathLikeText(message) && !hasUiPathLikeText(payloadText);
+      }
+      return true;
     }),
-    [events],
+    [events, verboseAgentRunLogs],
   );
 
   useEffect(() => {
@@ -3836,10 +3919,15 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
     <div className="space-y-3">
       {/* UI-only hide: workspace operation logs frequently contain file paths and cwd details. */}
       <WorkspaceOperationsSection
-        operations={[]}
+        operations={verboseAgentRunLogs ? workspaceOperations : []}
         censorUsernameInLogs={censorUsernameInLogs}
       />
-      {/* UI-only hide: invocation details include cwd/command/context paths. */}
+      {adapterInvokePayload && (
+        <AdapterInvocationSection
+          payload={adapterInvokePayload}
+          censorUsernameInLogs={censorUsernameInLogs}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
@@ -3894,6 +3982,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
           entries={transcript}
           mode={transcriptMode}
           streaming={isLive}
+          verbose={verboseAgentRunLogs}
           emptyMessage={run.logRef ? "Waiting for transcript..." : "No persisted transcript for this run."}
         />
         {logError && (

@@ -327,6 +327,25 @@ export {
 } from "./plugin.js";
 
 export {
+  createConnectorConnectionSchema,
+  updateConnectorConnectionSchema,
+  createConnectorEventBindingSchema,
+  updateConnectorEventBindingSchema,
+  connectorInboundEventSchema,
+  type CreateConnectorConnection,
+  type UpdateConnectorConnection,
+  type CreateConnectorEventBinding,
+  type UpdateConnectorEventBinding,
+  type ConnectorInboundEvent,
+} from "./connector.js";
+
+export {
+  connectorExecuteActionBodySchema,
+  parseGmailSendOrDraftParams,
+  type ConnectorExecuteActionBody,
+} from "./connector-actions.js";
+
+export {
   notificationChannelTypeSchema,
   projectNotificationEventTypeSchema,
   notificationChannelPreferenceSchema,

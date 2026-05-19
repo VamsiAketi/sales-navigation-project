@@ -11,6 +11,7 @@ import {
   type PatchInstanceExperimentalSettings,
 } from "@paperclipai/shared";
 import { eq } from "drizzle-orm";
+import { loadConfig } from "../config.js";
 
 const DEFAULT_SINGLETON_KEY = "default";
 
@@ -23,6 +24,7 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
       feedbackDataSharingPreference:
         parsed.data.feedbackDataSharingPreference ?? DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
       billingPrepaidCents: parsed.data.billingPrepaidCents ?? 0,
+      verboseAgentRunLogs: parsed.data.verboseAgentRunLogs ?? false,
     };
   }
   return {
@@ -30,7 +32,20 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
     keyboardShortcuts: false,
     feedbackDataSharingPreference: DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
     billingPrepaidCents: 0,
+    verboseAgentRunLogs: false,
   };
+}
+
+function withRuntimeGeneralSettings(settings: InstanceGeneralSettings): InstanceGeneralSettings {
+  return {
+    ...settings,
+    verboseAgentRunLogs: loadConfig().verboseAgentRunLogs,
+  };
+}
+
+function generalSettingsForStorage(settings: InstanceGeneralSettings): Omit<InstanceGeneralSettings, "verboseAgentRunLogs"> {
+  const { verboseAgentRunLogs: _verboseAgentRunLogs, ...persisted } = settings;
+  return persisted;
 }
 
 function normalizeExperimentalSettings(raw: unknown): InstanceExperimentalSettings {
@@ -50,7 +65,7 @@ function normalizeExperimentalSettings(raw: unknown): InstanceExperimentalSettin
 function toInstanceSettings(row: typeof instanceSettings.$inferSelect): InstanceSettings {
   return {
     id: row.id,
-    general: normalizeGeneralSettings(row.general),
+    general: withRuntimeGeneralSettings(normalizeGeneralSettings(row.general)),
     experimental: normalizeExperimentalSettings(row.experimental),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -92,7 +107,7 @@ export function instanceSettingsService(db: Db) {
 
     getGeneral: async (): Promise<InstanceGeneralSettings> => {
       const row = await getOrCreateRow();
-      return normalizeGeneralSettings(row.general);
+      return withRuntimeGeneralSettings(normalizeGeneralSettings(row.general));
     },
 
     getExperimental: async (): Promise<InstanceExperimentalSettings> => {
@@ -110,7 +125,7 @@ export function instanceSettingsService(db: Db) {
       const [updated] = await db
         .update(instanceSettings)
         .set({
-          general: { ...nextGeneral },
+          general: { ...generalSettingsForStorage(nextGeneral) },
           updatedAt: now,
         })
         .where(eq(instanceSettings.id, current.id))

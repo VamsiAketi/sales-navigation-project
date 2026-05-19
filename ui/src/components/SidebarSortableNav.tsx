@@ -11,6 +11,7 @@ import {
   Repeat,
   Settings,
   CreditCard,
+  Link2,
   Users,
   GripVertical,
   CheckSquare,
@@ -285,7 +286,7 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
   );
 }
 
-const COMPANY_NAV_IDS = ["audit", "billing", "settings"] as const;
+const COMPANY_NAV_IDS = ["audit", "billing", "connectors", "settings"] as const;
 
 export function SidebarCompanyNavSection() {
   const { sidebarCompact } = useSidebar();
@@ -299,6 +300,7 @@ export function SidebarCompanyNavSection() {
   const canReadAuditLogs = badge("canReadAuditLogs");
   const canReadCompanySettings = badge("canReadCompanySettings");
   const canReadBilling = badge("canReadBilling");
+  const canReadConnectors = badge("canReadConnectors");
 
   const availableIds = useMemo(() => [...COMPANY_NAV_IDS], []);
   const { orderedIds, persistOrder } = useCompanySidebarNavOrder(
@@ -354,6 +356,18 @@ export function SidebarCompanyNavSection() {
             className={dragDisabled ? undefined : "!pl-2"}
           />
         );
+      case "connectors":
+        if (!canReadConnectors) return null;
+        return (
+          <SidebarNavItem
+            to="/company/connectors"
+            label="Connectors"
+            icon={Link2}
+            iconClassName={azureSidebarIcon.settings}
+            textVariant="sub"
+            className={dragDisabled ? undefined : "!pl-2"}
+          />
+        );
       case "settings":
         if (!canReadCompanySettings) return null;
         return (
@@ -379,13 +393,15 @@ export function SidebarCompanyNavSection() {
             return canReadAuditLogs;
           case "billing":
             return canReadBilling;
+          case "connectors":
+            return canReadConnectors;
           case "settings":
             return canReadCompanySettings;
           default:
             return false;
         }
       }),
-    [orderedIds, canReadAuditLogs, canReadBilling, canReadCompanySettings],
+    [orderedIds, canReadAuditLogs, canReadBilling, canReadConnectors, canReadCompanySettings],
   );
 
   if (!accessReady) {

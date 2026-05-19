@@ -239,6 +239,14 @@ jobs:
             --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
             --set-string server.secrets.paperclipSecretsMasterKey="${{ secrets.PAPERCLIP_SECRETS_MASTER_KEY }}" \
             --set-string server.paperclip.openaiApiKey="${{ secrets.OPENAI_API_KEY }}" \
+            --set-string server.extraEnv.PAPERCLIP_DEFAULT_ADAPTER_TYPE="${{ secrets.PAPERCLIP_DEFAULT_ADAPTER_TYPE || 'codex_local' }}" \
+            --set-string server.extraEnv.CURSOR_API_KEY="${{ secrets.CURSOR_API_KEY }}" \
+            --set-string server.extraEnv.PAPERCLIP_GMAIL_OAUTH_CLIENT_ID="${{ secrets.PAPERCLIP_GMAIL_OAUTH_CLIENT_ID }}" \
+            --set-string server.extraEnv.PAPERCLIP_GMAIL_OAUTH_CLIENT_SECRET="${{ secrets.PAPERCLIP_GMAIL_OAUTH_CLIENT_SECRET }}" \
+            --set-string server.extraEnv.PAPERCLIP_GMAIL_OAUTH_REDIRECT_URI="${{ secrets.PAPERCLIP_GMAIL_OAUTH_REDIRECT_URI }}" \
+            --set-string server.extraEnv.PAPERCLIP_OUTLOOK_OAUTH_CLIENT_ID="${{ secrets.PAPERCLIP_OUTLOOK_OAUTH_CLIENT_ID }}" \
+            --set-string server.extraEnv.PAPERCLIP_OUTLOOK_OAUTH_CLIENT_SECRET="${{ secrets.PAPERCLIP_OUTLOOK_OAUTH_CLIENT_SECRET }}" \
+            --set-string server.extraEnv.PAPERCLIP_OUTLOOK_OAUTH_TENANT_ID="${{ secrets.PAPERCLIP_OUTLOOK_OAUTH_TENANT_ID }}" \
             ${HELM_EXTRA_ARGS} ${FORCE_CONFLICTS_ARG}
 
       - name: Capture CEO invite URL from logs

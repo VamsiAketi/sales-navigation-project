@@ -102,7 +102,7 @@ export const agentMineInboxQuerySchema = z.object({
 export type AgentMineInboxQuery = z.infer<typeof agentMineInboxQuerySchema>;
 
 export const wakeAgentSchema = z.object({
-  source: z.enum(["timer", "assignment", "on_demand", "automation"]).optional().default("on_demand"),
+  source: z.enum(["timer", "assignment", "on_demand", "automation", "event"]).optional().default("on_demand"),
   triggerDetail: z.enum(["manual", "ping", "callback", "system"]).optional(),
   reason: z.string().optional().nullable(),
   payload: z.record(z.unknown()).optional().nullable(),

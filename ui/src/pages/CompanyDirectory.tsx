@@ -136,6 +136,8 @@ const READ_DEPENDENCIES: Partial<Record<PermissionKey, PermissionKey>> = {
   "company_settings.invites": "company_settings.read",
   "company_settings.secrets": "company_settings.read",
   "company_settings.packages": "company_settings.read",
+  "connectors.manage": "connectors.read",
+  "connectors.bindings.manage": "connectors.read",
   "billing.invoices.read": "billing.read",
   "billing.payments.manage": "billing.read",
 };
@@ -197,6 +199,9 @@ const COMPANY_ROLE_PERMISSION_PRESETS: Record<string, PermissionKey[]> = {
     "company_settings.invites",
     "company_settings.secrets",
     "company_settings.packages",
+    "connectors.read",
+    "connectors.manage",
+    "connectors.bindings.manage",
     "billing.read",
     "billing.invoices.read",
     "billing.payments.manage",
@@ -354,6 +359,11 @@ const PERMISSION_CATEGORY_DEFS: {
       "company_settings.secrets",
       "company_settings.packages",
     ],
+  },
+  {
+    id: "connectors",
+    title: "Connectors",
+    keys: ["connectors.read", "connectors.manage", "connectors.bindings.manage"],
   },
 ];
 

@@ -96,4 +96,59 @@ describe("claude execute", () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  it("uses the connector workflow prompt instead of the heartbeat template", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-claude-connector-"));
+    const workspace = path.join(root, "workspace");
+    const binDir = path.join(root, "bin");
+    const commandPath = path.join(binDir, "claude");
+    const capturePath = path.join(root, "capture.json");
+    await fs.mkdir(workspace, { recursive: true });
+    await fs.mkdir(binDir, { recursive: true });
+    await writeFakeClaudeCommand(commandPath);
+
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
+
+    try {
+      const result = await execute({
+        runId: "run-connector",
+        agent: {
+          id: "agent-1",
+          companyId: "company-1",
+          name: "Claude Coder",
+          adapterType: "claude_local",
+          adapterConfig: {},
+        },
+        runtime: {
+          sessionId: null,
+          sessionParams: null,
+          sessionDisplayId: null,
+          taskKey: null,
+        },
+        config: {
+          command: "claude",
+          cwd: workspace,
+          env: {
+            PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
+          },
+          promptTemplate: "Follow the paperclip heartbeat.",
+        },
+        context: {
+          wakeReason: "connector_event",
+          wakeupPrompt: "Process this Gmail connector event.",
+        },
+        authToken: "run-jwt-token",
+        onLog: async () => {},
+      });
+
+      expect(result.exitCode).toBe(0);
+      const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as { prompt?: string };
+      expect(capture.prompt).toBe("Process this Gmail connector event.");
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

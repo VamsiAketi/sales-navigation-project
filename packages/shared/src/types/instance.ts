@@ -6,6 +6,8 @@ export interface InstanceGeneralSettings {
   feedbackDataSharingPreference: FeedbackDataSharingPreference;
   /** Prepaid instance credit (USD cents). */
   billingPrepaidCents: number;
+  /** Show adapter invocation, workspace operations, and path-bearing transcript lines in run logs. */
+  verboseAgentRunLogs: boolean;
 }
 
 export interface InstanceExperimentalSettings {
