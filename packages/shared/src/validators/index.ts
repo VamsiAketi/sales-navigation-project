@@ -340,6 +340,12 @@ export {
 } from "./connector.js";
 
 export {
+  connectorExecuteActionBodySchema,
+  parseGmailSendOrDraftParams,
+  type ConnectorExecuteActionBody,
+} from "./connector-actions.js";
+
+export {
   notificationChannelTypeSchema,
   projectNotificationEventTypeSchema,
   notificationChannelPreferenceSchema,

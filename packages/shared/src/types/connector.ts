@@ -12,6 +12,7 @@ export interface ConnectorConnection {
   inboundUrl: string | null;
   authMode?: "inbound_webhook" | "managed_oauth";
   connectedAccountEmail?: string | null;
+  lastSyncedAt?: string | null;
   lastError: string | null;
   createdByUserId: string | null;
   updatedByUserId: string | null;

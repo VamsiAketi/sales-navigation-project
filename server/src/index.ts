@@ -36,6 +36,7 @@ import {
   feedbackService,
   heartbeatService,
   gmailConnectorService,
+  outlookConnectorService,
   reconcilePersistedRuntimeServicesOnStartup,
   routineService,
 } from "./services/index.js";
@@ -700,6 +701,18 @@ export async function startServer(): Promise<StartedServer> {
         logger.error({ err }, "gmail connector sync tick failed");
       });
     }, config.gmailSyncIntervalMs);
+  }
+
+  if (config.outlookSyncEnabled) {
+    const outlook = outlookConnectorService(db as any, config);
+    void outlook.tickSync().catch((err) => {
+      logger.error({ err }, "startup outlook connector sync failed");
+    });
+    setInterval(() => {
+      void outlook.tickSync().catch((err) => {
+        logger.error({ err }, "outlook connector sync tick failed");
+      });
+    }, config.outlookSyncIntervalMs);
   }
   
   if (config.databaseBackupEnabled) {

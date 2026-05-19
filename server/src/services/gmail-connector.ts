@@ -2,14 +2,22 @@ import crypto from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { connectorConnections } from "@paperclipai/db";
-import type { ConnectorInboundEvent } from "@paperclipai/shared";
+import { parseGmailSendOrDraftParams, type ConnectorInboundEvent } from "@paperclipai/shared";
 import type { Config } from "../config.js";
-import { notFound, unprocessable } from "../errors.js";
+import { conflict, notFound, unprocessable } from "../errors.js";
+import { ZodError } from "zod";
 import { connectorService } from "./connectors.js";
 import { secretService } from "./secrets.js";
+import {
+  formatGmailSyncTransientNotice,
+  isGmailAuthSyncFailure,
+  type GmailSyncResult,
+} from "./gmail-sync-errors.js";
 
 const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.compose",
   "https://www.googleapis.com/auth/userinfo.email",
 ].join(" ");
 
@@ -105,6 +113,27 @@ function extractBodyText(message: GmailMessage): string | null {
   return message.snippet ?? null;
 }
 
+function encodeSubjectHeader(subject: string): string {
+  if (/^[\t\x20-\x7e]*$/.test(subject)) return subject;
+  const b64 = Buffer.from(subject, "utf8").toString("base64");
+  return `=?UTF-8?B?${b64}?=`;
+}
+
+function buildGmailRawRfc822(p: ReturnType<typeof parseGmailSendOrDraftParams>): string {
+  const headerLines = [
+    `To: ${p.to}`,
+    ...(p.cc ? [`Cc: ${p.cc}`] : []),
+    `Subject: ${encodeSubjectHeader(p.subject)}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset=UTF-8',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+  ];
+  const body = p.text.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+  const message = `${headerLines.join("\r\n")}${body}`;
+  return Buffer.from(message, "utf8").toString("base64url");
+}
+
 function toConnectorEvent(message: GmailMessage): ConnectorInboundEvent {
   const headers = message.payload?.headers;
   const from = headerValue(headers, "From");
@@ -135,7 +164,9 @@ export function gmailConnectorService(db: Db, config: Config) {
 
   function assertConfigured() {
     if (!config.gmailOAuthClientId || !config.gmailOAuthClientSecret) {
-      throw unprocessable("Gmail OAuth is not configured on this Paperclip instance");
+      throw unprocessable(
+        "Google mailbox sign-in is not enabled on this Paperclip server yet. Ask an operator to configure the Gmail OAuth app.",
+      );
     }
   }
 
@@ -260,93 +291,181 @@ export function gmailConnectorService(db: Db, config: Config) {
       .where(eq(connectorConnections.id, connection.id));
   }
 
-  async function syncConnection(connectionId: string) {
+  async function syncConnection(connectionId: string): Promise<GmailSyncResult> {
     const connection = await db
       .select()
       .from(connectorConnections)
       .where(eq(connectorConnections.id, connectionId))
       .then((rows) => rows[0] ?? null);
-    if (!connection || connection.connectorTypeKey !== "gmail" || connection.status !== "active") {
+    if (!connection || connection.connectorTypeKey !== "gmail") {
+      return { processed: 0 };
+    }
+    if (connection.status !== "active" && connection.status !== "error") {
       return { processed: 0 };
     }
 
     const gmailConfig = readGmailConfig(connection.config as Record<string, unknown>);
     if (!gmailConfig?.oauthSecretId) return { processed: 0 };
 
-    const accessToken = await getAccessToken(connection.companyId, gmailConfig.oauthSecretId);
-    const profile = await gmailRequest<{ emailAddress?: string; historyId?: string }>(
-      accessToken,
-      "users/me/profile",
-    );
-    if (!profile.historyId) return { processed: 0 };
-
-    if (!gmailConfig.historyId) {
-      await persistGmailState(connection, gmailConfig, profile, { lastError: null });
-      return { processed: 0 };
-    }
-
-    let processed = 0;
-    let pageToken: string | undefined;
-    let latestHistoryId = gmailConfig.historyId;
-
     try {
-      do {
-        const history = await gmailRequest<{
-          history?: Array<{
-            id?: string;
-            messagesAdded?: Array<{ message?: { id?: string } }>;
-          }>;
-          historyId?: string;
-          nextPageToken?: string;
-        }>(
-          accessToken,
-          `users/me/history?startHistoryId=${encodeURIComponent(gmailConfig.historyId)}${
-            pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""
-          }`,
-        );
+      const accessToken = await getAccessToken(connection.companyId, gmailConfig.oauthSecretId);
+      const profile = await gmailRequest<{ emailAddress?: string; historyId?: string }>(
+        accessToken,
+        "users/me/profile",
+      );
+      if (!profile.historyId) return { processed: 0 };
 
-        latestHistoryId = history.historyId ?? latestHistoryId;
-        for (const entry of history.history ?? []) {
-          for (const added of entry.messagesAdded ?? []) {
-            const messageId = added.message?.id;
-            if (!messageId) continue;
-            const message = await gmailRequest<GmailMessage>(
-              accessToken,
-              `users/me/messages/${encodeURIComponent(messageId)}?format=full`,
-            );
-            await connectors.dispatchConnectionEvent(connection, toConnectorEvent(message));
-            processed += 1;
-          }
-        }
-        pageToken = history.nextPageToken;
-      } while (pageToken);
-    } catch (error) {
-      const status = error instanceof Error ? (error as Error & { status?: number }).status : undefined;
-      if (status === 404) {
-        await persistGmailState(connection, gmailConfig, profile, { lastError: null });
+      if (!gmailConfig.historyId) {
+        await persistGmailState(connection, gmailConfig, profile, { lastError: null, status: "active" });
         return { processed: 0 };
+      }
+
+      let processed = 0;
+      let pageToken: string | undefined;
+      let latestHistoryId = gmailConfig.historyId;
+
+      try {
+        do {
+          const history = await gmailRequest<{
+            history?: Array<{
+              id?: string;
+              messagesAdded?: Array<{ message?: { id?: string } }>;
+            }>;
+            historyId?: string;
+            nextPageToken?: string;
+          }>(
+            accessToken,
+            `users/me/history?startHistoryId=${encodeURIComponent(gmailConfig.historyId)}${
+              pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""
+            }`,
+          );
+
+          latestHistoryId = history.historyId ?? latestHistoryId;
+          for (const entry of history.history ?? []) {
+            for (const added of entry.messagesAdded ?? []) {
+              const messageId = added.message?.id;
+              if (!messageId) continue;
+              const message = await gmailRequest<GmailMessage>(
+                accessToken,
+                `users/me/messages/${encodeURIComponent(messageId)}?format=full`,
+              );
+              await connectors.dispatchConnectionEvent(connection, toConnectorEvent(message));
+              processed += 1;
+            }
+          }
+          pageToken = history.nextPageToken;
+        } while (pageToken);
+      } catch (error) {
+        const status = error instanceof Error ? (error as Error & { status?: number }).status : undefined;
+        if (status === 404) {
+          await persistGmailState(connection, gmailConfig, profile, { lastError: null, status: "active" });
+          return { processed: 0 };
+        }
+        throw error;
+      }
+
+      await db
+        .update(connectorConnections)
+        .set({
+          config: {
+            ...(connection.config as Record<string, unknown>),
+            gmail: {
+              ...gmailConfig,
+              emailAddress: profile.emailAddress ?? gmailConfig.emailAddress ?? null,
+              historyId: latestHistoryId,
+              lastSyncedAt: new Date().toISOString(),
+            },
+          },
+          status: "active",
+          lastError: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(connectorConnections.id, connection.id));
+
+      return { processed };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isGmailAuthSyncFailure(error)) {
+        await db
+          .update(connectorConnections)
+          .set({ status: "error", lastError: message, updatedAt: new Date() })
+          .where(eq(connectorConnections.id, connection.id));
+        return { processed: 0, authFailure: true };
+      }
+      const notice = formatGmailSyncTransientNotice(error);
+      await db
+        .update(connectorConnections)
+        .set({ status: "active", lastError: notice, updatedAt: new Date() })
+        .where(eq(connectorConnections.id, connection.id));
+      return { processed: 0, transientWarning: notice };
+    }
+  }
+
+  async function executeAction(input: {
+    companyId: string;
+    connectionId: string;
+    action: string;
+    params: unknown;
+  }) {
+    const connection = await db
+      .select()
+      .from(connectorConnections)
+      .where(
+        and(eq(connectorConnections.id, input.connectionId), eq(connectorConnections.companyId, input.companyId)),
+      )
+      .then((rows) => rows[0] ?? null);
+    if (!connection) throw notFound("Connector connection not found");
+    if (connection.connectorTypeKey !== "gmail") throw unprocessable("Not a Gmail connection");
+    if (connection.status !== "active") throw conflict("Connector connection is not active");
+    const gmailConfig = readGmailConfig(connection.config as Record<string, unknown>);
+    if (!gmailConfig?.oauthSecretId) throw unprocessable("Gmail is not connected for this connection");
+
+    let parsed: ReturnType<typeof parseGmailSendOrDraftParams>;
+    try {
+      parsed = parseGmailSendOrDraftParams(input.params ?? {});
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const first = error.errors[0];
+        throw unprocessable(first ? `${first.path.join(".") || "params"}: ${first.message}` : "Invalid action params");
       }
       throw error;
     }
 
-    await db
-      .update(connectorConnections)
-      .set({
-        config: {
-          ...(connection.config as Record<string, unknown>),
-          gmail: {
-            ...gmailConfig,
-            emailAddress: profile.emailAddress ?? gmailConfig.emailAddress ?? null,
-            historyId: latestHistoryId,
-            lastSyncedAt: new Date().toISOString(),
-          },
-        },
-        lastError: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(connectorConnections.id, connection.id));
+    const raw = buildGmailRawRfc822(parsed);
+    const accessToken = await getAccessToken(input.companyId, gmailConfig.oauthSecretId);
 
-    return { processed };
+    if (input.action === "gmail.message.send") {
+      const body: Record<string, unknown> = { raw };
+      if (parsed.threadId) body.threadId = parsed.threadId;
+      const result = await gmailRequest<{ id?: string; threadId?: string }>(accessToken, "users/me/messages/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { action: input.action, messageId: result.id ?? null, threadId: result.threadId ?? null };
+    }
+
+    if (input.action === "gmail.draft.create") {
+      const message: Record<string, unknown> = { raw };
+      if (parsed.threadId) message.threadId = parsed.threadId;
+      const result = await gmailRequest<{ id?: string; message?: { id?: string; threadId?: string } }>(
+        accessToken,
+        "users/me/drafts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        },
+      );
+      return {
+        action: input.action,
+        draftId: result.id ?? null,
+        messageId: result.message?.id ?? null,
+        threadId: result.message?.threadId ?? null,
+      };
+    }
+
+    throw unprocessable(`Unsupported Gmail action: ${input.action}`);
   }
 
   return {
@@ -464,18 +583,12 @@ export function gmailConnectorService(db: Db, config: Config) {
         .where(and(eq(connectorConnections.connectorTypeKey, "gmail"), eq(connectorConnections.status, "active")));
       let processed = 0;
       for (const connection of connections) {
-        try {
-          const result = await syncConnection(connection.id);
-          processed += result.processed;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          await db
-            .update(connectorConnections)
-            .set({ status: "error", lastError: message, updatedAt: new Date() })
-            .where(eq(connectorConnections.id, connection.id));
-        }
+        const result = await syncConnection(connection.id);
+        processed += result.processed;
       }
       return { connections: connections.length, processed };
     },
+
+    executeAction,
   };
 }

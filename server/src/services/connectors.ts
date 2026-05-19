@@ -11,6 +11,7 @@ import {
   CONNECTOR_TYPE_DEFINITIONS,
   getConnectorTypeDefinition,
   isConnectorEventTypeForConnector,
+  listConnectorActionsForType,
   type ConnectorInboundEvent,
   type CreateConnectorConnection,
   type CreateConnectorEventBinding,
@@ -18,6 +19,7 @@ import {
   type UpdateConnectorEventBinding,
 } from "@paperclipai/shared";
 import { conflict, notFound, unauthorized, unprocessable } from "../errors.js";
+import { readConnectorActionsGuideMarkdown } from "./connector-action-guides.js";
 import { heartbeatService } from "./heartbeat.js";
 import { secretService } from "./secrets.js";
 
@@ -84,11 +86,39 @@ function mapConnection(row: typeof connectorConnections.$inferSelect) {
     gmailConfig && typeof gmailConfig === "object" && !Array.isArray(gmailConfig)
       ? (gmailConfig as Record<string, unknown>)
       : null;
+  const outlookConfig =
+    row.config && typeof row.config === "object" && !Array.isArray(row.config)
+      ? (row.config as Record<string, unknown>).outlook
+      : null;
+  const outlookRecord =
+    outlookConfig && typeof outlookConfig === "object" && !Array.isArray(outlookConfig)
+      ? (outlookConfig as Record<string, unknown>)
+      : null;
+  const connectedFromOAuth =
+    row.connectorTypeKey === "gmail"
+      ? typeof gmailRecord?.emailAddress === "string"
+        ? gmailRecord.emailAddress
+        : null
+      : row.connectorTypeKey === "outlook"
+        ? typeof outlookRecord?.emailAddress === "string"
+          ? outlookRecord.emailAddress
+          : null
+        : null;
+  const lastSyncedFromOAuth =
+    row.connectorTypeKey === "gmail"
+      ? typeof gmailRecord?.lastSyncedAt === "string"
+        ? gmailRecord.lastSyncedAt
+        : null
+      : row.connectorTypeKey === "outlook"
+        ? typeof outlookRecord?.lastSyncedAt === "string"
+          ? outlookRecord.lastSyncedAt
+          : null
+        : null;
   return {
     ...row,
     authMode: definition?.authMode ?? "inbound_webhook",
-    connectedAccountEmail:
-      typeof gmailRecord?.emailAddress === "string" ? gmailRecord.emailAddress : null,
+    connectedAccountEmail: connectedFromOAuth,
+    lastSyncedAt: lastSyncedFromOAuth,
     inboundUrl:
       definition?.authMode === "managed_oauth"
         ? null
@@ -159,6 +189,8 @@ export function connectorService(db: Db) {
     const runIds: string[] = [];
     let skippedDuplicate = false;
 
+    const connectorActionsGuide = readConnectorActionsGuideMarkdown(connection.connectorTypeKey)?.trim() ?? "";
+
     for (const binding of bindings) {
       let deliveryId: string;
       try {
@@ -210,6 +242,7 @@ export function connectorService(db: Db) {
             projectId: binding.projectId,
             eventRunMode: "one_shot",
             taskKey: `connector-event:${event.externalEventId}`,
+            ...(connectorActionsGuide ? { connectorActionsGuide } : {}),
           },
         });
         await db
@@ -246,8 +279,33 @@ export function connectorService(db: Db) {
     return { deliveryIds, runIds, skippedDuplicate };
   }
 
+  async function agentHasEnabledBindingForConnection(
+    companyId: string,
+    connectionId: string,
+    agentId: string,
+  ): Promise<boolean> {
+    const row = await db
+      .select({ id: connectorEventBindings.id })
+      .from(connectorEventBindings)
+      .where(
+        and(
+          eq(connectorEventBindings.companyId, companyId),
+          eq(connectorEventBindings.connectionId, connectionId),
+          eq(connectorEventBindings.agentId, agentId),
+          eq(connectorEventBindings.enabled, true),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return Boolean(row);
+  }
+
   return {
-    listCatalog: () => CONNECTOR_TYPE_DEFINITIONS,
+    listCatalog: () =>
+      CONNECTOR_TYPE_DEFINITIONS.map((entry) => ({
+        ...entry,
+        actions: listConnectorActionsForType(entry.key),
+      })),
 
     listConnections: async (companyId: string) => {
       const rows = await db
@@ -461,6 +519,8 @@ export function connectorService(db: Db) {
     },
 
     dispatchConnectionEvent,
+
+    agentHasEnabledBindingForConnection,
 
     ingestInbound: async (input: {
       publicId: string;

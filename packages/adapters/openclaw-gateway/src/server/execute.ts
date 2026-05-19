@@ -335,7 +335,11 @@ function buildPaperclipEnvForWake(ctx: AdapterExecutionContext, wakePayload: Wak
   return paperclipEnv;
 }
 
-function buildWakeText(payload: WakePayload, paperclipEnv: Record<string, string>): string {
+function buildWakeText(
+  payload: WakePayload,
+  paperclipEnv: Record<string, string>,
+  wakeupPrompt?: string | null,
+): string {
   const claimedApiKeyPath = "~/.openclaw/workspace/paperclip-claimed-api-key.json";
   const orderedKeys = [
     "PAPERCLIP_RUN_ID",
@@ -359,6 +363,28 @@ function buildWakeText(payload: WakePayload, paperclipEnv: Record<string, string
 
   const issueIdHint = payload.taskId ?? payload.issueId ?? "";
   const apiBaseHint = paperclipEnv.PAPERCLIP_API_URL ?? "<set PAPERCLIP_API_URL>";
+
+  const connectorWorkflowPrompt = nonEmpty(wakeupPrompt);
+  if (payload.wakeReason === "connector_event" && connectorWorkflowPrompt) {
+    const lines = [
+      "Paperclip connector event wake for a cloud adapter.",
+      "",
+      "Skip the regular heartbeat inbox procedure. Follow the connector workflow instructions below, then exit.",
+      "",
+      "Set these values in your run context:",
+      ...envLines,
+      `PAPERCLIP_API_KEY=<token from ${claimedApiKeyPath}>`,
+      "",
+      `Load PAPERCLIP_API_KEY from ${claimedApiKeyPath} (the token you saved after claim-api-key).`,
+      "",
+      `api_base=${apiBaseHint}`,
+      `wake_reason=${payload.wakeReason ?? ""}`,
+      "",
+      "## Connector workflow instructions",
+      connectorWorkflowPrompt,
+    ];
+    return lines.join("\n");
+  }
 
   const lines = [
     "Paperclip wake event for a cloud adapter.",
@@ -1053,7 +1079,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   const wakePayload = buildWakePayload(ctx);
   const paperclipEnv = buildPaperclipEnvForWake(ctx, wakePayload);
-  const wakeText = buildWakeText(wakePayload, paperclipEnv);
+  const wakeText = buildWakeText(wakePayload, paperclipEnv, nonEmpty(ctx.context.wakeupPrompt));
 
   const sessionKeyStrategy = normalizeSessionKeyStrategy(ctx.config.sessionKeyStrategy);
   const configuredSessionKey = nonEmpty(ctx.config.sessionKey);

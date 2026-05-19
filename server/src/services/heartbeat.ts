@@ -735,6 +735,13 @@ function enrichWakeContextSnapshot(input: {
   if (!readNonEmptyString(contextSnapshot["wakeTriggerDetail"]) && triggerDetail) {
     contextSnapshot.wakeTriggerDetail = triggerDetail;
   }
+  const payloadPrompt = readNonEmptyString(payload?.prompt);
+  if (payloadPrompt) {
+    contextSnapshot.wakeupPrompt = payloadPrompt;
+  }
+  if (payload?.connectorEvent !== undefined && payload?.connectorEvent !== null) {
+    contextSnapshot.connectorEvent = payload.connectorEvent;
+  }
 
   return {
     contextSnapshot,

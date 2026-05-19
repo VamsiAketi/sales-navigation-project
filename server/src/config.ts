@@ -122,6 +122,14 @@ export interface Config {
   gmailOAuthRedirectUri: string | undefined;
   gmailSyncEnabled: boolean;
   gmailSyncIntervalMs: number;
+  outlookOAuthClientId: string | undefined;
+  outlookOAuthClientSecret: string | undefined;
+  outlookOAuthRedirectUri: string | undefined;
+  /** Microsoft Entra tenant for Outlook connector OAuth (`common`, `organizations`, or tenant GUID). */
+  outlookOAuthTenantId: string | undefined;
+  outlookSyncEnabled: boolean;
+  outlookSyncIntervalMs: number;
+  verboseAgentRunLogs: boolean;
 }
 
 export function loadConfig(): Config {
@@ -361,5 +369,24 @@ export function loadConfig(): Config {
       undefined,
     gmailSyncEnabled: process.env.PAPERCLIP_GMAIL_SYNC_ENABLED !== "false",
     gmailSyncIntervalMs: Math.max(15_000, Number(process.env.PAPERCLIP_GMAIL_SYNC_INTERVAL_MS) || 60_000),
+    outlookOAuthClientId:
+      process.env.PAPERCLIP_OUTLOOK_OAUTH_CLIENT_ID?.trim() ||
+      process.env.MICROSOFT_OUTLOOK_OAUTH_CLIENT_ID?.trim() ||
+      undefined,
+    outlookOAuthClientSecret:
+      process.env.PAPERCLIP_OUTLOOK_OAUTH_CLIENT_SECRET?.trim() ||
+      process.env.MICROSOFT_OUTLOOK_OAUTH_CLIENT_SECRET?.trim() ||
+      undefined,
+    outlookOAuthRedirectUri:
+      process.env.PAPERCLIP_OUTLOOK_OAUTH_REDIRECT_URI?.trim() ||
+      process.env.MICROSOFT_OUTLOOK_OAUTH_REDIRECT_URI?.trim() ||
+      undefined,
+    outlookOAuthTenantId:
+      process.env.PAPERCLIP_OUTLOOK_OAUTH_TENANT_ID?.trim() ||
+      process.env.MICROSOFT_OUTLOOK_OAUTH_TENANT_ID?.trim() ||
+      undefined,
+    outlookSyncEnabled: process.env.PAPERCLIP_OUTLOOK_SYNC_ENABLED !== "false",
+    outlookSyncIntervalMs: Math.max(15_000, Number(process.env.PAPERCLIP_OUTLOOK_SYNC_INTERVAL_MS) || 60_000),
+    verboseAgentRunLogs: process.env.PAPERCLIP_VERBOSE_AGENT_RUN_LOGS === "true",
   };
 }

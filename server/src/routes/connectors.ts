@@ -1,6 +1,7 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import type { Db } from "@paperclipai/db";
 import {
+  connectorExecuteActionBodySchema,
   connectorInboundEventSchema,
   createConnectorConnectionSchema,
   createConnectorEventBindingSchema,
@@ -9,15 +10,108 @@ import {
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { loadConfig } from "../config.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
-import { accessService, connectorService, gmailConnectorService, logActivity } from "../services/index.js";
-import { forbidden } from "../errors.js";
+import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService, connectorService, gmailConnectorService, outlookConnectorService, logActivity } from "../services/index.js";
+import { forbidden, unauthorized, unprocessable } from "../errors.js";
+
+const GMAIL_OAUTH_POPUP_MESSAGE_TYPE = "paperclip:gmail-oauth";
+
+type GmailOAuthPopupResult = {
+  status: "connected" | "error";
+  connectionId?: string;
+};
+
+function sendGmailOAuthPopupResult(res: Response, result: GmailOAuthPopupResult) {
+  const payload = {
+    type: GMAIL_OAUTH_POPUP_MESSAGE_TYPE,
+    status: result.status,
+    ...(result.connectionId ? { connectionId: result.connectionId } : {}),
+  };
+  const fallbackPath =
+    result.status === "connected" && result.connectionId
+      ? `/company/connectors?gmail=connected&connectionId=${encodeURIComponent(result.connectionId)}`
+      : "/company/connectors?gmail=error";
+  const payloadJson = JSON.stringify(payload);
+  const fallbackJson = JSON.stringify(fallbackPath);
+
+  res.type("html").send(`<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Google sign-in</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; color: #444; }
+    </style>
+  </head>
+  <body>
+    <p>Finishing Google sign-in…</p>
+    <script>
+      (function () {
+        var payload = ${payloadJson};
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(payload, window.location.origin);
+          window.close();
+          return;
+        }
+        window.location.replace(${fallbackJson});
+      })();
+    </script>
+  </body>
+</html>`);
+}
+
+const OUTLOOK_OAUTH_POPUP_MESSAGE_TYPE = "paperclip:outlook-oauth";
+
+type OutlookOAuthPopupResult = {
+  status: "connected" | "error";
+  connectionId?: string;
+};
+
+function sendOutlookOAuthPopupResult(res: Response, result: OutlookOAuthPopupResult) {
+  const payload = {
+    type: OUTLOOK_OAUTH_POPUP_MESSAGE_TYPE,
+    status: result.status,
+    ...(result.connectionId ? { connectionId: result.connectionId } : {}),
+  };
+  const fallbackPath =
+    result.status === "connected" && result.connectionId
+      ? `/company/connectors?outlook=connected&connectionId=${encodeURIComponent(result.connectionId)}`
+      : "/company/connectors?outlook=error";
+  const payloadJson = JSON.stringify(payload);
+  const fallbackJson = JSON.stringify(fallbackPath);
+
+  res.type("html").send(`<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Microsoft sign-in</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; color: #444; }
+    </style>
+  </head>
+  <body>
+    <p>Finishing Microsoft sign-in…</p>
+    <script>
+      (function () {
+        var payload = ${payloadJson};
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(payload, window.location.origin);
+          window.close();
+          return;
+        }
+        window.location.replace(${fallbackJson});
+      })();
+    </script>
+  </body>
+</html>`);
+}
 
 export function connectorRoutes(db: Db) {
   const router = Router();
   const svc = connectorService(db);
   const config = loadConfig();
   const gmail = gmailConnectorService(db, config);
+  const outlook = outlookConnectorService(db, config);
   const access = accessService(db);
 
   async function assertCanReadConnectors(req: Request, companyId: string) {
@@ -42,10 +136,29 @@ export function connectorRoutes(db: Db) {
     if (!allowed) throw forbidden("Missing permission: connectors.bindings.manage");
   }
 
+  async function assertCanInvokeConnectorAction(req: Request, companyId: string, connectionId: string) {
+    if (req.actor.type === "none") throw unauthorized();
+    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+      const allowed = await access.canUser(companyId, req.actor.userId ?? "", "connectors.manage");
+      if (!allowed) throw forbidden("Missing permission: connectors.manage");
+      return;
+    }
+    if (req.actor.type === "agent") {
+      if (!req.actor.agentId) throw forbidden("Agent authentication required");
+      const ok = await svc.agentHasEnabledBindingForConnection(companyId, connectionId, req.actor.agentId);
+      if (!ok) throw forbidden("No enabled connector binding for this agent on this connection");
+      return;
+    }
+    throw unauthorized();
+  }
+
   router.get("/connectors/catalog", async (_req, res) => {
     res.json({
       catalog: svc.listCatalog(),
       gmailOAuthConfigured: gmail.isConfigured(),
+      outlookOAuthConfigured: outlook.isConfigured(),
     });
   });
 
@@ -221,14 +334,14 @@ export function connectorRoutes(db: Db) {
     const code = typeof req.query.code === "string" ? req.query.code : null;
     const state = typeof req.query.state === "string" ? req.query.state : null;
     if (!code || !state) {
-      res.redirect("/company/connectors?gmail=error");
+      sendGmailOAuthPopupResult(res, { status: "error" });
       return;
     }
     try {
       const result = await gmail.completeOAuthCallback({ code, state });
-      res.redirect(`/company/connectors?gmail=connected&connectionId=${encodeURIComponent(result.connectionId)}`);
+      sendGmailOAuthPopupResult(res, { status: "connected", connectionId: result.connectionId });
     } catch {
-      res.redirect("/company/connectors?gmail=error");
+      sendGmailOAuthPopupResult(res, { status: "error" });
     }
   });
 
@@ -239,6 +352,79 @@ export function connectorRoutes(db: Db) {
     await svc.getConnection(companyId, connectionId);
     res.json(await gmail.syncConnection(connectionId));
   });
+
+  router.get("/companies/:companyId/connectors/:connectionId/outlook/oauth-url", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const connectionId = req.params.connectionId as string;
+    await assertCanManageConnectors(req, companyId);
+    res.json(await outlook.getAuthorizationUrl(companyId, connectionId));
+  });
+
+  router.get("/connectors/outlook/oauth/callback", async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code : null;
+    const state = typeof req.query.state === "string" ? req.query.state : null;
+    if (!code || !state) {
+      sendOutlookOAuthPopupResult(res, { status: "error" });
+      return;
+    }
+    try {
+      const result = await outlook.completeOAuthCallback({ code, state });
+      sendOutlookOAuthPopupResult(res, { status: "connected", connectionId: result.connectionId });
+    } catch {
+      sendOutlookOAuthPopupResult(res, { status: "error" });
+    }
+  });
+
+  router.post("/companies/:companyId/connectors/:connectionId/outlook/sync", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const connectionId = req.params.connectionId as string;
+    await assertCanManageConnectors(req, companyId);
+    await svc.getConnection(companyId, connectionId);
+    res.json(await outlook.syncConnection(connectionId));
+  });
+
+  router.post(
+    "/companies/:companyId/connectors/:connectionId/actions",
+    validate(connectorExecuteActionBodySchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const connectionId = req.params.connectionId as string;
+      await assertCanInvokeConnectorAction(req, companyId, connectionId);
+      const conn = await svc.getConnection(companyId, connectionId);
+      const body = req.body as { action: string; params?: Record<string, unknown> };
+      const result =
+        conn.connectorTypeKey === "gmail"
+          ? await gmail.executeAction({
+              companyId,
+              connectionId,
+              action: body.action,
+              params: body.params ?? {},
+            })
+          : conn.connectorTypeKey === "outlook"
+            ? await outlook.executeAction({
+                companyId,
+                connectionId,
+                action: body.action,
+                params: body.params ?? {},
+              })
+            : null;
+      if (!result) {
+        throw unprocessable("Connector actions are not implemented for this connection type");
+      }
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType === "agent" ? "agent" : "user",
+        actorId: actor.actorId,
+        action: "connector.action.executed",
+        entityType: "connector_connection",
+        entityId: connectionId,
+        runId: actor.runId,
+        details: { ...result },
+      });
+      res.json(result);
+    },
+  );
 
   router.post("/connector-inbound/:publicId", validate(connectorInboundEventSchema), async (req, res) => {
     const result = await svc.ingestInbound({

@@ -26,6 +26,7 @@ interface RunTranscriptViewProps {
   emptyMessage?: string;
   className?: string;
   thinkingClassName?: string;
+  verbose?: boolean;
 }
 
 type TranscriptBlock =
@@ -1260,11 +1261,17 @@ export function RunTranscriptView({
   emptyMessage = "No transcript yet.",
   className,
   thinkingClassName,
+  verbose = false,
 }: RunTranscriptViewProps) {
   const blocks = useMemo(() => normalizeTranscript(entries, streaming), [entries, streaming]);
-  // UI-only filtering requested by product: hide command logs and path-bearing log lines.
-  const filteredBlocks = useMemo(() => blocks.filter((block) => !shouldHideBlockInNiceMode(block)), [blocks]);
-  const filteredEntries = useMemo(() => entries.filter((entry) => !shouldHideEntryInRawMode(entry)), [entries]);
+  const filteredBlocks = useMemo(
+    () => (verbose ? blocks : blocks.filter((block) => !shouldHideBlockInNiceMode(block))),
+    [blocks, verbose],
+  );
+  const filteredEntries = useMemo(
+    () => (verbose ? entries : entries.filter((entry) => !shouldHideEntryInRawMode(entry))),
+    [entries, verbose],
+  );
   const visibleBlocks = limit ? filteredBlocks.slice(-limit) : filteredBlocks;
   const visibleEntries = limit ? filteredEntries.slice(-limit) : filteredEntries;
 

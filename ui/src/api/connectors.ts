@@ -13,7 +13,11 @@ import { api } from "./client";
 
 export const connectorsApi = {
   catalog: () =>
-    api.get<{ catalog: ConnectorTypeDefinition[]; gmailOAuthConfigured: boolean }>("/connectors/catalog"),
+    api.get<{
+      catalog: ConnectorTypeDefinition[];
+      gmailOAuthConfigured: boolean;
+      outlookOAuthConfigured: boolean;
+    }>("/connectors/catalog"),
   listConnections: (companyId: string) => api.get<ConnectorConnection[]>(`/companies/${companyId}/connectors`),
   createConnection: (companyId: string, data: CreateConnectorConnection) =>
     api.post<ConnectorConnectionCreated>(`/companies/${companyId}/connectors`, data),
@@ -36,5 +40,15 @@ export const connectorsApi = {
   getGmailOAuthUrl: (companyId: string, connectionId: string) =>
     api.get<{ authorizationUrl: string }>(`/companies/${companyId}/connectors/${connectionId}/gmail/oauth-url`),
   syncGmail: (companyId: string, connectionId: string) =>
-    api.post<{ processed: number }>(`/companies/${companyId}/connectors/${connectionId}/gmail/sync`, {}),
+    api.post<{ processed: number; authFailure?: boolean; transientWarning?: string }>(
+      `/companies/${companyId}/connectors/${connectionId}/gmail/sync`,
+      {},
+    ),
+  getOutlookOAuthUrl: (companyId: string, connectionId: string) =>
+    api.get<{ authorizationUrl: string }>(`/companies/${companyId}/connectors/${connectionId}/outlook/oauth-url`),
+  syncOutlook: (companyId: string, connectionId: string) =>
+    api.post<{ processed: number; authFailure?: boolean; transientWarning?: string }>(
+      `/companies/${companyId}/connectors/${connectionId}/outlook/sync`,
+      {},
+    ),
 };

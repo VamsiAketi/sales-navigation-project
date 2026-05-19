@@ -9,7 +9,7 @@ import {
   asStringArray,
   parseObject,
   buildPaperclipEnv,
-  joinPromptSections,
+  buildAdapterInvocationPrompt,
   buildInvocationEnvForLogs,
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
@@ -300,23 +300,27 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     context,
   };
   const renderedSystemPromptExtension = renderTemplate(systemPromptExtension, templateData);
-  const renderedHeartbeatPrompt = renderTemplate(promptTemplate, templateData);
-  const renderedBootstrapPrompt =
-    !canResumeSession && bootstrapPromptTemplate.trim().length > 0
-      ? renderTemplate(bootstrapPromptTemplate, templateData).trim()
-      : "";
   const sessionHandoffNote = asString(context.paperclipSessionHandoffMarkdown, "").trim();
-  const userPrompt = joinPromptSections([
+  const {
+    prompt: userPrompt,
     renderedBootstrapPrompt,
-    sessionHandoffNote,
     renderedHeartbeatPrompt,
-  ]);
+    connectorWakePrompt,
+  } = buildAdapterInvocationPrompt({
+    context,
+    promptTemplate,
+    templateData,
+    bootstrapPromptTemplate,
+    sessionHandoffNote,
+    sessionId: canResumeSession ? runtimeSessionId : null,
+  });
   const promptMetrics = {
     systemPromptChars: renderedSystemPromptExtension.length,
     promptChars: userPrompt.length,
     bootstrapPromptChars: renderedBootstrapPrompt.length,
     sessionHandoffChars: sessionHandoffNote.length,
     heartbeatPromptChars: renderedHeartbeatPrompt.length,
+    connectorWakePromptChars: connectorWakePrompt.length,
   };
 
   const commandNotes = (() => {

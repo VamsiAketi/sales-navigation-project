@@ -10,9 +10,13 @@ export const instanceGeneralSettingsSchema = z.object({
   ),
   /** Total prepaid account credit for the instance (USD cents). Drawn down by all companies' model-based usage. */
   billingPrepaidCents: z.number().int().nonnegative().default(0),
+  /** Show adapter invocation, workspace operations, and path-bearing transcript lines in run logs. */
+  verboseAgentRunLogs: z.boolean().default(false),
 }).strict();
 
-export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema.partial();
+export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema
+  .omit({ verboseAgentRunLogs: true })
+  .partial();
 
 export const instanceExperimentalSettingsSchema = z.object({
   enableIsolatedWorkspaces: z.boolean().default(false),

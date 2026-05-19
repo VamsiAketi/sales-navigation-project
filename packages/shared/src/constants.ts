@@ -831,3 +831,8 @@ export {
   type ConnectorDeliveryStatus,
   type ConnectorTypeDefinition,
 } from "./constants/connectors.js";
+export {
+  CONNECTOR_ACTIONS_BY_TYPE,
+  listConnectorActionsForType,
+  type ConnectorActionCatalogEntry,
+} from "./constants/connector-actions.js";

@@ -289,6 +289,7 @@ export function useLiveRunTranscripts({
 
   return {
     transcriptByRun,
+    verboseAgentRunLogs: generalSettings?.verboseAgentRunLogs === true,
     hasOutputForRun(runId: string) {
       return (chunksByRun.get(runId)?.length ?? 0) > 0;
     },

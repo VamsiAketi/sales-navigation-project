@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Link2, Plus, RefreshCw, Trash2 } from "lucide-react";
-import type { ConnectorConnectionCreated, ConnectorEventBinding, ConnectorTypeDefinition } from "@paperclipai/shared";
-import { useSearchParams } from "@/lib/router";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { ChevronRight, Copy, Link2, Plus, Search } from "lucide-react";
+import type { ConnectorConnectionCreated, ConnectorTypeDefinition } from "@paperclipai/shared";
+import { Link, useSearchParams } from "@/lib/router";
 import { connectorsApi } from "../api/connectors";
-import { agentsApi } from "../api/agents";
-import { projectsApi } from "../api/projects";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -13,9 +11,7 @@ import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { InlineEntitySelector, type InlineEntityOption } from "../components/InlineEntitySelector";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -24,32 +20,65 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "../components/ui/badge";
+import { startGmailOAuthPopup } from "../lib/gmail-oauth-popup";
+import { startOutlookOAuthPopup } from "../lib/outlook-oauth-popup";
+import { formatConnectorLabel } from "../lib/connector-labels";
+import { iconForConnectorCatalogKey } from "../lib/connector-catalog-icons";
+import { cn } from "../lib/utils";
 
 function copyToClipboard(value: string, pushToast: ReturnType<typeof useToast>["pushToast"]) {
   void navigator.clipboard.writeText(value).then(() => pushToast({ title: "Copied to clipboard", tone: "success" }));
 }
 
+async function refreshConnectorConnections(
+  queryClient: QueryClient,
+  companyId: string,
+  connectionId?: string,
+) {
+  await queryClient.refetchQueries({ queryKey: queryKeys.connectors.list(companyId) });
+  if (!connectionId) return;
+  await Promise.all([
+    queryClient.refetchQueries({ queryKey: queryKeys.connectors.bindings(companyId, connectionId) }),
+    queryClient.refetchQueries({ queryKey: queryKeys.connectors.deliveries(companyId, connectionId) }),
+  ]);
+}
+
 function startGmailOAuth(
   companyId: string,
   connectionId: string,
+  queryClient: QueryClient,
   pushToast: ReturnType<typeof useToast>["pushToast"],
 ) {
-  void connectorsApi
-    .getGmailOAuthUrl(companyId, connectionId)
-    .then((result) => {
-      window.location.assign(result.authorizationUrl);
-    })
-    .catch((error: Error) => pushToast({ title: error.message, tone: "error" }));
+  startGmailOAuthPopup({
+    companyId,
+    connectionId,
+    onConnected: async (connectedConnectionId) => {
+      await refreshConnectorConnections(queryClient, companyId, connectedConnectionId ?? connectionId);
+      pushToast({ title: "Gmail connected", tone: "success" });
+    },
+    onError: (message) => pushToast({ title: message, tone: "error" }),
+    onCancelled: () => pushToast({ title: "Google sign-in was closed before finishing", tone: "error" }),
+  });
+}
+
+function startOutlookOAuth(
+  companyId: string,
+  connectionId: string,
+  queryClient: QueryClient,
+  pushToast: ReturnType<typeof useToast>["pushToast"],
+) {
+  startOutlookOAuthPopup({
+    companyId,
+    connectionId,
+    onConnected: async (connectedConnectionId) => {
+      await refreshConnectorConnections(queryClient, companyId, connectedConnectionId ?? connectionId);
+      pushToast({ title: "Outlook connected", tone: "success" });
+    },
+    onError: (message) => pushToast({ title: message, tone: "error" }),
+    onCancelled: () => pushToast({ title: "Microsoft sign-in was closed before finishing", tone: "error" }),
+  });
 }
 
 export function CompanyConnectors() {
@@ -61,18 +90,35 @@ export function CompanyConnectors() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createTypeKey, setCreateTypeKey] = useState("");
   const [createName, setCreateName] = useState("");
+  const [catalogSearch, setCatalogSearch] = useState("");
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
-  const [bindingConnectionId, setBindingConnectionId] = useState<string | null>(null);
-  const [bindingTitle, setBindingTitle] = useState("");
-  const [bindingPrompt, setBindingPrompt] = useState(
-    "When a message arrives from {{from}}, summarize it and create or update the lead record in the target project.",
-  );
-  const [bindingAgentId, setBindingAgentId] = useState("");
-  const [bindingProjectId, setBindingProjectId] = useState("");
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Connectors" }]);
   }, [setBreadcrumbs]);
+
+  useEffect(() => {
+    const outlookResult =
+      searchParams.get("outlook") ??
+      (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("outlook") : null);
+    if (!outlookResult || !selectedCompanyId) return;
+
+    if (outlookResult === "connected") {
+      const connectionId = searchParams.get("connectionId");
+      void refreshConnectorConnections(queryClient, selectedCompanyId, connectionId ?? undefined).then(() => {
+        pushToast({ title: "Outlook connected", tone: "success" });
+      });
+    } else if (outlookResult === "error") {
+      pushToast({ title: "Outlook connection failed", tone: "error" });
+    }
+
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("outlook")) return;
+    url.searchParams.delete("outlook");
+    url.searchParams.delete("connectionId");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [pushToast, queryClient, searchParams, selectedCompanyId]);
 
   useEffect(() => {
     const gmailResult =
@@ -81,8 +127,10 @@ export function CompanyConnectors() {
     if (!gmailResult || !selectedCompanyId) return;
 
     if (gmailResult === "connected") {
-      pushToast({ title: "Gmail connected", tone: "success" });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId) });
+      const connectionId = searchParams.get("connectionId");
+      void refreshConnectorConnections(queryClient, selectedCompanyId, connectionId ?? undefined).then(() => {
+        pushToast({ title: "Gmail connected", tone: "success" });
+      });
     } else if (gmailResult === "error") {
       pushToast({ title: "Gmail connection failed", tone: "error" });
     }
@@ -103,44 +151,41 @@ export function CompanyConnectors() {
   });
   const canReadConnectors = sidebarBadges?.canReadConnectors ?? true;
   const canManageConnectors = sidebarBadges?.canManageConnectors ?? true;
-  const canManageConnectorBindings = sidebarBadges?.canManageConnectorBindings ?? true;
 
   const { data: catalogResponse, isLoading: catalogLoading } = useQuery({
     queryKey: queryKeys.connectors.catalog,
     queryFn: () => connectorsApi.catalog(),
   });
   const catalog = catalogResponse?.catalog ?? [];
-  const gmailOAuthConfigured = catalogResponse?.gmailOAuthConfigured ?? false;
+  const connectorTypeLabelByKey = useMemo(
+    () => new Map(catalog.map((entry) => [entry.key, entry.displayName])),
+    [catalog],
+  );
+  const catalogByKey = useMemo(() => new Map(catalog.map((entry) => [entry.key, entry])), [catalog]);
+  const filteredCatalog = useMemo(() => {
+    const q = catalogSearch.trim().toLowerCase();
+    if (!q) return catalog;
+    return catalog.filter(
+      (entry) =>
+        entry.displayName.toLowerCase().includes(q) ||
+        entry.description.toLowerCase().includes(q) ||
+        entry.key.toLowerCase().includes(q),
+    );
+  }, [catalog, catalogSearch]);
+
+  const selectedCreateType = createTypeKey ? (catalogByKey.get(createTypeKey) ?? null) : null;
+
+  const openCreateForType = (entry: ConnectorTypeDefinition) => {
+    setCreateTypeKey(entry.key);
+    setCreateName(entry.defaultConnectionName ?? entry.displayName);
+    setCreateOpen(true);
+  };
 
   const { data: connections = [], isLoading: connectionsLoading } = useQuery({
     queryKey: selectedCompanyId ? queryKeys.connectors.list(selectedCompanyId) : ["connectors", "none"],
     queryFn: () => connectorsApi.listConnections(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId) && canReadConnectors,
   });
-
-  const { data: agents = [] } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none"],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
-  });
-
-  const { data: projects = [] } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.projects.list(selectedCompanyId) : ["projects", "none"],
-    queryFn: () => projectsApi.list(selectedCompanyId!),
-    enabled: Boolean(selectedCompanyId),
-  });
-
-  const agentOptions = useMemo<InlineEntityOption[]>(
-    () => agents.map((agent) => ({ id: agent.id, label: agent.name, searchText: agent.role })),
-    [agents],
-  );
-  const projectOptions = useMemo<InlineEntityOption[]>(
-    () => projects.map((project) => ({ id: project.id, label: project.name, searchText: project.status })),
-    [projects],
-  );
-
-  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
-  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
 
   const createConnection = useMutation({
     mutationFn: () =>
@@ -150,65 +195,25 @@ export function CompanyConnectors() {
         config: {},
       }),
     onSuccess: async (created: ConnectorConnectionCreated) => {
-      pushToast({ title: "Connector connection created", tone: "success" });
-      setCreateOpen(false);
-      setCreateName("");
-      if (created.inboundSecretValue) setRevealedSecret(created.inboundSecretValue);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId!) });
-      if (created.connectorTypeKey === "gmail" && gmailOAuthConfigured) {
-        startGmailOAuth(selectedCompanyId!, created.id, pushToast);
-      }
-    },
-    onError: (error: Error) => pushToast({ title: error.message, tone: "error" }),
-  });
-
-  const rotateSecret = useMutation({
-    mutationFn: (connectionId: string) => connectorsApi.rotateInboundSecret(selectedCompanyId!, connectionId),
-    onSuccess: (rotated) => {
-      if (rotated.inboundSecretValue) setRevealedSecret(rotated.inboundSecretValue);
-      pushToast({ title: "Inbound secret rotated", tone: "success" });
-    },
-    onError: (error: Error) => pushToast({ title: error.message, tone: "error" }),
-  });
-
-  const deleteConnection = useMutation({
-    mutationFn: (connectionId: string) => connectorsApi.deleteConnection(selectedCompanyId!, connectionId),
-    onSuccess: () => {
-      pushToast({ title: "Connector deleted", tone: "success" });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId!) });
-    },
-    onError: (error: Error) => pushToast({ title: error.message, tone: "error" }),
-  });
-
-  const syncGmail = useMutation({
-    mutationFn: (connectionId: string) => connectorsApi.syncGmail(selectedCompanyId!, connectionId),
-    onSuccess: (result) => {
       pushToast({
-        title: result.processed > 0 ? `Synced ${result.processed} message(s)` : "Gmail sync completed",
+        title:
+          created.connectorTypeKey === "gmail"
+            ? "Gmail connection created. Finish setup with Google sign-in."
+            : created.connectorTypeKey === "outlook"
+              ? "Outlook connection created. Finish setup with Microsoft sign-in."
+              : "Connector connection created",
         tone: "success",
       });
+      setCreateOpen(false);
+      setCreateName("");
+      setCreateTypeKey("");
+      if (created.inboundSecretValue) setRevealedSecret(created.inboundSecretValue);
       void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId!) });
-    },
-    onError: (error: Error) => pushToast({ title: error.message, tone: "error" }),
-  });
-
-  const createBinding = useMutation({
-    mutationFn: () =>
-      connectorsApi.createBinding(selectedCompanyId!, bindingConnectionId!, {
-        eventType: "message.received",
-        title: bindingTitle.trim(),
-        prompt: bindingPrompt.trim(),
-        agentId: bindingAgentId,
-        projectId: bindingProjectId || null,
-        enabled: true,
-      }),
-    onSuccess: () => {
-      pushToast({ title: "Event binding created", tone: "success" });
-      setBindingConnectionId(null);
-      setBindingTitle("");
-      setBindingAgentId("");
-      setBindingProjectId("");
-      void queryClient.invalidateQueries({ queryKey: queryKeys.connectors.list(selectedCompanyId!) });
+      if (created.connectorTypeKey === "gmail") {
+        startGmailOAuth(selectedCompanyId!, created.id, queryClient, pushToast);
+      } else if (created.connectorTypeKey === "outlook") {
+        startOutlookOAuth(selectedCompanyId!, created.id, queryClient, pushToast);
+      }
     },
     onError: (error: Error) => pushToast({ title: error.message, tone: "error" }),
   });
@@ -222,118 +227,199 @@ export function CompanyConnectors() {
   if (catalogLoading || connectionsLoading) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Connectors</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Connect managed inboxes like Gmail with Google sign-in, or use webhook connectors for custom ingress.
-          </p>
-        </div>
-        {canManageConnectors ? (
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add connection
-          </Button>
-        ) : null}
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 p-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Connectors</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Pick an ingress type from the directory, name the connection, then open it to add bindings, copy inbound URLs,
+          and review deliveries. Gmail and Outlook use cloud sign-in; email and custom webhooks use a signed inbound URL.
+        </p>
       </div>
 
-      {!gmailOAuthConfigured ? (
-        <p className="text-sm text-muted-foreground">
-          Gmail connect is not configured on this instance. Set `PAPERCLIP_GMAIL_OAUTH_CLIENT_ID` and
-          `PAPERCLIP_GMAIL_OAUTH_CLIENT_SECRET` on the server.
-        </p>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Catalog</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2">
-          {catalog.map((entry: ConnectorTypeDefinition) => (
-            <div key={entry.key} className="rounded-lg border p-4">
-              <div className="font-medium">{entry.displayName}</div>
-              <p className="mt-1 text-sm text-muted-foreground">{entry.description}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {entry.eventTypes.map((eventType: ConnectorTypeDefinition["eventTypes"][number]) => (
-                  <Badge key={eventType.key} variant="secondary">
-                    {eventType.displayName}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {connections.length === 0 ? (
-        <EmptyState
-          icon={Link2}
-          message="Create a Gmail connection or webhook connector, then add bindings to route inbound events to agents."
-          action={canManageConnectors ? "Add connection" : undefined}
-          onAction={canManageConnectors ? () => setCreateOpen(true) : undefined}
-        />
-      ) : (
-        <div className="grid gap-4">
-          {connections.map((connection) => (
-            <ConnectionCard
-              key={connection.id}
-              companyId={selectedCompanyId}
-              connection={connection}
-              canManageConnectors={canManageConnectors}
-              canManageConnectorBindings={canManageConnectorBindings}
-              agentById={agentById}
-              projectById={projectById}
-              onRotate={() => rotateSecret.mutate(connection.id)}
-              onSync={() => syncGmail.mutate(connection.id)}
-              syncPending={syncGmail.isPending && syncGmail.variables === connection.id}
-              onConnectGmail={() => startGmailOAuth(selectedCompanyId, connection.id, pushToast)}
-              onDelete={() => deleteConnection.mutate(connection.id)}
-              onCopy={(value) => copyToClipboard(value, pushToast)}
-              onAddBinding={() => {
-                setBindingConnectionId(connection.id);
-                setBindingTitle(`${connection.name} handler`);
-              }}
+      <section className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">Directory</h2>
+          <div className="relative w-full max-w-sm">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
             />
-          ))}
-        </div>
-      )}
-
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add connector connection</DialogTitle>
-            <DialogDescription>Choose a connector type and name this connection for your operators.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Connector type</label>
-              <Select value={createTypeKey} onValueChange={setCreateTypeKey}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select connector" />
-                </SelectTrigger>
-                <SelectContent>
-                  {catalog.map((entry) => (
-                    <SelectItem key={entry.key} value={entry.key} disabled={entry.key === "gmail" && !gmailOAuthConfigured}>
-                      {entry.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Connection name</label>
-              <Input value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="Sales inbox" />
-            </div>
+            <Input
+              className="pl-9"
+              placeholder="Search connectors…"
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              aria-label="Search connectors"
+            />
           </div>
-          <DialogFooter>
-            <Button
-              disabled={!createTypeKey || !createName.trim() || createConnection.isPending}
-              onClick={() => createConnection.mutate()}
-            >
-              Create connection
-            </Button>
-          </DialogFooter>
+        </div>
+        {filteredCatalog.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No connectors match your search.</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredCatalog.map((entry) => {
+              const Icon = iconForConnectorCatalogKey(entry.key);
+              return (
+                <div
+                  key={entry.key}
+                  className={cn(
+                    "flex flex-col rounded-xl border bg-card p-4 shadow-xs transition-colors",
+                    "hover:border-primary/35 hover:bg-accent/15",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        <Icon className="h-5 w-5 text-foreground" aria-hidden />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-medium leading-tight">{entry.displayName}</div>
+                        <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+                          {entry.description}
+                        </p>
+                      </div>
+                    </div>
+                    {canManageConnectors ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="shrink-0 gap-1"
+                        onClick={() => openCreateForType(entry)}
+                      >
+                        <Plus className="h-3.5 w-3.5" aria-hidden />
+                        Add
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {entry.eventTypes.map((eventType) => (
+                      <Badge key={eventType.key} variant="secondary" className="text-[10px] font-normal">
+                        {eventType.displayName}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold tracking-tight text-foreground">Your connections</h2>
+        {connections.length === 0 ? (
+          <div className="rounded-xl border border-dashed bg-muted/15 px-6 py-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              No connections yet. Choose a connector in the directory above, use{" "}
+              <span className="font-medium text-foreground">Add</span> to create one, then open it to finish setup and
+              add bindings.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border bg-card">
+            {connections.map((connection) => (
+              <ConnectionListRow
+                key={connection.id}
+                connection={connection}
+                typeLabel={
+                  connectorTypeLabelByKey.get(connection.connectorTypeKey) ??
+                  formatConnectorLabel(connection.connectorTypeKey)
+                }
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <Dialog
+        open={createOpen && Boolean(createTypeKey)}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) {
+            setCreateTypeKey("");
+            setCreateName("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          {selectedCreateType ? (
+            <>
+              <DialogHeader className="space-y-4 text-left sm:space-y-4 sm:text-left">
+                <div className="flex gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                    {(() => {
+                      const HeaderIcon = iconForConnectorCatalogKey(selectedCreateType.key);
+                      return <HeaderIcon className="h-5 w-5 text-foreground" aria-hidden />;
+                    })()}
+                  </div>
+                  <div className="min-w-0">
+                    <DialogTitle>Add {selectedCreateType.displayName}</DialogTitle>
+                    <DialogDescription className="mt-1.5 text-pretty">
+                      {selectedCreateType.createDialogHelperText ?? selectedCreateType.description}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+              <div className="grid gap-4">
+                <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
+                  <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:gap-x-4">
+                    <span>
+                      <span className="text-muted-foreground/80">Auth</span>{" "}
+                      <span className="text-foreground">
+                        {selectedCreateType.authMode === "managed_oauth"
+                          ? "Google OAuth (managed)"
+                          : "Bearer token + HTTPS inbound URL"}
+                      </span>
+                    </span>
+                    <span>
+                      <span className="text-muted-foreground/80">Events</span>{" "}
+                      <span className="text-foreground">
+                        {selectedCreateType.eventTypes.map((e) => e.displayName).join(", ")}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <label htmlFor="connector-create-name" className="text-sm font-medium">
+                    {selectedCreateType.connectionNameFieldLabel ?? "Connection name"}
+                  </label>
+                  <Input
+                    id="connector-create-name"
+                    value={createName}
+                    onChange={(event) => setCreateName(event.target.value)}
+                    placeholder={selectedCreateType.connectionNamePlaceholder ?? "e.g. Sales inbox"}
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="sm:mr-auto"
+                  onClick={() => {
+                    setCreateOpen(false);
+                    setCreateTypeKey("");
+                    setCreateName("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={!createName.trim() || createConnection.isPending}
+                  onClick={() => createConnection.mutate()}
+                >
+                  {createTypeKey === "gmail"
+                    ? "Continue with Google"
+                    : createTypeKey === "outlook"
+                      ? "Continue with Microsoft"
+                      : "Create connection"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -353,83 +439,35 @@ export function CompanyConnectors() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(bindingConnectionId)} onOpenChange={(open) => !open && setBindingConnectionId(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Add event binding</DialogTitle>
-            <DialogDescription>Route message.received events to an agent with a prompt template.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Title</label>
-              <Input value={bindingTitle} onChange={(event) => setBindingTitle(event.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Agent</label>
-              <InlineEntitySelector
-                options={agentOptions}
-                value={bindingAgentId}
-                onChange={setBindingAgentId}
-                placeholder="Select agent"
-                noneLabel="No agent"
-                searchPlaceholder="Search agents..."
-                emptyMessage="No agents found."
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Project (optional)</label>
-              <InlineEntitySelector
-                options={projectOptions}
-                value={bindingProjectId}
-                onChange={setBindingProjectId}
-                placeholder="No project"
-                noneLabel="No project"
-                includeNoneOption
-                searchPlaceholder="Search projects..."
-                emptyMessage="No projects found."
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Prompt</label>
-              <Textarea value={bindingPrompt} onChange={(event) => setBindingPrompt(event.target.value)} rows={8} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              disabled={
-                !bindingConnectionId ||
-                !bindingTitle.trim() ||
-                !bindingPrompt.trim() ||
-                !bindingAgentId ||
-                createBinding.isPending
-              }
-              onClick={() => createBinding.mutate()}
-            >
-              Save binding
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-function ConnectionCard({
-  companyId,
+function connectionListSubtitle(connection: {
+  authMode?: "inbound_webhook" | "managed_oauth";
+  connectorTypeKey: string;
+  connectedAccountEmail?: string | null;
+  status: string;
+  lastError: string | null;
+}): string | null {
+  if (connection.authMode === "managed_oauth") {
+    if (connection.connectedAccountEmail) return connection.connectedAccountEmail;
+    if (connection.status === "pending_auth") {
+      return connection.connectorTypeKey === "outlook" ? "Awaiting Microsoft sign-in" : "Awaiting Google sign-in";
+    }
+    if (connection.status === "error" && connection.lastError) {
+      const t = connection.lastError;
+      return t.length > 96 ? `${t.slice(0, 93)}…` : t;
+    }
+    return null;
+  }
+  return "Inbound webhook (bearer token)";
+}
+
+function ConnectionListRow({
   connection,
-  canManageConnectors,
-  canManageConnectorBindings,
-  agentById,
-  projectById,
-  onRotate,
-  onSync,
-  syncPending,
-  onConnectGmail,
-  onDelete,
-  onCopy,
-  onAddBinding,
+  typeLabel,
 }: {
-  companyId: string;
   connection: {
     id: string;
     name: string;
@@ -437,137 +475,36 @@ function ConnectionCard({
     status: string;
     authMode?: "inbound_webhook" | "managed_oauth";
     connectedAccountEmail?: string | null;
-    inboundUrl: string | null;
     lastError: string | null;
   };
-  canManageConnectors: boolean;
-  canManageConnectorBindings: boolean;
-  agentById: Map<string, { id: string; name: string }>;
-  projectById: Map<string, { id: string; name: string }>;
-  onRotate: () => void;
-  onSync: () => void;
-  syncPending: boolean;
-  onConnectGmail: () => void;
-  onDelete: () => void;
-  onCopy: (value: string) => void;
-  onAddBinding: () => void;
+  typeLabel: string;
 }) {
-  const { data: bindings = [] } = useQuery({
-    queryKey: queryKeys.connectors.bindings(companyId, connection.id),
-    queryFn: () => connectorsApi.listBindings(companyId, connection.id),
-  });
-  const { data: deliveries = [] } = useQuery({
-    queryKey: queryKeys.connectors.deliveries(companyId, connection.id),
-    queryFn: () => connectorsApi.listDeliveries(companyId, connection.id, 20),
-  });
+  const Icon = iconForConnectorCatalogKey(connection.connectorTypeKey);
+  const subtitle = connectionListSubtitle(connection);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div>
-          <CardTitle className="text-base">{connection.name}</CardTitle>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{connection.connectorTypeKey}</Badge>
-            <Badge variant={connection.status === "active" ? "default" : "secondary"}>{connection.status}</Badge>
-          </div>
+    <div className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0 hover:bg-muted/30">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
+        <Icon className="h-4 w-4 text-foreground" aria-hidden />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-medium leading-tight">{connection.name}</span>
+          <Badge variant="outline" className="text-[10px] font-normal">
+            {typeLabel}
+          </Badge>
+          <Badge variant={connection.status === "active" ? "default" : "secondary"} className="text-[10px] font-normal">
+            {formatConnectorLabel(connection.status)}
+          </Badge>
         </div>
-        <div className="flex gap-2">
-          {canManageConnectorBindings ? (
-            <Button variant="secondary" size="sm" onClick={onAddBinding}>
-              <Plus className="mr-2 h-4 w-4" />
-              Binding
-            </Button>
-          ) : null}
-          {canManageConnectors ? (
-            <>
-              {connection.authMode === "managed_oauth" &&
-              (connection.status === "pending_auth" || connection.status === "error") ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={onConnectGmail}
-                >
-                  {connection.status === "error" ? "Reconnect Gmail" : "Connect Gmail"}
-                </Button>
-              ) : null}
-              {connection.authMode === "managed_oauth" && connection.status === "active" ? (
-                <Button variant="secondary" size="sm" onClick={onSync} disabled={syncPending}>
-                  <RefreshCw className={`mr-2 h-4 w-4${syncPending ? " animate-spin" : ""}`} />
-                  Sync now
-                </Button>
-              ) : null}
-              {connection.authMode !== "managed_oauth" ? (
-                <Button variant="secondary" size="sm" onClick={onRotate}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Rotate token
-                </Button>
-              ) : null}
-              <Button variant="ghost" size="sm" onClick={onDelete}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        {connection.connectedAccountEmail ? (
-          <p className="text-sm text-muted-foreground">Connected as {connection.connectedAccountEmail}</p>
-        ) : null}
-        {connection.inboundUrl ? (
-          <div className="grid gap-2">
-            <div className="text-sm font-medium">Inbound URL</div>
-            <div className="flex gap-2">
-              <Input readOnly value={connection.inboundUrl} />
-              <Button variant="secondary" size="icon" onClick={() => onCopy(connection.inboundUrl!)}>
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        ) : null}
-        {connection.lastError ? <p className="text-sm text-destructive">{connection.lastError}</p> : null}
-        <div>
-          <div className="mb-2 text-sm font-medium">Bindings</div>
-          {bindings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No bindings configured.</p>
-          ) : (
-            <div className="grid gap-2">
-              {bindings.map((binding: ConnectorEventBinding) => {
-                const agentName = agentById.get(binding.agentId)?.name ?? binding.agentId;
-                const projectName = binding.projectId
-                  ? projectById.get(binding.projectId)?.name ?? binding.projectId
-                  : null;
-                return (
-                  <div key={binding.id} className="rounded-md border px-3 py-2 text-sm">
-                    <div className="font-medium">{binding.title}</div>
-                    <div className="mt-1 text-muted-foreground">
-                      {binding.eventType} · agent {agentName}
-                      {projectName ? ` · project ${projectName}` : ""}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <div>
-          <div className="mb-2 text-sm font-medium">Recent deliveries</div>
-          {deliveries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No inbound events yet.</p>
-          ) : (
-            <div className="grid gap-2">
-              {deliveries.slice(0, 5).map((delivery) => (
-                <div key={delivery.id} className="rounded-md border px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{delivery.externalEventId}</span>
-                    <Badge variant="secondary">{delivery.status}</Badge>
-                  </div>
-                  <div className="mt-1 text-muted-foreground">{delivery.eventType}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        {subtitle ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p> : null}
+      </div>
+      <Button variant="ghost" size="sm" className="shrink-0 gap-0.5 text-muted-foreground" asChild>
+        <Link to={`/company/connectors/${connection.id}`}>
+          Open
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        </Link>
+      </Button>
+    </div>
   );
 }

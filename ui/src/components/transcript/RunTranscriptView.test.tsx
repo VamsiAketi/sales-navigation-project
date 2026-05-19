@@ -81,4 +81,30 @@ describe("RunTranscriptView", () => {
       text: "Working on the task.",
     });
   });
+
+  it("shows command execution groups when verbose mode is enabled", () => {
+    const entries: TranscriptEntry[] = [
+      {
+        kind: "tool_call",
+        ts: "2026-03-12T00:00:00.000Z",
+        name: "command_execution",
+        toolUseId: "cmd_1",
+        input: { command: "ls -la /tmp/project" },
+      },
+    ];
+
+    const hiddenHtml = renderToStaticMarkup(
+      <ThemeProvider>
+        <RunTranscriptView entries={entries} density="compact" />
+      </ThemeProvider>,
+    );
+    const verboseHtml = renderToStaticMarkup(
+      <ThemeProvider>
+        <RunTranscriptView entries={entries} density="compact" verbose />
+      </ThemeProvider>,
+    );
+
+    expect(hiddenHtml).not.toContain("ls -la /tmp/project");
+    expect(verboseHtml).toContain("ls -la /tmp/project");
+  });
 });

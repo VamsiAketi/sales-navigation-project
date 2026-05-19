@@ -14,7 +14,7 @@ import {
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
   ensurePaperclipSkillSymlink,
-  joinPromptSections,
+  buildAdapterInvocationPrompt,
   ensurePathInEnv,
   readPaperclipRuntimeSkillEntries,
   resolveCommandForLogs,
@@ -22,7 +22,6 @@ import {
   removeMaintainerOnlySkillSymlinks,
   injectWorkspaceGitHubEnv,
   parseObject,
-  renderTemplate,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "../index.js";
@@ -297,29 +296,31 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     run: { id: runId, source: "on_demand" },
     context,
   };
-  const renderedPrompt = renderTemplate(promptTemplate, templateData);
-  const renderedBootstrapPrompt =
-    !sessionId && bootstrapPromptTemplate.trim().length > 0
-      ? renderTemplate(bootstrapPromptTemplate, templateData).trim()
-      : "";
   const sessionHandoffNote = asString(context.paperclipSessionHandoffMarkdown, "").trim();
   const paperclipEnvNote = renderPaperclipEnvNote(env);
   const apiAccessNote = renderApiAccessNote(env);
-  const prompt = joinPromptSections([
-    instructionsPrefix,
+  const {
+    prompt,
     renderedBootstrapPrompt,
+    renderedHeartbeatPrompt,
+    connectorWakePrompt,
+  } = buildAdapterInvocationPrompt({
+    context,
+    promptTemplate,
+    templateData,
+    bootstrapPromptTemplate,
     sessionHandoffNote,
-    paperclipEnvNote,
-    apiAccessNote,
-    renderedPrompt,
-  ]);
+    sessionId,
+    leadingSections: [instructionsPrefix, paperclipEnvNote, apiAccessNote],
+  });
   const promptMetrics = {
     promptChars: prompt.length,
     instructionsChars: instructionsPrefix.length,
     bootstrapPromptChars: renderedBootstrapPrompt.length,
     sessionHandoffChars: sessionHandoffNote.length,
     runtimeNoteChars: paperclipEnvNote.length + apiAccessNote.length,
-    heartbeatPromptChars: renderedPrompt.length,
+    heartbeatPromptChars: renderedHeartbeatPrompt.length,
+    connectorWakePromptChars: connectorWakePrompt.length,
   };
 
   const buildArgs = (resumeSessionId: string | null) => {
