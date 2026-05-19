@@ -6,6 +6,7 @@
  * entry exists yet, so existing layouts continue to work after this change.
  */
 const LEGACY_STORAGE_KEY = "dashboard:section-order";
+const PROJECT_ORDER_STORAGE_PREFIX = "dashboard:project-order:v1";
 
 export const DASHBOARD_SECTION_IDS = ["goals", "projects", "tasks", "costs", "metrics", "charts"] as const;
 export type DashboardSectionId = (typeof DASHBOARD_SECTION_IDS)[number];
@@ -58,6 +59,48 @@ export function saveDashboardSectionOrder(
 ) {
   try {
     localStorage.setItem(scopedKey(userId, companyId), JSON.stringify(order));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function projectOrderKey(userId: string | null, companyId: string) {
+  const uid = userId && userId.length > 0 ? userId : "guest";
+  return `${PROJECT_ORDER_STORAGE_PREFIX}:${uid}:${companyId}`;
+}
+
+export function loadDashboardProjectOrder(
+  userId: string | null,
+  companyId: string,
+  projectIds: string[],
+): string[] {
+  if (projectIds.length === 0) return [];
+  const valid = new Set(projectIds);
+  try {
+    const raw = localStorage.getItem(projectOrderKey(userId, companyId));
+    if (!raw) return [...projectIds];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [...projectIds];
+    const seen = new Set<string>();
+    const ordered = (parsed as unknown[])
+      .filter((id): id is string => typeof id === "string")
+      .filter((id) => valid.has(id) && !seen.has(id) && (seen.add(id), true));
+    for (const id of projectIds) {
+      if (!seen.has(id)) ordered.push(id);
+    }
+    return ordered;
+  } catch {
+    return [...projectIds];
+  }
+}
+
+export function saveDashboardProjectOrder(
+  userId: string | null,
+  companyId: string,
+  orderedProjectIds: string[],
+) {
+  try {
+    localStorage.setItem(projectOrderKey(userId, companyId), JSON.stringify(orderedProjectIds));
   } catch {
     /* quota / private mode */
   }

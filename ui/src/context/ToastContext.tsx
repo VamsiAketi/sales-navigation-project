@@ -10,6 +10,7 @@ import {
 } from "react";
 import { PERMISSION_DENIED_EVENT } from "../api/client";
 import { displayBrandSafe } from "../lib/displayBrandSafe";
+import { permissionDeniedToastFromServerMessage } from "../lib/permission-feedback";
 
 export type ToastTone = "info" | "success" | "warn" | "error";
 
@@ -165,18 +166,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           ? (event.detail as { method?: string; path?: string; message?: string } | undefined)
           : undefined;
       const message = (detail?.message ?? "").trim();
-      const normalizedMessage = message.toLowerCase();
-      const hasSpecificMessage =
-        normalizedMessage.length > 0 &&
-        normalizedMessage !== "permission denied" &&
-        normalizedMessage !== "forbidden";
+      const { title, body } = permissionDeniedToastFromServerMessage(message);
       pushToast({
-        title: "Permission denied",
-        body: hasSpecificMessage
-          ? message
-          : "You do not have permission to perform this action. Contact your administrator.",
+        title,
+        body,
         tone: "error",
-        dedupeKey: `permission-denied|${detail?.method ?? "UNKNOWN"}|${detail?.path ?? "unknown"}`,
+        dedupeKey: `permission-denied|${detail?.method ?? "UNKNOWN"}|${detail?.path ?? "unknown"}|${message}`,
       });
     };
     window.addEventListener(PERMISSION_DENIED_EVENT, handlePermissionDenied);

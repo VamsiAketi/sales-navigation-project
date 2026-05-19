@@ -723,7 +723,7 @@ export function RoutineDetail() {
             disabled={automationToggleDisabled}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
               automationEnabled ? "bg-emerald-500" : "bg-muted"
-            } ${automationToggleDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+            } ${automationToggleDisabled ? "cursor-not-allowed" : ""}`}
             onClick={() => updateRoutineStatus.mutate(automationEnabled ? "paused" : "active")}
           >
             <span

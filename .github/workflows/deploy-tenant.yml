@@ -96,12 +96,51 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
+      - name: Recreate PV if tenant was previously deleted
+        run: |
+          TENANT="${{ github.event.inputs.tenant }}"
+          PV_NAME="ai-harness-${TENANT}-shared-pv"
+
+          PV_STATUS=$(kubectl get pv "${PV_NAME}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+          echo "PV '${PV_NAME}' status: ${PV_STATUS}"
+
+          if [ "${PV_STATUS}" = "Released" ]; then
+            # PVC was deleted with the namespace but PV survived (Retain policy).
+            # Deleting it lets Helm recreate it fresh — no stale claimRef UID blocking binding.
+            echo "PV is Released — deleting so Helm recreates it cleanly..."
+            kubectl delete pv "${PV_NAME}"
+            echo "Done. Helm will create a fresh PV on install."
+          elif [ "${PV_STATUS}" = "Bound" ]; then
+            echo "PV is Bound (tenant is live). No action needed."
+          elif [ "${PV_STATUS}" = "Available" ]; then
+            echo "PV is Available. No action needed."
+          elif [ "${PV_STATUS}" = "NotFound" ]; then
+            echo "PV does not exist. Helm will create it."
+          else
+            echo "PV status is '${PV_STATUS}'. No action taken."
+          fi
+
       - name: Create tenant database on shared Azure PostgreSQL
+        id: create_db
         run: |
           TENANT="${{ github.event.inputs.tenant }}"
           DB_NAME="ai-harness-${TENANT}"
 
-          echo "Creating database '${DB_NAME}' on shared Azure PostgreSQL instance..."
+          # Check if DB already exists before creating so we know if it's fresh
+          DB_EXISTS=$(az postgres flexible-server db show \
+            --resource-group "${{ secrets.AZURE_POSTGRES_RG }}" \
+            --server-name   "${{ secrets.AZURE_POSTGRES_SERVER }}" \
+            --database-name "${DB_NAME}" \
+            --query "name" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "${DB_EXISTS}" ]; then
+            echo "Database '${DB_NAME}' does not exist. Creating fresh..."
+            echo "db_is_fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Database '${DB_NAME}' already exists."
+            echo "db_is_fresh=false" >> "$GITHUB_OUTPUT"
+          fi
+
           az postgres flexible-server db create \
             --resource-group "${{ secrets.AZURE_POSTGRES_RG }}" \
             --server-name   "${{ secrets.AZURE_POSTGRES_SERVER }}" \
@@ -109,6 +148,38 @@ jobs:
             2>&1 | grep -v "already exists" || true
 
           echo "Database '${DB_NAME}' is ready."
+
+      - name: Clear stale config if DB is fresh
+        if: steps.create_db.outputs.db_is_fresh == 'true'
+        run: |
+          TENANT="${{ github.event.inputs.tenant }}"
+          CONFIG_PATH="${TENANT}/instances/default/config.json"
+
+          echo "DB is fresh — checking for stale config.json on file share..."
+
+          STORAGE_KEY=$(az storage account keys list \
+            --resource-group "ai-harness-prod" \
+            --account-name   "aiharnessstorage" \
+            --query "[0].value" -o tsv)
+
+          FILE_EXISTS=$(az storage file exists \
+            --account-name "aiharnessstorage" \
+            --share-name   "paperclip-shared" \
+            --path         "${CONFIG_PATH}" \
+            --account-key  "${STORAGE_KEY}" \
+            --query        "exists" -o tsv)
+
+          if [ "${FILE_EXISTS}" = "true" ]; then
+            echo "Stale config.json found. Deleting so app onboards fresh against new DB..."
+            az storage file delete \
+              --account-name "aiharnessstorage" \
+              --share-name   "paperclip-shared" \
+              --path         "${CONFIG_PATH}" \
+              --account-key  "${STORAGE_KEY}"
+            echo "config.json deleted. App will onboard fresh and generate a new invite URL."
+          else
+            echo "No stale config.json found. Nothing to clear."
+          fi
 
       - name: Deploy tenant with Helm
         run: |
@@ -152,12 +223,10 @@ jobs:
             --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
             --set server.paperclip.instanceId="${TENANT}" \
             --set server.paperclip.publicUrl="https://${HOST}" \
-            --set-string server.extraEnv.SMTP_HOST="smtp.agentmail.to" \
-            --set-string server.extraEnv.SMTP_PORT="465" \
-            --set-string server.extraEnv.SMTP_SECURE="true" \
-            --set-string server.extraEnv.SMTP_USER="support@ai-harness.com" \
-            --set-string server.extraEnv.SMTP_PASS="am_us_518084634fe4d96cd2f85a56e1ed94323a275a9ccebfb081a056a90e5e568fd9" \
-            --set-string server.extraEnv.SMTP_FROM="support@ai-harness.com" \
+            --set-string server.extraEnv.MS_TENANT_ID="${{ secrets.MS_TENANT_ID }}" \
+            --set-string server.extraEnv.MS_CLIENT_ID="${{ secrets.MS_CLIENT_ID }}" \
+            --set-string server.extraEnv.MS_CLIENT_SECRET="${{ secrets.MS_CLIENT_SECRET }}" \
+            --set-string server.extraEnv.MS_SENDER_EMAIL="${{ secrets.MS_SENDER_EMAIL }}" \
             --set ingress.enabled=true \
             --set ingress.hosts[0].host="${HOST}" \
             --set ingress.hosts[0].paths[0].path="/" \
@@ -185,7 +254,7 @@ jobs:
 
           INVITE_LINE=""
           # Retry a few times in case bootstrap runs slightly after readiness
-          for i in $(seq 1 5); do
+          for i in $(seq 1 15); do
             echo "Attempt ${i} to find invite URL in logs..."
             INVITE_LINE=$(kubectl logs deployment/${RELEASE_NAME}-server -n "${NAMESPACE}" --tail=500 | grep -m1 'Invite URL:' || true)
             if [ -n "$INVITE_LINE" ]; then
@@ -367,30 +436,106 @@ jobs:
 
       - name: Send CEO credentials email
         if: steps.capture_invite.outputs.invite_url != '' && github.event.inputs.userEmail != '' && github.event.inputs.userName != ''
-        uses: dawidd6/action-send-mail@v4
-        with:
-          server_address: smtp.agentmail.to
-          server_port: 465
-          secure: true
-          username: "support@ai-harness.com"
-          password: ${{ secrets.SMTP_PASSWORD }}
-          from: "AI-Harness Support <support@ai-harness.com>"
-          to: ${{ github.event.inputs.userEmail }}
-          subject: "Your AI-Harness access is ready"
-          body: |
-            Hi ${{ github.event.inputs.userName }},
+        env:
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
+          MS_SENDER_EMAIL: ${{ secrets.MS_SENDER_EMAIL }}
+          CEO_NAME: ${{ github.event.inputs.userName }}
+          CEO_EMAIL: ${{ github.event.inputs.userEmail }}
+          USER_PASSWORD: ${{ steps.bootstrap_ceo.outputs.user_password }}
+          TENANT: ${{ github.event.inputs.tenant }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import ssl
+          import urllib.error
+          import urllib.parse
+          import urllib.request
 
-            Your AI-Harness tenant (${{ github.event.inputs.tenant }}) is ready.
+          ctx = ssl.create_default_context()
 
-            You can sign in at:
-            https://${{ github.event.inputs.tenant }}.app.ai-harness.com
+          def http_json(req: urllib.request.Request):
+              with urllib.request.urlopen(req, context=ctx) as r:
+                  raw = r.read().decode("utf-8", errors="replace")
+                  return r.status, (json.loads(raw) if raw.strip() else {})
 
-            Your initial login credentials are:
-            - Email: ${{ github.event.inputs.userEmail }}
-            - Password: ${{ steps.bootstrap_ceo.outputs.user_password }}
+          tenant_id = os.environ["MS_TENANT_ID"]
+          cid = os.environ["MS_CLIENT_ID"]
+          sec = os.environ["MS_CLIENT_SECRET"]
+          sender = os.environ["MS_SENDER_EMAIL"]
+          ceo_name = os.environ["CEO_NAME"]
+          ceo_email = os.environ["CEO_EMAIL"]
+          user_password = os.environ["USER_PASSWORD"]
+          tenant = os.environ["TENANT"]
+          tenant_url = f"https://{tenant}.app.ai-harness.com"
 
-            For security, please sign in and change your password as soon as possible.
+          token_body = urllib.parse.urlencode(
+              {
+                  "client_id": cid,
+                  "client_secret": sec,
+                  "scope": "https://graph.microsoft.com/.default",
+                  "grant_type": "client_credentials",
+              }
+          ).encode("utf-8")
+          token_req = urllib.request.Request(
+              f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+              data=token_body,
+              method="POST",
+              headers={"Content-Type": "application/x-www-form-urlencoded"},
+          )
+          try:
+              t_status, tok = http_json(token_req)
+          except urllib.error.HTTPError as e:
+              err = e.read().decode("utf-8", errors="replace")
+              raise SystemExit(f"Graph token HTTP {e.code}: {err[:4000]}") from None
+          if t_status != 200:
+              raise SystemExit(f"Graph token unexpected status {t_status}: {tok}")
+          access = tok.get("access_token")
+          if not access:
+              raise SystemExit(f"Graph token missing access_token: {json.dumps(tok)[:2000]}")
 
-            Thanks,
-            AI-Harness Support
-
+          body = "\n".join(
+              [
+                  f"Hi {ceo_name},",
+                  "",
+                  f"Your AI-Harness tenant ({tenant}) is ready.",
+                  "",
+                  "You can sign in at:",
+                  tenant_url,
+                  "",
+                  "Your initial login credentials are:",
+                  f"- Email: {ceo_email}",
+                  f"- Password: {user_password}",
+                  "",
+                  "For security, please sign in and change your password as soon as possible.",
+                  "",
+                  "Thanks,",
+                  "AI-Harness Support",
+              ]
+          )
+          msg = {
+              "message": {
+                  "subject": "Your AI-Harness access is ready",
+                  "body": {"contentType": "Text", "content": body},
+                  "toRecipients": [{"emailAddress": {"address": ceo_email}}],
+              },
+              "saveToSentItems": True,
+          }
+          enc = urllib.parse.quote(sender, safe="")
+          send_req = urllib.request.Request(
+              f"https://graph.microsoft.com/v1.0/users/{enc}/sendMail",
+              data=json.dumps(msg).encode("utf-8"),
+              method="POST",
+              headers={"Authorization": f"Bearer {access}", "Content-Type": "application/json"},
+          )
+          try:
+              with urllib.request.urlopen(send_req, context=ctx) as r2:
+                  if r2.status != 202:
+                      text = r2.read().decode("utf-8", errors="replace")
+                      raise SystemExit(f"sendMail expected 202, got {r2.status}: {text[:4000]}")
+          except urllib.error.HTTPError as e:
+              err = e.read().decode("utf-8", errors="replace")
+              raise SystemExit(f"Graph sendMail HTTP {e.code}: {err[:4000]}") from None
+          PY

@@ -75,6 +75,8 @@ const DETACHED_PROCESS_ERROR_CODE = "process_detached";
 const startLocksByAgent = new Map<string, Promise<void>>();
 const REPO_ONLY_CWD_SENTINEL = "/__paperclip_repo_only__";
 const MANAGED_WORKSPACE_GIT_CLONE_TIMEOUT_MS = 10 * 60 * 1000;
+const CONTROL_PLANE_COSTING_TIMEOUT_MS = 10_000;
+const TERMINAL_HEARTBEAT_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
 const execFile = promisify(execFileCallback);
 const SESSIONED_LOCAL_ADAPTERS = new Set([
   "claude_local",
@@ -383,6 +385,73 @@ function normalizeBilledCostCents(costUsd: number | null | undefined, billingTyp
   if (billingType === "subscription_included") return 0;
   if (typeof costUsd !== "number" || !Number.isFinite(costUsd)) return 0;
   return Math.max(0, Math.round(costUsd * 100));
+}
+
+function readModelCostCentsFromUsage(usageJson: unknown): number {
+  const usage = parseObject(usageJson);
+  if (!usage) return 0;
+  const value = usage.modelCostCents;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.round(value));
+  }
+  return 0;
+}
+
+async function postControlPlaneCostingPayload(payload: {
+  runId: string;
+  runStartTime: string;
+  runEndTime: string;
+  agentId: string;
+  tenantId: string;
+  modelCostCents: number;
+}) {
+  const controlPlaneBaseUrl = process.env.CONTROL_PLANE_URL?.trim();
+  if (!controlPlaneBaseUrl) return;
+  const internalSecret = process.env.INTERNAL_SECRET?.trim();
+  if (!internalSecret) {
+    logger.warn(
+      { runId: payload.runId, agentId: payload.agentId },
+      "CONTROL_PLANE_URL set but INTERNAL_SECRET missing; skipping cost callback",
+    );
+    return;
+  }
+  const endpoint = `${controlPlaneBaseUrl.replace(/\/+$/, "")}/api/internal/agent-run-complete`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CONTROL_PLANE_COSTING_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-secret": internalSecret,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      logger.warn(
+        {
+          endpoint,
+          status: response.status,
+          runId: payload.runId,
+          agentId: payload.agentId,
+        },
+        "control plane costing API returned non-ok status",
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      {
+        error,
+        endpoint,
+        runId: payload.runId,
+        agentId: payload.agentId,
+      },
+      "failed to post run cost payload to control plane API",
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function resolveLedgerScopeForRun(
@@ -1556,6 +1625,7 @@ export function heartbeatService(db: Db) {
     status: string,
     patch?: Partial<typeof heartbeatRuns.$inferInsert>,
   ) {
+    const previous = await getRun(runId);
     const updated = await db
       .update(heartbeatRuns)
       .set({ status, ...patch, updatedAt: new Date() })
@@ -1579,6 +1649,17 @@ export function heartbeatService(db: Db) {
           finishedAt: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : null,
         },
       });
+
+      if (TERMINAL_HEARTBEAT_STATUSES.has(updated.status) && previous?.status !== updated.status) {
+        await postControlPlaneCostingPayload({
+          runId: updated.id,
+          runStartTime: updated.startedAt ? new Date(updated.startedAt).toISOString() : "",
+          runEndTime: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : "",
+          agentId: updated.agentId,
+          tenantId: updated.companyId,
+          modelCostCents: readModelCostCentsFromUsage(updated.usageJson),
+        });
+      }
     }
 
     return updated;
@@ -2989,6 +3070,15 @@ export function heartbeatService(db: Db) {
               model: readNonEmptyString(adapterResult.model) ?? "unknown",
               ...(adapterResult.costUsd != null ? { costUsd: adapterResult.costUsd } : {}),
               billingType: normalizeLedgerBillingType(adapterResult.billingType),
+              modelCostCents:
+                normalizeLedgerBillingType(adapterResult.billingType) === "subscription_included"
+                  ? 0
+                  : calculateModelCostCents(
+                      readNonEmptyString(adapterResult.model) ?? "unknown",
+                      normalizedUsage?.inputTokens ?? 0,
+                      normalizedUsage?.cachedInputTokens ?? 0,
+                      normalizedUsage?.outputTokens ?? 0,
+                    ),
             } as Record<string, unknown>)
           : null;
 

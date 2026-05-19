@@ -38,8 +38,9 @@ export function sidebarBadgeRoutes(db: Db) {
       joinRequests: joinRequestCount,
     });
     let canReadCommandCenter = false;
-    let canReadTasks = false;
-    let canCreateTasks = false;
+  let canReadTasks = false;
+  let canCreateTasks = false;
+  let canCreateProjects = false;
     let canReadHybridOrg = false;
     let canEditHybridOrg = false;
     let canImportHybridOrg = false;
@@ -49,6 +50,9 @@ export function sidebarBadgeRoutes(db: Db) {
     let canReadGoals = false;
     let canWriteGoals = false;
     let canReadCosts = false;
+    let canReadBilling = false;
+    let canReadBillingInvoices = false;
+    let canManageBillingPayments = false;
     let canReadAttentionQueue = false;
     let canReadTeams = false;
     let canEditTeams = false;
@@ -79,6 +83,10 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "tasks.create"));
+      canCreateProjects =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "projects.create"));
       canReadHybridOrg =
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
@@ -115,6 +123,18 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "costs.read"));
+      canReadBilling =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "billing.read"));
+      canReadBillingInvoices =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "billing.invoices.read"));
+      canManageBillingPayments =
+        req.actor.source === "local_implicit" ||
+        Boolean(req.actor.isInstanceAdmin) ||
+        (await access.canUser(companyId, req.actor.userId, "billing.payments.manage"));
       canReadAttentionQueue =
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
@@ -123,7 +143,14 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
         (await access.canUser(companyId, req.actor.userId, "teams.read")) ||
-        (await access.canUser(companyId, req.actor.userId, "users:manage_permissions"));
+        (await access.canUser(companyId, req.actor.userId, "users:manage_permissions")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:invite")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:reset_password")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:deactivate")) ||
+        (await access.canUser(companyId, req.actor.userId, "users:delete")) ||
+        (await access.canUser(companyId, req.actor.userId, "teams.title_assign")) ||
+        (await access.canUser(companyId, req.actor.userId, "teams.title_create")) ||
+        (await access.canUser(companyId, req.actor.userId, "teams.title_manage"));
       canEditTeams =
         req.actor.source === "local_implicit" ||
         Boolean(req.actor.isInstanceAdmin) ||
@@ -205,6 +232,12 @@ export function sidebarBadgeRoutes(db: Db) {
         req.actor.agentId,
         "tasks.create",
       );
+      canCreateProjects = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "projects.create",
+      );
       canReadHybridOrg = await access.hasPermission(
         companyId,
         "agent",
@@ -258,6 +291,24 @@ export function sidebarBadgeRoutes(db: Db) {
         "agent",
         req.actor.agentId,
         "costs.read",
+      );
+      canReadBilling = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "billing.read",
+      );
+      canReadBillingInvoices = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "billing.invoices.read",
+      );
+      canManageBillingPayments = await access.hasPermission(
+        companyId,
+        "agent",
+        req.actor.agentId,
+        "billing.payments.manage",
       );
       canReadAttentionQueue = await access.hasPermission(
         companyId,
@@ -385,6 +436,7 @@ export function sidebarBadgeRoutes(db: Db) {
     badges.canReadCommandCenter = canReadCommandCenter;
     badges.canReadTasks = canReadTasks;
     badges.canCreateTasks = canCreateTasks;
+    badges.canCreateProjects = canCreateProjects;
     badges.canReadHybridOrg = canReadHybridOrg;
     badges.canEditHybridOrg = canEditHybridOrg;
     badges.canImportHybridOrg = canImportHybridOrg;
@@ -394,6 +446,9 @@ export function sidebarBadgeRoutes(db: Db) {
     badges.canReadGoals = canReadGoals;
     badges.canWriteGoals = canWriteGoals;
     badges.canReadCosts = canReadCosts;
+    badges.canReadBilling = canReadBilling;
+    badges.canReadBillingInvoices = canReadBillingInvoices;
+    badges.canManageBillingPayments = canManageBillingPayments;
     badges.canReadAttentionQueue = canReadAttentionQueue;
     badges.canReadTeams = canReadTeams;
     badges.canEditTeams = canEditTeams;

@@ -6,9 +6,21 @@ import {
 } from "../attachment-types.js";
 
 describe("parseAllowedTypes", () => {
-  it("includes common video types in defaults", () => {
+  it("includes common video, office, and audio types in defaults", () => {
     expect(DEFAULT_ALLOWED_TYPES).toEqual(
-      expect.arrayContaining(["video/webm", "video/mp4", "video/ogg", "video/quicktime"]),
+      expect.arrayContaining([
+        "video/webm",
+        "video/mp4",
+        "video/ogg",
+        "video/quicktime",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "audio/mpeg",
+        "audio/wav",
+      ]),
     );
   });
 

@@ -478,4 +478,55 @@ describe("issueService.list participantAgentId", () => {
       .then((rows) => rows[0] ?? null);
     expect(persistedGoal?.status).toBe("active");
   });
+
+  for (const initialProjectStatus of ["backlog", "planned"] as const) {
+    it(`forces new tasks to todo and promotes ${initialProjectStatus} projects to in_progress`, async () => {
+      const companyId = randomUUID();
+      const projectId = randomUUID();
+      const assigneeAgentId = randomUUID();
+
+      await db.insert(companies).values({
+        id: companyId,
+        name: "Paperclip",
+        issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+        requireBoardApprovalForNewAgents: false,
+      });
+
+      await db.insert(agents).values({
+        id: assigneeAgentId,
+        companyId,
+        name: "TaskBot",
+        role: "engineer",
+        status: "active",
+        adapterType: "codex_local",
+        adapterConfig: {},
+        runtimeConfig: {},
+        permissions: {},
+      });
+
+      await db.insert(projects).values({
+        id: projectId,
+        companyId,
+        name: "Launch",
+        status: initialProjectStatus,
+      });
+
+      const created = await svc.create(companyId, {
+        title: "First project task",
+        projectId,
+        status: "backlog",
+        priority: "medium",
+        assigneeAgentId,
+      });
+
+      expect(created.status).toBe("todo");
+
+      const persistedProject = await db
+        .select({ status: projects.status })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .then((rows) => rows[0] ?? null);
+      expect(persistedProject?.status).toBe("in_progress");
+    });
+  }
 });

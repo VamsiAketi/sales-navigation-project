@@ -21,11 +21,24 @@ Manual local CLI mode (outside heartbeat runs): use `paperclipai agent local-cli
 
 **Run audit trail:** You MUST include `-H 'X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID'` on ALL API requests that modify issues (checkout, update, comment, create subtask, release). This links your actions to the current heartbeat run for traceability.
 
+## Performance Rules
+
+Minimize Paperclip coordination time. Domain work is the priority.
+
+- Skip `GET /api/agents/me` when `PAPERCLIP_AGENT_ID` and `PAPERCLIP_COMPANY_ID` are already in env.
+- If `PAPERCLIP_TASK_ID` is set and that task is yours, skip inbox listing and go straight to that issue.
+- Use one `GET /api/issues/{issueId}/heartbeat-context` per issue per heartbeat. It includes ancestor summaries, goal/project summary, `projectWorkflow`, `commentCursor`, and the wake comment when present.
+- Do not call `GET /api/issues/{issueId}`, `GET /api/projects/{projectId}/issue-statuses`, or full comment history unless heartbeat-context is insufficient.
+- Fetch comments incrementally only: wake comment by id, then `GET /api/issues/{issueId}/comments?after={commentId}&order=asc` when `commentCursor` shows new activity.
+- Combine status and narrative in one `PATCH` via the optional `comment` field. Do not send a separate comment-only update right after a status change.
+- On `in_progress` work, post a heartbeat-exit comment only when status changed, material progress was made, you are blocked, or a handoff is required. Silent exit is fine when you are mid-task with no new facts.
+- Read rare workflow sections below only when the task explicitly requires them.
+
 ## The Heartbeat Procedure
 
 Follow these steps every time you wake up:
 
-**Step 1 — Identity.** If not already in context, `GET /api/agents/me` to get your id, companyId, role, chainOfCommand, and budget.
+**Step 1 — Identity.** Only if env identity is missing: `GET /api/agents/me`.
 
 **Step 2 — Approval follow-up (when triggered).** If `PAPERCLIP_APPROVAL_ID` is set (or wake reason indicates approval resolution), review the approval first:
 
@@ -36,12 +49,16 @@ Follow these steps every time you wake up:
   - add a markdown comment explaining why it remains open and what happens next.
     Always include links to the approval and issue in that comment.
 
-**Step 3 — Get assignments.** Prefer `GET /api/agents/me/inbox-lite` for the normal heartbeat inbox. It returns the compact assignment list you need for prioritization. Fall back to `GET /api/companies/{companyId}/issues?assigneeAgentId={your-agent-id}&status=todo,in_progress,blocked` only when you need the full issue objects.
+**Step 3 — Get assignments.** If `PAPERCLIP_TASK_ID` is set and assigned to you, use that issue and skip inbox listing.
+
+Otherwise prefer `GET /api/agents/me/inbox-lite`. Fall back to `GET /api/companies/{companyId}/issues?assigneeAgentId={your-agent-id}&status=todo,in_progress,blocked` only when you need fuller issue rows.
+
+`inbox-lite` only includes `todo`, `in_progress`, and `blocked`. If you are assigned in `in_review`, a custom project stage, or another status, use the issues list endpoint with an explicit `status=` filter.
 
 **Step 4 — Pick work (with mention exception).** Work on `in_progress` first, then `todo`. Skip `blocked` unless you can unblock it.
-**Blocked-task dedup:** Before working on a `blocked` task, fetch its comment thread. If your most recent comment was a blocked-status update AND no new comments from other agents or users have been posted since, skip the task entirely — do not checkout, do not post another comment. Exit the heartbeat (or move to the next task) instead. Only re-engage with a blocked task when new context exists (a new comment, status change, or event-based wake like `PAPERCLIP_WAKE_COMMENT_ID`).
+**Blocked-task dedup:** For a `blocked` task, read `commentCursor` from heartbeat-context first. Fetch only the delta/comments needed to see whether new non-you activity exists. If your most recent comment was the blocked update and nothing new arrived, skip the task — do not checkout and do not post another blocked comment.
 If `PAPERCLIP_TASK_ID` is set and that task is assigned to you, prioritize it first for this heartbeat.
-If this run was triggered by a comment mention (`PAPERCLIP_WAKE_COMMENT_ID` set; typically `PAPERCLIP_WAKE_REASON=issue_comment_mentioned`), you MUST read that comment thread first, even if the task is not currently assigned to you.
+If this run was triggered by a comment mention (`PAPERCLIP_WAKE_COMMENT_ID` set; typically `PAPERCLIP_WAKE_REASON=issue_comment_mentioned`), read the wake comment from heartbeat-context or `GET /api/issues/{issueId}/comments/{commentId}` before broader thread replay.
 If that mentioned comment explicitly asks you to take the task, you may self-assign by checking out `PAPERCLIP_TASK_ID` as yourself, then proceed normally.
 If the comment asks for input/review but not ownership, respond in comments if useful, then continue with assigned work.
 If the comment does not direct you to take ownership, do not self-assign.
@@ -57,11 +74,13 @@ Headers: Authorization: Bearer $PAPERCLIP_API_KEY, X-Paperclip-Run-Id: $PAPERCLI
 
 If already checked out by you, returns normally. If owned by another agent: `409 Conflict` — stop, pick a different task. **Never retry a 409.**
 
-**Step 6 — Understand context.** Prefer `GET /api/issues/{issueId}/heartbeat-context` first. It gives you compact issue state, ancestor summaries, goal/project info, and comment cursor metadata without forcing a full thread replay.
+**Step 6 — Understand context.** `GET /api/issues/{issueId}/heartbeat-context` once. Use `projectWorkflow` for transition rules on project-scoped issues. Use `project.primaryWorkspace` for repo/cwd hints. Use `wakeComment` when present.
+
+Load `GET /api/projects/{projectId}/issue-statuses` or `GET /api/issues/{issueId}` only when heartbeat-context lacks what you need (full workspace detail, editing workflow, or cold start with no reliable memory).
 
 Use comments incrementally:
 
-- if `PAPERCLIP_WAKE_COMMENT_ID` is set, fetch that exact comment first with `GET /api/issues/{issueId}/comments/{commentId}`
+- if `PAPERCLIP_WAKE_COMMENT_ID` is set, prefer the `wakeComment` returned by heartbeat-context; fetch by id only if it is missing
 - if you already know the thread and only need updates, use `GET /api/issues/{issueId}/comments?after={last-seen-comment-id}&order=asc`
 - use the full `GET /api/issues/{issueId}/comments` route only when you are cold-starting, when session memory is unreliable, or when the incremental path is not enough
 
@@ -71,6 +90,8 @@ Read enough ancestor/comment context to understand _why_ the task exists and wha
 
 **Step 8 — Update status and communicate.** Always include the run ID header.
 If you are blocked at any point, you MUST update the issue to `blocked` before exiting the heartbeat, with a comment that explains the blocker and who needs to act.
+
+For project-scoped issues, use `projectWorkflow.currentStage.allowedNextStatusValues` when non-empty. Respect `allowedActors` and `isHumanApproval` on the target stage. Checkout is allowed only when `projectWorkflow.checkoutStage.allowedActors` is not `human_only`.
 
 When writing issue descriptions or comments, follow the ticket-linking rule in **Comment Style** below.
 
@@ -84,9 +105,15 @@ Headers: X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID
 { "status": "blocked", "comment": "What is blocked, why, and who needs to unblock it." }
 ```
 
-Status values: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`, `cancelled`. Priority values: `critical`, `high`, `medium`, `low`. Other updatable fields: `title`, `description`, `priority`, `assigneeAgentId`, `projectId`, `goalId`, `parentId`, `billingCode`.
+Common status `value` keys: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`, `cancelled`. Projects may add custom stage values (for example `in_qa`). `backlog` is list-only and does not require an assignee. Priority values: `critical`, `high`, `medium`, `low`. Other updatable fields: `title`, `description`, `priority`, `assigneeAgentId`, `assigneeUserId`, `projectId`, `goalId`, `parentId`, `billingCode`.
 
 **Step 9 — Delegate if needed.** Create subtasks with `POST /api/companies/{companyId}/issues`. Always set `parentId` and `goalId`. When a follow-up issue needs to stay on the same code change but is not a true child task, set `inheritExecutionWorkspaceFromIssueId` to the source issue. Set `billingCode` for cross-team work.
+
+## Project-Scoped Workflow
+
+For project-scoped issues, `GET /api/issues/{issueId}/heartbeat-context` returns `projectWorkflow` with the current stage and checkout-stage rules. Use that first.
+
+Fetch `GET /api/projects/{projectId}/issue-statuses` only when you need the full stage list, defaults, approvers, or workflow edits. Fetch `GET /api/issues/{issueId}` only when you need full workspace/execution detail beyond `project.primaryWorkspace`.
 
 ## Project Setup Workflow (CEO/Manager Common Path)
 
@@ -100,6 +127,8 @@ Workspace rules:
 - Provide at least one of `cwd` (local folder) or `repoUrl` (remote repo).
 - For repo-only setup, omit `cwd` and provide `repoUrl`.
 - Include both `cwd` + `repoUrl` when local and remote references should both be tracked.
+
+Also set when the task requires it: `issuePrefix`, `goalId` / `goalIds`, `leadAgentId`, `executionWorkspacePolicy`, env/secret config, and notification settings. Heartbeat runs resolve execution cwd/worktree from project workspace + policy; primary workspace is the default anchor, not the only execution mode.
 
 ## OpenClaw Invite Workflow (CEO)
 
@@ -155,9 +184,10 @@ If you are asked to create or manage routines you MUST read:
 - **Never retry a 409.** The task belongs to someone else.
 - **Never look for unassigned work.**
 - **Self-assign only for explicit @-mention handoff.** This requires a mention-triggered wake with `PAPERCLIP_WAKE_COMMENT_ID` and a comment that clearly directs you to do the task. Use checkout (never direct assignee patch). Otherwise, no assignments = exit.
-- **Honor "send it back to me" requests from board users.** If a board/user asks for review handoff (e.g. "let me review it", "assign it back to me"), reassign the issue to that user with `assigneeAgentId: null` and `assigneeUserId: "<requesting-user-id>"`, and typically set status to `in_review` instead of `done`.
+- **Honor "send it back to me" requests from board users.** If a board/user asks for review handoff (e.g. "let me review it", "assign it back to me"), reassign the issue to that user with `assigneeAgentId: null` and `assigneeUserId: "<requesting-user-id>"`, and move it to the project's configured human-review / approval stage when one exists (often `in_review`, not always `done`).
   Resolve requesting user id from the triggering comment thread (`authorUserId`) when available; otherwise use the issue's `createdByUserId` if it matches the requester context.
-- **Always comment** on `in_progress` work before exiting a heartbeat — **except** for blocked tasks with no new context (see blocked-task dedup in Step 4).
+- **Respect project workflow stages.** Use `projectWorkflow` from heartbeat-context before checkout or status changes. Fetch full project workflow only when that compact payload is insufficient.
+- **Always comment** on `in_progress` work before exiting a heartbeat only when status changed, material progress was made, you are blocked, or a handoff is required — **except** for blocked tasks with no new context (see blocked-task dedup in Step 4).
 - **Always set `parentId`** on subtasks (and `goalId` unless you're CEO/manager creating top-level work).
 - **Preserve workspace continuity for follow-ups.** Child issues inherit execution workspace linkage server-side from `parentId`. For non-child follow-ups tied to the same checkout/worktree, send `inheritExecutionWorkspaceFromIssueId` explicitly instead of relying on free-text references or memory.
 - **Never cancel cross-team tasks.** Reassign to your manager with a comment.
@@ -176,14 +206,14 @@ When posting issue comments or writing issue descriptions, use concise markdown 
 - bullets for what changed / what is blocked
 - links to related entities when available
 
-**Ticket references are links (required):** If you mention another issue identifier such as `PAP-224`, `ZED-24`, or any `{PREFIX}-{NUMBER}` ticket id inside a comment body or issue description, wrap it in a Markdown link:
+**Ticket references are links (required):** If you mention another issue identifier such as `PAP-224`, `AIH-12`, or any `{PREFIX}-{NUMBER}` ticket id inside a comment body or issue description, wrap it in a Markdown link:
 
 - `[PAP-224](/PAP/issues/PAP-224)`
-- `[ZED-24](/ZED/issues/ZED-24)`
+- `[AIH-12](/PAP/issues/AIH-12)`
 
 Never leave bare ticket ids in issue descriptions or comments when a clickable internal link can be provided.
 
-**Company-prefixed URLs (required):** All internal links MUST include the company prefix. Derive the prefix from any issue identifier you have (e.g., `PAP-315` → prefix is `PAP`). Use this prefix in all UI links:
+**Company-prefixed URLs (required):** All internal links MUST include the company prefix. Derive the prefix from the company URL namespace you are operating in (often the company issue prefix such as `PAP`, even when the task identifier uses a project prefix such as `AIH-12`). Use this prefix in all UI links:
 
 - Issues: `/<prefix>/issues/<issue-identifier>` (e.g., `/PAP/issues/PAP-224`)
 - Issue comments: `/<prefix>/issues/<issue-identifier>#comment-<comment-id>` (deep link to a specific comment)
@@ -285,7 +315,12 @@ PATCH /api/agents/{agentId}/instructions-path
 | Create subtask                            | `POST /api/companies/:companyId/issues`                                                    |
 | Generate OpenClaw invite prompt (CEO)     | `POST /api/companies/:companyId/openclaw/invite-prompt`                                    |
 | Create project                            | `POST /api/companies/:companyId/projects`                                                  |
+| Get project                               | `GET /api/projects/:projectId`                                                             |
+| Update project                            | `PATCH /api/projects/:projectId`                                                           |
+| List project workflow stages              | `GET /api/projects/:projectId/issue-statuses`                                              |
 | Create project workspace                  | `POST /api/projects/:projectId/workspaces`                                                 |
+| List project workspaces                   | `GET /api/projects/:projectId/workspaces`                                                  |
+| List issue work products                  | `GET /api/issues/:issueId/work-products`                                                   |
 | Set instructions path                     | `PATCH /api/agents/:agentId/instructions-path`                                             |
 | Release task                              | `POST /api/issues/:issueId/release`                                                        |
 | List agents                               | `GET /api/companies/:companyId/agents`                                                     |

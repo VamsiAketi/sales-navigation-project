@@ -6,6 +6,7 @@ export interface SidebarBadges {
   canReadCommandCenter?: boolean;
   canReadTasks?: boolean;
   canCreateTasks?: boolean;
+  canCreateProjects?: boolean;
   canReadHybridOrg?: boolean;
   canEditHybridOrg?: boolean;
   canImportHybridOrg?: boolean;
@@ -15,6 +16,9 @@ export interface SidebarBadges {
   canReadGoals?: boolean;
   canWriteGoals?: boolean;
   canReadCosts?: boolean;
+  canReadBilling?: boolean;
+  canReadBillingInvoices?: boolean;
+  canManageBillingPayments?: boolean;
   canReadAttentionQueue?: boolean;
   canReadTeams?: boolean;
   canEditTeams?: boolean;

@@ -250,6 +250,7 @@ const EXECUTION_WORKSPACE_MODES = [
   { value: "isolated_workspace", label: "New isolated workspace" },
   { value: "reuse_existing", label: "Reuse existing workspace" },
 ] as const;
+const PROJECT_STATUSES_FORCE_TODO_ON_CREATE = new Set(["backlog", "planned"]);
 
 const REQUIRED_FIELD_MARKER = "*";
 
@@ -527,6 +528,10 @@ export function NewIssueDialog() {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listTouchedByMe(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.list(companyId) });
+      if (issue.projectId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(issue.projectId) });
+      }
       if (draftTimer.current) clearTimeout(draftTimer.current);
       const prefix = (companies.find((c) => c.id === companyId)?.issuePrefix ?? "").trim();
       const issueRef = issue.identifier ?? issue.id;
@@ -814,6 +819,7 @@ export function NewIssueDialog() {
     const selectedReusableExecutionWorkspace = deduplicatedReusableWorkspaces.find(
       (workspace) => workspace.id === selectedExecutionWorkspaceId,
     );
+    const submitStatus = shouldForceTodoOnCreate ? "todo" : status;
     const requestedExecutionWorkspaceMode =
       executionWorkspaceMode === "reuse_existing"
         ? issueExecutionWorkspaceModeForExistingWorkspace(selectedReusableExecutionWorkspace?.mode)
@@ -826,7 +832,7 @@ export function NewIssueDialog() {
       stagedFiles,
       title: title.trim(),
       description: description.trim() || undefined,
-      status,
+      status: submitStatus,
       priority: priority || "medium",
       ...(selectedAssigneeAgentId ? { assigneeAgentId: selectedAssigneeAgentId } : {}),
       ...(selectedAssigneeUserId ? { assigneeUserId: selectedAssigneeUserId } : {}),
@@ -915,10 +921,18 @@ export function NewIssueDialog() {
   }
 
   const hasDraft = title.trim().length > 0 || description.trim().length > 0 || stagedFiles.length > 0 || selectedLabelIds.length > 0;
+  const currentAssignee = selectedAssigneeAgentId
+    ? (agents ?? []).find((a) => a.id === selectedAssigneeAgentId)
+    : null;
+  const currentProject = orderedProjects.find((project) => project.id === projectId);
+  const shouldForceTodoOnCreate = Boolean(
+    currentProject && PROJECT_STATUSES_FORCE_TODO_ON_CREATE.has(currentProject.status),
+  );
+  const statusForCreate = shouldForceTodoOnCreate ? "todo" : status;
   const currentStatus =
     sortedProjectStatuses.length > 0
-      ? (sortedProjectStatuses.find((s) => s.value === status) ?? sortedProjectStatuses[0]!)
-      : (statuses.find((s) => s.value === status) ?? statuses[1]!);
+      ? (sortedProjectStatuses.find((s) => s.value === statusForCreate) ?? sortedProjectStatuses[0]!)
+      : (statuses.find((s) => s.value === statusForCreate) ?? statuses[1]!);
   const currentStatusLabel =
     sortedProjectStatuses.length > 0
       ? (currentStatus as (typeof sortedProjectStatuses)[number]).name
@@ -930,10 +944,6 @@ export function NewIssueDialog() {
       .filter((label): label is NonNullable<typeof labels>[number] => Boolean(label)),
     [labels, selectedLabelIds],
   );
-  const currentAssignee = selectedAssigneeAgentId
-    ? (agents ?? []).find((a) => a.id === selectedAssigneeAgentId)
-    : null;
-  const currentProject = orderedProjects.find((project) => project.id === projectId);
   const currentProjectExecutionWorkspacePolicy =
     experimentalSettings?.enableIsolatedWorkspaces === true
       ? currentProject?.executionWorkspacePolicy ?? null
@@ -1018,7 +1028,7 @@ export function NewIssueDialog() {
   const hasAssignee = Boolean(selectedAssigneeAgentId || selectedAssigneeUserId);
   const isCreateAgentPreset = newIssueDefaults.title === CREATE_AGENT_ISSUE_TITLE;
   const isPresetTitle = Boolean(newIssueDefaults.title);
-  const assigneeRequired = !isBoardPinnedHiddenProjectIssueStatusValue(status);
+  const assigneeRequired = !isBoardPinnedHiddenProjectIssueStatusValue(statusForCreate);
   const missingRequiredFields: string[] = [];
   if (!title.trim()) missingRequiredFields.push("Task title");
   if (!projectId) missingRequiredFields.push("Project");
@@ -1306,62 +1316,69 @@ export function NewIssueDialog() {
                 }}
               />
               <span>in</span>
-              <InlineEntitySelector
-                ref={projectSelectorRef}
-                value={projectId}
-                options={projectOptions}
-                placeholder="Select Project"
-                className="w-[150px]"
-                disablePortal
-                noneLabel="No project"
-                includeNoneOption={false}
-                triggerAriaLabel={projectFieldLabel}
-                triggerAriaRequired
-                triggerAriaInvalid={Boolean(projectValidationError)}
-                triggerAdornment={<span className={projectMarkerClassName}>{REQUIRED_FIELD_MARKER}</span>}
-                searchPlaceholder="Search projects..."
-                emptyMessage="No projects found."
-                onChange={handleProjectChange}
-                onConfirm={() => {
-                  descriptionEditorRef.current?.focus();
-                }}
-                renderTriggerValue={(option) =>
-                  option && currentProject ? (
-                    <>
-                      {/*
-                      <span
-                        className={cn(
-                          "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
-                          projectStatusSwatchClass(currentProject.status),
-                        )}
-                      />
-                      */}
-                      <span className="truncate" title={option.label}>{option.label}</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      Select Project
-                    </span>
-                  )
-                }
-                renderOption={(option) => {
-                  if (!option.id) return <span className="truncate" title={option.label}>{option.label}</span>;
-                  const project = orderedProjects.find((item) => item.id === option.id);
-                  return (
-                    <>
-                      <span
-                        className={cn(
-                          "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
-                          projectStatusSwatchClass(project?.status),
-                        )}
-                      />
-                      <span className="truncate" title={option.label}>{option.label}</span>
-                    </>
-                  );
-                }}
-              />
+              <span className="inline-flex items-center gap-1">
+                <InlineEntitySelector
+                  ref={projectSelectorRef}
+                  value={projectId}
+                  options={projectOptions}
+                  placeholder="Select Project"
+                  className="w-[150px]"
+                  disablePortal
+                  noneLabel="No project"
+                  includeNoneOption={false}
+                  triggerAriaLabel={projectFieldLabel}
+                  triggerAriaRequired
+                  triggerAriaInvalid={Boolean(projectValidationError)}
+                  searchPlaceholder="Search projects..."
+                  emptyMessage="No projects found."
+                  onChange={handleProjectChange}
+                  onConfirm={() => {
+                    descriptionEditorRef.current?.focus();
+                  }}
+                  renderTriggerValue={(option) =>
+                    option && currentProject ? (
+                      <>
+                        {/*
+                        <span
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                            projectStatusSwatchClass(currentProject.status),
+                          )}
+                        />
+                        */}
+                        <span className="truncate" title={option.label}>{option.label}</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Select Project
+                      </span>
+                    )
+                  }
+                  renderOption={(option) => {
+                    if (!option.id) return <span className="truncate" title={option.label}>{option.label}</span>;
+                    const project = orderedProjects.find((item) => item.id === option.id);
+                    return (
+                      <>
+                        <span
+                          className={cn(
+                            "h-3.5 w-3.5 shrink-0 rounded-sm border border-border/40",
+                            projectStatusSwatchClass(project?.status),
+                          )}
+                        />
+                        <span className="truncate" title={option.label}>{option.label}</span>
+                      </>
+                    );
+                  }}
+                />
+                <span className={projectMarkerClassName} aria-hidden="true">{REQUIRED_FIELD_MARKER}</span>
+              </span>
             </div>
           </div>
+          {shouldForceTodoOnCreate ? (
+            <div className="pt-1 text-xs text-muted-foreground">
+              This project will create the task in Todo.
+            </div>
+          ) : null}
         </div>
 
         {currentProject && currentProjectSupportsExecutionWorkspace && (
@@ -1579,9 +1596,29 @@ export function NewIssueDialog() {
         {/* Property chips bar */}
         <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap shrink-0">
           {/* Status chip */}
-          <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+          <Popover
+            open={statusOpen}
+            onOpenChange={(open) => {
+              if (shouldForceTodoOnCreate) {
+                setStatusOpen(false);
+                return;
+              }
+              setStatusOpen(open);
+            }}
+          >
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
+              <button
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs transition-colors",
+                  shouldForceTodoOnCreate ? "cursor-default text-muted-foreground" : "hover:bg-accent/50",
+                )}
+                disabled={shouldForceTodoOnCreate}
+                title={
+                  shouldForceTodoOnCreate
+                    ? "New tasks in Backlog or Planned projects start in Todo."
+                    : undefined
+                }
+              >
                 {sortedProjectStatuses.length > 0 ? (
                   <span
                     className="inline-flex h-3 w-3 rounded-full border-2 shrink-0"
@@ -1600,7 +1637,7 @@ export function NewIssueDialog() {
                       key={s.value}
                       className={cn(
                         "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                        s.value === status && "bg-accent"
+                        s.value === statusForCreate && "bg-accent"
                       )}
                       onClick={() => { setStatus(s.value); setStatusOpen(false); }}
                     >
@@ -1616,7 +1653,7 @@ export function NewIssueDialog() {
                       key={s.value}
                       className={cn(
                         "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                        s.value === status && "bg-accent"
+                        s.value === statusForCreate && "bg-accent"
                       )}
                       onClick={() => { setStatus(s.value); setStatusOpen(false); }}
                     >
@@ -1627,7 +1664,6 @@ export function NewIssueDialog() {
               }
             </PopoverContent>
           </Popover>
-
           {/* Priority chip */}
           <Popover open={priorityOpen} onOpenChange={setPriorityOpen}>
             <PopoverTrigger asChild>
