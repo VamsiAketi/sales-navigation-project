@@ -37,6 +37,8 @@ const PRICING: Record<string, ModelPrice> = {
 
   // ── OpenAI: Codex / specialized ───────────────────────────────────────────
   "gpt-5.3-codex": { inputPer1M: 1.75, cachedInputPer1M: 0.175, outputPer1M: 14.00 },
+  // Cursor default model id — same rates as gpt-5.3-codex
+  "auto": { inputPer1M: 1.75, cachedInputPer1M: 0.175, outputPer1M: 14.00 },
 
   // ── OpenAI: realtime text rates, if you meter text tokens there ───────────
   "gpt-realtime-2:text":    { inputPer1M: 4.00, cachedInputPer1M: 0.40, outputPer1M: 24.00 },

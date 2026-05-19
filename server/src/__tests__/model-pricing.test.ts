@@ -14,6 +14,15 @@ describe("calculateModelCostCents", () => {
     expect(cents).toBeGreaterThan(0);
   });
 
+  it("prices Cursor auto model the same as gpt-5.3-codex", () => {
+    const tokens = { input: 1_000_000, cached: 400_000, output: 500_000 };
+    expect(
+      calculateModelCostCents("auto", tokens.input, tokens.cached, tokens.output),
+    ).toBe(
+      calculateModelCostCents("gpt-5.3-codex", tokens.input, tokens.cached, tokens.output),
+    );
+  });
+
   it("matches longer gpt-5.3-codex prefixes before generic gpt-5", () => {
     const codex = calculateModelCostCents("gpt-5.3-codex-high", 1_000_000, 0, 0);
     const generic = calculateModelCostCents("gpt-5.4-unknown", 1_000_000, 0, 0);
