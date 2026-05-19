@@ -74,6 +74,8 @@ server:
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID: "sample"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET: "sample"
     AI_HARNESS_AUTH_MICROSOFT_TENANT_ID: "sample"
+    PAPERCLIP_DEFAULT_ADAPTER_TYPE: "codex_local"
+    CURSOR_API_KEY: "YOUR_CURSOR_API_KEY"
 
 
 # -- Shared Azure File Storage (one file share for ALL tenants, subPath per tenant)

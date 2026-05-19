@@ -140,6 +140,8 @@ jobs:
           --set-string server.extraEnv.AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID="${{ secrets.MICROSOFT_CLIENT_ID }}" \
           --set-string server.extraEnv.AI_HARNESS_AUTH_MICROSOFT_CLIENT_SECRET="${{ secrets.MICROSOFT_CLIENT_SECRET }}" \
           --set-string server.extraEnv.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID="${{ secrets.MICROSOFT_TENANT_ID }}" \
+          --set-string server.extraEnv.PAPERCLIP_DEFAULT_ADAPTER_TYPE="${{ secrets.PAPERCLIP_DEFAULT_ADAPTER_TYPE || 'codex_local' }}" \
+          --set-string server.extraEnv.CURSOR_API_KEY="${{ secrets.CURSOR_API_KEY || 'YOUR_CURSOR_API_KEY' }}" \
           ${FORCE_CONFLICTS_ARG}
       - name: Capture CEO invite URL from logs
         id: capture_invite
