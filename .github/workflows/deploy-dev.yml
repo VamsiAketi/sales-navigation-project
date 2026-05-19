@@ -131,6 +131,8 @@ jobs:
           --set-string server.extraEnv.MS_CLIENT_ID="${{ secrets.MS_CLIENT_ID }}" \
           --set-string server.extraEnv.MS_CLIENT_SECRET="${{ secrets.MS_CLIENT_SECRET }}" \
           --set-string server.extraEnv.MS_SENDER_EMAIL="${{ secrets.MS_SENDER_EMAIL }}" \
+          --set-string server.extraEnv.CONTROL_PLANE_URL="${{ secrets.CONTROL_PLANE_URL }}" \
+          --set-string server.extraEnv.INTERNAL_SECRET="${{ secrets.INTERNAL_SECRET }}" \
           --set-string server.database.externalUrl="${DATABASE_URL}" \
           --set-string server.secrets.betterAuthSecret="${{ secrets.BETTER_AUTH_SECRET }}" \
           --set-string server.secrets.paperclipSecretsMasterKey="${{ secrets.PAPERCLIP_SECRETS_MASTER_KEY }}" \
