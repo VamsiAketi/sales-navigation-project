@@ -67,6 +67,44 @@ function mergeNotificationConfig(raw: unknown): ProjectNotificationConfig {
   };
 }
 
+async function resolveActorLabel(
+  db: Db,
+  input: {
+    actorType: "agent" | "user" | "system";
+    actorId: string | null;
+    actorLabel?: string | null;
+  },
+): Promise<string> {
+  if (input.actorType === "user" && input.actorId) {
+    const actorUser = await db
+      .select({ name: authUsers.name })
+      .from(authUsers)
+      .where(eq(authUsers.id, input.actorId))
+      .then((rows) => rows[0] ?? null);
+    return actorUser?.name?.trim() || "A user";
+  }
+  if (input.actorType === "agent" && input.actorId) {
+    const actorAgent = await db
+      .select({ name: agents.name })
+      .from(agents)
+      .where(eq(agents.id, input.actorId))
+      .then((rows) => rows[0] ?? null);
+    return actorAgent?.name?.trim() || "An agent";
+  }
+  if (input.actorType === "system") return "System";
+  const fallback = input.actorLabel?.trim();
+  if (fallback) return fallback;
+  return input.actorType;
+}
+
+function taskDisplayName(issueIdentifier: string | null, issueTitle: string): string {
+  const title = issueTitle.trim();
+  if (title) return title;
+  const identifier = issueIdentifier?.trim();
+  if (identifier) return identifier;
+  return "Task";
+}
+
 function humanizeCommentSnippet(snippet: string | null | undefined): string | null {
   if (!snippet) return null;
   const normalizedMentions = snippet
@@ -182,26 +220,11 @@ export function issueNotificationService(db: Db) {
       const normalizedAppBaseUrl = appBaseUrl.replace(/\/+$/, "");
       const issueUrl = `${normalizedAppBaseUrl}/${encodeURIComponent(issue.issuePrefix)}/issues/${encodeURIComponent(issue.id)}`;
 
-      let resolvedActorLabel = input.payload.actorLabel?.trim() || null;
-      if (!resolvedActorLabel) {
-        if (input.actorType === "user" && input.actorId) {
-          const actorUser = await db
-            .select({ name: authUsers.name })
-            .from(authUsers)
-            .where(eq(authUsers.id, input.actorId))
-            .then((rows) => rows[0] ?? null);
-          resolvedActorLabel = actorUser?.name?.trim() || "A user";
-        } else if (input.actorType === "agent" && input.actorId) {
-          const actorAgent = await db
-            .select({ name: agents.name })
-            .from(agents)
-            .where(eq(agents.id, input.actorId))
-            .then((rows) => rows[0] ?? null);
-          resolvedActorLabel = actorAgent?.name?.trim() || "An agent";
-        } else {
-          resolvedActorLabel = "System";
-        }
-      }
+      const resolvedActorLabel = await resolveActorLabel(db, {
+        actorType: input.actorType,
+        actorId: input.actorId,
+        actorLabel: input.payload.actorLabel,
+      });
       let resolvedAssignedUserName = input.payload.assignedUserName?.trim() || null;
       if (!resolvedAssignedUserName && input.payload.assignedUserId) {
         const assigneeUser = await db
@@ -254,7 +277,8 @@ export function issueNotificationService(db: Db) {
         const userEventPrefs = userPrefs.events[input.eventType];
         if (userEventPrefs?.enabled === false) continue;
         const readableCommentSnippet = humanizeCommentSnippet(input.payload.commentSnippet);
-        const title = `[${project.name}] ${input.payload.issueIdentifier ?? input.payload.issueTitle}`;
+        const inAppTitle = `[${project.name}] ${taskDisplayName(input.payload.issueIdentifier, input.payload.issueTitle)}`;
+        const emailSubjectTitle = `[${project.name}] ${input.payload.issueIdentifier ?? input.payload.issueTitle}`;
         const actor = resolvedActorLabel ?? input.actorType;
         const inAppMessage =
           input.eventType === "issue.status_changed"
@@ -263,7 +287,7 @@ export function issueNotificationService(db: Db) {
               ? `${actor} added a comment${readableCommentSnippet ? `: "${readableCommentSnippet}"` : "."}`
               : input.eventType === "issue.comment_mentioned"
                 ? `${actor} mentioned you in a comment${readableCommentSnippet ? `: "${readableCommentSnippet}"` : "."}`
-                : `${actor} assigned this issue to ${resolvedAssignedUserName || "a user"}.`;
+                : `${actor} assigned this task to ${resolvedAssignedUserName || "a user"}.`;
         const message = buildEmailBody({
           recipientName: recipient.name,
           issueIdentifier: input.payload.issueIdentifier,
@@ -283,7 +307,7 @@ export function issueNotificationService(db: Db) {
           projectId: issue.projectId,
           issueId: issue.id,
           eventType: input.eventType,
-          title,
+          title: inAppTitle,
           message: inAppMessage,
           channel: "in_app",
           emailDeliveryStatus: "queued",
@@ -310,7 +334,7 @@ export function issueNotificationService(db: Db) {
         }
         const delivery = await sendSystemEmail({
           toEmail: recipient.email!,
-          subject: `[AI-Harness] ${title}`,
+          subject: `[AI-Harness] ${emailSubjectTitle}`,
           textBody: message,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
@@ -384,7 +408,8 @@ export function issueNotificationService(db: Db) {
         .where(and(isNotNull(authUsers.email), inArray(authUsers.id, approverIds)));
 
       const issueRef = input.payload.issueIdentifier ?? input.payload.issueTitle;
-      const title = `[${project.name}] Human Approval Required: ${issueRef}`;
+      const inAppTitle = `[${project.name}] Human Approval Required: ${taskDisplayName(input.payload.issueIdentifier, input.payload.issueTitle)}`;
+      const emailSubjectTitle = `[${project.name}] Human Approval Required: ${issueRef}`;
 
       for (const member of members) {
         if (input.actorType === "user" && input.actorId && member.id === input.actorId) continue;
@@ -407,8 +432,8 @@ export function issueNotificationService(db: Db) {
           projectId: issue.projectId,
           issueId: issue.id,
           eventType: "issue.status_changed",
-          title,
-          message: `Human approval required: issue moved to "${approvalStatus.name}".`,
+          title: inAppTitle,
+          message: `Human approval required: task moved to "${approvalStatus.name}".`,
           channel: "in_app",
           emailDeliveryStatus: "queued",
           payload: {
@@ -425,7 +450,7 @@ export function issueNotificationService(db: Db) {
 
         const delivery = await sendSystemEmail({
           toEmail: member.email,
-          subject: `[AI-Harness] ${title}`,
+          subject: `[AI-Harness] ${emailSubjectTitle}`,
           textBody,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
@@ -499,26 +524,11 @@ export function issueNotificationService(db: Db) {
       const normalizedAppBaseUrl = appBaseUrl.replace(/\/+$/, "");
       const issueUrl = `${normalizedAppBaseUrl}/${encodeURIComponent(issue.issuePrefix)}/issues/${encodeURIComponent(issue.id)}`;
 
-      let resolvedActorLabel = input.payload.actorLabel?.trim() || null;
-      if (!resolvedActorLabel) {
-        if (input.actorType === "user" && input.actorId) {
-          const actorUser = await db
-            .select({ name: authUsers.name })
-            .from(authUsers)
-            .where(eq(authUsers.id, input.actorId))
-            .then((rows) => rows[0] ?? null);
-          resolvedActorLabel = actorUser?.name?.trim() || "A user";
-        } else if (input.actorType === "agent" && input.actorId) {
-          const actorAgent = await db
-            .select({ name: agents.name })
-            .from(agents)
-            .where(eq(agents.id, input.actorId))
-            .then((rows) => rows[0] ?? null);
-          resolvedActorLabel = actorAgent?.name?.trim() || "An agent";
-        } else {
-          resolvedActorLabel = "System";
-        }
-      }
+      const resolvedActorLabel = await resolveActorLabel(db, {
+        actorType: input.actorType,
+        actorId: input.actorId,
+        actorLabel: input.payload.actorLabel,
+      });
 
       const mentionSet = Array.from(new Set(input.mentionUserIds));
       const recipients = await db
@@ -545,7 +555,8 @@ export function issueNotificationService(db: Db) {
         .where(inArray(authUsers.id, mentionSet));
 
       const actor = resolvedActorLabel ?? input.actorType;
-      const title = `[${notificationTitleScope}] Mentioned in ${input.payload.issueIdentifier ?? input.payload.issueTitle}`;
+      const inAppTitle = `[${notificationTitleScope}] Mentioned in ${taskDisplayName(input.payload.issueIdentifier, input.payload.issueTitle)}`;
+      const emailSubjectTitle = `[${notificationTitleScope}] Mentioned in ${input.payload.issueIdentifier ?? input.payload.issueTitle}`;
 
       for (const recipient of recipients) {
         if (input.actorType === "user" && input.actorId && recipient.id === input.actorId) continue;
@@ -575,7 +586,7 @@ export function issueNotificationService(db: Db) {
           projectId: issue.projectId,
           issueId: issue.id,
           eventType: "issue.comment_mentioned",
-          title,
+          title: inAppTitle,
           message: inAppMessage,
           channel: "in_app",
           emailDeliveryStatus: "queued",
@@ -600,7 +611,7 @@ export function issueNotificationService(db: Db) {
         }
         const delivery = await sendSystemEmail({
           toEmail: recipient.email!,
-          subject: `[AI-Harness] ${title}`,
+          subject: `[AI-Harness] ${emailSubjectTitle}`,
           textBody: emailText,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
