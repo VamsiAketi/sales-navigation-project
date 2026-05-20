@@ -37,10 +37,10 @@ const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 let warnedSenderLookupFallback = false;
 
 function resolveGraphMailConfig(): GraphMailConfig | null {
-  const tenantId = process.env.MS_TENANT_ID?.trim();
-  const clientId = process.env.MS_CLIENT_ID?.trim();
-  const clientSecret = process.env.MS_CLIENT_SECRET?.trim();
-  const senderEmail = process.env.MS_SENDER_EMAIL?.trim();
+  const tenantId = process.env.MS_GRAPH_TENANT_ID_EMAIL?.trim();
+  const clientId = process.env.MS_GRAPH_CLIENT_ID_EMAIL?.trim();
+  const clientSecret = process.env.MS_GRAPH_CLIENT_SECRET_EMAIL?.trim();
+  const senderEmail = process.env.MS_GRAPH_SENDER_EMAIL?.trim();
   const senderObjectId = process.env.MS_SENDER_OBJECT_ID?.trim() || undefined;
 
   const hasAny = Boolean(tenantId || clientId || clientSecret || senderEmail || senderObjectId);
@@ -48,7 +48,7 @@ function resolveGraphMailConfig(): GraphMailConfig | null {
 
   if (!tenantId || !clientId || !clientSecret || !senderEmail) {
     throw new Error(
-      "Microsoft Graph mail is partially configured. Set all of: MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET, MS_SENDER_EMAIL",
+      "Microsoft Graph mail is partially configured. Set all of: MS_GRAPH_TENANT_ID_EMAIL, MS_GRAPH_CLIENT_ID_EMAIL, MS_GRAPH_CLIENT_SECRET_EMAIL, MS_GRAPH_SENDER_EMAIL",
     );
   }
 
@@ -151,7 +151,7 @@ async function resolveGraphSendMailUserSegment(config: GraphMailConfig, accessTo
     if (typeof user?.id === "string" && user.id.length > 0) {
       logger.info(
         { step: "graph_sender_lookup", senderEmail: config.senderEmail, userId: user.id },
-        "Resolved MS_SENDER_EMAIL to Graph user id for sendMail",
+        "Resolved MS_GRAPH_SENDER_EMAIL to Graph user id for sendMail",
       );
       return user.id;
     }
@@ -165,7 +165,7 @@ async function resolveGraphSendMailUserSegment(config: GraphMailConfig, accessTo
       "Microsoft Graph: sender mailbox not found in tenant",
     );
     throw new Error(
-      `Microsoft Graph: no user/mailbox found for MS_SENDER_EMAIL (${config.senderEmail}) in this tenant. Create the mailbox or fix the address.`,
+      `Microsoft Graph: no user/mailbox found for MS_GRAPH_SENDER_EMAIL (${config.senderEmail}) in this tenant. Create the mailbox or fix the address.`,
     );
   }
 
@@ -406,7 +406,7 @@ export async function sendSystemEmail(input: SystemEmailInput): Promise<HumanInv
       return {
         status: "skipped",
         message:
-          "Microsoft Graph mail is not configured. Set MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET, and MS_SENDER_EMAIL",
+          "Microsoft Graph mail is not configured. Set MS_GRAPH_TENANT_ID_EMAIL, MS_GRAPH_CLIENT_ID_EMAIL, MS_GRAPH_CLIENT_SECRET_EMAIL, and MS_GRAPH_SENDER_EMAIL",
       };
     }
 

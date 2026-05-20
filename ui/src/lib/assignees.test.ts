@@ -4,6 +4,7 @@ import {
   currentUserAssigneeOption,
   formatAssigneeUserLabel,
   parseAssigneeValue,
+  sortHumanMembersForPicker,
   suggestedCommentAssigneeValue,
 } from "./assignees";
 
@@ -23,13 +24,32 @@ describe("assignee selection helpers", () => {
 
     expect(option).toEqual({
       id: "user:local-board",
-      label: "Me",
-      searchText: "me board human local-board",
+      label: "Board",
+      searchText: "Board local-board",
     });
     expect(parseAssigneeValue(option.id)).toEqual({
       assigneeAgentId: null,
       assigneeUserId: "local-board",
     });
+  });
+
+  it("uses session-style display metadata for the current-user assignee option when provided", () => {
+    const [option] = currentUserAssigneeOption("user-99", { name: "Jamie", email: "jamie@example.com" });
+    expect(option.label).toBe("Jamie");
+    expect(option.searchText).toContain("Jamie");
+    expect(option.searchText).toContain("jamie@example.com");
+  });
+
+  it("sorts human pickers with the signed-in user first", () => {
+    const sorted = sortHumanMembersForPicker(
+      [
+        { id: "u2", name: "Bob" },
+        { id: "u1", name: "Anna" },
+        { id: "u3", name: "Zed" },
+      ],
+      "u3",
+    );
+    expect(sorted.map((m) => m.id)).toEqual(["u3", "u1", "u2"]);
   });
 
   it("treats an empty selection as no assignee", () => {
@@ -47,7 +67,8 @@ describe("assignee selection helpers", () => {
   });
 
   it("formats current and board user labels consistently", () => {
-    expect(formatAssigneeUserLabel("user-1", "user-1")).toBe("Me");
+    expect(formatAssigneeUserLabel("user-1", "user-1")).toBe("user-");
+    expect(formatAssigneeUserLabel("user-1", "user-1", { currentUserDisplayName: "Alex" })).toBe("Alex");
     expect(formatAssigneeUserLabel("local-board", "someone-else")).toBe("Board");
     expect(formatAssigneeUserLabel("user-abcdef", "someone-else")).toBe("user-");
   });
