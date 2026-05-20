@@ -402,7 +402,6 @@ async function postControlPlaneCostingPayload(payload: {
   runStartTime: string;
   runEndTime: string;
   agentId: string;
-  tenantId: string;
   modelCostCents: number;
 }) {
   const controlPlaneBaseUrl = process.env.CONTROL_PLANE_URL?.trim();
@@ -452,15 +451,6 @@ async function postControlPlaneCostingPayload(payload: {
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function resolveControlPlaneTenantId(): string {
-  return (
-    process.env.MS_TENANT_ID?.trim() ||
-    process.env.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID?.trim() ||
-    process.env.PAPERCLIP_AUTH_MICROSOFT_TENANT_ID?.trim() ||
-    ""
-  );
 }
 
 async function resolveLedgerScopeForRun(
@@ -1660,19 +1650,11 @@ export function heartbeatService(db: Db) {
       });
 
       if (TERMINAL_HEARTBEAT_STATUSES.has(updated.status) && previous?.status !== updated.status) {
-        const tenantId = resolveControlPlaneTenantId();
-        if (!tenantId) {
-          logger.warn(
-            { runId: updated.id, agentId: updated.agentId },
-            "tenant id env var missing; sending empty tenantId in cost callback payload",
-          );
-        }
         await postControlPlaneCostingPayload({
           runId: updated.id,
           runStartTime: updated.startedAt ? new Date(updated.startedAt).toISOString() : "",
           runEndTime: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : "",
           agentId: updated.agentId,
-          tenantId,
           modelCostCents: readModelCostCentsFromUsage(updated.usageJson),
         });
       }

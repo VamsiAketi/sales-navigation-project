@@ -921,7 +921,8 @@ export function CompanySettings() {
         </div>
       </div>
 
-      {/* Import / Export */}
+      {/*
+      // Import / Export
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Company Packages
@@ -951,6 +952,7 @@ export function CompanySettings() {
           </div>
         </div>
       </div>
+      */}
 
       {/* Danger Zone */}
       {/*
