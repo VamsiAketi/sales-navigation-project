@@ -34,6 +34,8 @@ import { useSidebar } from "../context/SidebarContext";
 import { authApi } from "../api/auth";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompanySidebarBadges } from "../hooks/useCompanySidebarBadges";
+import { useInboxBadge } from "../hooks/useInboxBadge";
+import { getInboxBadgeBreakdown } from "../lib/inbox";
 import { SidebarNavAccessSkeleton } from "./SidebarNavAccessSkeleton";
 import { SHOW_BETA_UI } from "../lib/show-beta-ui";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
@@ -103,6 +105,11 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
     queryFn: () => authApi.getSession(),
   });
   const { accessReady, badge } = useCompanySidebarBadges(selectedCompanyId);
+  const inboxBadge = useInboxBadge(selectedCompanyId);
+  const inboxBadgeBreakdown = useMemo(
+    () => getInboxBadgeBreakdown(inboxBadge),
+    [inboxBadge],
+  );
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
   const canReadCommandCenter = badge("canReadCommandCenter");
   const canReadTasks = badge("canReadTasks");
@@ -213,6 +220,10 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
             icon={Inbox}
             iconClassName={azureSidebarIcon.inbox}
             className={dragDisabled ? undefined : "!pl-2"}
+            badge={inboxBadge.inbox}
+            badgeBreakdown={inboxBadgeBreakdown}
+            badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
+            alert={inboxBadge.failedRuns > 0}
           />
         );
       case "tasks":

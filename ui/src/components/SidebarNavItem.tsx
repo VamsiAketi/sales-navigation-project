@@ -98,6 +98,8 @@ import { sidebarNavItemTextClass, sidebarNavSubItemTextClass } from "./SidebarSe
 import type { LucideIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LiveHeartbeatIcon } from "./LiveHeartbeatIcon";
+import { AttentionQueueBadge } from "./AttentionQueueBadgeTooltip";
+import type { InboxBadgeBreakdownLine } from "../lib/inbox";
 
 interface SidebarNavItemProps {
   to: string;
@@ -113,6 +115,11 @@ interface SidebarNavItemProps {
   textBadgeTone?: "default" | "amber";
   alert?: boolean;
   liveCount?: number;
+  /** Count of items needing attention (e.g. Attention Queue aggregate). Hidden when 0 or undefined. */
+  badge?: number;
+  badgeTone?: "default" | "danger";
+  /** Per-category counts shown when hovering the numeric badge. */
+  badgeBreakdown?: InboxBadgeBreakdownLine[];
 }
 
 export function SidebarNavItem({
@@ -127,6 +134,9 @@ export function SidebarNavItem({
   textBadgeTone = "default",
   alert = false,
   liveCount,
+  badge,
+  badgeTone = "default",
+  badgeBreakdown = [],
 }: SidebarNavItemProps) {
   const { isMobile, setSidebarOpen, sidebarCompact } = useSidebar();
 
@@ -174,30 +184,50 @@ export function SidebarNavItem({
             {sidebarCompact && liveCount != null && liveCount > 0 && (
               <span className="absolute -bottom-0.5 -right-0.5 flex h-1.5 w-1.5 rounded-full bg-blue-500 ring-2 ring-sidebar" />
             )}
+            {sidebarCompact && badge != null && badge > 0 ? (
+              <span className="absolute -right-1 -top-0.5">
+                <AttentionQueueBadge
+                  count={badge}
+                  tone={badgeTone}
+                  breakdown={badgeBreakdown}
+                  variant="compact"
+                />
+              </span>
+            ) : null}
           </span>
           {!sidebarCompact && (
             <>
               <span className="flex-1 truncate">{label}</span>
-              {textBadge && (
-                <span
-                  className={cn(
-                    "ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
-                    textBadgeTone === "amber"
-                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {textBadge}
-                </span>
-              )}
-              {liveCount != null && liveCount > 0 && (
-                <span className="ml-auto flex items-center gap-1.5">
-                  <LiveHeartbeatIcon size="sm" decorative />
-                  <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                    {liveCount} live
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {textBadge && (
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                      textBadgeTone === "amber"
+                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {textBadge}
                   </span>
-                </span>
-              )}
+                )}
+                {liveCount != null && liveCount > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <LiveHeartbeatIcon size="sm" decorative />
+                    <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                      {liveCount} live
+                    </span>
+                  </span>
+                )}
+                {badge != null && badge > 0 ? (
+                  <AttentionQueueBadge
+                    count={badge}
+                    tone={badgeTone}
+                    breakdown={badgeBreakdown}
+                    variant="inline"
+                  />
+                ) : null}
+              </span>
             </>
           )}
         </>
@@ -209,6 +239,10 @@ export function SidebarNavItem({
     const tipParts = [label];
     if (textBadge) tipParts.push(`(${textBadge})`);
     if (liveCount != null && liveCount > 0) tipParts.push(`${liveCount} live`);
+    if (badge != null && badge > 0) {
+      const display = badge > 99 ? "99+" : String(badge);
+      tipParts.push(display);
+    }
     const tip = tipParts.join(" · ");
 
     return (

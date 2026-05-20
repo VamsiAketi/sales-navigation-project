@@ -226,7 +226,7 @@ const defaultViewState: IssueViewState = {
   labels: [],
   projects: [],
   sortField: "created",
-  sortDir: "asc",
+  sortDir: "desc",
   groupBy: "none",
   viewMode: "board",
   collapsedGroups: [],
@@ -241,7 +241,7 @@ const quickFilterPresets = [
 ];
 
 /** Bump when defaults change so users pick up new `defaultViewState` instead of stale localStorage. */
-const ISSUE_VIEW_STATE_STORAGE_VERSION = 2;
+const ISSUE_VIEW_STATE_STORAGE_VERSION = 3;
 
 function viewStateLocalStorageKey(scopedKey: string): string {
   return `${scopedKey}:v${ISSUE_VIEW_STATE_STORAGE_VERSION}`;
