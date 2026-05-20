@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useMemo as useMemoHook } from "react";
 import { NavLink, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -12,6 +12,9 @@ import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
+import { useInboxBadge } from "../hooks/useInboxBadge";
+import { getInboxBadgeBreakdown } from "../lib/inbox";
+import { AttentionQueueBadge } from "./AttentionQueueBadgeTooltip";
 import { cn } from "../lib/utils";
 
 interface MobileBottomNavProps {
@@ -47,6 +50,8 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
   const canReadAgents = sidebarBadges?.canReadAgents ?? true;
   const canReadTasks = sidebarBadges?.canReadTasks ?? true;
   const canCreateTasks = sidebarBadges?.canCreateTasks ?? true;
+  const inboxBadge = useInboxBadge(selectedCompanyId);
+  const inboxBadgeBreakdown = useMemo(() => getInboxBadgeBreakdown(inboxBadge), [inboxBadge]);
 
   const items = useMemo<MobileNavItem[]>(
     () =>
@@ -110,12 +115,29 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
                 )
               }
             >
-              {({ isActive }) => (
-                <>
-                  <Icon className={cn("h-[18px] w-[18px]", isActive && "stroke-[2.3]")} />
-                  <span className="truncate">{item.label}</span>
-                </>
-              )}
+              {({ isActive }) => {
+                const isInbox = item.to === "/inbox";
+                const count = isInbox ? inboxBadge.inbox : 0;
+                const danger = isInbox && inboxBadge.failedRuns > 0;
+                return (
+                  <>
+                    <span className="relative inline-flex">
+                      <Icon className={cn("h-[18px] w-[18px]", isActive && "stroke-[2.3]")} />
+                      {isInbox && count > 0 ? (
+                        <span className="absolute -right-2 -top-1">
+                          <AttentionQueueBadge
+                            count={count}
+                            tone={danger ? "danger" : "default"}
+                            breakdown={inboxBadgeBreakdown}
+                            variant="compact"
+                          />
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="truncate">{item.label}</span>
+                  </>
+                );
+              }}
             </NavLink>
           );
         })}

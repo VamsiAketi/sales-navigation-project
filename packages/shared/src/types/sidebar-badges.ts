@@ -1,4 +1,9 @@
 export interface SidebarBadges {
+  /**
+   * Server-combined signal (approvals + join requests + failed runs + dashboard alert flags).
+   * Does not include per-user unread touched tasks or client-dismissed inbox rows.
+   * The Attention Queue sidebar badge uses the client `computeInboxBadgeData` total instead.
+   */
   inbox: number;
   approvals: number;
   failedRuns: number;
