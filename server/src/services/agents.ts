@@ -238,7 +238,7 @@ export function agentService(db: Db) {
     const rows = await db
       .select({
         agentId: costEvents.agentId,
-        spentMonthlyCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
+        spentMonthlyCents: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::bigint`,
       })
       .from(costEvents)
       .where(

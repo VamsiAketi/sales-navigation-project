@@ -29,6 +29,10 @@ export function conflict(message: string, details?: unknown) {
   return new HttpError(409, message, details);
 }
 
+export function paymentRequired(message: string, details?: unknown) {
+  return new HttpError(402, message, details);
+}
+
 export function unprocessable(message: string, details?: unknown) {
   return new HttpError(422, message, details);
 }
