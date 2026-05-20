@@ -24,7 +24,7 @@ interface DailyTrackerPayload {
 
 function resolveTenantIdFromEnv(): string {
   return (
-    process.env.MS_TENANT_ID?.trim() ||
+    process.env.MS_GRAPH_TENANT_ID_EMAIL?.trim() ||
     process.env.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID?.trim() ||
     process.env.PAPERCLIP_AUTH_MICROSOFT_TENANT_ID?.trim() ||
     ""

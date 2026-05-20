@@ -64,10 +64,10 @@ server:
   # Outbound email via Microsoft Graph (application permissions: Mail.Send, admin-consented).
   # Set values via CI --set-string or Kubernetes secrets; do not commit client secrets.
   extraEnv:
-    MS_TENANT_ID: ""
-    MS_CLIENT_ID: ""
-    MS_CLIENT_SECRET: ""
-    MS_SENDER_EMAIL: ""
+    MS_GRAPH_TENANT_ID_EMAIL: ""
+    MS_GRAPH_CLIENT_ID_EMAIL: ""
+    MS_GRAPH_CLIENT_SECRET_EMAIL: ""
+    MS_GRAPH_SENDER_EMAIL: ""
     CONTROL_PLANE_URL: "https://tenants.ai-harness.com"
     INTERNAL_SECRET: "ai-harness-internal-secret-2026"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID: "sample"

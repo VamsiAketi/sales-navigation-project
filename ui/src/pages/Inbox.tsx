@@ -249,6 +249,7 @@ export function InboxIssueTrailingColumns({
   workspaceName,
   assigneeName,
   currentUserId,
+  currentUserDisplayName,
 }: {
   issue: Issue;
   columns: InboxIssueColumn[];
@@ -257,9 +258,11 @@ export function InboxIssueTrailingColumns({
   workspaceName: string | null;
   assigneeName: string | null;
   currentUserId: string | null;
+  currentUserDisplayName?: string | null;
 }) {
   const activityText = timeAgo(issue.lastActivityAt ?? issue.lastExternalCommentAt ?? issue.updatedAt);
-  const userLabel = formatAssigneeUserLabel(issue.assigneeUserId, currentUserId) ?? "User";
+  const userLabel =
+    formatAssigneeUserLabel(issue.assigneeUserId, currentUserId, { currentUserDisplayName }) ?? "User";
 
   return (
     <span
@@ -1038,6 +1041,8 @@ export function Inbox() {
     [availableIssueColumnSet, visibleIssueColumnSet],
   );
   const currentUserId = session?.user.id ?? session?.session.userId ?? null;
+  const currentUserDisplayName =
+    session?.user?.name?.trim() || session?.user?.email?.trim() || null;
 
   const failedRuns = useMemo(
     () => getLatestFailedRunsByAgent(heartbeatRuns ?? []).filter((r) => !dismissed.has(`run:${r.id}`)),
@@ -1984,6 +1989,7 @@ export function Inbox() {
                           })}
                           assigneeName={agentName(issue.assigneeAgentId)}
                           currentUserId={currentUserId}
+                          currentUserDisplayName={currentUserDisplayName}
                         />
                       ) : undefined
                     }
