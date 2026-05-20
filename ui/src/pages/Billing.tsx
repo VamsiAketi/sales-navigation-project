@@ -534,7 +534,7 @@ export function Billing() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold">Account Balance</CardTitle>
             <CardDescription className="text-xs">
-              Funds added to your wallet and used automatically for token usage. Active agent runs can temporarily reserve balance until they finish.
+              Funds added to your wallet and used automatically for token usage across this company.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -558,26 +558,19 @@ export function Billing() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Reserved</div>
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Available</div>
                     <div className="mt-1 text-lg font-semibold tabular-nums">
-                      {formatCents(prepaidBalance.reservedCents ?? 0)}
+                      {formatCents(
+                        prepaidBalance.availableCents ??
+                          (prepaidBalance.walletNetCents ?? prepaidBalance.remainingCents) -
+                            (prepaidBalance.reservedCents ?? 0),
+                      )}
                     </div>
-                    <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
-                      Held by running or queued agent runs
-                    </p>
                   </div>
                 </div>
                 {prepaidBalance.deficitCents > 0 ? (
                   <p className="text-xs text-destructive">
                     Wallet is {formatCents(prepaidBalance.deficitCents)} below zero after recorded spend.
-                  </p>
-                ) : null}
-                {(prepaidBalance.reservedCents ?? 0) > 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    Ledger balance:{" "}
-                    <span className="font-medium tabular-nums text-foreground">
-                      {formatCents(prepaidBalance.walletNetCents ?? prepaidBalance.remainingCents)}
-                    </span>
                   </p>
                 ) : null}
               </>
