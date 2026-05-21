@@ -122,6 +122,18 @@ vi.mock("../services/quota-windows.js", () => ({
 
 vi.mock("../services/stripe-billing.js", () => mockStripeBilling);
 
+const mockGetWalletAvailability = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
+    netCents: 75_000,
+    reservedCents: 0,
+    availableCents: 75_000,
+  }),
+);
+
+vi.mock("../services/wallet-reservations.js", () => ({
+  getWalletAvailability: mockGetWalletAvailability,
+}));
+
 function createApp() {
   const app = express();
   app.use(express.json());
@@ -232,6 +244,9 @@ describe("cost routes", () => {
       usedModelCents: 25_000,
       remainingCents: 75_000,
       deficitCents: 0,
+      walletNetCents: 75_000,
+      reservedCents: 0,
+      availableCents: 75_000,
     });
   });
 
@@ -241,11 +256,18 @@ describe("cost routes", () => {
       debitCents: 50_000,
       netCents: -40_000,
     });
+    mockGetWalletAvailability.mockResolvedValueOnce({
+      netCents: -40_000,
+      reservedCents: 5_000,
+      availableCents: -45_000,
+    });
     const app = createApp();
     const res = await request(app).get("/api/companies/company-1/billing/prepaid-balance");
     expect(res.status).toBe(200);
     expect(res.body.remainingCents).toBe(0);
     expect(res.body.deficitCents).toBe(40_000);
+    expect(res.body.reservedCents).toBe(5_000);
+    expect(res.body.availableCents).toBe(-45_000);
   });
 
   it("rejects company budget updates for board users outside the company", async () => {

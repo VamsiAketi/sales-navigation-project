@@ -19,8 +19,8 @@ import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "
 import { useToast } from "../context/ToastContext";
 import {
   assigneeValueFromSelection,
-  currentUserAssigneeOption,
   parseAssigneeValue,
+  sortHumanMembersForPicker,
 } from "../lib/assignees";
 import {
   Dialog,
@@ -499,10 +499,12 @@ export function NewIssueDialog() {
         agentIcon: agent.icon,
       });
     }
-    const activeUsers = [...(members ?? [])]
-      .filter((member) => member.principalType === "user" && member.user)
-      .map((member) => member.user!)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const activeUsers = sortHumanMembersForPicker(
+      [...(members ?? [])]
+        .filter((member) => member.principalType === "user" && member.user)
+        .map((member) => member.user!),
+      currentUserId,
+    );
     for (const user of activeUsers) {
       options.push({
         id: `user:${user.id}`,
@@ -512,7 +514,7 @@ export function NewIssueDialog() {
       });
     }
     return options;
-  }, [agents, members]);
+  }, [agents, members, currentUserId]);
 
   const { data: assigneeAdapterModels } = useQuery({
     queryKey:
@@ -562,6 +564,7 @@ export function NewIssueDialog() {
       if (issue.projectId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(issue.projectId) });
       }
+      queryClient.invalidateQueries({ queryKey: ["projects", "detail"] });
       if (draftTimer.current) clearTimeout(draftTimer.current);
       const prefix = (companies.find((c) => c.id === companyId)?.issuePrefix ?? "").trim();
       const issueRef = issue.identifier ?? issue.id;
@@ -1011,15 +1014,21 @@ export function NewIssueDialog() {
   const recentAssigneeIds = useMemo(() => getRecentAssigneeIds(), [newIssueOpen]);
   const assigneeOptions = useMemo<InlineEntityOption[]>(
     () => [
-      ...(newIssueAssigneeAllowsUsers ? currentUserAssigneeOption(currentUserId) : []),
       ...(newIssueAssigneeAllowsUsers
-        ? (members ?? [])
-            .filter((m) => m.principalType === "user" && m.user && m.user.id !== currentUserId)
-            .map((m) => ({
-              id: assigneeValueFromSelection({ assigneeUserId: m.user!.id }),
-              label: m.user!.name,
-              searchText: `${m.user!.name} ${m.user!.email}`,
-            }))
+        ? sortHumanMembersForPicker(
+            (members ?? [])
+              .filter((m) => m.principalType === "user" && m.user)
+              .map((m) => ({
+                id: m.user!.id,
+                name: m.user!.name,
+                email: m.user!.email ?? "",
+              })),
+            currentUserId,
+          ).map((u) => ({
+            id: assigneeValueFromSelection({ assigneeUserId: u.id }),
+            label: u.name,
+            searchText: `${u.name} ${u.email}`.trim(),
+          }))
         : []),
       ...(newIssueAssigneeAllowsAgents
         ? sortAgentsByRecency(

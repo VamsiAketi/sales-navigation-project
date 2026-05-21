@@ -35,6 +35,11 @@ export type InboxWorkItem =
     };
 
 export interface InboxBadgeData {
+  /**
+   * Total open items for the Attention Queue badge: actionable approvals, visible join requests,
+   * latest failed runs per agent, unread tasks you touched (`Mine`), and undismissed dashboard
+   * alerts (agent errors / budget), minus rows dismissed in the queue.
+   */
   inbox: number;
   approvals: number;
   failedRuns: number;
@@ -42,6 +47,72 @@ export interface InboxBadgeData {
   /** Touched issues that are still unread for the current user (drives issue slice of `inbox`). */
   mineIssues: number;
   alerts: number;
+  /** Undismissed dashboard alert: one or more agents in error (when no failed-run rows). */
+  agentErrorAlert: number;
+  /** Undismissed dashboard alert: monthly budget at or above 80%. */
+  budgetAlert: number;
+}
+
+export type InboxBadgeBreakdownLine = { label: string; count: number };
+
+/** Non-zero slices of `InboxBadgeData` for badge hover tooltips. */
+export function getInboxBadgeBreakdown(data: InboxBadgeData): InboxBadgeBreakdownLine[] {
+  const lines: InboxBadgeBreakdownLine[] = [];
+  if (data.mineIssues > 0) {
+    lines.push({
+      label: data.mineIssues === 1 ? "Unread task (Mine)" : "Unread tasks (Mine)",
+      count: data.mineIssues,
+    });
+  }
+  if (data.approvals > 0) {
+    lines.push({
+      label: data.approvals === 1 ? "Approval" : "Approvals",
+      count: data.approvals,
+    });
+  }
+  if (data.failedRuns > 0) {
+    lines.push({
+      label: data.failedRuns === 1 ? "Failed agent run" : "Failed agent runs",
+      count: data.failedRuns,
+    });
+  }
+  if (data.joinRequests > 0) {
+    lines.push({
+      label: data.joinRequests === 1 ? "Join request" : "Join requests",
+      count: data.joinRequests,
+    });
+  }
+  if (data.agentErrorAlert > 0) {
+    lines.push({ label: "Agents in error", count: data.agentErrorAlert });
+  }
+  if (data.budgetAlert > 0) {
+    lines.push({ label: "Budget usage high", count: data.budgetAlert });
+  }
+  return lines;
+}
+
+/** Short hover text for the Attention Queue badge, e.g. `1 failed run` or `2 approvals · 1 unread task`. */
+export function formatInboxBadgeTooltip(lines: InboxBadgeBreakdownLine[]): string {
+  return lines.map(inboxBadgeTooltipPhrase).join(" · ");
+}
+
+function inboxBadgeTooltipPhrase(line: InboxBadgeBreakdownLine): string {
+  const { count, label } = line;
+  const nouns: Record<string, [string, string]> = {
+    "Unread task (Mine)": ["unread task", "unread tasks"],
+    "Unread tasks (Mine)": ["unread task", "unread tasks"],
+    Approval: ["approval", "approvals"],
+    Approvals: ["approval", "approvals"],
+    "Failed agent run": ["failed run", "failed runs"],
+    "Failed agent runs": ["failed run", "failed runs"],
+    "Join request": ["join request", "join requests"],
+    "Join requests": ["join request", "join requests"],
+    "Agents in error": ["agent error", "agent errors"],
+    "Budget usage high": ["budget alert", "budget alerts"],
+  };
+  const pair = nouns[label];
+  const noun = pair ? (count === 1 ? pair[0] : pair[1]) : label.toLowerCase();
+  return `${count} ${noun}`;
 }
 
 export function loadDismissedInboxItems(): Set<string> {
@@ -384,5 +455,7 @@ export function computeInboxBadgeData({
     joinRequests: visibleJoinRequests,
     mineIssues: unreadMineIssues,
     alerts,
+    agentErrorAlert: Number(showAggregateAgentError),
+    budgetAlert: Number(showBudgetAlert),
   };
 }

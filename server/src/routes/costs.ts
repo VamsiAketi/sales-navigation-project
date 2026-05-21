@@ -35,6 +35,7 @@ import {
   stripeBillingBrandingFromEnv,
   stripeSecretsFromEnv,
 } from "../services/stripe-billing.js";
+import { getWalletAvailability } from "../services/wallet-reservations.js";
 
 export function costRoutes(db: Db) {
   const router = Router();
@@ -246,12 +247,21 @@ export function costRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     await assertBillingReadAccess(req, companyId);
     const wallet = await getCompanyWalletTotals(db, companyId);
+    const availability = await getWalletAvailability(db, companyId);
     const prepaidCents = wallet.creditCents;
     const usedModelCents = wallet.debitCents;
     const net = wallet.netCents;
     const remainingCents = Math.max(0, net);
     const deficitCents = net < 0 ? Math.abs(net) : 0;
-    res.json({ prepaidCents, usedModelCents, remainingCents, deficitCents });
+    res.json({
+      prepaidCents,
+      usedModelCents,
+      remainingCents,
+      deficitCents,
+      walletNetCents: availability.netCents,
+      reservedCents: availability.reservedCents,
+      availableCents: availability.availableCents,
+    });
   });
 
   router.get("/companies/:companyId/billing/stripe-status", async (req, res) => {

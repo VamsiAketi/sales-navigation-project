@@ -190,6 +190,24 @@ describe("LiveUpdatesProvider run lifecycle toasts", () => {
       tone: "error",
     });
   });
+
+  it("uses wallet-specific copy when a run is cancelled for insufficient available balance", () => {
+    expect(
+      __liveUpdatesTestUtils.buildRunStatusToast(
+        {
+          runId: "run-1",
+          agentId: "agent-1",
+          status: "cancelled",
+          errorCode: "wallet_insufficient_available",
+          error: "Insufficient wallet balance",
+        },
+        () => "CodexCoder",
+      ),
+    ).toMatchObject({
+      title: "Insufficient wallet balance",
+      tone: "warn",
+    });
+  });
 });
 
 describe("LiveUpdatesProvider socket helpers", () => {

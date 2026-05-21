@@ -14,7 +14,7 @@ import {
   NEW_ISSUE_BADGE_DURATION_MS,
 } from "../lib/focus-created-issue";
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
-import { formatAssigneeUserLabel } from "../lib/assignees";
+import { formatAssigneeUserLabel, sortHumanMembersForPicker } from "../lib/assignees";
 import { groupBy } from "../lib/groupBy";
 import { formatDate, cn } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
@@ -226,7 +226,7 @@ const defaultViewState: IssueViewState = {
   labels: [],
   projects: [],
   sortField: "created",
-  sortDir: "asc",
+  sortDir: "desc",
   groupBy: "none",
   viewMode: "board",
   collapsedGroups: [],
@@ -241,7 +241,7 @@ const quickFilterPresets = [
 ];
 
 /** Bump when defaults change so users pick up new `defaultViewState` instead of stale localStorage. */
-const ISSUE_VIEW_STATE_STORAGE_VERSION = 2;
+const ISSUE_VIEW_STATE_STORAGE_VERSION = 3;
 
 function viewStateLocalStorageKey(scopedKey: string): string {
   return `${scopedKey}:v${ISSUE_VIEW_STATE_STORAGE_VERSION}`;
@@ -644,6 +644,8 @@ export function IssuesList({
     queryFn: () => authApi.getSession(),
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId ?? null;
+  const currentUserDisplayName =
+    session?.user?.name?.trim() || session?.user?.email?.trim() || null;
 
   const { data: members } = useQuery({
   queryKey: queryKeys.access.members(selectedCompanyId!),
@@ -654,13 +656,11 @@ export function IssuesList({
   const userLabel = useCallback(
     (userId: string | null | undefined): string | null => {
       if (!userId) return null;
-      if (userId !== currentUserId && userId !== "local-board") {
-        const member = (members ?? []).find((m) => m.user?.id === userId);
-        if (member?.user?.name) return member.user.name;
-      }
-      return formatAssigneeUserLabel(userId, currentUserId);
+      const member = (members ?? []).find((m) => m.user?.id === userId);
+      if (member?.user?.name) return member.user.name;
+      return formatAssigneeUserLabel(userId, currentUserId, { currentUserDisplayName });
     },
-    [members, currentUserId],
+    [members, currentUserId, currentUserDisplayName],
   );
 
   // Scope the storage key per company so folding/view state is independent across companies.
@@ -979,13 +979,12 @@ export function IssuesList({
   });
 
   // Build a flat list of human members with id + name for the Kanban board
-  const humanMembers = useMemo(
-    () =>
-      (companyMembers ?? [])
-        .filter((m) => m.principalType === "user" && m.user)
-        .map((m) => ({ id: m.user!.id, name: m.user!.name })),
-    [companyMembers]
-  );
+  const humanMembers = useMemo(() => {
+    const rows = (companyMembers ?? [])
+      .filter((m) => m.principalType === "user" && m.user)
+      .map((m) => ({ id: m.user!.id, name: m.user!.name }));
+    return sortHumanMembersForPicker(rows, currentUserId);
+  }, [companyMembers, currentUserId]);
 
   const reporterLabelForIssue = useCallback(
     (issue: Issue): string => {
@@ -1275,9 +1274,25 @@ export function IssuesList({
                               onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, "__me") })}
                             />
                             <User className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-sm">Me</span>
+                            <span className="text-sm">{userLabel(currentUserId) ?? currentUserId}</span>
                           </label>
                         )}
+                        {humanMembers
+                          .filter((m) => m.id !== currentUserId)
+                          .map((member) => (
+                            <label
+                              key={member.id}
+                              className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer"
+                            >
+                              <Checkbox
+                                checked={viewState.assignees.includes(member.id)}
+                                onCheckedChange={() =>
+                                  updateView({ assignees: toggleInArray(viewState.assignees, member.id) })
+                                }
+                              />
+                              <span className="text-sm">{member.name}</span>
+                            </label>
+                          ))}
                         {(agents ?? []).map((agent) => (
                           <label key={agent.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-accent/50 cursor-pointer">
                             <Checkbox
@@ -1301,7 +1316,7 @@ export function IssuesList({
                               onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, "__me") })}
                             />
                             <User className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-sm">Me</span>
+                            <span className="text-sm">{userLabel(currentUserId) ?? currentUserId}</span>
                           </label>
                         )}
                         {humanMembers
@@ -1409,11 +1424,11 @@ export function IssuesList({
                       onCheckedChange={() => updateView({ reporters: toggleInArray(viewState.reporters, "__me") })}
                     />
                     <AssigneeAvatar
-                      name={userLabel(currentUserId) ?? "Me"}
+                      name={userLabel(currentUserId) ?? currentUserId}
                       isAgent={false}
                       size="sm"
                     />
-                    <span>Me</span>
+                    <span>{userLabel(currentUserId) ?? currentUserId}</span>
                   </label>
                 )}
                 {humanMembers
@@ -1861,7 +1876,6 @@ export function IssuesList({
                       return l.name.toLowerCase().includes(q);
                     });
                     const assigneeSearchQ = assigneeSearch.trim().toLowerCase();
-                    const humansForPicker = humanMembers.filter((m) => m.id !== currentUserId);
                     const toggleIssueLabel = (labelId: string) => {
                       const next = toggleIssueLabelSelection(issueLabelIds, labelId);
                       onUpdateIssue(issue.id, { labelIds: next });
@@ -2135,24 +2149,7 @@ export function IssuesList({
                               >
                                 No assignee
                               </button>
-                              {currentUserId && (
-                                <button
-                                  type="button"
-                                  className={cn(
-                                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
-                                    issue.assigneeUserId === currentUserId && "bg-accent",
-                                  )}
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    assignIssue(issue.id, null, currentUserId);
-                                  }}
-                                >
-                                  <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                  <span>Me</span>
-                                </button>
-                              )}
-                              {humansForPicker
+                              {humanMembers
                                 .filter((m) => {
                                   if (!assigneeSearchQ) return true;
                                   return m.name.toLowerCase().includes(assigneeSearchQ);

@@ -18,7 +18,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
-import { formatAssigneeUserLabel } from "../lib/assignees";
+import { formatAssigneeUserLabel, sortHumanMembersForPicker } from "../lib/assignees";
 import { assigneeUpdateErrorMessage } from "../lib/permission-feedback";
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { StatusIcon } from "./StatusIcon";
@@ -405,6 +405,18 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   });
   const membersPermissionDenied = membersError instanceof ApiError && membersError.status === 403;
 
+  const currentUserDisplayName = useMemo(() => {
+    const row = (members ?? []).find(
+      (m) => m.principalType === "user" && m.user?.id === currentUserId,
+    );
+    return (
+      row?.user?.name?.trim()
+      || session?.user?.name?.trim()
+      || session?.user?.email?.trim()
+      || null
+    );
+  }, [members, currentUserId, session]);
+
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(companyId!),
     queryFn: () => projectsApi.list(companyId!),
@@ -583,7 +595,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
       const member = (members ?? []).find((m) => m.user?.id === userId);
       if (member?.user?.name) return member.user.name;
     }
-    return formatAssigneeUserLabel(userId, currentUserId);
+    return formatAssigneeUserLabel(userId, currentUserId, { currentUserDisplayName });
   };
   const assigneeUserLabel = userLabel(issue.assigneeUserId);
   const creatorUserLabel = userLabel(issue.createdByUserId);
@@ -855,7 +867,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             }}
           >
             <User className="h-3 w-3 shrink-0 text-muted-foreground" />
-            Assign to me
+            <span className="truncate flex-1 text-left" title={currentUserDisplayName ?? undefined}>
+              {currentUserDisplayName ?? userLabel(currentUserId) ?? "—"}
+            </span>
           </button>
         )}
         {assigneePickerAllowsUsers && issue.createdByUserId && issue.createdByUserId !== currentUserId && (
@@ -882,26 +896,36 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             {creatorUserLabel ? `Assign to ${creatorUserLabel}` : "Assign to requester"}
           </button>
         )}
-        {assigneePickerAllowsUsers && (members ?? [])
-          .filter((m) => m.principalType === "user" && m.user && m.user.id !== currentUserId && m.user.id !== issue.createdByUserId)
-          .filter((m) => {
+        {assigneePickerAllowsUsers && sortHumanMembersForPicker(
+          (members ?? [])
+            .filter(
+              (m) =>
+                m.principalType === "user"
+                && m.user
+                && m.user.id !== currentUserId
+                && m.user.id !== issue.createdByUserId,
+            )
+            .map((m) => ({ id: m.user!.id, name: m.user!.name, user: m.user! })),
+          null,
+        )
+          .filter((row) => {
             if (!assigneeSearch.trim()) return true;
             const q = assigneeSearch.toLowerCase();
-            return m.user!.name.toLowerCase().includes(q);
+            return row.name.toLowerCase().includes(q);
           })
-          .map((m) => (
+          .map((row) => (
             <button
-              key={m.user!.id}
+              key={row.id}
               className={cn(
                 "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                issue.assigneeUserId === m.user!.id && "bg-accent"
+                issue.assigneeUserId === row.id && "bg-accent",
               )}
               disabled={assigneeUpdating}
               onClick={async () => {
                 setAssigneeUpdateError(null);
                 setAssigneeUpdating(true);
                 try {
-                  await onUpdate({ assigneeAgentId: null, assigneeUserId: m.user!.id });
+                  await onUpdate({ assigneeAgentId: null, assigneeUserId: row.id });
                   setAssigneeOpen(false);
                 } catch (error) {
                   setAssigneeUpdateError(assigneeUpdateErrorMessage(error));
@@ -911,8 +935,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               }}
             >
               <User className="h-3 w-3 shrink-0 text-muted-foreground" />
-              <span className="truncate flex-1 text-left" title={m.user!.name}>
-                {m.user!.name}
+              <span className="truncate flex-1 text-left" title={row.name}>
+                {row.name}
               </span>
             </button>
           ))}

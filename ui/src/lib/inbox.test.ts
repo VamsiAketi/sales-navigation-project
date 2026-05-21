@@ -13,6 +13,8 @@ import type {
 import {
   DEFAULT_INBOX_ISSUE_COLUMNS,
   computeInboxBadgeData,
+  formatInboxBadgeTooltip,
+  getInboxBadgeBreakdown,
   getAvailableInboxIssueColumns,
   getApprovalsForTab,
   getInboxWorkItems,
@@ -299,6 +301,8 @@ describe("inbox helpers", () => {
       joinRequests: 1,
       mineIssues: 1,
       alerts: 1,
+      agentErrorAlert: 0,
+      budgetAlert: 1,
     });
   });
 
@@ -333,7 +337,29 @@ describe("inbox helpers", () => {
       joinRequests: 0,
       mineIssues: 0,
       alerts: 0,
+      agentErrorAlert: 0,
+      budgetAlert: 0,
     });
+  });
+
+  it("builds tooltip breakdown lines for non-zero badge slices", () => {
+    const breakdown = getInboxBadgeBreakdown({
+      inbox: 4,
+      approvals: 1,
+      failedRuns: 2,
+      joinRequests: 0,
+      mineIssues: 1,
+      alerts: 0,
+      agentErrorAlert: 0,
+      budgetAlert: 0,
+    });
+
+    expect(breakdown).toEqual([
+      { label: "Unread task (Mine)", count: 1 },
+      { label: "Approval", count: 1 },
+      { label: "Failed agent runs", count: 2 },
+    ]);
+    expect(formatInboxBadgeTooltip(breakdown)).toBe("1 unread task · 1 approval · 2 failed runs");
   });
 
   it("keeps read issues in the touched list but excludes them from unread counts", () => {

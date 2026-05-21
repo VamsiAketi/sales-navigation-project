@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { activityLog, companies, issues, projects } from "@paperclipai/db";
+import { resolveControlPlaneTenantName } from "../control-plane-tenant-name.js";
 import { logger } from "../middleware/logger.js";
 import { logActivity } from "./activity-log.js";
 
@@ -16,25 +17,16 @@ interface DailyTrackerProjectPayload {
 }
 
 interface DailyTrackerPayload {
+  tenantName: string;
   date: string;
-  tenantId: string;
   totalTasksClosedCount: number;
   projects: DailyTrackerProjectPayload[];
-}
-
-function resolveTenantIdFromEnv(): string {
-  return (
-    process.env.MS_TENANT_ID?.trim() ||
-    process.env.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID?.trim() ||
-    process.env.PAPERCLIP_AUTH_MICROSOFT_TENANT_ID?.trim() ||
-    ""
-  );
 }
 
 function resolveControlPlaneDailyTrackerEndpoint(): string | null {
   const base = process.env.CONTROL_PLANE_URL?.trim();
   if (!base) return null;
-  return base.replace(/\/+$/, "");
+  return `${base.replace(/\/+$/, "")}/api/internal/ticket-closure`;
 }
 
 function formatUtcDay(date: Date): string {
@@ -120,8 +112,6 @@ export function dailyTrackerService(db: Db) {
   }
 
   async function buildPayload(companyId: string, date: string, startUtc: Date, endUtcExclusive: Date): Promise<DailyTrackerPayload> {
-    const tenantId = resolveTenantIdFromEnv();
-
     const closedRows = await db
       .select({
         projectId: projects.id,
@@ -169,8 +159,8 @@ export function dailyTrackerService(db: Db) {
     const projectsPayload = [...grouped.values()];
     const totalTasksClosedCount = projectsPayload.reduce((sum, item) => sum + item.tasksClosedCount, 0);
     return {
+      tenantName: resolveControlPlaneTenantName(),
       date,
-      tenantId,
       totalTasksClosedCount,
       projects: projectsPayload,
     };

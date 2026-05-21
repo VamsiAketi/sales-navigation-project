@@ -73,6 +73,7 @@ export { projectSecrets } from "./project_secrets.js";
 export { projectSecretVersions } from "./project_secret_versions.js";
 export { stripeProcessedEvents } from "./stripe_processed_events.js";
 export { companyWalletTransactions } from "./company_wallet_transactions.js";
+export { companyWalletReservations } from "./company_wallet_reservations.js";
 export { stripeCheckoutIntents } from "./stripe_checkout_intents.js";
 export { billingAlerts } from "./billing_alerts.js";
 export { companySkills } from "./company_skills.js";

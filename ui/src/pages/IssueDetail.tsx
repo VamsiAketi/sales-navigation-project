@@ -13,7 +13,7 @@ import { useCompany } from "../context/CompanyContext";
 import { usePanel } from "../context/PanelContext";
 import { useToast } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { assigneeValueFromSelection, suggestedCommentAssigneeValue } from "../lib/assignees";
+import { assigneeValueFromSelection, sortHumanMembersForPicker, suggestedCommentAssigneeValue } from "../lib/assignees";
 import { queryKeys } from "../lib/queryKeys";
 import {
   createIssueDetailPath,
@@ -466,15 +466,19 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
         agentIcon: agent.icon,
       });
     }
-    for (const member of members ?? []) {
-      if (member.principalType === "user" && member.user) {
-        options.push({
-          id: `user:${member.user.id}`,
-          name: member.user.id === currentUserId ? "Me" : member.user.name,
-          kind: "human",
-          userId: member.user.id,
-        });
-      }
+    const sortedHumans = sortHumanMembersForPicker(
+      (members ?? [])
+        .filter((member) => member.principalType === "user" && member.user)
+        .map((member) => member.user!),
+      currentUserId,
+    );
+    for (const user of sortedHumans) {
+      options.push({
+        id: `user:${user.id}`,
+        name: user.name,
+        kind: "human",
+        userId: user.id,
+      });
     }
     return options;
   }, [agents, members, currentUserId]);
@@ -494,11 +498,14 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     for (const agent of activeAgents) {
       options.push({ id: `agent:${agent.id}`, label: agent.name });
     }
-    for (const member of members ?? []) {
-      if (member.principalType === "user" && member.user) {
-        const label = member.user.id === currentUserId ? "Me" : member.user.name;
-        options.push({ id: `user:${member.user.id}`, label });
-      }
+    const sortedHumans = sortHumanMembersForPicker(
+      (members ?? [])
+        .filter((member) => member.principalType === "user" && member.user)
+        .map((member) => member.user!),
+      currentUserId,
+    );
+    for (const user of sortedHumans) {
+      options.push({ id: `user:${user.id}`, label: user.name });
     }
     return options;
   }, [agents, currentUserId, members]);
