@@ -98,7 +98,9 @@ export type IssueExecutionWorkspaceSettings = z.infer<typeof issueExecutionWorks
 
 export const checkoutIssueSchema = z.object({
   agentId: z.string().uuid(),
-  expectedStatuses: z.array(z.enum(ISSUE_STATUSES)).nonempty(),
+  expectedStatuses: z
+    .array(z.string().trim().regex(/^[a-z0-9_]+$/, "Status must be lowercase letters, numbers, and underscores"))
+    .nonempty(),
 });
 
 export type CheckoutIssue = z.infer<typeof checkoutIssueSchema>;

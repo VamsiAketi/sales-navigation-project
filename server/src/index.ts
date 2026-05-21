@@ -39,6 +39,9 @@ import {
   gmailConnectorService,
   outlookConnectorService,
   reconcilePersistedRuntimeServicesOnStartup,
+  projectContextExtractionService,
+  projectContextBootstrapService,
+  projectContextSyncService,
   routineService,
 } from "./services/index.js";
 import { runStripeBillingReconciliation, stripeSecretsFromEnv } from "./services/stripe-billing.js";
@@ -650,6 +653,9 @@ export async function startServer(): Promise<StartedServer> {
     const heartbeat = heartbeatService(db as any);
     const routines = routineService(db as any);
     const dailyTracker = dailyTrackerService(db as any);
+    const projectContextSync = projectContextSyncService(db as any);
+    const projectContextExtraction = projectContextExtractionService(db as any, storageService);
+    const projectContextBootstrap = projectContextBootstrapService(db as any);
   
     // Reap orphaned running runs at startup while in-memory execution state is empty,
     // then resume any persisted queued runs that were waiting on the previous process.
@@ -659,6 +665,15 @@ export async function startServer(): Promise<StartedServer> {
       .catch((err) => {
         logger.error({ err }, "startup heartbeat recovery failed");
       });
+    void projectContextSync.recoverPendingQueueStateOnStartup().catch((err) => {
+      logger.error({ err }, "startup project context sync recovery failed");
+    });
+    void projectContextExtraction.markStuckProcessingAsPending().catch((err) => {
+      logger.error({ err }, "startup project context extraction recovery failed");
+    });
+    void projectContextBootstrap.backfillExistingProjects().catch((err) => {
+      logger.error({ err }, "startup project context backfill failed");
+    });
     setInterval(() => {
       void heartbeat
         .tickTimers(new Date())
@@ -686,6 +701,18 @@ export async function startServer(): Promise<StartedServer> {
         .tick(new Date())
         .catch((err) => {
           logger.error({ err }, "daily tracker tick failed");
+        });
+      void projectContextSync.tickRetryQueue(new Date()).catch((err) => {
+        logger.error({ err }, "project context sync retry tick failed");
+      });
+      void projectContextExtraction.tickPendingExtractions()
+        .then((result) => {
+          if (result.processed > 0) {
+            logger.info({ ...result }, "project context extraction tick processed files");
+          }
+        })
+        .catch((err) => {
+          logger.error({ err }, "project context extraction tick failed");
         });
   
       // Periodically reap orphaned runs (5-min staleness threshold) and make sure

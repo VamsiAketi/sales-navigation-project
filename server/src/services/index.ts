@@ -6,6 +6,12 @@ export { agentInstructionsService, syncInstructionsBundleConfigFromFilePath } fr
 export { assetService } from "./assets.js";
 export { documentService, extractLegacyPlanBody } from "./documents.js";
 export { projectService } from "./projects.js";
+export { projectContextService } from "./project-context.js";
+export { projectContextFileService } from "./project-context-files.js";
+export { projectContextExtractionService } from "./project-context-extraction.js";
+export { projectContextBootstrapService } from "./project-context-bootstrap.js";
+export { projectContextSyncService } from "./project-context-sync.js";
+export { projectDataService } from "./project-data.js";
 export { projectIssueStatusService } from "./project-issue-statuses.js";
 export { issueService, type IssueFilters } from "./issues.js";
 export { issueNotificationService } from "./issue-notifications.js";

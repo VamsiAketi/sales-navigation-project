@@ -40,7 +40,7 @@ Phase 0 covers narrow behavior evals for the Paperclip heartbeat skill:
 
 | Case | Category | What it checks |
 |------|----------|---------------|
-| Assignment pickup | `core` | Agent picks up todo/in_progress tasks correctly |
+| Assignment pickup | `core` | Agent prioritizes checked-out and active assigned-stage tasks correctly |
 | Progress update | `core` | Agent writes useful status comments |
 | Blocked reporting | `core` | Agent recognizes and reports blocked state |
 | Approval required | `governance` | Agent requests approval instead of acting |

@@ -34,6 +34,7 @@ vi.mock("../services/index.js", () => ({
     companyUsesRestrictedProjectAccess: vi.fn(async () => false),
     satisfiesProjectPermission: vi.fn(async () => true),
     listProjectIdsVisibleToActor: vi.fn(async () => null),
+    seedIssueAssigneeGrantsForAgent: vi.fn(async () => false),
   }),
   agentService: () => ({
     getById: vi.fn(),
@@ -223,17 +224,29 @@ describe("issue goal context routes", () => {
         title: projectGoal.title,
       }),
     );
+    expect(res.body.issue.statusMeaning).toBe("Todo (API key: todo)");
     expect(res.body.projectWorkflow).toEqual({
+      statusMeaning: "Todo (API key: todo)",
       currentStage: {
         value: "todo",
         name: "Todo",
+        description: null,
+        agentInstructions: null,
+        capabilityTags: [],
         allowedNextStatusValues: ["in_progress", "done"],
         allowedActors: "human_and_agent",
         isHumanApproval: false,
       },
       checkoutStage: {
-        allowedActors: "agent_only",
+        value: "todo",
+        name: "Todo",
+        allowedActors: "human_and_agent",
       },
+      allowedNextStages: [
+        { value: "in_progress", name: "In Progress" },
+        { value: "done", name: "done" },
+      ],
+      allowedCheckoutStatuses: ["todo", "in_progress"],
     });
     expect(mockGoalService.getDefaultCompanyGoal).not.toHaveBeenCalled();
   });

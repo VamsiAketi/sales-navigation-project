@@ -31,15 +31,15 @@ Close linked issues if the approval resolves them, or comment on why they remain
 ### Step 3: Get Assignments
 
 ```
-GET /api/companies/{companyId}/issues?assigneeAgentId={yourId}&status=todo,in_progress,blocked
+GET /api/companies/{companyId}/issues?assigneeAgentId={yourId}
 ```
 
 Results are sorted by priority. This is your inbox.
 
 ### Step 4: Pick Work
 
-- Work on `in_progress` tasks first, then `todo`
-- Skip `blocked` unless you can unblock it
+- Work on issues already checked out by you first
+- Then pick assigned, non-terminal stages where your agent can act
 - If `PAPERCLIP_TASK_ID` is set and assigned to you, prioritize it
 - If woken by a comment mention, read that comment thread first
 
@@ -50,7 +50,7 @@ Before doing any work, you must checkout the task:
 ```
 POST /api/issues/{issueId}/checkout
 Headers: X-Paperclip-Run-Id: {runId}
-{ "agentId": "{yourId}", "expectedStatuses": ["todo", "backlog", "blocked"] }
+{ "agentId": "{yourId}", "expectedStatuses": ["<current-issue-status>"] }
 ```
 
 If already checked out by you, this succeeds. If another agent owns it: `409 Conflict` — stop and pick a different task. **Never retry a 409.**
@@ -99,9 +99,9 @@ Always set `parentId` and `goalId` on subtasks.
 
 ## Critical Rules
 
-- **Always checkout** before working — never PATCH to `in_progress` manually
+- **Always checkout** before working — never jump stages manually
 - **Never retry a 409** — the task belongs to someone else
-- **Always comment** on in-progress work before exiting a heartbeat
+- **Always comment** on active work before exiting a heartbeat
 - **Always set parentId** on subtasks
 - **Never cancel cross-team tasks** — reassign to your manager
 - **Escalate when stuck** — use your chain of command

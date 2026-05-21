@@ -1302,11 +1302,15 @@ export function agentRoutes(db: Db) {
     const issuesSvc = issueService(db);
     const rows = await issuesSvc.list(req.actor.companyId, {
       assigneeAgentId: req.actor.agentId,
-      status: "todo,in_progress,blocked",
+    });
+    const filtered = rows.filter((issue) => {
+      if (issue.status === "backlog") return false;
+      if (issue.status === "done" || issue.status === "cancelled") return false;
+      return true;
     });
 
     res.json(
-      rows.map((issue) => ({
+      filtered.map((issue) => ({
         id: issue.id,
         identifier: issue.identifier,
         title: issue.title,
@@ -2629,7 +2633,7 @@ export function agentRoutes(db: Db) {
       run = null;
     }
 
-    if (!run && issue.assigneeAgentId && issue.status === "in_progress") {
+    if (!run && issue.assigneeAgentId && issue.checkoutRunId) {
       const candidateRun = await heartbeat.getActiveRunForAgent(issue.assigneeAgentId);
       const candidateContext = asRecord(candidateRun?.contextSnapshot);
       const candidateIssueId = asNonEmptyString(candidateContext?.issueId);

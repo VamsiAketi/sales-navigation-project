@@ -70,12 +70,14 @@ V1 implementation extends this baseline into a company-centric, governance-aware
 - Board web UI for dashboard, org chart, tasks, agents, approvals, costs
 - Agent-facing API contract (task read/write, heartbeat report, cost report)
 - Auditable activity log for all mutating actions
+- Project context subsystem (project-scoped documents, uploaded files with extraction, AI summaries/playbooks)
+- Project data subsystem (per-project DB schemas, table/view metadata, view-backed dashboards)
+- Standalone project maintenance requests (not issue-backed) with queueing and destructive-change governance
 
 ## 5.2 Out of Scope (V1)
 
 - Plugin framework and third-party extension SDK
 - Revenue/expense accounting beyond model/token costs
-- Knowledge base subsystem
 - Public marketplace (ClipHub)
 - Multi-board governance or role-based human permission granularity
 - Automatic self-healing orchestration (auto-reassign/retry planners)
@@ -184,6 +186,19 @@ Invariant: at least one root `company` level goal per company.
 - `status` enum: `backlog | planned | in_progress | completed | cancelled`
 - `lead_agent_id` uuid fk `agents.id` null
 - `target_date` date null
+
+Project context/data extensions in V1:
+
+- `data_schema_name` text null (per-project Postgres schema, e.g. `prj_<id>`)
+- project-scoped context artifacts and history in dedicated tables (documents/files/snapshots/playbook revisions)
+- project-scoped dashboard/data metadata tables (objects/views/widgets + revisions)
+- standalone `project_maintenance_requests` lifecycle table (no `issues` coupling)
+
+`project_maintenance_requests` behavior:
+
+- status lifecycle: `queued | pending_approval | pending | in_progress | completed | failed | cancelled`
+- server-side destructive classifier stores `changeRiskClass` and `riskReasons`
+- destructive requests require approval before dispatch; non-destructive requests dispatch immediately (subject to queue)
 
 ## 7.6 `issues` (core task entity)
 
@@ -493,7 +508,7 @@ All endpoints are under `/api` and return JSON.
 ```json
 {
   "agentId": "uuid",
-  "expectedStatuses": ["todo", "backlog", "blocked"]
+  "expectedStatuses": ["<current-issue-status>"]
 }
 ```
 
@@ -501,7 +516,7 @@ Server behavior:
 
 1. single SQL update with `WHERE id = ? AND status IN (?) AND (assignee_agent_id IS NULL OR assignee_agent_id = :agentId)`
 2. if updated row count is 0, return `409` with current owner/status
-3. successful checkout sets `assignee_agent_id`, `status = in_progress`, and `started_at`
+3. successful checkout sets `assignee_agent_id`, checkout lock metadata, and `started_at` (first checkout) while preserving current stage for project-scoped workflows
 
 ## 10.5 Projects
 
@@ -509,6 +524,50 @@ Server behavior:
 - `POST /companies/:companyId/projects`
 - `GET /projects/:projectId`
 - `PATCH /projects/:projectId`
+
+Project context and maintenance endpoints:
+
+- `GET /projects/:projectId/context`
+- `GET /projects/:projectId/documents`
+- `GET /projects/:projectId/documents/:key`
+- `PUT /projects/:projectId/documents/:key`
+- `GET /projects/:projectId/documents/:key/revisions`
+- `POST /projects/:projectId/documents/:key/revisions/:revisionId/restore`
+- `POST /projects/:projectId/context/files` (multipart upload)
+- `GET /projects/:projectId/context/files`
+- `GET /projects/:projectId/context/files/:fileId/download`
+- `GET /projects/:projectId/context/files/:fileId/text`
+- `DELETE /projects/:projectId/context/files/:fileId`
+- `POST /projects/:projectId/context/sync`
+- `GET /projects/:projectId/context/history`
+- `POST /projects/:projectId/maintenance-requests`
+- `GET /projects/:projectId/maintenance-requests`
+- `PATCH /projects/:projectId/maintenance-requests/:requestId`
+- `POST /projects/:projectId/maintenance-requests/:requestId/approve`
+- `POST /projects/:projectId/maintenance-requests/:requestId/reject`
+
+Project data and dashboards endpoints:
+
+- `GET /projects/:projectId/data/objects`
+- `POST /projects/:projectId/data/tables`
+- `POST /projects/:projectId/data/tables/:name/columns`
+- `PATCH /projects/:projectId/data/tables/:name/columns/:col`
+- `DELETE /projects/:projectId/data/tables/:name/columns/:col`
+- `POST /projects/:projectId/data/tables/:name/foreign-keys`
+- `DELETE /projects/:projectId/data/tables/:name`
+- `POST /projects/:projectId/data/views`
+- `PUT /projects/:projectId/data/views/:name`
+- `DELETE /projects/:projectId/data/views/:name`
+- `POST /projects/:projectId/data/rows`
+- `PATCH /projects/:projectId/data/rows`
+- `DELETE /projects/:projectId/data/rows`
+- `POST /projects/:projectId/data/query`
+- `GET /projects/:projectId/views`
+- `POST /projects/:projectId/views`
+- `GET /projects/:projectId/views/:viewId/widgets`
+- `POST /projects/:projectId/views/:viewId/widgets`
+- `PATCH /projects/:projectId/views/:viewId/widgets/:widgetId`
+- `DELETE /projects/:projectId/views/:viewId/widgets/:widgetId`
 
 ## 10.6 Approvals
 

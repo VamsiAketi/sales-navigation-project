@@ -131,6 +131,29 @@ The database mode is controlled by `DATABASE_URL`:
 
 Your Drizzle schema (`packages/db/src/schema/`) stays the same regardless of mode.
 
+## Project context and data schemas (V1)
+
+Paperclip V1 includes a project-scoped context/data layer with two storage planes:
+
+1. Core metadata in `public` (company/project-scoped rows)
+2. Per-project Postgres schemas for operational data tables/views (`projects.data_schema_name`, e.g. `prj_<id>`)
+
+Metadata tables (public schema) include project context documents/files/snapshots, maintenance requests, workflow playbook revisions, project data object metadata/revisions, and dashboard/view/widget metadata/revisions.
+
+Key behavior notes:
+
+- `project_maintenance_requests` are standalone entities (not linked to issue lifecycle columns).
+- Maintenance status lifecycle includes approval gate states: `queued | pending_approval | pending | in_progress | completed | failed | cancelled`.
+- Server-side destructive classifier stores risk metadata and routes destructive requests through explicit approval before dispatch.
+- Context sync and maintenance one-shots are queue-backed per project (single active run per project in V1).
+- Uploaded context files can store extracted text; extracted text is retained until source file deletion.
+
+Per-project schema safety:
+
+- All project data DDL/DML is scoped to the project's schema name; cross-schema references are rejected.
+- Widgets and dashboard query paths use registered project views/tables only.
+- Existing projects are backfilled with project schema names and seeded context docs via migration.
+
 ## Secret storage
 
 Paperclip stores secret metadata and versions in:

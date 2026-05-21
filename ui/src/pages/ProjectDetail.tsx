@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation, Navigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { isUuidLike, type BudgetPolicySummary } from "@paperclipai/shared";
+import { isAiAdminProject, isUuidLike, type BudgetPolicySummary } from "@paperclipai/shared";
 import { budgetsApi } from "../api/budgets";
 import { projectsApi } from "../api/projects";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
-import { assetsApi } from "../api/assets";
 import { usePanel } from "../context/PanelContext";
 import { useCompany } from "../context/CompanyContext";
 import { useToast } from "../context/ToastContext";
@@ -15,7 +14,6 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { ProjectProperties, type ProjectConfigFieldKey, type ProjectFieldSaveState } from "../components/ProjectProperties";
 import { InlineEditor } from "../components/InlineEditor";
-import { StatusBadge } from "../components/StatusBadge";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
 import { useProjectIssueStatuses } from "../hooks/useProjectIssueStatuses";
@@ -28,12 +26,11 @@ import { projectRouteRef, cn } from "../lib/utils";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Check, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { ProjectAccessControlPanel } from "../components/ProjectAccessControlPanel";
+import { ProjectContextPanel } from "../components/ProjectContextPanel";
 
 /* ── Top-level tab types ── */
 
@@ -41,6 +38,8 @@ type ProjectBaseTab =
   | "backlog"
   | "overview"
   | "list"
+  | "data"
+  | "dashboards"
   | "configuration"
   | "access"
   | "workflow"
@@ -49,16 +48,15 @@ type ProjectBaseTab =
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
-const PROJECT_STATUSES = [
-  { value: "backlog", label: "Backlog" },
-  { value: "planned", label: "Planned" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-] as const;
-
 function isProjectPluginTab(value: string | null): value is ProjectPluginTab {
   return typeof value === "string" && value.startsWith("plugin:");
+}
+
+function isLegacyProjectContextTabPath(pathname: string, projectRef: string): boolean {
+  const segments = pathname.split("/").filter(Boolean);
+  const projectsIdx = segments.indexOf("projects");
+  if (projectsIdx === -1) return false;
+  return segments[projectsIdx + 1] === projectRef && segments[projectsIdx + 2] === "context";
 }
 
 function resolveProjectTab(pathname: string, projectId: string): ProjectTab | null {
@@ -67,8 +65,10 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (projectsIdx === -1 || segments[projectsIdx + 1] !== projectId) return null;
   const tab = segments[projectsIdx + 2];
   if (tab === "backlog") return "backlog";
-  if (tab === "overview") return "overview";
+  if (tab === "overview" || tab === "context") return "overview";
   if (tab === "configuration") return "configuration";
+  if (tab === "data") return "data";
+  if (tab === "dashboards") return "dashboards";
   if (tab === "access") return "access";
   if (tab === "workflow") return "workflow";
   if (tab === "budget") return "budget";
@@ -77,85 +77,6 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   return null;
 }
 
-/* ── Overview tab content ── */
-
-function OverviewContent({
-  project,
-  onUpdate,
-  imageUploadHandler,
-}: {
-  project: { description: string | null; status: string; targetDate: string | null };
-  onUpdate: (data: Record<string, unknown>) => void;
-  imageUploadHandler?: (file: File) => Promise<string>;
-}) {
-  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
-
-  return (
-    <div className="space-y-6 rounded-lg border border-border/70 bg-card p-4 sm:p-5">
-      <div className="space-y-2">
-        <span className="text-sm font-medium text-foreground">Description</span>
-        <div className="min-h-16 rounded-md border border-border bg-background p-3">
-          <InlineEditor
-            value={project.description ?? ""}
-            onSave={(description) => onUpdate({ description })}
-            as="p"
-            className="text-sm text-muted-foreground"
-            placeholder="Add a project description..."
-            multiline
-            imageUploadHandler={imageUploadHandler}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 border-t border-border/60 pt-4 text-sm sm:grid-cols-2">
-        <div>
-          <span className="text-muted-foreground">Status</span>
-          <div className="mt-1">
-            <Popover open={statusPickerOpen} onOpenChange={setStatusPickerOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-2 px-2.5"
-                >
-                  <StatusBadge status={project.status} />
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-48 p-1">
-                {PROJECT_STATUSES.map((status) => {
-                  const isActive = status.value === project.status;
-                  return (
-                    <button
-                      key={status.value}
-                      className={cn(
-                        "flex w-full items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
-                        isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                      )}
-                      onClick={() => {
-                        onUpdate({ status: status.value });
-                        setStatusPickerOpen(false);
-                      }}
-                    >
-                      <span>{status.label}</span>
-                      {isActive ? <Check className="h-3.5 w-3.5" /> : null}
-                    </button>
-                  );
-                })}
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-        {project.targetDate && (
-          <div>
-            <span className="text-muted-foreground">Target Date</span>
-            <p className="mt-1">{project.targetDate}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /* ── List (issues) tab content ── */
 
@@ -395,6 +316,8 @@ export function ProjectDetail() {
     if (tab === "backlog") return `/projects/${projectRef}/backlog`;
     if (tab === "overview") return `/projects/${projectRef}/overview`;
     if (tab === "configuration") return `/projects/${projectRef}/configuration`;
+    if (tab === "data") return `/projects/${projectRef}/data`;
+    if (tab === "dashboards") return `/projects/${projectRef}/dashboards`;
     if (tab === "access") return `/projects/${projectRef}/access`;
     if (tab === "workflow") return `/projects/${projectRef}/workflow`;
     if (tab === "budget") return `/projects/${projectRef}/budget`;
@@ -439,10 +362,10 @@ export function ProjectDetail() {
     [pluginDetailSlots],
   );
   const activePluginTab = pluginTabItems.find((item) => item.value === activeTab) ?? null;
-  const isDefaultProjectLocked = useMemo(() => {
-    const normalized = (project?.name ?? "").trim().toLowerCase();
-    return normalized === "default project" || normalized === "onboarding" || normalized === "ai-admin project";
-  }, [project?.name]);
+  const isAiAdminProjectLocked = useMemo(
+    () => (project ? isAiAdminProject(project) : false),
+    [project],
+  );
 
   useEffect(() => {
     if (!project?.companyId || project.companyId === selectedCompanyId) return;
@@ -488,13 +411,6 @@ export function ProjectDetail() {
         title: archived ? "Failed to archive project" : "Failed to unarchive project",
         tone: "error",
       });
-    },
-  });
-
-  const uploadImage = useMutation({
-    mutationFn: async (file: File) => {
-      if (!resolvedCompanyId) throw new Error("No company selected");
-      return assetsApi.uploadImage(resolvedCompanyId, file, `projects/${projectLookupRef || "draft"}`);
     },
   });
 
@@ -619,6 +535,10 @@ export function ProjectDetail() {
     },
   });
 
+  if (routeProjectRef && isLegacyProjectContextTabPath(location.pathname, routeProjectRef)) {
+    return <Navigate to={`/projects/${canonicalProjectRef ?? routeProjectRef}/overview`} replace />;
+  }
+
   if (pluginTabFromSearch && !pluginDetailSlotsLoading && !activePluginTab) {
     return <Navigate to={`/projects/${canonicalProjectRef}/issues`} replace />;
   }
@@ -637,6 +557,15 @@ export function ProjectDetail() {
     }
     if (cachedTab === "configuration") {
       return <Navigate to={`/projects/${canonicalProjectRef}/configuration`} replace />;
+    }
+    if (cachedTab === "context") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/overview`} replace />;
+    }
+    if (cachedTab === "data") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/data`} replace />;
+    }
+    if (cachedTab === "dashboards") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/dashboards`} replace />;
     }
     if (
       cachedTab === "access" &&
@@ -682,6 +611,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/budget`);
     } else if (tab === "configuration") {
       navigate(`/projects/${canonicalProjectRef}/configuration`);
+    } else if (tab === "data") {
+      navigate(`/projects/${canonicalProjectRef}/data`);
+    } else if (tab === "dashboards") {
+      navigate(`/projects/${canonicalProjectRef}/dashboards`);
     } else if (tab === "access" && isProjectIamEnabled) {
       navigate(`/projects/${canonicalProjectRef}/access`);
     } else if (tab === "workflow") {
@@ -756,9 +689,10 @@ export function ProjectDetail() {
       <Tabs value={activeTab ?? "list"} onValueChange={(value) => handleTabChange(value as ProjectTab)}>
         <PageTabBar
           items={[
+            { value: "overview", label: "Overview" },
+            { value: "dashboards", label: "Dashboards" },
             { value: "backlog", label: "Backlog" },
             { value: "list", label: "Tasks" },
-            { value: "overview", label: "Overview" },
             { value: "configuration", label: "Configuration" },
             ...(isProjectIamEnabled ? [{ value: "access" as const, label: "Access Control" }] : []),
             { value: "workflow", label: "Workflow" },
@@ -767,6 +701,7 @@ export function ProjectDetail() {
               value: item.value,
               label: item.label,
             })),
+            { value: "data", label: "Data" },
             { value: "archive" as const, label: "Archive" },
           ]}
           align="start"
@@ -783,15 +718,15 @@ export function ProjectDetail() {
         />
       )}
 
-      {activeTab === "overview" && (
-        <OverviewContent
-          project={project}
-          onUpdate={(data) => updateProject.mutate(data)}
-          imageUploadHandler={async (file) => {
-            const asset = await uploadImage.mutateAsync(file);
-            return asset.contentPath;
-          }}
-        />
+      {activeTab === "overview" && project?.id && resolvedCompanyId && (
+        <div className="max-w-5xl pb-2">
+          <ProjectContextPanel
+            projectId={project.id}
+            companyId={resolvedCompanyId}
+            mode="context"
+            lockWorkflowMaintenance={isAiAdminProjectLocked}
+          />
+        </div>
       )}
 
       {activeTab === "list" && project?.id && resolvedCompanyId && (
@@ -826,13 +761,13 @@ export function ProjectDetail() {
         <div className="max-w-3xl space-y-6 pb-2">
           <ProjectProperties
             project={project}
-            onUpdate={isDefaultProjectLocked ? undefined : (data) => updateProject.mutate(data)}
-            onFieldUpdate={isDefaultProjectLocked ? undefined : updateProjectField}
+            onUpdate={isAiAdminProjectLocked ? undefined : (data) => updateProject.mutate(data)}
+            onFieldUpdate={isAiAdminProjectLocked ? undefined : updateProjectField}
             getFieldSaveState={(field) => fieldSaveStates[field] ?? "idle"}
-            onArchive={isDefaultProjectLocked ? undefined : (archived) => archiveProject.mutate(archived)}
+            onArchive={isAiAdminProjectLocked ? undefined : (archived) => archiveProject.mutate(archived)}
             archivePending={archiveProject.isPending}
             aboveSecrets={
-              project?.id && !isDefaultProjectLocked ? (
+              project?.id && !isAiAdminProjectLocked ? (
                 <>
                   <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <span className="min-w-0 text-sm leading-snug text-muted-foreground sm:max-w-md">
@@ -873,12 +808,30 @@ export function ProjectDetail() {
         </div>
       )}
 
+
+      {activeTab === "data" && project?.id && resolvedCompanyId && (
+        <div className="max-w-5xl pb-2">
+          <ProjectContextPanel projectId={project.id} companyId={resolvedCompanyId} mode="data" />
+        </div>
+      )}
+
+      {activeTab === "dashboards" && project?.id && resolvedCompanyId && (
+        <div className="max-w-5xl pb-2">
+          <ProjectContextPanel projectId={project.id} companyId={resolvedCompanyId} mode="dashboards" />
+        </div>
+      )}
+
       {activeTab === "workflow" && project?.id && (
         <div className="max-w-5xl space-y-6 pb-2">
+          {isAiAdminProjectLocked ? (
+            <p className="text-sm text-muted-foreground">
+              The AI-Admin Project uses a fixed workflow for agent-creation and coordination tasks. Workflow stages cannot be edited.
+            </p>
+          ) : null}
           <ProjectIssueStatusSettings
             projectId={project.id}
             statuses={configStatuses}
-            readOnly={isDefaultProjectLocked}
+            readOnly={isAiAdminProjectLocked}
           />
         </div>
       )}

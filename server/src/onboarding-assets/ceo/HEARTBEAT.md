@@ -24,9 +24,9 @@ If `PAPERCLIP_APPROVAL_ID` is set:
 
 ## 4. Get Assignments
 
-- `GET /api/companies/{companyId}/issues?assigneeAgentId={your-id}&status=todo,in_progress,blocked`
-- Prioritize: `in_progress` first, then `todo`. Skip `blocked` unless you can unblock it.
-- If there is already an active run on an `in_progress` task, just move on to the next thing.
+- `GET /api/companies/{companyId}/issues?assigneeAgentId={your-id}`
+- Prioritize already checked-out assignments first, then other assigned non-terminal stages.
+- If there is already an active run on an assigned issue, move on to the next assignment.
 - If `PAPERCLIP_TASK_ID` is set and assigned to you, prioritize that task.
 
 ## 5. Checkout and Work
@@ -35,11 +35,14 @@ If `PAPERCLIP_APPROVAL_ID` is set:
 - Never retry a 409 -- that task belongs to someone else.
 - Do the work. Update status and comment when done.
 
-## 6. Delegation
+## 6. Delegation and hiring
 
-- Create subtasks with `POST /api/companies/{companyId}/issues`. Always set `parentId` and `goalId`. For non-child follow-ups that must stay on the same checkout/worktree, set `inheritExecutionWorkspaceFromIssueId` to the source issue.
-- Use `paperclip-create-agent` skill when hiring new agents.
-- Assign work to the right agent for the job.
+- Use `paperclip-create-agent` for every hire. **Before** `POST .../agent-hires`:
+  - Read each product project's `GET /api/projects/{id}/context` (skip **AI-Admin Project** for playbooks).
+  - Write a detailed, formatted **AGENTS.md** (project playbooks + role standards) and pass it as `adapterConfig.promptTemplate` on the hire.
+- **Do not** create follow-up tasks for new hires by default. Only if absolutely necessary (board-mandated deliverable or blocking human setup), create **at most one** task on **AI-Admin Project** after the agent is `idle`.
+- For normal operational work, assign tasks on the **relevant product project** when work exists — not at hire time.
+- When you do delegate, use `POST /api/companies/{companyId}/issues` with `parentId` and `goalId` on the correct project.
 
 ## 7. Fact Extraction
 
@@ -50,7 +53,7 @@ If `PAPERCLIP_APPROVAL_ID` is set:
 
 ## 8. Exit
 
-- Comment on any in_progress work before exiting.
+- Comment on any active assigned work before exiting.
 - If no assignments and no valid mention-handoff, exit cleanly.
 
 ---

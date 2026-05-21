@@ -84,6 +84,11 @@ const DEFAULT_CLIENT_ID = "gateway-client";
 const DEFAULT_CLIENT_MODE = "backend";
 const DEFAULT_CLIENT_VERSION = "paperclip";
 const DEFAULT_ROLE = "operator";
+const ONE_SHOT_WAKE_REASONS = new Set([
+  "connector_event",
+  "project_context_sync",
+  "project_maintenance_request",
+]);
 
 const SENSITIVE_LOG_KEY_PATTERN =
   /(^|[_-])(auth|authorization|token|secret|password|api[_-]?key|private[_-]?key)([_-]|$)|^x-openclaw-(auth|token)$/i;
@@ -365,11 +370,11 @@ function buildWakeText(
   const apiBaseHint = paperclipEnv.PAPERCLIP_API_URL ?? "<set PAPERCLIP_API_URL>";
 
   const connectorWorkflowPrompt = nonEmpty(wakeupPrompt);
-  if (payload.wakeReason === "connector_event" && connectorWorkflowPrompt) {
+  if (payload.wakeReason && ONE_SHOT_WAKE_REASONS.has(payload.wakeReason) && connectorWorkflowPrompt) {
     const lines = [
-      "Paperclip connector event wake for a cloud adapter.",
+      "Paperclip one-shot wake for a cloud adapter.",
       "",
-      "Skip the regular heartbeat inbox procedure. Follow the connector workflow instructions below, then exit.",
+      "Skip the regular heartbeat inbox procedure. Follow the one-shot workflow instructions below, then exit.",
       "",
       "Set these values in your run context:",
       ...envLines,
@@ -380,7 +385,7 @@ function buildWakeText(
       `api_base=${apiBaseHint}`,
       `wake_reason=${payload.wakeReason ?? ""}`,
       "",
-      "## Connector workflow instructions",
+      "## One-shot workflow instructions",
       connectorWorkflowPrompt,
     ];
     return lines.join("\n");
@@ -416,15 +421,15 @@ function buildWakeText(
     "1) GET /api/agents/me",
     `2) Determine issueId: PAPERCLIP_TASK_ID if present, otherwise issue_id (${issueIdHint}).`,
     "3) If issueId exists:",
-    "   - POST /api/issues/{issueId}/checkout with {\"agentId\":\"$PAPERCLIP_AGENT_ID\",\"expectedStatuses\":[\"todo\",\"backlog\",\"blocked\"]}",
+    "   - POST /api/issues/{issueId}/checkout with {\"agentId\":\"$PAPERCLIP_AGENT_ID\",\"expectedStatuses\":[\"<current-issue-status>\"]}",
     "   - GET /api/issues/{issueId}",
     "   - GET /api/issues/{issueId}/comments",
     "   - Execute the issue instructions exactly.",
     "   - If instructions require a comment, POST /api/issues/{issueId}/comments with {\"body\":\"...\"}.",
     "   - PATCH /api/issues/{issueId} with {\"status\":\"done\",\"comment\":\"what changed and why\"}.",
     "4) If issueId does not exist:",
-    "   - GET /api/companies/$PAPERCLIP_COMPANY_ID/issues?assigneeAgentId=$PAPERCLIP_AGENT_ID&status=todo,in_progress,blocked",
-    "   - Pick in_progress first, then todo, then blocked, then execute step 3.",
+    "   - GET /api/companies/$PAPERCLIP_COMPANY_ID/issues?assigneeAgentId=$PAPERCLIP_AGENT_ID",
+    "   - Prefer issues already checked out by your agent, then any non-terminal assigned stage, then execute step 3.",
     "",
     "Useful endpoints for issue work:",
     "- POST /api/issues/{issueId}/comments",

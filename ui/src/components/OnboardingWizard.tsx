@@ -593,7 +593,7 @@ export function OnboardingWizard() {
           adapterConfig: buildAdapterConfig(),
           runtimeConfig: {
             heartbeat: {
-              enabled: true,
+              enabled: false,
               intervalSec: 3600,
               wakeOnDemand: true,
               cooldownSec: 10,

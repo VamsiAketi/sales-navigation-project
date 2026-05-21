@@ -18,6 +18,8 @@ export const projects = pgTable(
     pauseReason: text("pause_reason"),
     pausedAt: timestamp("paused_at", { withTimezone: true }),
     executionWorkspacePolicy: jsonb("execution_workspace_policy").$type<Record<string, unknown>>(),
+    /** Postgres schema name used for project-scoped operational tables/views (e.g. prj_ab12cd). */
+    dataSchemaName: text("data_schema_name"),
     envConfig: jsonb("env_config").$type<Record<string, unknown> | null>(),
     /** Env var name -> project secret name (resolved at agent runtime within this project). */
     projectEnvConfig: jsonb("project_env_config").$type<Record<string, unknown> | null>(),

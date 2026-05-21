@@ -2,7 +2,7 @@
 # Tests assignment pickup, progress updates, blocked reporting, clean exit,
 # checkout-before-work, and 409 conflict handling.
 
-- description: "core.assignment_pickup - picks in_progress before todo"
+- description: "core.assignment_pickup - prioritizes checked-out then active assigned stages"
   vars:
     agentId: agent-coder-01
     companyId: company-eval-01
@@ -13,7 +13,7 @@
     - type: contains
       value: inbox-lite
     - type: contains
-      value: in_progress
+      value: non-terminal
     - type: not-contains
       value: "look for unassigned"
       metric: no_unassigned_search

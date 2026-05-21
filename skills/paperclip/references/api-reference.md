@@ -195,7 +195,7 @@ GET /api/agents/me
 -> { id: "agent-42", companyId: "company-1", ... }
 
 # 2. Check inbox
-GET /api/companies/company-1/issues?assigneeAgentId=agent-42&status=todo,in_progress,blocked
+GET /api/companies/company-1/issues?assigneeAgentId=agent-42
 -> [
     { id: "issue-101", title: "Fix rate limiter bug", status: "in_progress", priority: "high" },
     { id: "issue-99", title: "Implement login API", status: "todo", priority: "medium" }
@@ -216,7 +216,7 @@ PATCH /api/issues/issue-101
 
 # 6. Still have time. Checkout the next task.
 POST /api/issues/issue-99/checkout
-{ "agentId": "agent-42", "expectedStatuses": ["todo"] }
+{ "agentId": "agent-42", "expectedStatuses": ["<current-issue-status>"] }
 
 GET /api/issues/issue-99
 -> { ..., ancestors: [{ title: "Build auth system", ... }] }
@@ -267,7 +267,7 @@ GET /api/agents/me
 GET /api/companies/company-1/agents
 -> [ { id: "agent-42", name: "BackendEngineer", reportsTo: "mgr-1", status: "idle" }, ... ]
 
-GET /api/companies/company-1/issues?assigneeAgentId=agent-42&status=in_progress,blocked
+GET /api/companies/company-1/issues?assigneeAgentId=agent-42
 -> [ { id: "issue-55", status: "blocked", title: "Needs DB migration reviewed" } ]
 
 # 3. Agent-42 is blocked. Read comments.
@@ -279,11 +279,11 @@ PATCH /api/issues/issue-55
 { "assigneeAgentId": "dba-agent-1", "comment": "@DBAAgent Please review the migration in PR #38." }
 
 # 5. Check own assignments.
-GET /api/companies/company-1/issues?assigneeAgentId=mgr-1&status=todo,in_progress
+GET /api/companies/company-1/issues?assigneeAgentId=mgr-1
 -> [ { id: "issue-30", title: "Break down Q2 roadmap into tasks", status: "todo" } ]
 
 POST /api/issues/issue-30/checkout
-{ "agentId": "mgr-1", "expectedStatuses": ["todo"] }
+{ "agentId": "mgr-1", "expectedStatuses": ["<current-issue-status>"] }
 
 # 6. Create subtasks and delegate.
 POST /api/companies/company-1/issues
@@ -517,9 +517,17 @@ Important fields on each stage:
 | `defaultAssigneeUserId` / `defaultAssigneeAgentId` | Applied on transition when the task would otherwise have no assignee |
 | `isHumanApproval` / `approverUserIds` | Human-only approval stage; server may route to a configured approver |
 
-Board operators manage stages with `POST/PATCH/DELETE /api/projects/{projectId}/issue-statuses` and `POST /api/projects/{projectId}/issue-statuses/reorder`. Agent heartbeats should treat the list as read-only configuration.
+Board operators manage stages with `POST/PATCH/DELETE /api/projects/{projectId}/issue-statuses` and `POST /api/projects/{projectId}/issue-statuses/reorder`.
 
-`GET /api/issues/{issueId}/heartbeat-context` is the default agent context route. It includes ancestor summaries, goal/project summary, `projectWorkflow` for the current stage, `project.primaryWorkspace`, `commentCursor`, and the wake comment when present. Use `GET /api/issues/{issueId}` or `GET /api/projects/{projectId}/issue-statuses` only when you need full workspace detail or the complete workflow editor view.
+**Default task heartbeats:** treat stages as read-only unless the task requires workflow edits.
+
+**Workflow maintenance one-shots** (`PAPERCLIP_WAKE_REASON=project_maintenance_request`, maintenance `type: workflow`): you **must** review the full stage list and may create/update/reorder/delete/deactivate stages via the APIs above when fulfilling the user request. Do not stop at tweaking `allowedNextStatusValues` alone. For custom/sales pipelines, use explicit stage **value** keys (`lead_generation`, `qualified`, …) — do not only rename columns while keeping `todo` / `in_progress` for different meanings. Populate `agentInstructions` per stage. **After** building the requested pipeline, retire obsolete template stages. For major overhauls, propose a plan with `REVIEW REQUIRED:` in the maintenance request `changeSummary` before destructive edits (see `paperclip-project-context` skill).
+
+`GET /api/issues/{issueId}/heartbeat-context` is the default agent context route. It includes ancestor summaries, goal/project summary, `projectWorkflow` (`statusMeaning`, `allowedNextStages`, `currentStage`), `projectContext` (`workflowSummary`, `currentStagePlaybook`), `project.primaryWorkspace`, `commentCursor`, and the wake comment when present.
+
+**Project task rule:** `issue.status` is the API write key only. Use `issue.statusMeaning` (e.g. `Lead Generation (API key: todo)`) and `projectContext.workflowSummary` for business meaning. Do not assume generic `todo` / `in_progress` semantics on custom pipelines.
+
+Use `GET /api/issues/{issueId}` or `GET /api/projects/{projectId}/issue-statuses` only when you need full workspace detail or the complete workflow editor view.
 
 ---
 

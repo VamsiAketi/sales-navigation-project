@@ -66,6 +66,13 @@ import {
   resolveSessionCompactionPolicy,
   type SessionCompactionPolicy,
 } from "@paperclipai/adapter-utils";
+import { loadIssueWorkflowPromptForRun } from "./issue-heartbeat-workflow-prompt.js";
+
+const ISSUE_WORKFLOW_PROMPT_SKIP_WAKE_REASONS = new Set([
+  "connector_event",
+  "project_context_sync",
+  "project_maintenance_request",
+]);
 
 const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
 const HEARTBEAT_MAX_CONCURRENT_RUNS_DEFAULT = 1;
@@ -1898,7 +1905,7 @@ export function heartbeatService(db: Db) {
     const heartbeat = parseObject(runtimeConfig.heartbeat);
 
     return {
-      enabled: asBoolean(heartbeat.enabled, true),
+      enabled: asBoolean(heartbeat.enabled, false),
       intervalSec: Math.max(0, asNumber(heartbeat.intervalSec, 0)),
       wakeOnDemand: asBoolean(heartbeat.wakeOnDemand ?? heartbeat.wakeOnAssignment ?? heartbeat.wakeOnOnDemand ?? heartbeat.wakeOnAutomation, true),
       maxConcurrentRuns: normalizeMaxConcurrentRuns(heartbeat.maxConcurrentRuns),
@@ -2291,6 +2298,7 @@ export function heartbeatService(db: Db) {
             id: issues.id,
             identifier: issues.identifier,
             title: issues.title,
+            status: issues.status,
             projectId: issues.projectId,
             projectWorkspaceId: issues.projectWorkspaceId,
             executionWorkspaceId: issues.executionWorkspaceId,
@@ -2303,6 +2311,35 @@ export function heartbeatService(db: Db) {
           .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
           .then((rows) => rows[0] ?? null)
       : null;
+    const wakeReasonForPrompt = readNonEmptyString(context.wakeReason);
+    if (
+      issueContext?.projectId &&
+      issueContext.status &&
+      (!wakeReasonForPrompt || !ISSUE_WORKFLOW_PROMPT_SKIP_WAKE_REASONS.has(wakeReasonForPrompt))
+    ) {
+      try {
+        const issueWorkflowPrompt = await loadIssueWorkflowPromptForRun(db, {
+          companyId: agent.companyId,
+          projectId: issueContext.projectId,
+          issueStatus: issueContext.status,
+          issueIdentifier: issueContext.identifier,
+          issueTitle: issueContext.title,
+        });
+        if (issueWorkflowPrompt) {
+          context.issueWorkflowPrompt = issueWorkflowPrompt;
+        }
+      } catch (err) {
+        logger.warn(
+          {
+            runId: run.id,
+            issueId,
+            projectId: issueContext.projectId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "Failed to build issue workflow prompt for adapter invocation",
+        );
+      }
+    }
     const issueAssigneeOverrides =
       issueContext && issueContext.assigneeAgentId === agent.id
         ? parseIssueAssigneeAdapterOverrides(

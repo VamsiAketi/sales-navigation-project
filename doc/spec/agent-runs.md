@@ -387,7 +387,7 @@ Agent-level control-plane settings (not adapter-specific):
 
 Defaults:
 
-- `enabled: true`
+- `enabled: false`
 - `intervalSec: null` (no timer until explicitly set) or product default `300` if desired globally
 - `wakeOnAssignment: true`
 - `wakeOnOnDemand: true`
