@@ -40,6 +40,9 @@ vi.mock("../services/index.js", () => ({
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
   documentService: () => ({}),
+  projectDataService: () => ({
+    listDataObjects: vi.fn(async () => []),
+  }),
   executionWorkspaceService: () => ({}),
   goalService: () => ({}),
   heartbeatService: () => mockHeartbeatService,
