@@ -997,7 +997,8 @@ export function projectRoutes(db: Db) {
     const project = await svc.create(companyId, insertPayload);
     await statusSvc.seedDefaults(project.id, companyId);
     try {
-      await projectContextBootstrapSvc.initializeProjectContext(project.id);
+      // Defer sync dispatch so project create returns immediately (onboarding/e2e must not block on agent wake).
+      await projectContextBootstrapSvc.initializeProjectContext(project.id, { enqueueSync: false });
     } catch (err) {
       logger.error(
         { err, projectId: project.id, companyId },
