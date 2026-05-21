@@ -28,6 +28,37 @@ description: >
 3. Apply focused API mutations.
 4. Persist outcome back to maintenance request/status APIs.
 
+## Project data API (tables / rows)
+
+`dataSchemaName` on the project (e.g. `prj_357ebae6e583`) is the **PostgreSQL schema** created for the project. Agents must **not** build URLs from it — those return `API route not found`.
+
+Use the **project UUID** and registered **table names**:
+
+| Action | Route | Permission |
+| ------ | ----- | ---------- |
+| List tables/views + definitions | `GET /api/projects/{projectId}/data/objects` | `project:read` |
+| Query table or view | `POST /api/projects/{projectId}/data/query` | `project:read` |
+| Insert row(s) | `POST /api/projects/{projectId}/data/{tableName}/rows` | `project:edit tickets` |
+| Update row by PK | `PATCH /api/projects/{projectId}/data/{tableName}/rows` | `project:edit tickets` |
+| Delete row by PK | `DELETE /api/projects/{projectId}/data/{tableName}/rows` | `project:edit tickets` |
+| Create table / view (DDL) | `POST /api/projects/{projectId}/data/tables` or `.../data/views` | `project:edit configuration` |
+
+**Insert example** (table `leads`):
+
+```json
+POST /api/projects/{projectId}/data/leads/rows
+{ "rows": [{ "company": "Acme Corp", "email": "ops@acme.com", "source": "apollo" }] }
+```
+
+**Query example:**
+
+```json
+POST /api/projects/{projectId}/data/query
+{ "ref": { "kind": "table", "name": "leads" }, "limit": 50, "offset": 0 }
+```
+
+On issue heartbeats, prefer `projectContext.projectDataApi` from `GET /api/issues/{issueId}/heartbeat-context` — it lists registered tables and the exact route templates for that project.
+
 ## Maintenance request types
 
 | Type | What “done” means |

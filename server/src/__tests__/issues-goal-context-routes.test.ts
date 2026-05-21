@@ -41,6 +41,16 @@ vi.mock("../services/index.js", () => ({
   }),
   documentService: () => ({
     getIssueDocumentPayload: vi.fn(async () => ({})),
+    listProjectDocuments: vi.fn(async () => []),
+  }),
+  projectDataService: () => ({
+    listDataObjects: vi.fn(async () => [
+      {
+        kind: "table",
+        name: "leads",
+        definition: { primaryKey: ["id"] },
+      },
+    ]),
   }),
   executionWorkspaceService: () => ({
     getById: vi.fn(),

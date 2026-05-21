@@ -776,7 +776,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
-    await requireProjectPermission(req, project.companyId, id, "project:edit configuration");
+    await requireProjectPermission(req, project.companyId, id, "project:edit tickets");
     const rows = (req.body as { rows?: Record<string, unknown>[] }).rows;
     const inserted = await projectDataSvc.insertRows({ projectId: id, table, rows: Array.isArray(rows) ? rows : [] });
     res.status(201).json({ count: inserted.length, rows: inserted });
@@ -788,7 +788,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
-    await requireProjectPermission(req, project.companyId, id, "project:edit configuration");
+    await requireProjectPermission(req, project.companyId, id, "project:edit tickets");
     const payload = req.body as { primaryKey?: Record<string, unknown>; patch?: Record<string, unknown> };
     const updated = await projectDataSvc.updateRowByPk({
       projectId: id,
@@ -805,7 +805,7 @@ export function projectRoutes(db: Db) {
     const project = await svc.getById(id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
     assertCompanyAccess(req, project.companyId);
-    await requireProjectPermission(req, project.companyId, id, "project:edit configuration");
+    await requireProjectPermission(req, project.companyId, id, "project:edit tickets");
     const payload = req.body as { primaryKey?: Record<string, unknown> };
     const deleted = await projectDataSvc.deleteRowByPk({
       projectId: id,

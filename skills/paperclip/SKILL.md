@@ -131,6 +131,9 @@ For project-scoped issues, `GET /api/issues/{issueId}/heartbeat-context` returns
 | `projectWorkflow.allowedNextStages` | `{ value, name }[]` for legal PATCH targets |
 | `projectContext.workflowSummary` | Full playbook markdown |
 | `projectContext.currentStagePlaybook` | Current stage exit criteria (when set) |
+| `projectContext.projectDataApi` | Canonical project DB routes, table names, and payload shapes |
+
+**Project database rows:** `projectContext.dataSchemaName` (e.g. `prj_…`) is the internal PostgreSQL schema — **not** an API path. Use `projectContext.projectDataApi.routes` from heartbeat-context (or `GET /api/projects/{projectId}/data/objects`). Insert with `POST /api/projects/{projectId}/data/{tableName}/rows` and body `{ "rows": [ { ... } ] }`. Requires `project:edit tickets` (granted to issue assignees on restricted projects).
 
 Use **`currentStage.name` + playbook** to decide behavior; use **`issue.status` / stage `value`** only when calling checkout or PATCH.
 

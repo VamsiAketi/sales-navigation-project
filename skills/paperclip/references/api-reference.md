@@ -531,6 +531,45 @@ Use `GET /api/issues/{issueId}` or `GET /api/projects/{projectId}/issue-statuses
 
 ---
 
+## Project data (per-project schema)
+
+Each project may have a dedicated PostgreSQL schema stored on the project as `dataSchemaName` (for example `prj_357ebae6e583`). That name is **internal only** — do not use it in HTTP paths. All agent/board calls use the **project id** and **registered table names** from `GET /api/projects/{projectId}/data/objects`.
+
+Issue heartbeats include `projectContext.projectDataApi` with route templates, table list, and example payloads.
+
+### Row DML (task agents)
+
+| Method | Path | Body |
+| ------ | ---- | ---- |
+| POST | `/api/projects/{projectId}/data/{tableName}/rows` | `{ "rows": [ { ...column values } ] }` |
+| PATCH | `/api/projects/{projectId}/data/{tableName}/rows` | `{ "primaryKey": { ... }, "patch": { ... } }` |
+| DELETE | `/api/projects/{projectId}/data/{tableName}/rows` | `{ "primaryKey": { ... } }` |
+
+Permission: `project:edit tickets` (issue assignees receive this on restricted projects).
+
+### Read / query
+
+| Method | Path | Body |
+| ------ | ---- | ---- |
+| GET | `/api/projects/{projectId}/data/objects` | — |
+| POST | `/api/projects/{projectId}/data/query` | `{ "ref": { "kind": "table" \| "view", "name": "..." }, "filters": [], "limit": 50, "offset": 0 }` |
+
+Permission: `project:read`.
+
+### Schema DDL (maintenance / setup)
+
+| Method | Path |
+| ------ | ---- |
+| POST | `/api/projects/{projectId}/data/tables` |
+| POST | `/api/projects/{projectId}/data/tables/{tableName}/columns` |
+| POST | `/api/projects/{projectId}/data/views` |
+
+Permission: `project:edit configuration`.
+
+**Common mistake:** `POST /api/projects/{projectId}/data/rows` or paths containing `prj_*` — these routes do not exist and return `API route not found`.
+
+---
+
 ## Governance and Approvals
 
 Some actions require board approval. You cannot bypass these gates.
