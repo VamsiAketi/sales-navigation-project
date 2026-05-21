@@ -187,6 +187,9 @@ function boardRoutes() {
       <Route path="projects/:projectId/workspaces/:workspaceId" element={<ProjectWorkspaceDetail />} />
       <Route path="projects/:projectId/workspaces" element={<ProjectDetail />} />
       <Route path="projects/:projectId/configuration" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/context" element={<LegacyProjectContextTabRedirect />} />
+      <Route path="projects/:projectId/data" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/dashboards" element={<ProjectDetail />} />
       <Route path="projects/:projectId/access" element={<ProjectDetail />} />
       <Route path="projects/:projectId/workflow" element={<ProjectDetail />} />
       <Route path="projects/:projectId/budget" element={<ProjectDetail />} />
@@ -308,11 +311,17 @@ function LegacyProjectShelfRedirect() {
   return <Navigate to={`/${companyPrefix}/projects/${projectId}/archive`} replace />;
 }
 
+/** Old Context tab URL; forwards to `/projects/:id/overview`. */
+function LegacyProjectContextTabRedirect() {
+  const { companyPrefix, projectId } = useParams<{ companyPrefix: string; projectId: string }>();
+  return <Navigate to={`/${companyPrefix}/projects/${projectId}/overview`} replace />;
+}
+
 function UnprefixedBoardRedirect() {
   const location = useLocation();
-  const { companies, selectedCompany, loading } = useCompany();
+  const { companies, selectedCompany, selectedCompanyId, loading } = useCompany();
 
-  if (loading) {
+  if (loading || (selectedCompanyId && !selectedCompany)) {
     return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
   }
 
@@ -412,6 +421,7 @@ export function App() {
           <Route path="projects/:projectId/workspaces" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/workspaces/:workspaceId" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/context" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/workflow" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/budget" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/shelf" element={<UnprefixedBoardRedirect />} />

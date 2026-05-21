@@ -12,50 +12,50 @@ todos:
     content: Build file text extraction pipeline (sync text, async PDF/docx) + scheduler tick
     status: completed
   - id: context-sync
-    content: Implement debounced project-context-sync via connector-style one-shot wakeup (first-created company agent, skip regular heartbeat) + project create hooks
-    status: in_progress
+    content: Implement debounced project-context-sync via connector-style one-shot wakeup (company maintainer selection with automatic fallback, skip regular heartbeat) + project create hooks
+    status: completed
   - id: heartbeat-context
     content: Extend GET /issues/:id/heartbeat-context and buildHeartbeatProjectWorkflowContext with projectContext + stage playbooks
-    status: pending
+    status: completed
   - id: data-api
     content: "Project data API: DDL (tables/FKs/columns), multi-table JOIN views, row CRUD, query with filters — all scoped to project schema"
     status: completed
   - id: custom-stage-checkout
     content: "Custom-column workflow: preserve status on checkout, execution lock in any agent stage, handoff assignee on transition, inbox-lite + validator fixes"
-    status: pending
+    status: completed
   - id: request-change
-    content: Request agent change button + API (context/summary, dashboards, workflow) with connector-style one-shot admin wake + optional tracking issue
-    status: pending
+    content: Request agent change button + API (context/summary, dashboards, workflow) with connector-style one-shot admin wake on standalone maintenance-request entities
+    status: completed
   - id: one-shot-wake
     content: Unify one-shot wake reasons (context_sync, maintenance_request) in adapter prompt, skills, OpenClaw — same pattern as connector_event
-    status: pending
+    status: completed
   - id: custom-stage-audit
     content: "Repo audit: fix all hardcoded in_progress/todo assumptions in API, skills, UI, adapters, evals, onboarding docs for custom project stages"
-    status: pending
+    status: completed
   - id: restricted-grants
     content: Auto-grant project:read + project:edit tickets on agent assignment (restricted mode); admin maintainer bypass for one-shots
-    status: pending
+    status: completed
   - id: backfill-migration
     content: "Migration backfill: schema + seed docs + initial sync for all existing projects"
-    status: pending
+    status: completed
   - id: sales-pipeline-e2e
     content: "Integration test: Sales generate_lead → verify_leads pipeline with DB rows, handoff, and custom-column checkout"
-    status: pending
+    status: completed
   - id: dashboards-api
     content: Implement project views/widgets CRUD + query-backed widget data endpoint
-    status: pending
+    status: completed
   - id: ui-context
     content: "Build enterprise-grade Context/Data/Dashboards UI per design-guide: history + recent requests in Context tab; read-only Data tab"
-    status: pending
+    status: completed
   - id: widget-renderer
     content: Build config-driven ProjectViewRenderer (MetricCard + ActivityCharts patterns) matching existing dashboard density and chart styling
-    status: pending
+    status: completed
   - id: agent-protocol
     content: Add paperclip-project-context skill (auto-synced), update paperclip skill cross-links, CEO HEARTBEAT/onboarding docs, context-sync prompt, and agent eval scenarios
-    status: pending
+    status: completed
   - id: tests-docs
     content: Add server tests, generate migration, update SPEC-implementation.md + DATABASE.md + plan doc
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -149,19 +149,19 @@ Add new schema files under `[packages/db/src/schema/](packages/db/src/schema/)` 
 - `generatedByAgentId`, `generatedByRunId` (nullable), `revisionNumber`
 - timestamps
 
-`**project_maintenance_requests**` — business user → agent change requests (audit + optional tracking):
+`**project_maintenance_requests**` — business user → agent change requests (standalone entity + audit):
 
 - `id`, `companyId`, `projectId`
 - `type`: `context_summary | dashboards | workflow`
 - `description` (text), `contextRef` (jsonb, nullable — e.g. `{ viewId, documentKey }`)
-- `status`: `queued | pending | in_progress | completed | failed | cancelled`
-- `requestedByUserId`, `trackingIssueId` (nullable FK → issues), `heartbeatRunId` (nullable)
+- `status`: `queued | pending_approval | pending | in_progress | completed | failed | cancelled`
+- `requestedByUserId`, `heartbeatRunId` (nullable)
 - `completedAt`, `failureReason` (nullable), timestamps
 
 **Extend `[projects](packages/db/src/schema/projects.ts)`:****
 
 - `dataSchemaName` (text, nullable) — per existing plan
-- No per-project maintainer agent — summaries always run on the **first-created company agent** (same agent onboarding seeds as admin/CEO; mirrors `[pickFirstCreatedAgentId](ui/src/lib/org-defaults.ts)`)
+- No per-project maintainer agent — summaries run on the **company maintainer chain** (first-created eligible admin/CEO agent, auto-fallback to next eligible if unavailable)
 
 **Extend `[project_issue_statuses](packages/db/src/schema/project_issue_statuses.ts)`:**
 
@@ -270,9 +270,11 @@ New routes under `[server/src/routes/projects.ts](server/src/routes/projects.ts)
 | `GET /projects/:id/context/files/:fileId/download`                                   | Signed/streamed asset download                                                                                           |
 | `GET /projects/:id/context/files/:fileId/text`                                       | Return `extractedText` for agents                                                                                        |
 | `POST /projects/:id/context/sync`                                                    | Manual trigger summary regeneration (board) — **one-shot admin wake**, not assignment inbox                              |
-| `POST /projects/:id/maintenance-requests`                                            | Business user **request agent change** (context/summary, dashboards, workflow) — one-shot wake + optional tracking issue |
-| `GET /projects/:id/maintenance-requests`                                             | List recent requests + linked issue/run status (Context tab panel)                                                       |
+| `POST /projects/:id/maintenance-requests`                                            | Business user **request agent change** (context/summary, dashboards, workflow) — one-shot wake on standalone request entity |
+| `GET /projects/:id/maintenance-requests`                                             | List recent requests + run status (Context tab panel)                                                                    |
 | `PATCH /projects/:id/maintenance-requests/:requestId`                                | Agent/board update status (`completed`/`failed`), `changeSummary`, `failureReason`                                       |
+| `POST /projects/:id/maintenance-requests/:requestId/approve`                         | Board approval for `pending_approval` destructive requests (transitions to `pending`)                                     |
+| `POST /projects/:id/maintenance-requests/:requestId/reject`                          | Board rejection for `pending_approval` destructive requests (transitions to `cancelled`)                                  |
 | `GET /projects/:id/context/history`                                                  | Unified paginated change timeline                                                                                        |
 | `GET /projects/:id/documents/:key/revisions`                                         | Document revision list                                                                                                   |
 | `POST /projects/:id/documents/:key/revisions/:revisionId/restore`                    | Restore document revision                                                                                                |
@@ -297,6 +299,36 @@ New routes under `[server/src/routes/projects.ts](server/src/routes/projects.ts)
 | Dashboard/widget CRUD                                 | `project:edit configuration` |
 | Playbook lock/unlock, workflow edits                  | `project:edit Workflow`      |
 
+
+**Input validation + conflict contract (all project routes):**
+
+- Normalize all user strings with trim; reject empty-after-trim values.
+- Enforce length limits: `name <= 120`, `title <= 200`, `key <= 64`, `description <= 4000`, `changeSummary <= 1000`, `failureReason <= 2000`.
+- Enforce key/name regex for identifiers exposed in APIs:
+  - document keys: `^[a-z][a-z0-9_-]{0,63}$`
+  - table/view/column names: `^[a-z][a-z0-9_]{0,62}$`
+- Reject unknown enum values and unknown top-level payload fields (`400`), never silently coerce.
+- Paginated/list/query endpoints enforce `limit <= 100`, `offset <= 10_000` with defaults.
+- Conflict semantics (`409`) for duplicate logical names in the same scope:
+  - project name shortname collision within company (create/update)
+  - duplicate dashboard/view name within project
+  - duplicate widget title within the same dashboard when provided
+  - duplicate project data object name (table/view) within project schema
+- `PUT /projects/:id/documents/:key` remains explicit upsert by key; all other create endpoints reject duplicate names.
+- Strict validation is always enforced in V1 (no permissive mode toggle).
+
+**Runtime guardrails via env vars (with defaults):**
+
+- `PAPERCLIP_MAINTENANCE_REQUESTS_PER_MINUTE` (default `10`)
+- `PAPERCLIP_CONTEXT_SYNC_PER_MINUTE` (default `20`)
+- `PAPERCLIP_DATA_QUERY_TIMEOUT_MS` (default `5000`)
+- `PAPERCLIP_MAINTENANCE_CONTEXT_REF_MAX_BYTES` (default `8192`)
+- `PAPERCLIP_PROJECT_DOC_MAX_BYTES` (default `52428800`, 50 MB)
+- `PAPERCLIP_DATA_ROWS_BULK_MAX` (default `200`)
+- `PAPERCLIP_MAINTENANCE_DEDUPE_WINDOW_SEC` (default `900`)
+- `PAPERCLIP_REQUIRE_IDEMPOTENCY_KEY` (default `true`, for maintenance POST endpoints)
+- `PAPERCLIP_CONTEXT_SYNC_RETRY_MAX` (default `2`, additional retries after initial attempt for sync/maintenance one-shots)
+- `PAPERCLIP_CONTEXT_SYNC_RETRY_BACKOFF_MS` (default `5000`, base backoff; exponential with jitter)
 
 **Restricted project access** (`companies.projectAccessMode = "restricted"`) — already implemented via `[project_principal_grants](packages/db/src/schema/project_principal_grants.ts)` + `[ProjectAccessControlPanel](ui/src/components/ProjectAccessControlPanel.tsx)` for both users and agents. New behavior to add:
 
@@ -326,6 +358,14 @@ Also add: `DELETE /projects/:id/context/files/:fileId`, `DELETE /projects/:id/do
 
 1. On `complete` or doc/workflow change → enqueue context sync
 
+File/document size + chunking policy:
+
+- Accept project context uploads and document bodies up to `PAPERCLIP_PROJECT_DOC_MAX_BYTES` (default 50 MB).
+- For large extracted text, process in chunks (target chunk size ~1 MB text, overlap ~16 KB) for indexing/summarization flows.
+- Context-sync summarization must consume chunk streams/windows rather than loading full 50 MB payload into one prompt.
+- Heartbeat-context remains compact (summary excerpt/truncation); full content remains on demand via document/file endpoints.
+- If chunk pipeline fails mid-stream, mark extraction `failed` with partial progress metadata in event details.
+
 ---
 
 ## 4. Unified one-shot agent runs (connector pattern — locked)
@@ -333,12 +373,12 @@ Also add: `DELETE /projects/:id/context/files/:fileId`, `DELETE /projects/:id/do
 All **background and business-requested maintenance work** uses the same model as `[connector_event](server/src/services/connectors.ts)`: **skip inbox, skip checkout, run structured prompt, exit**. This applies to:
 
 
-| Trigger                                       | `wakeReason`                       | Has tracking issue?                           |
-| --------------------------------------------- | ---------------------------------- | --------------------------------------------- |
-| Doc/file/workflow change (debounced)          | `project_context_sync`             | No                                            |
-| Board clicks **Regenerate summary**           | `project_context_sync`             | No                                            |
-| Board clicks **Request agent change**         | `project_maintenance_request`      | **Always** (seed `requests` stage if missing) |
-| Future one-offs (reindex, bulk migrate, etc.) | `project_one_shot` + `oneShotKind` | Per kind                                      |
+| Trigger                                       | `wakeReason`                       | Uses issue lifecycle? |
+| --------------------------------------------- | ---------------------------------- | --------------------- |
+| Doc/file/workflow change (debounced)          | `project_context_sync`             | No                    |
+| Board clicks **Regenerate summary**           | `project_context_sync`             | No                    |
+| Board clicks **Request agent change**         | `project_maintenance_request`      | No                    |
+| Future one-offs (reindex, bulk migrate, etc.) | `project_one_shot` + `oneShotKind` | No (unless explicitly designed for it) |
 
 
 ### Shared one-shot contract
@@ -366,30 +406,37 @@ await heartbeat.wakeup(adminAgentId, {
     // maintenance only:
     maintenanceRequestType?: "context_summary" | "dashboards" | "workflow",
     maintenanceRequestId?: string,
-    trackingIssueId?: string,
   },
 });
 ```
 
 **Rules (all one-shots):**
 
-- **No `issueId`** in context for sync wakes; maintenance may include `trackingIssueId` as read-only reference, not for inbox/checkout
+- **No `issueId`** in one-shot context for sync or maintenance wakes
 - Agent **must not** run heartbeat Steps 1–6 (inbox, checkout, assignment picking)
 - `[buildAdapterInvocationPrompt](packages/adapter-utils/src/server-utils.ts)` short-circuits for all `ONE_SHOT_WAKE_REASONS` when `wakeupPrompt` is set (not only `connector_event`)
 - Same branch in **all adapter execute paths** (claude-local, codex-local, cursor-local, pi-local, gemini-local, opencode-local, openclaw-gateway) — not OpenClaw only
 - `[skills/paperclip/SKILL.md](skills/paperclip/SKILL.md)`: document one-shot reasons; defer to `paperclip-project-context` for maintenance procedures
 
-### Agent selection (unchanged)
+### Agent selection
 
-`resolveCompanyContextSyncAgentId` → first-created non-terminated company agent (admin/CEO).
+`resolveCompanyContextSyncAgentId` selects the first-created eligible maintainer agent (admin/CEO) and auto-falls back to the next eligible candidate when the primary is paused/terminated/unavailable.
 
 ### New service: `[server/src/services/project-context-sync.ts](server/src/services/project-context-sync.ts)`
 
 - `scheduleContextSync(projectId)` — debounce (~30s)
 - `runContextSync(projectId)` — one-shot `project_context_sync` wake
 - `submitMaintenanceRequest(projectId, input)` — persist request + one-shot `project_maintenance_request` wake
-- **Request queue:** at most one active maintenance run per project — if `pending`/`in_progress` request exists, new submissions get `status: queued` and wake after current completes (FIFO)
-- **Admin unavailable:** if admin agent terminated/paused or wakeup skipped → mark request/sync `failed`, activity log + UI error (fail loud, no silent skip)
+- **Request queue:** at most one active maintenance run per project — if `pending_approval`/`pending`/`in_progress` request exists, new submissions get `status: queued` and wake after current completes (FIFO)
+- **Maintainer fallback:** if selected maintainer is unavailable, retry wake on next eligible maintainer; if none eligible, mark request/sync `failed` with activity log + UI error
+- **Restart recovery:** on server boot, reconcile maintenance queue state: resume `pending`/`queued`, recover stuck `in_progress` rows to `pending` when no active heartbeat run, then continue FIFO dispatch
+- **Failure retries:** for retryable one-shot failures, retry up to `PAPERCLIP_CONTEXT_SYNC_RETRY_MAX` (default 2) with exponential backoff (`PAPERCLIP_CONTEXT_SYNC_RETRY_BACKOFF_MS` base, jitter 20%); on final failure mark request/sync `failed` and write `failureReason`.
+
+Retryability policy:
+
+- Retryable: transient adapter invoke failures, timeout, 429/5xx from dependent APIs, temporary lock/contention errors.
+- Non-retryable: validation/auth errors (4xx except 429), destructive-governance rejection, explicit agent-declared fatal errors.
+- Each retry attempt must append activity log details with `attempt`, `maxAttempts`, and `nextRetryAt`.
 
 ---
 
@@ -406,12 +453,12 @@ Place on **Context**, **Dashboards**, and **Workflow** tabs (`[ProjectDetail.tsx
 
 | Field               | Options / notes                                            |
 | ------------------- | ---------------------------------------------------------- |
-| Request type        | `context_summary`                                          |
-| Description         | Free text — what you want changed (required, min 20 chars) |
+| Request type        | `context_summary` \| `dashboards` \| `workflow`            |
+| Description         | Free text — what you want changed (required, min 20 chars, max 4000 chars) |
 | Optional attachment | Link to existing doc key or file id (context tab only)     |
 
 
-**Primary action:** “Submit to agent” — not “Create task” in user-facing copy (implementation may create a tracking issue internally).
+**Primary action:** “Submit to agent” — not “Create task” in user-facing copy.
 
 **Also keep:**
 
@@ -430,11 +477,46 @@ Place on **Context**, **Dashboards**, and **Workflow** tabs (`[ProjectDetail.tsx
 
 **Server behavior:**
 
-1. If another request is `pending`/`in_progress` for this project → insert new row as `queued`; return `{ requestId, queued: true }` (no wake yet)
-2. Insert `project_maintenance_requests` row: `status: pending` (or `queued`)
-3. **Always** create tracking issue in project stage `requests` — seed `requests` stage on project if missing (`allowedActors: human_and_agent`, default assignee = admin agent for visibility)
+1. If another request is `pending_approval`/`pending`/`in_progress` for this project → insert new row as `queued`; return `{ requestId, queued: true }` (no wake yet)
+2. Insert `project_maintenance_requests` row: `status: pending` (or `queued`); destructive classification may set `pending_approval`
+3. Persist maintenance request only (**no project issue creation, no stage seeding**)
 4. Fire **one-shot wake** when not queued — **do not** use assignment inbox flow
-5. Return `{ requestId, trackingIssueId, runId?, queued? }`
+5. If request implies destructive workflow/DDL changes, require explicit approval before execution (non-destructive requests execute immediately)
+6. Return `{ requestId, runId?, queued? }`
+
+Duplicate guard: if the same actor submits the same normalized `{type, description, contextRef}` for the same project while an equivalent request is `queued`/`pending_approval`/`pending`/`in_progress`, return `409 duplicate_request` with the existing `requestId`.
+
+### Destructive-change classification policy (operationally explicit)
+
+Classification is evaluated server-side before dispatching a maintenance one-shot. The server stores `changeRiskClass` on `project_maintenance_requests` as one of:
+
+- `non_destructive` — executes immediately
+- `destructive` — blocked until explicit approval
+
+`destructive` operations include:
+
+| Domain | Classified as destructive |
+| ------ | ------------------------- |
+| Schema / data objects | Drop table/view/column; rename table/view/column; alter column to incompatible type; add `NOT NULL` without default/backfill; FK changes that can delete/orphan existing rows |
+| Workflow topology | Remove status; rename status `value`; remove allowed transition edge that currently has in-flight usage; tighten `allowedActors` to exclude current assignee type |
+| Dashboard contract | Delete widget/view consumed by active dashboard; breaking queryRef/output shape required by existing widgets without replacement in same request |
+
+`non_destructive` operations include:
+
+| Domain | Classified as non-destructive |
+| ------ | ----------------------------- |
+| Schema / data objects | Create table/view; add nullable columns; add indexes; additive view updates preserving existing output contract |
+| Workflow topology | Add status; add allowed transition; update descriptive text/playbooks/capability tags; reorder statuses without changing `value` |
+| Dashboard contract | Add widgets/dashboards; layout/config edits; chart type/title changes; query changes that preserve required output keys |
+
+If a request contains both classes, classify as `destructive`.
+
+**Enforcement contract:**
+
+1. On `POST /maintenance-requests`, server computes and persists `changeRiskClass` + `riskReasons[]`.
+2. If `changeRiskClass = destructive`, set request status `pending_approval` and do not dispatch wake.
+3. Approval endpoint transitions `pending_approval -> pending`; queue/dispatch then follows normal FIFO rules.
+4. Activity log must include classifier output (`changeRiskClass`, `riskReasons`) and final approval decision metadata.
 
 **Completion API:** `PATCH /projects/:id/maintenance-requests/:requestId`
 
@@ -442,35 +524,39 @@ Place on **Context**, **Dashboards**, and **Workflow** tabs (`[ProjectDetail.tsx
 { "status": "completed", "changeSummary": "Added territory chart to Pipeline dashboard." }
 ```
 
-Agent calls this at end of one-shot run; optional comment on tracking issue. On `completed`/`failed`, dequeue next `queued` request and fire its one-shot wake.
+Agent calls this at end of one-shot run; include `changeSummary`/`failureReason` on the maintenance request entity. On `completed`/`failed`, dequeue next `queued` request and fire its one-shot wake.
 
 **Agent one-shot prompt** (by type):
 
 
 | Type              | Agent actions                                                                                                                          |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `context_summary` | Refresh summaries, playbooks, docs; merge hash-based; comment on tracking issue                                                        |
+| `context_summary` | Refresh summaries, playbooks, docs; merge hash-based; update maintenance request with `changeSummary`                                  |
 | `dashboards`      | Create/alter views + widgets; comment with dashboard name + widget list                                                                |
 | `workflow`        | Propose/update stage playbooks, `allowedNext`, default assignees; update workflow summary snapshot; **do not** rename mandatory stages |
 
 
-On completion agent: `PATCH .../maintenance-requests/:id` → `completed`, comment on tracking issue, activity log entry; dequeue next queued request if any.
+Destructive actions (drop/rename/destructive alter of tables/views/critical workflow edges) require approval gate; when executed they must emit warning-level activity log details (`before`/`after` summary + actor + request id).
+
+On completion agent: `PATCH .../maintenance-requests/:id` → `completed`, write `changeSummary`, activity log entry; dequeue next queued request if any.
 
 ### Business user journey (example)
 
 1. Open Sales → **Dashboards** tab → **Request agent change**
 2. Type: Dashboards — “Show leads by territory on Pipeline dashboard”
 3. Submit → toast: “Request sent to agent.” (or “Queued — agent is working on another request.”)
-4. Tracking issue appears in **Requests** column
-5. Admin agent runs one-shot, fulfills request, `PATCH` maintenance request `completed`, comments on tracking issue
-6. User refreshes Dashboards tab; queued request auto-starts if any
+4. Request appears in **Recent agent requests** panel with status and run metadata
+5. Admin agent runs one-shot, fulfills request, `PATCH` maintenance request `completed` with change summary
+6. User refreshes Dashboards tab; request status reflects completion; queued request auto-starts if any
+
+Queue visibility in v1: users can always see maintenance requests and their current status (`queued`, `pending_approval`, `pending`, `in_progress`, terminal states) in the Recent agent requests panel. Predictive SLA/wait-time estimates are deferred to a later phase.
 
 ---
 
 ## 6. AI summary + workflow maintenance (via one-shot sync)
 
 - `scheduleContextSync(projectId)` — debounce map in memory (~30s)
-- `runContextSync(projectId)` — resolve project → company → first-created agent → wakeup
+- `runContextSync(projectId)` — resolve project → company → select maintainer agent (auto-fallback chain) → wakeup
 - Coalesce duplicate wakes per project while one is queued/running (`skip_if_active` semantics)
 
 **Agent writes via API (summaries + proactive data maintenance):**
@@ -538,7 +624,10 @@ flowchart LR
 
 ### Layer 1 — Runtime injection (all agents on task work)
 
-Extend `GET /api/issues/:id/heartbeat-context` so every project-scoped task wake gets compact context **without extra API calls**:
+Extend `GET /api/issues/:id/heartbeat-context` so every **issue-scoped** project task wake gets compact context **without extra API calls**:
+
+- Applies to heartbeat, manual wake, and **assignment-triggered wakes** (assignment still resolves issue context through this endpoint/path).
+- Does not apply to non-issue one-shots (`project_context_sync`, `project_maintenance_request`) because those wakes intentionally run without `issueId`; they must receive project context via the one-shot payload/fetch path.
 
 ```typescript
 projectContext: {
@@ -596,12 +685,12 @@ Built-in prompt template in `[project-context-sync.ts](server/src/services/proje
 
 - Explicit skip-inbox instruction (connector pattern)
 - Numbered API checklist for summaries + playbooks + data/dashboard maintenance
-- Safety rails: **automatic context sync** stays additive-only; destructive DDL only via explicit maintenance request or task assignment (full API available when needed)
+- Safety rails: **automatic context sync** stays additive-only; destructive DDL/workflow edits are allowed only in explicit maintenance/task flows with destructive-change governance gate + warning-level activity log
 - Reference: "Follow `paperclip-project-context` skill sync section"
 
 Extend `[buildAdapterInvocationPrompt](packages/adapter-utils/src/server-utils.ts)` for all `ONE_SHOT_WAKE_REASONS` (not only `connector_event` / `project_context_sync`).
 
-Separate built-in prompt template for `project_maintenance_request` in `[project-context-sync.ts](server/src/services/project-context-sync.ts)` — references request type, description, tracking issue id, and type-specific API checklist.
+Separate built-in prompt template for `project_maintenance_request` in `[project-context-sync.ts](server/src/services/project-context-sync.ts)` — references request type, description, request id, and type-specific API checklist.
 
 ### Agent behavior rules (locked)
 
@@ -609,7 +698,8 @@ Separate built-in prompt template for `project_maintenance_request` in `[project
 | Rule                    | Decision                                                                                                                                               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Stage-capacity mismatch | **Prompt-only** — skill instructs agent to comment and not take work; no server checkout block in v1                                                   |
-| Data/dashboard creation | **Proactive maintainer** — first-created admin agent creates/updates tables, views, dashboards during context sync when project knowledge implies need |
+| Data/dashboard creation | **Proactive maintainer** — selected maintainer agent (with auto-fallback) creates/updates tables, views, dashboards during context sync when project knowledge implies need |
+| Destructive gate basis  | **Server-side classifier** (schema/workflow/dashboard policy) determines `non_destructive` vs `destructive` before dispatch                            |
 | Skill packaging         | **Dedicated `paperclip-project-context` skill** auto-synced alongside `paperclip`                                                                      |
 | Human vs AI edits       | **Merge (hash-based)** — sync skips unchanged sources; appends revision on write; optional `playbookLockedByUserId` blocks agent overwrite             |
 
@@ -681,6 +771,12 @@ flowchart LR
 | DELETE | `/projects/:id/data/views/:name`               | Drop view                                            |
 | GET    | `/projects/:id/data/objects`                   | List all tables/views + definitions                  |
 
+
+Name uniqueness and collisions:
+
+- Table/view names are case-insensitive unique within the project schema namespace.
+- Creating a table/view whose normalized name already exists returns `409`.
+- Column names must be unique within a table (case-insensitive); duplicate add/rename returns `409`.
 
 `**POST .../tables` body (extended):**
 
@@ -852,6 +948,11 @@ Example Sales dashboard v3 widgets:
 
 Admin context-sync agent may perform steps 1–3 proactively; task agents do it on explicit assignment.
 
+Dashboard naming conflicts:
+
+- Dashboard names are unique per project (case-insensitive); duplicate create/rename returns `409`.
+- Widget ids remain canonical identity; when title is supplied, enforce uniqueness per dashboard for operator clarity.
+
 **Widget renderer** — new `[ui/src/components/project-views/](ui/src/components/project-views/)`:
 
 - `ProjectViewRenderer` reads widget config, calls `POST /projects/:id/data/query`
@@ -916,7 +1017,7 @@ Register tab in `resolveProjectTab`, localStorage cache (`paperclip:project-tab:
 │  [View history]                                            │
 └────────────────────────────────────────────────────────────┘
 
-**Request agent change** — shared dialog (`ProjectMaintenanceRequestDialog`) on Context, Dashboards, and Workflow tabs. Tab pre-selects `type`. Submit → `POST .../maintenance-requests` → one-shot admin wake (section 5). Toast: “Request sent to agent.” Link to Requests column if tracking issue created.
+**Request agent change** — shared dialog (`ProjectMaintenanceRequestDialog`) on Context, Dashboards, and Workflow tabs. Tab pre-selects `type`. Submit → `POST .../maintenance-requests` → one-shot admin wake (section 5). Toast: “Request sent to agent.” Request appears in Recent agent requests panel.
 
 **Regenerate summary** — no dialog; `POST .../context/sync` → `project_context_sync` one-shot.
 
@@ -935,7 +1036,7 @@ Register tab in `resolveProjectTab`, localStorage cache (`paperclip:project-tab:
 
 ┌─ Recent agent requests ────────────────────────────────────┐
 │  EntityRow list: type · description excerpt · status · time│
-│  Link to tracking issue when present                        │
+│  Open request details / latest run summary                  │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -1094,6 +1195,8 @@ checkoutStage: current && current.allowedActors !== "human_only"
 
 Include in `projectWorkflow`: `allowedCheckoutStatuses: string[]` — active project stages where agent checkout preserves status.
 
+Assignment wake behavior: when assignee changes to an agent and a wake is queued, that run must consume the same enriched issue heartbeat-context payload (including `projectContext` + stage playbook) before checkout. No separate assignment-only context shape.
+
 ### Skills update
 
 `**paperclip` skill:**
@@ -1221,7 +1324,7 @@ Add plan doc: `doc/plans/2026-05-19-project-context-system.md` (this plan, dated
 
 Update:
 
-- `[doc/SPEC-implementation.md](doc/SPEC-implementation.md)` — new § for project context (additive, not replacing V1 scope wholesale)
+- `[doc/SPEC-implementation.md](doc/SPEC-implementation.md)` — explicitly expand V1 scope to include project context/data/dashboards and update out-of-scope list accordingly
 - `[doc/DATABASE.md](doc/DATABASE.md)` — new tables + per-project schema note
 - `[AGENTS.md](AGENTS.md)` repo map if new top-level services added
 
@@ -1234,7 +1337,8 @@ Update:
 - Task agent reads `projectContext` from heartbeat-context before checkout
 - Mismatched stage → agent comments and skips (eval prompt scenario)
 - `project_context_sync` wake → admin agent skips inbox, writes summary + playbooks
-- `project_maintenance_request` wake → admin agent skips inbox, fulfills request type, updates tracking issue
+- `project_maintenance_request` wake → admin agent skips inbox, fulfills request type, updates maintenance request status/details
+- Destructive classifier marks mixed requests as `destructive` and routes them through approval before wake dispatch
 - **Request change API** — creates audit row + one-shot wake (not assignment inbox for admin)
 - Sync wake → admin agent creates leads table + dashboard when sales context implies it
 - Revision append on every doc/playbook/widget/data-object mutation
@@ -1253,7 +1357,11 @@ pnpm build
 
 - Project schema creation on project create
 - Context API authZ (cross-company rejection, agent project scoping)
+- Route payload validation rejects unknown fields + enforces max lengths
+- Duplicate-name conflict tests (`409`) for project names, data objects, dashboards, and widget titles
 - File upload + extraction status transitions
+- 50 MB upload acceptance boundary + reject `> PAPERCLIP_PROJECT_DOC_MAX_BYTES`
+- Chunked extraction/summarization path for large docs (streamed windows, partial-failure handling)
 - heartbeat-context includes `projectContext` payload
 - DDL validation (reject bad identifiers/SQL injection; reject cross-schema FKs)
 - Multi-table JOIN view generation + query against view
@@ -1261,8 +1369,13 @@ pnpm build
 - Schema migration: add column + add FK on existing table
 - Widget query against JOIN view returns expected columns
 - Debounced context sync scheduling
+- Sync/maintenance retry behavior: retries on retryable failures only, max attempts respected, final failure persisted after retries exhausted
+- Startup queue reconciler resumes maintenance requests after restart
 - **All adapters** — one-shot short-circuit in every adapter execute path using `buildAdapterInvocationPrompt` (claude, codex, cursor, pi, gemini, opencode, openclaw)
-- Maintenance request lifecycle (queued → pending → completed/failed) + dequeue on completion
+- Maintenance request lifecycle coverage (`queued -> pending_approval? -> pending -> in_progress -> completed/failed/cancelled`) + dequeue/dispatch correctness
+- Duplicate maintenance request detection (`409 duplicate_request`) while equivalent active request exists
+- Destructive-change classifier coverage (schema/workflow/dashboard examples) with `riskReasons` assertions
+- Approval flow for destructive requests (`pending_approval -> pending/cancelled`) via approve/reject endpoints
 - Auto-grant on assignment in restricted mode
 - Admin maintainer grant bypass for one-shots
 - Existing project backfill migration
@@ -1285,25 +1398,30 @@ pnpm build
 | Admin maintainer    | Bypasses per-project grants for sync/maintenance one-shots                                                                                     |
 | Summary             | Keyed doc `summary` is canonical; snapshots = history only                                                                                     |
 | Handoff             | Always replace assignee with target stage default on transition (unless PATCH sets assignee)                                                   |
-| Tracking issue      | Always created; seed `requests` stage if missing                                                                                               |
+| Tracking issue      | Not used for maintenance requests; maintenance requests are standalone entities                                                                 |
 | Request queue       | One active maintenance run per project; additional requests `queued` (FIFO)                                                                    |
 | Request completion  | `PATCH .../maintenance-requests/:id`                                                                                                           |
+| Governance gate     | Approval required only for destructive maintenance changes; server-side classifier sets `changeRiskClass` + reasons; non-destructive executes directly |
 | History UI          | Section inside Context tab (not separate tab)                                                                                                  |
 | Data tab (humans)   | Read-only registry                                                                                                                             |
 | Request tracking UI | Recent requests panel on Context tab                                                                                                           |
 | Row identity        | PK in request body `{ table, primaryKey }`                                                                                                     |
 | DDL v1              | Full migration API (add/alter/drop column, drop table/view) — sync agent stays additive by default                                             |
+| Destructive DDL     | Allowed in explicit maintenance/task flows with warning-level audit log + governance gate                                                     |
 | Existing projects   | Migration backfill all projects                                                                                                                |
 | Debounce            | In-memory ~30s acceptable for v1                                                                                                               |
-| Admin unavailable   | Fail loud — UI error + failed request/sync status                                                                                              |
+| Admin unavailable   | Auto-fallback to next eligible maintainer; fail loud only when no eligible maintainer remains                                                 |
+| Retry policy        | Retryable sync/maintenance failures retry up to 2 times by default (exponential backoff + jitter); non-retryable failures fail immediately    |
+| Restart recovery    | Reconcile maintenance queue on boot and resume FIFO dispatch                                                                                    |
+| Extracted text retention | Retain indefinitely by default; delete extracted text when source file is deleted                                                         |
 
 
 ### Architecture (unchanged)
 
 - **Single release** covering context, summaries, workflow playbooks, data schemas, and dashboards
 - **Text + file uploads** with extracted text for agent consumption
-- **Agent-driven summaries** via unified **one-shot wake** protocol (`project_context_sync`, `project_maintenance_request`) on the **first-created company agent** — skips regular heartbeat workflow (same as `connector_event`)
-- **Request agent change** — business users submit context/dashboard/workflow requests via UI; one-shot admin wake + optional tracking issue in `requests` stage (not operational stages)
+- **Agent-driven summaries** via unified **one-shot wake** protocol (`project_context_sync`, `project_maintenance_request`) on the selected company maintainer (auto-fallback chain) — skips regular heartbeat workflow (same as `connector_event`)
+- **Request agent change** — business users submit context/dashboard/workflow requests via UI; one-shot admin wake on standalone maintenance-request entities (no project-stage coupling)
 - **Proactive data maintainer** — same admin agent maintains project tables/views/dashboards during context sync wakes
 - **Prompt-only stage-capacity enforcement** — skill-driven; no server checkout block in v1
 - **Dedicated `paperclip-project-context` skill** auto-synced to all agents; `paperclip` skill cross-links to it
@@ -1320,5 +1438,63 @@ pnpm build
 - **PGlite dev:** `CREATE SCHEMA` works in PGlite; verify DDL + query paths in embedded mode
 - **Summary agent cost:** debounce + coalesce wakes; respect agent budget/pause
 - **Large files:** enforce size limits; truncate extracted text in heartbeat-context (full text via dedicated endpoint)
+- **Extracted text retention:** retained until source file deletion; ensure delete path removes extracted payload and audit trail references remain metadata-only
+- **Restart durability:** startup reconciler must prevent stranded maintenance requests after crash/redeploy
 - **Extraction deps:** `pdf-parse` / `mammoth` add bundle weight — isolate in server-only code path
+
+---
+
+## 16. V2 plan — lean/on-demand issue context injection (token-cost guardrail)
+
+Goal: keep assignment/manual/heartbeat issue wakes context-aware **without increasing per-run token burn by default**.
+
+### V2 principles (locked)
+
+- **Lean by default:** `GET /api/issues/:id/heartbeat-context` returns a minimal `projectContext` envelope unless explicitly expanded.
+- **Progressive disclosure:** agents fetch heavier context only when needed (full summary sections, document bodies, extracted file text, dashboards detail).
+- **Deterministic budget caps:** cap injected chars/tokens per field and total context block size with hard truncation + metadata.
+- **No hidden prompt bloat:** track context payload size in run metadata and expose in telemetry.
+
+### V2 response-shape strategy
+
+Add opt-in modes to heartbeat context:
+
+- `contextMode=lean` (default):
+  - summary/workflow snippets only (tight caps)
+  - current-stage playbook only
+  - document index metadata only
+  - counts/ids for files/dashboards (no bodies)
+- `contextMode=full` (explicit):
+  - larger summary/workflow budget
+  - optional expanded fields via `include=` query (`documents`, `file_text`, `dashboards`, `workflow_revisions`)
+
+Server must always return:
+
+- `projectContext.truncated` flags per section
+- `projectContext.byteBudgetUsed`
+- `projectContext.nextFetchHints[]` (which endpoint to call for full data)
+
+### V2 runtime controls (env)
+
+- `PAPERCLIP_HEARTBEAT_CONTEXT_MODE_DEFAULT` (`lean` default)
+- `PAPERCLIP_HEARTBEAT_CONTEXT_MAX_BYTES` (global cap for injected projectContext)
+- `PAPERCLIP_HEARTBEAT_CONTEXT_SUMMARY_MAX_CHARS`
+- `PAPERCLIP_HEARTBEAT_CONTEXT_WORKFLOW_MAX_CHARS`
+- `PAPERCLIP_HEARTBEAT_CONTEXT_PLAYBOOK_MAX_CHARS`
+
+### V2 agent behavior contract
+
+- On issue wake, agents always read lean `projectContext` first.
+- If lean context is insufficient, agents call targeted endpoints (document/file/query APIs) before acting.
+- Skills/onboarding docs must explicitly forbid loading full context blobs unless required by task intent.
+
+### V2 observability + acceptance
+
+- Emit run metrics: `heartbeatContextBytes`, `heartbeatContextMode`, `heartbeatContextTruncatedSections`.
+- Add regression checks:
+  - p50/p95 context bytes before vs after V2
+  - token/cost delta for assignment wakes must not regress beyond configured threshold
+  - no behavior regression on tasks requiring full docs/files (agent performs explicit follow-up fetch)
+
+This is planning-only for V2 and is intentionally **not part of current implementation scope**.
 

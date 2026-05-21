@@ -1,6 +1,7 @@
 import type { Goal } from "@paperclipai/shared";
+import { AI_ADMIN_PROJECT_NAME, ONBOARDING_PROJECT_NAME } from "@paperclipai/shared";
 
-export const ONBOARDING_PROJECT_NAME = "AI-Admin Project";
+export { ONBOARDING_PROJECT_NAME };
 
 function goalCreatedAt(goal: Goal) {
   const createdAt = goal.createdAt instanceof Date ? goal.createdAt : new Date(goal.createdAt);
@@ -26,7 +27,7 @@ export function selectDefaultCompanyGoalId(goals: Goal[]): string | null {
 
 export function buildOnboardingProjectPayload(goalId: string | null) {
   return {
-    name: ONBOARDING_PROJECT_NAME,
+    name: AI_ADMIN_PROJECT_NAME,
     status: "in_progress" as const,
     ...(goalId ? { goalIds: [goalId] } : {}),
   };

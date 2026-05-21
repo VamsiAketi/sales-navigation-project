@@ -38,16 +38,45 @@ describe("buildHeartbeatProjectWorkflowContext", () => {
     );
 
     expect(result).toEqual({
+      statusMeaning: "Todo (API key: todo)",
       currentStage: {
         value: "todo",
         name: "Todo",
+        description: null,
+        agentInstructions: null,
+        capabilityTags: [],
         allowedNextStatusValues: ["in_progress"],
         allowedActors: "human_and_agent",
         isHumanApproval: false,
       },
       checkoutStage: {
-        allowedActors: "agent_only",
+        value: "todo",
+        name: "Todo",
+        allowedActors: "human_and_agent",
       },
+      allowedNextStages: [{ value: "in_progress", name: "In Progress" }],
+      allowedCheckoutStatuses: ["todo", "in_progress", "done"],
     });
+  });
+
+  it("formats statusMeaning for custom stage names", () => {
+    const result = buildHeartbeatProjectWorkflowContext(
+      [
+        stage({
+          value: "todo",
+          name: "Lead Generation",
+          allowedNextStatusValues: ["qualified", "blocked"],
+        }),
+        stage({ value: "qualified", name: "Qualified" }),
+        stage({ value: "blocked", name: "Blocked" }),
+      ],
+      "todo",
+    );
+
+    expect(result?.statusMeaning).toBe("Lead Generation (API key: todo)");
+    expect(result?.allowedNextStages).toEqual([
+      { value: "qualified", name: "Qualified" },
+      { value: "blocked", name: "Blocked" },
+    ]);
   });
 });

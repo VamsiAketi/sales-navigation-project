@@ -217,6 +217,12 @@ function readNonEmptyContextString(value: unknown): string {
   return value.trim();
 }
 
+const ONE_SHOT_WAKE_REASONS = new Set([
+  "connector_event",
+  "project_context_sync",
+  "project_maintenance_request",
+]);
+
 export function buildAdapterInvocationPrompt(input: {
   context: Record<string, unknown>;
   promptTemplate: string;
@@ -228,8 +234,10 @@ export function buildAdapterInvocationPrompt(input: {
 }) {
   const wakeReason = readNonEmptyContextString(input.context.wakeReason);
   const wakeupPrompt = readNonEmptyContextString(input.context.wakeupPrompt);
-  if (wakeReason === "connector_event" && wakeupPrompt) {
-    const actionsGuide = readNonEmptyContextString(input.context.connectorActionsGuide);
+  if (ONE_SHOT_WAKE_REASONS.has(wakeReason) && wakeupPrompt) {
+    const actionsGuide = wakeReason === "connector_event"
+      ? readNonEmptyContextString(input.context.connectorActionsGuide)
+      : "";
     const prompt = actionsGuide ? joinPromptSections([wakeupPrompt, actionsGuide]) : wakeupPrompt;
     return {
       prompt,
@@ -246,9 +254,17 @@ export function buildAdapterInvocationPrompt(input: {
       ? renderTemplate(bootstrapPromptTemplate, input.templateData).trim()
       : "";
   const sessionHandoffNote = readNonEmptyContextString(input.sessionHandoffNote);
+  const issueWorkflowPrompt = readNonEmptyContextString(input.context.issueWorkflowPrompt);
   const renderedHeartbeatPrompt = renderTemplate(input.promptTemplate, input.templateData);
   const prompt = joinPromptSections([
     ...(input.leadingSections ?? []),
+    issueWorkflowPrompt
+      ? [
+          "## Current task — workflow rules (mandatory)",
+          "Follow these rules before checkout, status changes, or handoff. Do not rely on generic `todo` / `in_progress` semantics.",
+          issueWorkflowPrompt,
+        ].join("\n\n")
+      : null,
     renderedBootstrapPrompt,
     sessionHandoffNote,
     renderedHeartbeatPrompt,

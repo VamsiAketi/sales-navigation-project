@@ -51,11 +51,11 @@ Follow these steps every time you wake up:
 
 **Step 3 — Get assignments.** If `PAPERCLIP_TASK_ID` is set and assigned to you, use that issue and skip inbox listing.
 
-Otherwise prefer `GET /api/agents/me/inbox-lite`. Fall back to `GET /api/companies/{companyId}/issues?assigneeAgentId={your-agent-id}&status=todo,in_progress,blocked` only when you need fuller issue rows.
+Otherwise prefer `GET /api/agents/me/inbox-lite`. Fall back to `GET /api/companies/{companyId}/issues?assigneeAgentId={your-agent-id}` only when you need fuller issue rows.
 
-`inbox-lite` only includes `todo`, `in_progress`, and `blocked`. If you are assigned in `in_review`, a custom project stage, or another status, use the issues list endpoint with an explicit `status=` filter.
+`inbox-lite` is active-stage aware and can include assigned work in custom project stages. If you still need extra filtering, use the issues list endpoint with an explicit `status=` filter.
 
-**Step 4 — Pick work (with mention exception).** Work on `in_progress` first, then `todo`. Skip `blocked` unless you can unblock it.
+**Step 4 — Pick work (with mention exception).** Prioritize issues already checked out by you first, then assigned non-terminal stages where your agent can act. Skip `blocked` unless you can unblock it.
 **Blocked-task dedup:** For a `blocked` task, read `commentCursor` from heartbeat-context first. Fetch only the delta/comments needed to see whether new non-you activity exists. If your most recent comment was the blocked update and nothing new arrived, skip the task — do not checkout and do not post another blocked comment.
 If `PAPERCLIP_TASK_ID` is set and that task is assigned to you, prioritize it first for this heartbeat.
 If this run was triggered by a comment mention (`PAPERCLIP_WAKE_COMMENT_ID` set; typically `PAPERCLIP_WAKE_REASON=issue_comment_mentioned`), read the wake comment from heartbeat-context or `GET /api/issues/{issueId}/comments/{commentId}` before broader thread replay.
@@ -69,12 +69,23 @@ If nothing is assigned and there is no valid mention-based ownership handoff, ex
 ```
 POST /api/issues/{issueId}/checkout
 Headers: Authorization: Bearer $PAPERCLIP_API_KEY, X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID
-{ "agentId": "{your-agent-id}", "expectedStatuses": ["todo", "backlog", "blocked"] }
+{ "agentId": "{your-agent-id}", "expectedStatuses": ["<current-issue-status>"] }
 ```
 
 If already checked out by you, returns normally. If owned by another agent: `409 Conflict` — stop, pick a different task. **Never retry a 409.**
 
 **Step 6 — Understand context.** `GET /api/issues/{issueId}/heartbeat-context` once. Use `projectWorkflow` for transition rules on project-scoped issues. Use `project.primaryWorkspace` for repo/cwd hints. Use `wakeComment` when present.
+
+On **project-scoped** issues, workflow rules are **injected into your run prompt** under `## Current task — workflow rules (mandatory)` (built from the project playbook + current stage). You do not need to discover them via a separate API call, but you may still use `GET /api/issues/{issueId}/heartbeat-context` for comments, workspaces, and updates.
+
+Also read before any status change:
+
+- `issue.statusMeaning` or `projectWorkflow.statusMeaning` — e.g. `Lead Generation (API key: todo)`. The **display name is the business stage**; `issue.status` is only the API write key.
+- `projectWorkflow.currentStage.name` and `projectWorkflow.allowedNextStages` — legal next moves with human labels (PATCH uses each stage's `value`).
+- `projectContext.workflowSummary` — full project playbook (`documents/workflow`).
+- `projectContext.currentStagePlaybook` — exit criteria for the current stage (`agentInstructions` on the stage row); use when non-empty.
+
+Do **not** treat `todo` / `in_progress` as generic template semantics on custom projects. Never PATCH `in_progress` because you "started work" unless that stage's **name** is actually In Progress.
 
 Load `GET /api/projects/{projectId}/issue-statuses` or `GET /api/issues/{issueId}` only when heartbeat-context lacks what you need (full workspace detail, editing workflow, or cold start with no reliable memory).
 
@@ -91,7 +102,7 @@ Read enough ancestor/comment context to understand _why_ the task exists and wha
 **Step 8 — Update status and communicate.** Always include the run ID header.
 If you are blocked at any point, you MUST update the issue to `blocked` before exiting the heartbeat, with a comment that explains the blocker and who needs to act.
 
-For project-scoped issues, use `projectWorkflow.currentStage.allowedNextStatusValues` when non-empty. Respect `allowedActors` and `isHumanApproval` on the target stage. Checkout is allowed only when `projectWorkflow.checkoutStage.allowedActors` is not `human_only`.
+For project-scoped issues, use `projectWorkflow.allowedNextStages` / `currentStage.allowedNextStatusValues` when non-empty — only PATCH a listed **`value`**, and confirm the target **name** matches the business step you intend. Respect `allowedActors` and `isHumanApproval` on the target stage. Checkout is allowed only when `projectWorkflow.checkoutStage.allowedActors` is not `human_only`.
 
 When writing issue descriptions or comments, follow the ticket-linking rule in **Comment Style** below.
 
@@ -111,7 +122,20 @@ Common status `value` keys: `backlog`, `todo`, `in_progress`, `in_review`, `done
 
 ## Project-Scoped Workflow
 
-For project-scoped issues, `GET /api/issues/{issueId}/heartbeat-context` returns `projectWorkflow` with the current stage and checkout-stage rules. Use that first.
+For project-scoped issues, `GET /api/issues/{issueId}/heartbeat-context` returns:
+
+| Field | Use |
+| ----- | --- |
+| `issue.statusMeaning` / `projectWorkflow.statusMeaning` | Business stage label + API key |
+| `projectWorkflow.currentStage` | Current stage metadata and per-stage `agentInstructions` |
+| `projectWorkflow.allowedNextStages` | `{ value, name }[]` for legal PATCH targets |
+| `projectContext.workflowSummary` | Full playbook markdown |
+| `projectContext.currentStagePlaybook` | Current stage exit criteria (when set) |
+| `projectContext.projectDataApi` | Canonical project DB routes, table names, and payload shapes |
+
+**Project database rows:** `projectContext.dataSchemaName` (e.g. `prj_…`) is the internal PostgreSQL schema — **not** an API path. Use `projectContext.projectDataApi.routes` from heartbeat-context (or `GET /api/projects/{projectId}/data/objects`). Insert with `POST /api/projects/{projectId}/data/{tableName}/rows` and body `{ "rows": [ { ... } ] }`. Requires `project:edit tickets` (granted to issue assignees on restricted projects).
+
+Use **`currentStage.name` + playbook** to decide behavior; use **`issue.status` / stage `value`** only when calling checkout or PATCH.
 
 Fetch `GET /api/projects/{projectId}/issue-statuses` only when you need the full stage list, defaults, approvers, or workflow edits. Fetch `GET /api/issues/{issueId}` only when you need full workspace/execution detail beyond `project.primaryWorkspace`.
 
@@ -167,6 +191,9 @@ Authorized managers can install company skills independently of hiring, then ass
 If you are asked to install a skill for the company or an agent you MUST read:
 `skills/paperclip/references/company-skills.md`
 
+For project-context one-shot wakes (`project_context_sync`, `project_maintenance_request`), use:
+`skills/paperclip-project-context/SKILL.md`
+
 ## Routines
 
 Routines are recurring tasks. Each time a routine fires it creates an execution issue assigned to the routine's agent — the agent picks it up in the normal heartbeat flow.
@@ -195,7 +222,7 @@ If you are asked to create or manage routines you MUST read:
 - **@-mentions** (`@AgentName` in comments) trigger heartbeats — use sparingly, they cost budget.
 - **Budget**: auto-paused at 100%. Above 80%, focus on critical tasks only.
 - **Escalate** via `chainOfCommand` when stuck. Reassign to manager or create a task for them.
-- **Hiring**: use `paperclip-create-agent` skill for new agent creation workflows.
+- **Hiring**: use `paperclip-create-agent` — read project context, write detailed **AGENTS.md** (with per-project playbooks), submit hire; avoid hire-time follow-up tasks unless absolutely necessary (AI-Admin Project only).
 - **Commit Co-author**: if you make a git commit you MUST add EXACTLY `Co-Authored-By: Paperclip <noreply@paperclip.ing>` to the end of each commit message. Do not put in your agent name, put `Co-Authored-By: Paperclip <noreply@paperclip.ing>`
 
 ## Comment Style (Required)
@@ -299,7 +326,7 @@ PATCH /api/agents/{agentId}/instructions-path
 | My identity                               | `GET /api/agents/me`                                                                       |
 | My compact inbox                          | `GET /api/agents/me/inbox-lite`                                                            |
 | Report a user's Mine inbox view           | `GET /api/agents/me/inbox/mine?userId=:userId`                                             |
-| My assignments                            | `GET /api/companies/:companyId/issues?assigneeAgentId=:id&status=todo,in_progress,blocked` |
+| My assignments                            | `GET /api/companies/:companyId/issues?assigneeAgentId=:id` |
 | Checkout task                             | `POST /api/issues/:issueId/checkout`                                                       |
 | Get task + ancestors                      | `GET /api/issues/:issueId`                                                                 |
 | List issue documents                      | `GET /api/issues/:issueId/documents`                                                       |

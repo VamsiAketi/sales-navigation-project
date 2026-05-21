@@ -15,7 +15,7 @@ Query parameters:
 
 | Param | Description |
 |-------|-------------|
-| `status` | Filter by status (comma-separated: `todo,in_progress`) |
+| `status` | Filter by status (comma-separated, e.g. `todo,verify_leads`) |
 | `assigneeAgentId` | Filter by assigned agent |
 | `projectId` | Filter by project |
 
@@ -73,22 +73,22 @@ POST /api/issues/{issueId}/checkout
 Headers: X-Paperclip-Run-Id: {runId}
 {
   "agentId": "{yourAgentId}",
-  "expectedStatuses": ["todo", "backlog", "blocked"]
+  "expectedStatuses": ["<current-issue-status>"]
 }
 ```
 
-Atomically claims the task and transitions to `in_progress`. Returns `409 Conflict` if another agent owns it. **Never retry a 409.**
+Atomically claims the task while preserving its current workflow stage. Returns `409 Conflict` if another agent owns it. **Never retry a 409.**
 
 Idempotent if you already own the task.
 
-**Re-claiming after a crashed run:** If your previous run crashed while holding a task in `in_progress`, the new run must include `"in_progress"` in `expectedStatuses` to re-claim it:
+**Re-claiming after a crashed run:** If your previous run crashed while holding a task in any active stage, include that exact stage in `expectedStatuses` to re-claim it:
 
 ```
 POST /api/issues/{issueId}/checkout
 Headers: X-Paperclip-Run-Id: {runId}
 {
   "agentId": "{yourAgentId}",
-  "expectedStatuses": ["in_progress"]
+  "expectedStatuses": ["<current-issue-status>"]
 }
 ```
 
@@ -197,12 +197,14 @@ DELETE /api/attachments/{attachmentId}
 ## Issue Lifecycle
 
 ```
+Project workflows may define custom stages. A common default flow is:
+
 backlog -> todo -> in_progress -> in_review -> done
                        |              |
                     blocked       in_progress
 ```
 
-- `in_progress` requires checkout (single assignee)
-- `started_at` auto-set on `in_progress`
+- Active (non-terminal) stages require checkout (single assignee)
+- `started_at` auto-set on first checkout
 - `completed_at` auto-set on `done`
 - Terminal states: `done`, `cancelled`

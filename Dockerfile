@@ -92,11 +92,6 @@ RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/cod
   && mkdir -p /paperclip \
   && chown node:node /paperclip
 
-# Cursor Agent CLI for the cursor-local adapter (default command: `agent`).
-COPY scripts/install-cursor-agent-cli.sh /usr/local/bin/install-cursor-agent-cli.sh
-RUN chmod +x /usr/local/bin/install-cursor-agent-cli.sh \
-  && /usr/local/bin/install-cursor-agent-cli.sh
-
 # Preinstall Chromium so deployed environments do not need runtime installs/root.
 RUN PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright pnpm exec playwright install chromium
 

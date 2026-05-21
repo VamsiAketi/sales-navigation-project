@@ -3,7 +3,8 @@ import { useCompany } from "./CompanyContext";
 import { agentsApi } from "../api/agents";
 import { goalsApi } from "../api/goals";
 import { projectsApi } from "../api/projects";
-import { ONBOARDING_PROJECT_NAME, selectDefaultCompanyGoalId } from "../lib/onboarding-launch";
+import { isAiAdminProject } from "@paperclipai/shared";
+import { selectDefaultCompanyGoalId } from "../lib/onboarding-launch";
 import {
   CREATE_AGENT_ISSUE_DESCRIPTION,
   CREATE_AGENT_ISSUE_TITLE,
@@ -104,27 +105,18 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           goalsApi.list(selectedCompanyId),
         ]);
         assigneeAgentId = agents.find((a) => a.role === "ceo")?.id;
-        const firstGoalId = selectDefaultCompanyGoalId(goals);
+        selectDefaultCompanyGoalId(goals);
         const projects = await projectsApi.list(selectedCompanyId);
         const aiAdminProject =
-          projects.find(
-            (project) => project.name === ONBOARDING_PROJECT_NAME && !project.archivedAt,
-          ) ?? projects.find((project) => project.name === ONBOARDING_PROJECT_NAME);
-        const defaultProject =
-          aiAdminProject ??
-          projects.find(
-            (project) => firstGoalId && project.goalIds.includes(firstGoalId),
-          ) ??
-          projects.find((project) => !project.archivedAt) ??
-          projects[0] ??
-          null;
-        defaultProjectId = defaultProject?.id;
+          projects.find((project) => isAiAdminProject(project) && !project.archivedAt)
+          ?? projects.find((project) => isAiAdminProject(project))
+          ?? null;
+        defaultProjectId = aiAdminProject?.id;
       } catch {
         // Keep flow usable; user can pick project and assignee manually.
       }
       openNewIssue({
         assigneeAgentId,
-        status: "todo",
         title: CREATE_AGENT_ISSUE_TITLE,
         description: CREATE_AGENT_ISSUE_DESCRIPTION,
         ...(defaultProjectId ? { projectId: defaultProjectId } : {}),

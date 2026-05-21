@@ -56,7 +56,11 @@ import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDe
 import { toggleIssueLabelSelection } from "../lib/issue-labels-state";
 import { setFocusAfterIssueCreate } from "../lib/focus-created-issue";
 import { projectStatusSwatchClass } from "../lib/status-colors";
-import { CREATE_AGENT_ISSUE_TITLE } from "../lib/issue-presets";
+import { isAiAdminProject } from "@paperclipai/shared";
+import {
+  CREATE_AGENT_ISSUE_TITLE,
+  resolveDefaultIssueStatusForAgentTask,
+} from "../lib/issue-presets";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
@@ -358,6 +362,7 @@ export function NewIssueDialog() {
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const executionWorkspaceDefaultProjectId = useRef<string | null>(null);
   const newIssueWasOpenRef = useRef(false);
+  const createAgentStatusInitializedRef = useRef(false);
 
   const effectiveCompanyId = dialogCompanyId ?? selectedCompanyId;
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
@@ -374,6 +379,18 @@ export function NewIssueDialog() {
   );
   const newIssueAssigneeAllowsUsers = newIssueStatusWorkflowMeta?.allowedActors !== "agent_only";
   const newIssueAssigneeAllowsAgents = newIssueStatusWorkflowMeta?.allowedActors !== "human_only";
+  const isCreateAgentPreset = newIssueDefaults.title === CREATE_AGENT_ISSUE_TITLE;
+
+  useEffect(() => {
+    if (!newIssueOpen) {
+      createAgentStatusInitializedRef.current = false;
+      return;
+    }
+    if (!isCreateAgentPreset || rawProjectStatuses.length === 0) return;
+    if (createAgentStatusInitializedRef.current) return;
+    createAgentStatusInitializedRef.current = true;
+    setStatus(resolveDefaultIssueStatusForAgentTask(rawProjectStatuses));
+  }, [isCreateAgentPreset, newIssueOpen, rawProjectStatuses]);
 
   // Popover states
   const [statusOpen, setStatusOpen] = useState(false);
@@ -446,6 +463,19 @@ export function NewIssueDialog() {
     companyId: effectiveCompanyId,
     userId: currentUserId,
   });
+  const aiAdminProject = useMemo(
+    () => orderedProjects.find((project) => isAiAdminProject(project)) ?? null,
+    [orderedProjects],
+  );
+  const lockProjectToAiAdmin = isCreateAgentPreset && Boolean(aiAdminProject);
+
+  useEffect(() => {
+    if (!newIssueOpen || !lockProjectToAiAdmin || !aiAdminProject) return;
+    setProjectId(aiAdminProject.id);
+    setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(aiAdminProject));
+    executionWorkspaceDefaultProjectId.current = aiAdminProject.id;
+    setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(aiAdminProject));
+  }, [aiAdminProject, lockProjectToAiAdmin, newIssueOpen]);
 
   const selectedAssignee = useMemo(() => parseAssigneeValue(assigneeValue), [assigneeValue]);
   const selectedAssigneeAgentId = selectedAssignee.assigneeAgentId;
@@ -1021,13 +1051,16 @@ export function NewIssueDialog() {
     ],
   );
   const projectOptions = useMemo<InlineEntityOption[]>(
-    () =>
-      orderedProjects.map((project) => ({
+    () => {
+      const projectsForPicker =
+        lockProjectToAiAdmin && aiAdminProject ? [aiAdminProject] : orderedProjects;
+      return projectsForPicker.map((project) => ({
         id: project.id,
         label: project.name,
         searchText: project.description ?? "",
-      })),
-    [orderedProjects],
+      }));
+    },
+    [aiAdminProject, lockProjectToAiAdmin, orderedProjects],
   );
   const savedDraft = loadDraft();
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim() || savedDraft?.labelIds?.length);
@@ -1035,12 +1068,12 @@ export function NewIssueDialog() {
   const createIssueErrorMessage =
     createIssue.error instanceof Error ? createIssue.error.message : "Couldn't create this task. Try again.";
   const hasAssignee = Boolean(selectedAssigneeAgentId || selectedAssigneeUserId);
-  const isCreateAgentPreset = newIssueDefaults.title === CREATE_AGENT_ISSUE_TITLE;
   const isPresetTitle = Boolean(newIssueDefaults.title);
   const assigneeRequired = !isBoardPinnedHiddenProjectIssueStatusValue(statusForCreate);
   const missingRequiredFields: string[] = [];
   if (!title.trim()) missingRequiredFields.push("Task title");
-  if (!projectId) missingRequiredFields.push("Project");
+  if (isCreateAgentPreset && !aiAdminProject) missingRequiredFields.push("AI-Admin Project");
+  else if (!projectId) missingRequiredFields.push("Project");
   if (assigneeRequired && !hasAssignee) missingRequiredFields.push("Assignee");
   const canSubmit = missingRequiredFields.length === 0 && !createIssue.isPending;
   const projectFieldLabel = formatRequiredFieldLabel("Project");
@@ -1061,6 +1094,7 @@ export function NewIssueDialog() {
   }, []);
 
   const handleProjectChange = useCallback((nextProjectId: string) => {
+    if (lockProjectToAiAdmin) return;
     setProjectId(nextProjectId);
     if (nextProjectId) {
       setProjectValidationError(null);
@@ -1070,7 +1104,7 @@ export function NewIssueDialog() {
     setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(nextProject));
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(nextProject));
     setSelectedExecutionWorkspaceId("");
-  }, [orderedProjects]);
+  }, [lockProjectToAiAdmin, orderedProjects]);
 
   useEffect(() => {
     if (!newIssueOpen || !projectId || executionWorkspaceDefaultProjectId.current === projectId) {
@@ -1325,7 +1359,12 @@ export function NewIssueDialog() {
                 }}
               />
               <span>in</span>
-              <span className="inline-flex items-center gap-1">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1",
+                  lockProjectToAiAdmin && "pointer-events-none opacity-90",
+                )}
+              >
                 <InlineEntitySelector
                   ref={projectSelectorRef}
                   value={projectId}

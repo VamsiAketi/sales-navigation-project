@@ -1028,12 +1028,6 @@ export function IssuesList({
     ? 0
     : viewState.statuses.length + (viewState.showHidden ? 1 : 0);
   const hasAnyTaskInProject = issues.length > 0;
-  const showBoardNoTasksOverlay =
-    !forceListView
-    && viewState.viewMode === "board"
-    && !(isLoading || (viewState.showHidden && hiddenLoading))
-    && !viewState.showHidden
-    && !hasAnyTaskInProject;
   const canSortStatus = !(fixedStatusFilter && fixedStatusFilter.length === 1);
   const priorityFilterCount = viewState.priorities.length;
   const reporterFilterCount = viewState.reporters.length;
@@ -1754,26 +1748,17 @@ export function IssuesList({
       )}
 
       {!forceListView && viewState.viewMode === "board" ? (
-        <div className="relative min-h-[420px]">
-          <KanbanBoard
-            issues={boardIssues}
-            agents={agents}
-            members={humanMembers}
-            liveIssueIds={liveIssueIds}
-            onUpdateIssue={onUpdateIssue}
-            projectStatuses={projectStatuses}
-            issueLinkState={issueLinkState}
-            highlightIssueId={highlightIssueId}
-            newBadgeIssueId={newBadgeIssueId}
-          />
-          {showBoardNoTasksOverlay ? (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4">
-              <div className="w-full max-w-sm rounded-lg border border-border/80 bg-card/95 p-5 text-center shadow-sm backdrop-blur">
-                <p className="text-sm font-medium text-foreground">No task in this project</p>
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <KanbanBoard
+          issues={boardIssues}
+          agents={agents}
+          members={humanMembers}
+          liveIssueIds={liveIssueIds}
+          onUpdateIssue={onUpdateIssue}
+          projectStatuses={projectStatuses}
+          issueLinkState={issueLinkState}
+          highlightIssueId={highlightIssueId}
+          newBadgeIssueId={newBadgeIssueId}
+        />
       ) : (
         <div className="sm:-mt-2">
           {groupedContent.map((group) => (

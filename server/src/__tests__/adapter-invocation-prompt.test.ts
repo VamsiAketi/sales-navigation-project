@@ -46,4 +46,38 @@ describe("buildAdapterInvocationPrompt", () => {
     expect(result.connectorWakePrompt).toBe("");
     expect(result.renderedHeartbeatPrompt).toBe("Run the regular heartbeat inbox procedure.");
   });
+
+  it("prepends mandatory issue workflow rules when issueWorkflowPrompt is set", () => {
+    const result = buildAdapterInvocationPrompt({
+      context: {
+        wakeReason: "issue_assigned",
+        issueWorkflowPrompt: "Current stage: **Lead Generation** — Lead Generation (API key: todo)",
+      },
+      promptTemplate: "Run the regular heartbeat inbox procedure.",
+      templateData: {},
+      leadingSections: ["AGENTS.md content"],
+    });
+
+    expect(result.prompt).toContain("AGENTS.md content");
+    expect(result.prompt).toContain("## Current task — workflow rules (mandatory)");
+    expect(result.prompt).toContain("Lead Generation (API key: todo)");
+    expect(result.prompt).toContain("Run the regular heartbeat inbox procedure.");
+    expect(result.prompt.indexOf("workflow rules")).toBeLessThan(
+      result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
+    );
+  });
+
+  it("uses one-shot wake prompt for project context sync", () => {
+    const result = buildAdapterInvocationPrompt({
+      context: {
+        wakeReason: "project_context_sync",
+        wakeupPrompt: "Refresh the project summary and workflow playbooks.",
+      },
+      promptTemplate: "Run the regular heartbeat inbox procedure.",
+      templateData: {},
+    });
+
+    expect(result.prompt).toBe("Refresh the project summary and workflow playbooks.");
+    expect(result.renderedHeartbeatPrompt).toBe("");
+  });
 });

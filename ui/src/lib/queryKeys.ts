@@ -76,6 +76,13 @@ export const queryKeys = {
   projects: {
     list: (companyId: string) => ["projects", companyId] as const,
     detail: (id: string) => ["projects", "detail", id] as const,
+    context: (projectId: string) => ["projects", "context", projectId] as const,
+    contextFiles: (projectId: string) => ["projects", "context-files", projectId] as const,
+    maintenanceRequests: (projectId: string) => ["projects", "maintenance-requests", projectId] as const,
+    dataObjects: (projectId: string) => ["projects", "data-objects", projectId] as const,
+    views: (projectId: string) => ["projects", "views", projectId] as const,
+    viewWidgets: (projectId: string, viewId: string) => ["projects", "view-widgets", projectId, viewId] as const,
+    viewWidgetData: (projectId: string, viewId: string) => ["projects", "view-widget-data", projectId, viewId] as const,
     projectSecrets: (projectId: string) => ["project-secrets", projectId] as const,
     issueStatuses: (projectId: string) => ["projects", "issue-statuses", projectId] as const,
     principalGrants: (companyId: string, projectId: string) =>

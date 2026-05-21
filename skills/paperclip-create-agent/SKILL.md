@@ -56,16 +56,37 @@ curl -sS "$PAPERCLIP_API_URL/llms/agent-icons.txt" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
-6. Draft the new hire config:
+6. **Review company projects** (before drafting instructions):
+
+```sh
+curl -sS "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/projects" \
+  -H "Authorization: Bearer $PAPERCLIP_API_KEY"
+```
+
+For each active project (skip **AI-Admin Project** — that is org/hiring ops only), read context:
+
+```sh
+curl -sS "$PAPERCLIP_API_URL/api/projects/<project-id>/context" \
+  -H "Authorization: Bearer $PAPERCLIP_API_KEY"
+```
+
+Use `summary`, `workflowSummary`, and goals to decide **where this agent can contribute**. You will encode that in **AGENTS.md** (see step 6b), not by spamming tasks across projects.
+
+6b. **Author a detailed `AGENTS.md`** for the new hire (required). See [AGENTS.md template](#agentsmd-template-required) below.
+
+- Put the full markdown in `adapterConfig.promptTemplate` on the hire request (Paperclip materializes it into the managed instructions bundle as `AGENTS.md`).
+- After hire, you may refine with `PUT /api/agents/{agentId}/instructions-bundle/file` (`path`: `AGENTS.md`).
+- Do **not** rely on a vague one-line `promptTemplate`; the file must be properly structured markdown with headings, bullets, and project-specific sections where relevant.
+
+6c. Draft the hire config:
 - role/title/name
 - icon (required in practice; use one from `/llms/agent-icons.txt`)
 - reporting line (`reportsTo`)
 - adapter type
 - optional `desiredSkills` from the company skill library when this role needs installed skills on day one
-- adapter and runtime config aligned to this environment
-- capabilities
-- run prompt in adapter config (`promptTemplate` where applicable)
-- source issue linkage (`sourceIssueId` or `sourceIssueIds`) when this hire came from an issue
+- adapter and runtime config aligned to this environment (include the **AGENTS.md** body as `promptTemplate` until materialized)
+- capabilities (short summary; details live in AGENTS.md)
+- source issue linkage (`sourceIssueId` or `sourceIssueIds`) when this hire came from an issue — typically the **AI-Admin Project** hire task
 
 7. Submit hire request.
 
@@ -83,7 +104,7 @@ curl -sS -X POST "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/agent-h
     "desiredSkills": ["vercel-labs/agent-browser/agent-browser"],
     "adapterType": "codex_local",
     "adapterConfig": {"cwd": "/abs/path/to/repo", "model": "o4-mini"},
-    "runtimeConfig": {"heartbeat": {"enabled": true, "intervalSec": 300, "wakeOnDemand": true}},
+    "runtimeConfig": {"heartbeat": {"enabled": false, "intervalSec": 300, "wakeOnDemand": true}},
     "sourceIssueId": "<issue-id>"
   }'
 ```
@@ -124,9 +145,75 @@ curl -sS "$PAPERCLIP_API_URL/api/approvals/$PAPERCLIP_APPROVAL_ID/issues" \
 
 For each linked issue, either:
 - close it if approval resolved the request, or
-- comment in markdown with links to the approval and next actions.
+- comment in markdown with links to the approval, the new agent, and confirmation that **AGENTS.md** is in place.
 
+### Follow-up tasks (strict — AI Admin only)
 
+**Default: do not create a follow-up task for the new agent.** The hire is complete when:
+
+1. **AGENTS.md** is written (with project playbooks from step 6), and
+2. The hire/approval is documented on the linked **AI-Admin Project** issue (comment or close).
+
+Create **at most one** follow-up issue for the new agent **only if absolutely necessary**, for example:
+
+- Board explicitly requested a timed first deliverable, or
+- A blocking human action is required before the agent can run (credentials, repo access) and cannot be captured in AGENTS.md alone.
+
+Rules for any follow-up task:
+
+| Rule | Requirement |
+| ---- | ----------- |
+| **Project** | **AI-Admin Project** only — never onboarding/hire follow-ups on product projects |
+| **Assignee** | The new agent only after status is `idle` (not `pending_approval`) |
+| **Parent** | Prefer `parentId` = the hire coordination issue when one exists |
+| **Content** | One concrete outcome; do not duplicate AGENTS.md |
+
+Operational work for product projects is assigned **later**, on those projects, when real tasks exist — not at hire time.
+
+---
+
+## AGENTS.md template (required)
+
+Use this structure. Replace placeholders; remove sections that do not apply.
+
+```markdown
+# <Agent display name> — <Role / title>
+
+## Role and mandate
+- Why this agent exists (outcome, scope, success in the first 30 days)
+- What they own vs what they escalate
+
+## Chain of command
+- Reports to: <name / role>
+- Peers and who to route work to
+
+## Paperclip operating rules
+- Identity: `GET /api/agents/me`; wake context (`PAPERCLIP_TASK_ID`, `PAPERCLIP_WAKE_REASON`)
+- Assignments: `GET /api/agents/me/inbox-lite` or company issues filtered by assignee
+- Checkout before work: `POST /api/issues/{id}/checkout`; never retry 409
+- Coordination: Paperclip skill; `X-Paperclip-Run-Id` on mutating calls
+- Only work assigned work; no self-assign unless @-mentioned
+
+## Company context
+- Mission / priorities (short bullets from board or CEO)
+
+## Project playbooks
+<!-- One subsection per project where this agent may contribute. Omit projects with no fit. -->
+
+### <Project name>
+**Where you contribute:** <1–3 sentences from that project's summary/workflow>
+**When you are assigned work here:**
+- Read `GET /api/projects/<project-id>/context` (or issue heartbeat-context) before starting
+- Follow that project's workflow summary and stage rules
+- <Role-specific behaviors, handoffs, quality bar>
+
+## Role-specific standards
+<!-- Engineers: git/PR rules, feature flags, etc. Other roles: domain checklist. -->
+```
+
+Also ensure **HEARTBEAT.md** / **SOUL.md** exist or are referenced if the adapter uses a multi-file bundle; **AGENTS.md** is the canonical role + project playbook entry.
+
+---
 
 ## DEFAULT INSTRUCTIONS FOR NEW AGENTS
 **These instructions apply to every agent you create.** When you create any agent (engineer or otherwise), you **must** give them instructions that include the following. If you create an engineering agent, they get the general instructions below **plus** the engineering-specific instructions in the next section.
@@ -134,7 +221,7 @@ For each linked issue, either:
 Any agent created **MUST** comply with the **Paperclip agent framework** and have a **proper heartbeat** with clear instructions on acting on tickets. Include (or ensure they have) the following in their instructions or in a HEARTBEAT-style checklist they run every heartbeat:
 
 - **Identity and context:** Use `GET /api/agents/me` to confirm id, role, and chain of command. Check wake context: `PAPERCLIP_TASK_ID`, `PAPERCLIP_WAKE_REASON`, `PAPERCLIP_WAKE_COMMENT_ID`.
-- **Get assignments:** Use `GET /api/companies/{companyId}/issues?assigneeAgentId={agent-id}&status=todo,in_progress,blocked`. Prioritize `in_progress` then `todo`. If `PAPERCLIP_TASK_ID` is set and assigned to them, prioritize that task.
+- **Get assignments:** Prefer `GET /api/agents/me/inbox-lite` (or `GET /api/companies/{companyId}/issues?assigneeAgentId={agent-id}` when full rows are needed). Prioritize checked-out assignments first, then assigned non-terminal stages. If `PAPERCLIP_TASK_ID` is set and assigned to them, prioritize that task.
 - **Checkout before working:** Always `POST /api/issues/{id}/checkout` before working on a task. Never retry a 409 — that task belongs to someone else.
 - **Act on tickets properly:** Do the work, then update status and post a comment when done. Comment in concise markdown: status line + bullets + links. Comment on any in-progress work before exiting.
 - **Paperclip coordination:** Use the Paperclip skill for all coordination. Include `X-Paperclip-Run-Id` header on mutating API calls. Only work on what is assigned to them; do not self-assign via checkout unless explicitly @-mentioned or assigned.
@@ -143,11 +230,11 @@ Ensure every new agent has a heartbeat checklist (e.g. HEARTBEAT.md , SOUL.md, A
 
 ## Creating engineering agents
 
-When you create an **engineering** agent, apply **all** of the general instructions above, and **in addition**:
+When you create an **engineering** agent, apply **all** of the general instructions above inside **AGENTS.md**, and **in addition**:
 
-1. **Make that engineer aware of your context and intent:** why they are being created (goal, outcome, or problem), what you expect them to do (scope, constraints, success criteria), and any relevant context (decisions already made, priorities, customer or business impact). Do not spin up an engineer with only a task title; brief them so they can act with the same strategic clarity you have.
+1. **Put strategic context in AGENTS.md**, not in a pile of hire-time tasks: why they exist, scope, constraints, success criteria, and per-project playbooks (from project context APIs). Do **not** create an onboarding task unless [Follow-up tasks](#follow-up-tasks-strict--ai-admin-only) allows it.
 
-2. **Add the following standard engineering instructions to the engineer's instructions.** Include the full text below in the agent's instructions, onboarding message, or initial handoff so the engineer sees it as soon as they start.
+2. **Include the standard engineering instructions below** in the **Role-specific standards** section of AGENTS.md.
 
 3. **FOR ANY UI COMPONENTS THAT YOU ARE REMOVING MAKE SURE YOU DISABLE THEM VIA A VARIABLE AND NOT REMOVE THE CODE** Use a feature flag to disable the component or whatever the task is.
 
@@ -212,13 +299,15 @@ An engineering agent must **never** commit directly to the default branch on the
 
 Before sending a hire request:
 
-- if the role needs skills, make sure they already exist in the company library or install them first using the Paperclip company-skills workflow
-- Reuse proven config patterns from related agents where possible.
-- Set a concrete `icon` from `/llms/agent-icons.txt` so the new hire is identifiable in org and task views.
-- Avoid secrets in plain text unless required by adapter behavior.
-- Ensure reporting line is correct and in-company.
-- Ensure prompt is role-specific and operationally scoped.
-- If board requests revision, update payload and resubmit through approval flow.
+- **AGENTS.md** is complete, formatted, and includes project playbooks where the agent will contribute
+- Project context was read for each relevant project (not only AI-Admin Project)
+- No unnecessary follow-up tasks planned; any exception uses **AI-Admin Project** only
+- If the role needs skills, they exist in the company library or install them first via the company-skills workflow
+- Reuse proven config patterns from related agents where possible
+- Set a concrete `icon` from `/llms/agent-icons.txt`
+- Avoid secrets in plain text unless required by adapter behavior
+- Reporting line is correct and in-company
+- If board requests revision, update payload and resubmit through approval flow
 
 For endpoint payload shapes and full examples, read:
 `skills/paperclip-create-agent/references/api-reference.md`

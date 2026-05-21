@@ -1062,6 +1062,32 @@ export function accessService(db: Db) {
     );
   }
 
+  async function seedIssueAssigneeGrantsForAgent(
+    companyId: string,
+    projectId: string,
+    agentId: string,
+    grantedByUserId: string | null,
+  ) {
+    if (!(await companyUsesRestrictedProjectAccess(companyId))) return false;
+    const membership = await getMembership(companyId, "agent", agentId);
+    if (!membership || membership.status !== "active") return false;
+    const now = new Date();
+    const permissionKeys: ProjectPermissionKey[] = ["project:read", "project:edit tickets"];
+    await db.insert(projectPrincipalGrants).values(
+      permissionKeys.map((permissionKey) => ({
+        companyId,
+        projectId,
+        principalType: "agent",
+        principalId: agentId,
+        permissionKey,
+        grantedByUserId,
+        createdAt: now,
+        updatedAt: now,
+      })),
+    ).onConflictDoNothing();
+    return true;
+  }
+
   async function principalHasAnyProjectPermission(
     companyId: string,
     actor: ProjectAuthActor,
@@ -1137,6 +1163,7 @@ export function accessService(db: Db) {
     listProjectPrincipalGrants,
     setProjectPrincipalGrantsForPrincipal,
     seedFullProjectGrantsForUser,
+    seedIssueAssigneeGrantsForAgent,
     principalHasAnyProjectPermission,
   };
 }

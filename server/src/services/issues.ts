@@ -260,15 +260,14 @@ async function applyProjectWorkflowAssigneeRules(
     user = null;
   }
 
-  // Apply stage defaults only after actor rules, so incompatible assignees are cleared first
-  // (e.g. human → agent_only becomes empty, then fills from defaultAssigneeAgentId when set).
-  if (transitioning && !user && !agent) {
-    if (row.defaultAssigneeUserId && actors !== "agent_only") {
-      user = row.defaultAssigneeUserId;
-      agent = null;
-    } else if (row.defaultAssigneeAgentId && actors !== "human_only") {
+  // On stage transitions, auto-handoff to default assignee unless caller explicitly provided assignees.
+  if (transitioning && patch.assigneeUserId === undefined && patch.assigneeAgentId === undefined) {
+    if (row.defaultAssigneeAgentId && actors !== "human_only") {
       agent = row.defaultAssigneeAgentId;
       user = null;
+    } else if (row.defaultAssigneeUserId && actors !== "agent_only") {
+      user = row.defaultAssigneeUserId;
+      agent = null;
     } else if (row.isHumanApproval && actors !== "agent_only") {
       const approverIds = (row.approverUserIds as string[] | null) ?? [];
       const firstApprover = approverIds.find((id) => typeof id === "string" && id.length > 0);
@@ -731,7 +730,6 @@ export function issueService(db: Db) {
       .where(
         and(
           eq(issues.id, input.issueId),
-          eq(issues.status, "in_progress"),
           eq(issues.assigneeAgentId, input.actorAgentId),
           eq(issues.checkoutRunId, input.expectedCheckoutRunId),
         ),
@@ -1249,14 +1247,18 @@ export function issueService(db: Db) {
       if (issueData.status && issueData.status !== "cancelled") {
         patch.cancelledAt = null;
       }
-      if (issueData.status && issueData.status !== "in_progress") {
+      if (issueData.status && issueData.status !== existing.status) {
         patch.checkoutRunId = null;
+        patch.executionRunId = null;
+        patch.executionLockedAt = null;
       }
       if (
         (issueData.assigneeAgentId !== undefined && issueData.assigneeAgentId !== existing.assigneeAgentId) ||
         (issueData.assigneeUserId !== undefined && issueData.assigneeUserId !== existing.assigneeUserId)
       ) {
         patch.checkoutRunId = null;
+        patch.executionRunId = null;
+        patch.executionLockedAt = null;
       }
 
       return db.transaction(async (tx) => {
@@ -1338,6 +1340,7 @@ export function issueService(db: Db) {
           companyId: issues.companyId,
           projectId: issues.projectId,
           status: issues.status,
+          startedAt: issues.startedAt,
         })
         .from(issues)
         .where(eq(issues.id, id))
@@ -1345,29 +1348,35 @@ export function issueService(db: Db) {
       if (!issueHead) throw notFound("Issue not found");
 
       if (issueHead.projectId) {
-        const inProgressCfg = await fetchProjectIssueStatusRow(
-          db,
-          issueHead.companyId,
-          issueHead.projectId,
-          "in_progress",
-        );
-        if (inProgressCfg?.allowedActors === "human_only") {
-          throw unprocessable(
-            "This project's In Progress stage is configured for human assignees only; agents cannot check out tasks.",
-          );
-        }
-        await assertIssueStatusTransitionAllowed(
+        const currentStage = await fetchProjectIssueStatusRow(
           db,
           issueHead.companyId,
           issueHead.projectId,
           issueHead.status,
-          "in_progress",
         );
+        if (!expectedStatuses.includes(issueHead.status)) {
+          throw conflict("Issue checkout conflict", {
+            issueId: id,
+            status: issueHead.status,
+            reason: "expected_status_mismatch",
+          });
+        }
+        if (currentStage?.allowedActors === "human_only") {
+          throw unprocessable(
+            "This workflow stage is configured for human assignees only; agents cannot check out tasks.",
+          );
+        }
+        if (isBoardPinnedHiddenProjectIssueStatusValue(issueHead.status)) {
+          throw unprocessable(
+            "This workflow stage does not support agent checkout. Move the task to an active execution stage first.",
+          );
+        }
       }
 
       await assertAssignableAgent(issueHead.companyId, agentId);
 
       const now = new Date();
+      const nextCheckoutStatus = issueHead.projectId ? issueHead.status : "in_progress";
       const sameRunAssigneeCondition = checkoutRunId
         ? and(
           eq(issues.assigneeAgentId, agentId),
@@ -1384,8 +1393,9 @@ export function issueService(db: Db) {
           assigneeUserId: null,
           checkoutRunId,
           executionRunId: checkoutRunId,
-          status: "in_progress",
-          startedAt: now,
+          status: nextCheckoutStatus,
+          executionLockedAt: now,
+          startedAt: issueHead.startedAt ?? now,
           updatedAt: now,
         })
         .where(
@@ -1420,7 +1430,6 @@ export function issueService(db: Db) {
 
       if (
         current.assigneeAgentId === agentId &&
-        current.status === "in_progress" &&
         current.checkoutRunId == null &&
         (current.executionRunId == null || current.executionRunId === checkoutRunId) &&
         checkoutRunId
@@ -1435,7 +1444,6 @@ export function issueService(db: Db) {
           .where(
             and(
               eq(issues.id, id),
-              eq(issues.status, "in_progress"),
               eq(issues.assigneeAgentId, agentId),
               isNull(issues.checkoutRunId),
               or(isNull(issues.executionRunId), eq(issues.executionRunId, checkoutRunId)),
@@ -1449,7 +1457,6 @@ export function issueService(db: Db) {
       if (
         checkoutRunId &&
         current.assigneeAgentId === agentId &&
-        current.status === "in_progress" &&
         current.checkoutRunId &&
         current.checkoutRunId !== checkoutRunId
       ) {
@@ -1466,10 +1473,9 @@ export function issueService(db: Db) {
         }
       }
 
-      // If this run already owns it and it's in_progress, return it (no self-409)
+      // If this run already owns it, return it (no self-409).
       if (
         current.assigneeAgentId === agentId &&
-        current.status === "in_progress" &&
         sameRunLock(current.checkoutRunId, checkoutRunId)
       ) {
         const row = await db.select().from(issues).where(eq(issues.id, id)).then((rows) => rows[0]!);
@@ -1501,8 +1507,8 @@ export function issueService(db: Db) {
       if (!current) throw notFound("Issue not found");
 
       if (
-        current.status === "in_progress" &&
         current.assigneeAgentId === actorAgentId &&
+        current.checkoutRunId !== null &&
         sameRunLock(current.checkoutRunId, actorRunId)
       ) {
         return { ...current, adoptedFromRunId: null as string | null };
@@ -1510,7 +1516,6 @@ export function issueService(db: Db) {
 
       if (
         actorRunId &&
-        current.status === "in_progress" &&
         current.assigneeAgentId === actorAgentId &&
         current.checkoutRunId &&
         current.checkoutRunId !== actorRunId
@@ -1553,7 +1558,6 @@ export function issueService(db: Db) {
       }
       if (
         actorAgentId &&
-        existing.status === "in_progress" &&
         existing.assigneeAgentId === actorAgentId &&
         existing.checkoutRunId &&
         !sameRunLock(existing.checkoutRunId, actorRunId ?? null)
@@ -1569,9 +1573,11 @@ export function issueService(db: Db) {
       const updated = await db
         .update(issues)
         .set({
-          status: "todo",
-          assigneeAgentId: null,
+          status: existing.projectId ? existing.status : "todo",
+          assigneeAgentId: existing.projectId ? existing.assigneeAgentId : null,
           checkoutRunId: null,
+          executionRunId: null,
+          executionLockedAt: null,
           updatedAt: new Date(),
         })
         .where(eq(issues.id, id))

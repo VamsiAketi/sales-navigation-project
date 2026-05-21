@@ -486,6 +486,44 @@ export type ProjectPermissionKey = (typeof PROJECT_PERMISSION_KEYS)[number];
 export const COMPANY_PROJECT_ACCESS_MODES = ["open", "restricted"] as const;
 export type CompanyProjectAccessMode = (typeof COMPANY_PROJECT_ACCESS_MODES)[number];
 
+export const PROJECT_CONTEXT_FILE_EXTRACTION_STATUSES = [
+  "pending",
+  "processing",
+  "complete",
+  "failed",
+  "skipped",
+] as const;
+export type ProjectContextFileExtractionStatus = (typeof PROJECT_CONTEXT_FILE_EXTRACTION_STATUSES)[number];
+
+export const PROJECT_CONTEXT_SNAPSHOT_KINDS = ["project_summary", "workflow_summary"] as const;
+export type ProjectContextSnapshotKind = (typeof PROJECT_CONTEXT_SNAPSHOT_KINDS)[number];
+
+export const PROJECT_MAINTENANCE_REQUEST_TYPES = ["context_summary", "dashboards", "workflow"] as const;
+export type ProjectMaintenanceRequestType = (typeof PROJECT_MAINTENANCE_REQUEST_TYPES)[number];
+
+export const PROJECT_MAINTENANCE_REQUEST_STATUSES = [
+  "queued",
+  "pending_approval",
+  "pending",
+  "in_progress",
+  "completed",
+  "failed",
+  "cancelled",
+] as const;
+export type ProjectMaintenanceRequestStatus = (typeof PROJECT_MAINTENANCE_REQUEST_STATUSES)[number];
+
+export const PROJECT_MAINTENANCE_RISK_CLASSES = ["non_destructive", "destructive"] as const;
+export type ProjectMaintenanceRiskClass = (typeof PROJECT_MAINTENANCE_RISK_CLASSES)[number];
+
+export const PROJECT_DATA_OBJECT_KINDS = ["table", "view"] as const;
+export type ProjectDataObjectKind = (typeof PROJECT_DATA_OBJECT_KINDS)[number];
+
+export const PROJECT_VIEW_WIDGET_TYPES = ["table", "kpi", "chart", "markdown"] as const;
+export type ProjectViewWidgetType = (typeof PROJECT_VIEW_WIDGET_TYPES)[number];
+
+export const PROJECT_CHANGE_SOURCES = ["human", "agent_sync", "system"] as const;
+export type ProjectChangeSource = (typeof PROJECT_CHANGE_SOURCES)[number];
+
 // ---------------------------------------------------------------------------
 // Plugin System — see doc/plugins/PLUGIN_SPEC.md for the full specification
 // ---------------------------------------------------------------------------

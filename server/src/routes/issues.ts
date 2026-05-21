@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import type { Db } from "@paperclipai/db";
-import { authUsers } from "@paperclipai/db";
-import { eq } from "drizzle-orm";
+import { authUsers, projectContextSnapshots, projects, projectViews } from "@paperclipai/db";
+import { and, desc, eq } from "drizzle-orm";
 import {
   addIssueCommentSchema,
   createIssueAttachmentMetadataSchema,
@@ -32,11 +32,16 @@ import {
   documentService,
   issueNotificationService,
   logActivity,
+  projectDataService,
   projectIssueStatusService,
   projectService,
   routineService,
   workProductService,
 } from "../services/index.js";
+import {
+  assertAgentCreationIssueOnAiAdminProject,
+  assertAgentCreationIssueUpdateAllowed,
+} from "../services/ai-admin-project.js";
 import { buildHeartbeatProjectWorkflowContext } from "../services/heartbeat-project-workflow.js";
 import { logger } from "../middleware/logger.js";
 import { forbidden, HttpError, unauthorized, unprocessable } from "../errors.js";
@@ -74,12 +79,129 @@ export function issueRoutes(db: Db, storage: StorageService) {
   const executionWorkspacesSvc = executionWorkspaceService(db);
   const workProductsSvc = workProductService(db);
   const documentsSvc = documentService(db);
+  const projectDataSvc = projectDataService(db);
   const issueNotifications = issueNotificationService(db);
   const routinesSvc = routineService(db);
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
   });
+
+  function truncateHeartbeatContextText(value: string | null | undefined, max = 2_000) {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max)}\n\n...[truncated]`;
+  }
+
+  function buildProjectDataApiGuide(
+    projectId: string,
+    dataSchemaName: string | null,
+    dataObjects: Array<{ kind: string; name: string; definition: Record<string, unknown> }>,
+  ) {
+    const tableRows = dataObjects
+      .filter((row) => row.kind === "table")
+      .map((row) => {
+        const primaryKey = row.definition.primaryKey;
+        return {
+          name: row.name,
+          primaryKey: Array.isArray(primaryKey)
+            ? primaryKey.filter((value): value is string => typeof value === "string")
+            : [],
+        };
+      });
+    const exampleTable = tableRows[0]?.name ?? "{tableName}";
+    return {
+      note:
+        "dataSchemaName is the internal PostgreSQL schema — never put it in API URLs. Use the project UUID and registered table names from this guide.",
+      dataSchemaName,
+      projectId,
+      permissionForRowWrites: "project:edit tickets",
+      permissionForSchemaWrites: "project:edit configuration",
+      routes: {
+        listObjects: `GET /api/projects/${projectId}/data/objects`,
+        query: `POST /api/projects/${projectId}/data/query`,
+        insertRows: `POST /api/projects/${projectId}/data/{tableName}/rows`,
+        updateRow: `PATCH /api/projects/${projectId}/data/{tableName}/rows`,
+        deleteRow: `DELETE /api/projects/${projectId}/data/{tableName}/rows`,
+        createTable: `POST /api/projects/${projectId}/data/tables`,
+        createView: `POST /api/projects/${projectId}/data/views`,
+      },
+      insertRowsBody: { rows: [{ "column_name": "value" }] },
+      updateRowBody: { primaryKey: { id: "row-id" }, patch: { column_name: "new value" } },
+      queryBody: { ref: { kind: "table", name: exampleTable }, limit: 50, offset: 0 },
+      tables: tableRows,
+      views: dataObjects.filter((row) => row.kind === "view").map((row) => ({ name: row.name })),
+    };
+  }
+
+  async function buildIssueProjectContext(
+    projectId: string | null,
+    projectWorkflow: ReturnType<typeof buildHeartbeatProjectWorkflowContext>,
+  ) {
+    if (!projectId) return null;
+    if (typeof (db as { select?: unknown }).select !== "function") return null;
+    if (typeof (documentsSvc as { listProjectDocuments?: unknown }).listProjectDocuments !== "function") return null;
+
+    try {
+      const [projectRow, docs, latestWorkflowSnapshot, dashboards, dataObjects] = await Promise.all([
+        db
+          .select({ dataSchemaName: projects.dataSchemaName })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .then((rows) => rows[0] ?? null),
+        documentsSvc.listProjectDocuments(projectId),
+        db
+          .select({ body: projectContextSnapshots.body })
+          .from(projectContextSnapshots)
+          .where(
+            and(
+              eq(projectContextSnapshots.projectId, projectId),
+              eq(projectContextSnapshots.kind, "workflow_summary"),
+            ),
+          )
+          .orderBy(desc(projectContextSnapshots.createdAt))
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+        db
+          .select({ id: projectViews.id })
+          .from(projectViews)
+          .where(eq(projectViews.projectId, projectId)),
+        projectDataSvc.listDataObjects(projectId).catch(() => [] as Awaited<ReturnType<typeof projectDataSvc.listDataObjects>>),
+      ]);
+
+      const summaryDoc = docs.find((doc) => doc.key === "summary") ?? null;
+      const workflowDoc = docs.find((doc) => doc.key === "workflow") ?? null;
+      const workflowSummary = workflowDoc?.body ?? latestWorkflowSnapshot?.body ?? null;
+
+      return {
+        summary: truncateHeartbeatContextText(summaryDoc?.body ?? null),
+        workflowSummary: truncateHeartbeatContextText(workflowSummary),
+        currentStagePlaybook: truncateHeartbeatContextText(projectWorkflow?.currentStage?.agentInstructions ?? null),
+        capabilityTags: projectWorkflow?.currentStage?.capabilityTags ?? [],
+        documentIndex: docs
+          .map((doc) => ({
+            key: doc.key,
+            title: doc.title ?? null,
+            updatedAt: doc.updatedAt,
+          }))
+          .sort((a, b) => a.key.localeCompare(b.key)),
+        dataSchemaName: projectRow?.dataSchemaName ?? null,
+        projectDataApi: buildProjectDataApiGuide(
+          projectId,
+          projectRow?.dataSchemaName ?? null,
+          dataObjects.map((row) => ({
+            kind: row.kind,
+            name: row.name,
+            definition: (row.definition as Record<string, unknown>) ?? {},
+          })),
+        ),
+        dashboardCount: dashboards.length,
+      };
+    } catch {
+      return null;
+    }
+  }
 
   async function resolveActorDisplayName(
     actorType: "agent" | "user" | "system",
@@ -245,7 +367,13 @@ export function issueRoutes(db: Db, storage: StorageService) {
   async function assertAgentRunCheckoutOwnership(
     req: Request,
     res: Response,
-    issue: { id: string; companyId: string; status: string; assigneeAgentId: string | null },
+    issue: {
+      id: string;
+      companyId: string;
+      status: string;
+      assigneeAgentId: string | null;
+      checkoutRunId: string | null;
+    },
   ) {
     if (req.actor.type !== "agent") return true;
     const actorAgentId = req.actor.agentId;
@@ -253,7 +381,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       res.status(403).json({ error: "Agent authentication required" });
       return false;
     }
-    if (issue.status !== "in_progress" || issue.assigneeAgentId !== actorAgentId) {
+    if (!issue.checkoutRunId || issue.assigneeAgentId !== actorAgentId) {
       return true;
     }
     const runId = requireAgentRunId(req, res);
@@ -543,6 +671,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
           )
         : Promise.resolve(null),
     ]);
+    const projectContext = await buildIssueProjectContext(issue.projectId, projectWorkflow);
 
     res.json({
       issue: {
@@ -551,6 +680,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
         title: issue.title,
         description: issue.description,
         status: issue.status,
+        ...(projectWorkflow?.statusMeaning ? { statusMeaning: projectWorkflow.statusMeaning } : {}),
         priority: issue.priority,
         projectId: issue.projectId,
         goalId: goal?.id ?? issue.goalId,
@@ -592,6 +722,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
           }
         : null,
       projectWorkflow,
+      projectContext,
       commentCursor,
       wakeComment:
         wakeComment && wakeComment.issueId === issue.id
@@ -977,6 +1108,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
     if (req.body.assigneeAgentId || req.body.assigneeUserId) {
       await assertCanAssignTasks(req, companyId);
     }
+    await assertAgentCreationIssueOnAiAdminProject(db, companyId, req.body.projectId, req.body.title);
 
     const actor = getActorInfo(req);
     const rawBody = req.body as CreateIssue;
@@ -988,6 +1120,14 @@ export function issueRoutes(db: Db, storage: StorageService) {
       createdByAgentId: actor.agentId,
       createdByUserId: actor.actorType === "user" ? actor.actorId : null,
     });
+    if (issue.assigneeAgentId && issue.projectId) {
+      await access.seedIssueAssigneeGrantsForAgent(
+        issue.companyId,
+        issue.projectId,
+        issue.assigneeAgentId,
+        actor.actorType === "user" ? actor.actorId : null,
+      );
+    }
     const assignedUserName = await resolveUserNameById(issue.assigneeUserId);
 
     await logActivity(db, {
@@ -1067,6 +1207,11 @@ export function issueRoutes(db: Db, storage: StorageService) {
       }
     }
     if (!(await assertAgentRunCheckoutOwnership(req, res, existing))) return;
+
+    await assertAgentCreationIssueUpdateAllowed(db, existing.companyId, existing, {
+      title: req.body.title,
+      projectId: req.body.projectId,
+    });
 
     const actor = getActorInfo(req);
     const actorDisplayName = await resolveActorDisplayName(actor.actorType, actor.actorId);
@@ -1289,6 +1434,15 @@ export function issueRoutes(db: Db, storage: StorageService) {
 
     /** After update(), including workflow default assignees not present in the request body. */
     const assigneeAgentIdChangedResolved = issue.assigneeAgentId !== existing.assigneeAgentId;
+    const projectChanged = issue.projectId !== existing.projectId;
+    if (issue.assigneeAgentId && issue.projectId && (assigneeAgentIdChangedResolved || projectChanged)) {
+      await access.seedIssueAssigneeGrantsForAgent(
+        issue.companyId,
+        issue.projectId,
+        issue.assigneeAgentId,
+        actor.actorType === "user" ? actor.actorId : null,
+      );
+    }
 
     // Merge all wakeups from this update into one enqueue per agent to avoid duplicate runs.
     void (async () => {

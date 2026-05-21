@@ -12,6 +12,10 @@
 - `POST /api/agents/:agentId/skills/sync`
 - `POST /api/companies/:companyId/agent-hires`
 - `POST /api/companies/:companyId/agents`
+- `GET /api/companies/:companyId/projects`
+- `GET /api/projects/:projectId/context`
+- `GET /api/agents/:agentId/instructions-bundle`
+- `PUT /api/agents/:agentId/instructions-bundle/file` (path `AGENTS.md`)
 - `GET /api/agents/:agentId/config-revisions`
 - `POST /api/agents/:agentId/config-revisions/:revisionId/rollback`
 - `POST /api/issues/:issueId/approvals`
@@ -43,7 +47,7 @@ Request body matches agent create shape:
   "adapterConfig": {
     "cwd": "/absolute/path",
     "model": "claude-sonnet-4-5-20250929",
-    "promptTemplate": "You are CTO..."
+    "promptTemplate": "# CTO — Chief Technology Officer\\n\\n## Role and mandate\\n..."
   },
   "runtimeConfig": {
     "heartbeat": {
@@ -103,3 +107,5 @@ For hire approvals:
 - All actions are logged in activity for auditability.
 - Use markdown in issue/approval comments and include links to approval, agent, and source issue.
 - After approval resolution, requester may be woken with `PAPERCLIP_APPROVAL_ID` and should reconcile linked issues.
+- AI Admin should author **AGENTS.md** before/at hire (`promptTemplate` on hire body, or `PUT .../instructions-bundle/file` after). Read `GET /api/projects/:id/context` for per-project playbooks.
+- Hire-time follow-up issues for new agents are **discouraged**; if required, use **AI-Admin Project** only (`CREATE_AGENT_ISSUE_TITLE` coordination task).

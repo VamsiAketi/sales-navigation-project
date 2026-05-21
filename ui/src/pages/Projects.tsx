@@ -8,7 +8,7 @@ import {
 } from "react";
 import { Link, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@paperclipai/shared";
+import { isAiAdminProject, type Project } from "@paperclipai/shared";
 import { projectsApi } from "../api/projects";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { agentsApi } from "../api/agents";
@@ -208,7 +208,7 @@ export function Projects() {
 
   const getCreatedByLabel = useCallback(
     (project: Project): string => {
-      if (project.name === "AI-Admin Project") {
+      if (isAiAdminProject(project)) {
         return "Board";
       }
       if (project.createdByUserId) {
