@@ -50,6 +50,7 @@ import {
   assertAiAdminProjectWorkflowMaintenanceAllowed,
 } from "../services/ai-admin-project.js";
 import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
+import { logger } from "../middleware/logger.js";
 
 export function projectRoutes(db: Db) {
   const router = Router();
@@ -995,7 +996,14 @@ export function projectRoutes(db: Db) {
 
     const project = await svc.create(companyId, insertPayload);
     await statusSvc.seedDefaults(project.id, companyId);
-    await projectContextBootstrapSvc.initializeProjectContext(project.id);
+    try {
+      await projectContextBootstrapSvc.initializeProjectContext(project.id);
+    } catch (err) {
+      logger.error(
+        { err, projectId: project.id, companyId },
+        "project context bootstrap failed after project create",
+      );
+    }
     let createdWorkspaceId: string | null = null;
     if (workspace) {
       const createdWorkspace = await svc.createWorkspace(project.id, workspace);

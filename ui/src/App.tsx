@@ -319,9 +319,9 @@ function LegacyProjectContextTabRedirect() {
 
 function UnprefixedBoardRedirect() {
   const location = useLocation();
-  const { companies, selectedCompany, loading } = useCompany();
+  const { companies, selectedCompany, selectedCompanyId, loading } = useCompany();
 
-  if (loading) {
+  if (loading || (selectedCompanyId && !selectedCompany)) {
     return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
   }
 

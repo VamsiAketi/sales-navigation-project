@@ -659,14 +659,19 @@ export function OnboardingWizard() {
         queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
       }
 
+      if (!companyPrefix) {
+        const company = await companiesApi.get(companyId);
+        companyPrefix = company.issuePrefix;
+        setCreatedCompanyPrefix(companyPrefix);
+      }
+
+      await queryClient.refetchQueries({ queryKey: queryKeys.companies.all });
+
       setSelectedCompanyId(companyId);
+      setRouteDismissed(true);
       reset();
       closeOnboarding();
-      navigate(
-        companyPrefix
-          ? `/${companyPrefix}/issues/${issueRef}`
-          : `/issues/${issueRef}`
-      );
+      navigate(`/${companyPrefix}/issues/${encodeURIComponent(issueRef)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create");
     } finally {
