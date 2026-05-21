@@ -18,6 +18,7 @@ import {
   projectWorkspaces,
 } from "@paperclipai/db";
 import { conflict, HttpError, notFound } from "../errors.js";
+import { resolveControlPlaneTenantName } from "../control-plane-tenant-name.js";
 import { logger } from "../middleware/logger.js";
 import { publishLiveEvent } from "./live-events.js";
 import { getRunLogStore, type RunLogHandle } from "./run-log-store.js";
@@ -400,6 +401,7 @@ function readModelCostCentsFromUsage(usageJson: unknown): number {
 }
 
 async function postControlPlaneCostingPayload(payload: {
+  tenantName: string;
   runId: string;
   runStartTime: string;
   runEndTime: string;
@@ -1655,6 +1657,7 @@ export function heartbeatService(db: Db) {
       if (TERMINAL_HEARTBEAT_STATUSES.has(updated.status) && previous?.status !== updated.status) {
         await walletReservations.releaseIfActive(updated.id);
         await postControlPlaneCostingPayload({
+          tenantName: resolveControlPlaneTenantName(),
           runId: updated.id,
           runStartTime: updated.startedAt ? new Date(updated.startedAt).toISOString() : "",
           runEndTime: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : "",

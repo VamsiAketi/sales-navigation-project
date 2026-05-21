@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { activityLog, companies, issues, projects } from "@paperclipai/db";
+import { resolveControlPlaneTenantName } from "../control-plane-tenant-name.js";
 import { logger } from "../middleware/logger.js";
 import { logActivity } from "./activity-log.js";
 
@@ -16,6 +17,7 @@ interface DailyTrackerProjectPayload {
 }
 
 interface DailyTrackerPayload {
+  tenantName: string;
   date: string;
   totalTasksClosedCount: number;
   projects: DailyTrackerProjectPayload[];
@@ -157,6 +159,7 @@ export function dailyTrackerService(db: Db) {
     const projectsPayload = [...grouped.values()];
     const totalTasksClosedCount = projectsPayload.reduce((sum, item) => sum + item.tasksClosedCount, 0);
     return {
+      tenantName: resolveControlPlaneTenantName(),
       date,
       totalTasksClosedCount,
       projects: projectsPayload,
