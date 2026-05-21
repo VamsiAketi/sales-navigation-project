@@ -127,10 +127,10 @@ jobs:
           --set server.extraEnv.IMAGE_TAG="${IMAGE_TAG}" \
           --set server.paperclip.instanceId="dev" \
           --set-string server.paperclip.publicUrl="${{ env.DEV_PUBLIC_URL }}" \
-          --set-string server.extraEnv.MS_TENANT_ID="${{ secrets.MS_TENANT_ID }}" \
-          --set-string server.extraEnv.MS_CLIENT_ID="${{ secrets.MS_CLIENT_ID }}" \
-          --set-string server.extraEnv.MS_CLIENT_SECRET="${{ secrets.MS_CLIENT_SECRET }}" \
-          --set-string server.extraEnv.MS_SENDER_EMAIL="${{ secrets.MS_SENDER_EMAIL }}" \
+          --set-string server.extraEnv.MS_GRAPH_TENANT_ID_EMAIL="${{ secrets.MS_GRAPH_TENANT_ID_EMAIL }}" \
+          --set-string server.extraEnv.MS_GRAPH_CLIENT_ID_EMAIL="${{ secrets.MS_GRAPH_CLIENT_ID_EMAIL }}" \
+          --set-string server.extraEnv.MS_GRAPH_CLIENT_SECRET_EMAIL="${{ secrets.MS_GRAPH_CLIENT_SECRET_EMAIL }}" \
+          --set-string server.extraEnv.MS_GRAPH_SENDER_EMAIL="${{ secrets.MS_GRAPH_SENDER_EMAIL }}" \
           --set-string server.extraEnv.CONTROL_PLANE_URL="${{ secrets.CONTROL_PLANE_URL }}" \
           --set-string server.extraEnv.INTERNAL_SECRET="${{ secrets.INTERNAL_SECRET }}" \
           --set-string server.database.externalUrl="${DATABASE_URL}" \
@@ -338,10 +338,10 @@ jobs:
       - name: Send CEO credentials email
         if: steps.capture_invite.outputs.invite_url != '' && steps.bootstrap_ceo.outcome == 'success'
         env:
-          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
-          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
-          MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
-          MS_SENDER_EMAIL: ${{ secrets.MS_SENDER_EMAIL }}
+          MS_GRAPH_TENANT_ID_EMAIL: ${{ secrets.MS_GRAPH_TENANT_ID_EMAIL }}
+          MS_GRAPH_CLIENT_ID_EMAIL: ${{ secrets.MS_GRAPH_CLIENT_ID_EMAIL }}
+          MS_GRAPH_CLIENT_SECRET_EMAIL: ${{ secrets.MS_GRAPH_CLIENT_SECRET_EMAIL }}
+          MS_GRAPH_SENDER_EMAIL: ${{ secrets.MS_GRAPH_SENDER_EMAIL }}
           CEO_NAME: ${{ env.DEFAULT_CEO_NAME }}
           CEO_EMAIL: ${{ env.DEFAULT_CEO_EMAIL }}
           USER_PASSWORD: ${{ steps.bootstrap_ceo.outputs.user_password }}
@@ -362,10 +362,10 @@ jobs:
                   raw = r.read().decode("utf-8", errors="replace")
                   return r.status, (json.loads(raw) if raw.strip() else {})
 
-          tenant = os.environ["MS_TENANT_ID"]
-          cid = os.environ["MS_CLIENT_ID"]
-          sec = os.environ["MS_CLIENT_SECRET"]
-          sender = os.environ["MS_SENDER_EMAIL"]
+          tenant = os.environ["MS_GRAPH_TENANT_ID_EMAIL"]
+          cid = os.environ["MS_GRAPH_CLIENT_ID_EMAIL"]
+          sec = os.environ["MS_GRAPH_CLIENT_SECRET_EMAIL"]
+          sender = os.environ["MS_GRAPH_SENDER_EMAIL"]
           ceo_name = os.environ["CEO_NAME"]
           ceo_email = os.environ["CEO_EMAIL"]
           user_password = os.environ["USER_PASSWORD"]

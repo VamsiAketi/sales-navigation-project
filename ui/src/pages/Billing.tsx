@@ -560,10 +560,19 @@ export function Billing() {
                   <div>
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Available</div>
                     <div className="mt-1 text-lg font-semibold tabular-nums">
-                      {formatCents(prepaidBalance.remainingCents)}
+                      {formatCents(
+                        prepaidBalance.availableCents ??
+                          (prepaidBalance.walletNetCents ?? prepaidBalance.remainingCents) -
+                            (prepaidBalance.reservedCents ?? 0),
+                      )}
                     </div>
                   </div>
                 </div>
+                {prepaidBalance.deficitCents > 0 ? (
+                  <p className="text-xs text-destructive">
+                    Wallet is {formatCents(prepaidBalance.deficitCents)} below zero after recorded spend.
+                  </p>
+                ) : null}
               </>
             ) : null}
           </CardContent>

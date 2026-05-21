@@ -17,8 +17,18 @@ interface DailyTrackerProjectPayload {
 
 interface DailyTrackerPayload {
   date: string;
+  tenantId: string;
   totalTasksClosedCount: number;
   projects: DailyTrackerProjectPayload[];
+}
+
+function resolveTenantIdFromEnv(): string {
+  return (
+    process.env.MS_GRAPH_TENANT_ID_EMAIL?.trim() ||
+    process.env.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID?.trim() ||
+    process.env.PAPERCLIP_AUTH_MICROSOFT_TENANT_ID?.trim() ||
+    ""
+  );
 }
 
 function resolveControlPlaneDailyTrackerEndpoint(): string | null {
@@ -110,6 +120,8 @@ export function dailyTrackerService(db: Db) {
   }
 
   async function buildPayload(companyId: string, date: string, startUtc: Date, endUtcExclusive: Date): Promise<DailyTrackerPayload> {
+    const tenantId = resolveTenantIdFromEnv();
+
     const closedRows = await db
       .select({
         projectId: projects.id,
@@ -158,6 +170,7 @@ export function dailyTrackerService(db: Db) {
     const totalTasksClosedCount = projectsPayload.reduce((sum, item) => sum + item.tasksClosedCount, 0);
     return {
       date,
+      tenantId,
       totalTasksClosedCount,
       projects: projectsPayload,
     };

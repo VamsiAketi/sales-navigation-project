@@ -17,7 +17,7 @@ import {
   projects,
   projectWorkspaces,
 } from "@paperclipai/db";
-import { conflict, notFound } from "../errors.js";
+import { conflict, HttpError, notFound } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { publishLiveEvent } from "./live-events.js";
 import { getRunLogStore, type RunLogHandle } from "./run-log-store.js";
@@ -26,6 +26,7 @@ import type { AdapterExecutionResult, AdapterInvocationMeta, AdapterSessionCodec
 import { createLocalAgentJwt } from "../agent-auth-jwt.js";
 import { parseObject, asBoolean, asNumber, appendWithCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
 import { costService } from "./costs.js";
+import { readWalletPaymentErrorCode } from "@paperclipai/shared";
 import { trackAgentFirstHeartbeat } from "@paperclipai/shared/telemetry";
 import { getTelemetryClient } from "../telemetry.js";
 import { companySkillService } from "./company-skills.js";
@@ -35,6 +36,7 @@ import { projectSecretService } from "./project-secrets.js";
 import { resolveDefaultAgentWorkspaceDir, resolveManagedProjectWorkspaceDir } from "../home-paths.js";
 import { summarizeHeartbeatRunResultJson } from "./heartbeat-run-summary.js";
 import { calculateModelCostCents } from "./model-pricing.js";
+import { estimateRunHoldCents, walletReservationService } from "./wallet-reservations.js";
 import {
   buildWorkspaceReadyComment,
   cleanupExecutionWorkspaceArtifacts,
@@ -402,6 +404,7 @@ async function postControlPlaneCostingPayload(payload: {
   runStartTime: string;
   runEndTime: string;
   agentId: string;
+  tenantId: string;
   modelCostCents: number;
 }) {
   const controlPlaneBaseUrl = process.env.CONTROL_PLANE_URL?.trim();
@@ -451,6 +454,15 @@ async function postControlPlaneCostingPayload(payload: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function resolveControlPlaneTenantId(): string {
+  return (
+    process.env.MS_GRAPH_TENANT_ID_EMAIL?.trim() ||
+    process.env.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID?.trim() ||
+    process.env.PAPERCLIP_AUTH_MICROSOFT_TENANT_ID?.trim() ||
+    ""
+  );
 }
 
 async function resolveLedgerScopeForRun(
@@ -978,6 +990,7 @@ export function heartbeatService(db: Db) {
     cancelWorkForScope: cancelBudgetScopeWork,
   };
   const budgets = budgetService(db, budgetHooks);
+  const walletReservations = walletReservationService(db);
 
   type RunCostTotals = {
     costCents: number;
@@ -1650,11 +1663,20 @@ export function heartbeatService(db: Db) {
       });
 
       if (TERMINAL_HEARTBEAT_STATUSES.has(updated.status) && previous?.status !== updated.status) {
+        await walletReservations.releaseIfActive(updated.id);
+        const tenantId = resolveControlPlaneTenantId();
+        if (!tenantId) {
+          logger.warn(
+            { runId: updated.id, agentId: updated.agentId },
+            "tenant id env var missing; sending empty tenantId in cost callback payload",
+          );
+        }
         await postControlPlaneCostingPayload({
           runId: updated.id,
           runStartTime: updated.startedAt ? new Date(updated.startedAt).toISOString() : "",
           runEndTime: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : "",
           agentId: updated.agentId,
+          tenantId,
           modelCostCents: readModelCostCentsFromUsage(updated.usageJson),
         });
       }
@@ -1917,6 +1939,23 @@ export function heartbeatService(db: Db) {
       return null;
     }
 
+    const estimateCents = estimateRunHoldCents(run);
+    try {
+      await walletReservations.tryReserve({
+        companyId: run.companyId,
+        heartbeatRunId: run.id,
+        estimateCents,
+      });
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 402) {
+        await cancelRunInternal(run.id, error.message, {
+          errorCode: readWalletPaymentErrorCode(error.details) ?? "wallet_payment_required",
+        });
+        return null;
+      }
+      throw error;
+    }
+
     const claimedAt = new Date();
     const claimed = await db
       .update(heartbeatRuns)
@@ -1928,7 +1967,10 @@ export function heartbeatService(db: Db) {
       .where(and(eq(heartbeatRuns.id, run.id), eq(heartbeatRuns.status, "queued")))
       .returning()
       .then((rows) => rows[0] ?? null);
-    if (!claimed) return null;
+    if (!claimed) {
+      await walletReservations.releaseIfActive(run.id);
+      return null;
+    }
 
     publishLiveEvent({
       companyId: claimed.companyId,
@@ -4003,7 +4045,11 @@ export function heartbeatService(db: Db) {
     return wakeupIds.length;
   }
 
-  async function cancelRunInternal(runId: string, reason = "Cancelled by control plane") {
+  async function cancelRunInternal(
+    runId: string,
+    reason = "Cancelled by control plane",
+    options?: { errorCode?: string },
+  ) {
     const run = await getRun(runId);
     if (!run) throw notFound("Heartbeat run not found");
     if (run.status !== "running" && run.status !== "queued") return run;
@@ -4019,10 +4065,11 @@ export function heartbeatService(db: Db) {
       }, graceMs);
     }
 
+    const errorCode = options?.errorCode ?? "cancelled";
     const cancelled = await setRunStatus(run.id, "cancelled", {
       finishedAt: new Date(),
       error: reason,
-      errorCode: "cancelled",
+      errorCode,
     });
 
     await setWakeupStatus(run.wakeupRequestId, "cancelled", {

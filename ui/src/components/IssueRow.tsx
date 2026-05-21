@@ -111,14 +111,22 @@ export function IssueRow({
       <span className="flex min-w-0 flex-1 flex-col gap-1 sm:contents">
         <span
           className={cn(
-            "line-clamp-2 text-sm sm:order-2 sm:min-w-0 sm:truncate sm:line-clamp-none",
+            "flex min-w-0 items-start gap-2 text-sm sm:order-2 sm:items-center",
             desktopTitleStyle
               ? "sm:flex-none sm:[width:var(--issue-row-title-width)] sm:[min-width:var(--issue-row-title-min-width)]"
               : "sm:flex-1",
           )}
           style={desktopTitleVars}
         >
-          {issue.title}
+          {showNewBadge ? (
+            <span
+              className={cn(NEW_ISSUE_BADGE_CLASS, "mt-0.5 shrink-0 sm:mt-0")}
+              aria-label="Newly created task"
+            >
+              New
+            </span>
+          ) : null}
+          <span className="min-w-0 flex-1 line-clamp-2 sm:truncate sm:line-clamp-none">{issue.title}</span>
         </span>
         <span className="flex items-center gap-2 sm:order-1 sm:shrink-0">
           {desktopLeadingSpacer ? (
@@ -145,11 +153,6 @@ export function IssueRow({
               </span>
             </>
           )}
-          {showNewBadge ? (
-            <span className={NEW_ISSUE_BADGE_CLASS} aria-label="Newly created task">
-              New
-            </span>
-          ) : null}
           {mobileMeta ? (
             <>
               <span className="text-xs text-muted-foreground sm:hidden" aria-hidden="true">

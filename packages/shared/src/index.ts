@@ -694,6 +694,15 @@ export {
   type UpdateUserNotificationPreferences,
 } from "./validators/user-notification-preferences.js";
 
+export {
+  WALLET_PAYMENT_ERROR_CODE,
+  WALLET_INSUFFICIENT_AVAILABLE_MESSAGE,
+  WALLET_INSUFFICIENT_AVAILABLE_TOAST,
+  walletInsufficientAvailableUserMessage,
+  readWalletPaymentErrorCode,
+  isWalletInsufficientAvailableErrorCode,
+  type WalletPaymentErrorCode,
+} from "./wallet.js";
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
 export { deriveProjectUrlKey, normalizeProjectUrlKey, hasNonAsciiContent } from "./project-url-key.js";

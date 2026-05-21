@@ -4,6 +4,7 @@ import { activityLog, agents, companies, companyWalletTransactions, costEvents, 
 import { conflict, notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 import { calculateModelCostCents } from "./model-pricing.js";
+import { hasActiveWalletReservation, settleWalletReservationInTx } from "./wallet-reservations.js";
 
 export interface CostDateRange {
   from?: Date;
@@ -37,11 +38,19 @@ async function getMonthlySpendTotal(
   }
   const [row] = await db
     .select({
-      total: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
+      total: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::bigint`,
     })
     .from(costEvents)
     .where(and(...conditions));
   return Number(row?.total ?? 0);
+}
+
+/** `spent_monthly_cents` columns are INT4; clamp aggregated totals before persisting. */
+function toPgIntColumnValue(value: number): number {
+  const n = Math.trunc(value);
+  if (n > 2_147_483_647) return 2_147_483_647;
+  if (n < -2_147_483_648) return -2_147_483_648;
+  return n;
 }
 
 export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
@@ -108,7 +117,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         await tx
           .update(agents)
           .set({
-            spentMonthlyCents: agentMonthSpend,
+            spentMonthlyCents: toPgIntColumnValue(agentMonthSpend),
             updatedAt: new Date(),
           })
           .where(eq(agents.id, eventRow.agentId));
@@ -116,17 +125,25 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         await tx
           .update(companies)
           .set({
-            spentMonthlyCents: companyMonthSpend,
+            spentMonthlyCents: toPgIntColumnValue(companyMonthSpend),
             updatedAt: new Date(),
           })
           .where(eq(companies.id, companyId));
 
-        if ((eventRow.modelCostCents ?? 0) > 0) {
+        const modelCostCents = eventRow.modelCostCents ?? 0;
+        const reservedForRun = await hasActiveWalletReservation(tx, eventRow.heartbeatRunId);
+        if (reservedForRun && eventRow.heartbeatRunId) {
+          await settleWalletReservationInTx(tx, {
+            heartbeatRunId: eventRow.heartbeatRunId,
+            actualCents: modelCostCents,
+            costEventId: eventRow.id,
+          });
+        } else if (modelCostCents > 0) {
           await tx
             .insert(companyWalletTransactions)
             .values({
               companyId,
-              amountCents: eventRow.modelCostCents,
+              amountCents: modelCostCents,
               currency: "usd",
               direction: "debit",
               sourceType: "cost_event_model_debit",
@@ -167,7 +184,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
 
       const [{ modelTotal }] = await db
         .select({
-          modelTotal: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
+          modelTotal: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::bigint`,
         })
         .from(costEvents)
         .where(and(...conditions));

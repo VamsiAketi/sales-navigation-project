@@ -6,6 +6,7 @@ import type { ActiveRunForIssue, LiveRunForIssue } from "../api/heartbeats";
 import { authApi } from "../api/auth";
 import { useCompany } from "./CompanyContext";
 import type { ToastInput } from "./ToastContext";
+import { walletCancelledRunToastInput } from "../lib/wallet-feedback";
 import { useToast } from "./ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { toCompanyRelativePath } from "../lib/company-routes";
@@ -430,8 +431,21 @@ function buildRunStatusToast(
   if (!runId || !agentId || !status || !RUN_TOAST_STATUSES.has(status)) return null;
 
   const error = readString(payload.error);
+  const errorCode = readString(payload.errorCode);
   const triggerDetail = readString(payload.triggerDetail);
   const name = nameOf(agentId) ?? `Agent ${shortId(agentId)}`;
+
+  const walletToast = walletCancelledRunToastInput({
+    errorCode,
+  });
+  if (walletToast && status === "cancelled") {
+    return {
+      ...walletToast,
+      action: { label: "View run", href: `/agents/${agentId}/runs/${runId}` },
+      dedupeKey: `run-status:${runId}:${status}:wallet`,
+    };
+  }
+
   const tone = status === "succeeded" ? "success" : status === "cancelled" ? "warn" : "error";
   const statusLabel =
     status === "succeeded" ? "succeeded"

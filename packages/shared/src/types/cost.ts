@@ -39,6 +39,12 @@ export interface BillingPrepaidBalance {
   usedModelCents: number;
   remainingCents: number;
   deficitCents: number;
+  /** Ledger net (credits minus debits), may be negative. */
+  walletNetCents: number;
+  /** Sum of active per-run wallet holds (`company_wallet_reservations`). */
+  reservedCents: number;
+  /** `walletNetCents` minus `reservedCents` — capacity for new agent runs. */
+  availableCents: number;
 }
 
 export interface StripeBillingStatus {
