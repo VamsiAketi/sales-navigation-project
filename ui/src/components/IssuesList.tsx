@@ -1755,21 +1755,19 @@ export function IssuesList({
 
       {!forceListView && viewState.viewMode === "board" ? (
         <div className="relative min-h-[420px]">
-          <div className={cn(showBoardNoTasksOverlay ? "pointer-events-none select-none" : undefined)}>
-            <KanbanBoard
-              issues={boardIssues}
-              agents={agents}
-              members={humanMembers}
-              liveIssueIds={liveIssueIds}
-              onUpdateIssue={onUpdateIssue}
-              projectStatuses={projectStatuses}
-              issueLinkState={issueLinkState}
-              highlightIssueId={highlightIssueId}
-              newBadgeIssueId={newBadgeIssueId}
-            />
-          </div>
+          <KanbanBoard
+            issues={boardIssues}
+            agents={agents}
+            members={humanMembers}
+            liveIssueIds={liveIssueIds}
+            onUpdateIssue={onUpdateIssue}
+            projectStatuses={projectStatuses}
+            issueLinkState={issueLinkState}
+            highlightIssueId={highlightIssueId}
+            newBadgeIssueId={newBadgeIssueId}
+          />
           {showBoardNoTasksOverlay ? (
-            <div className="absolute inset-0 z-20 flex items-center justify-center px-4">
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4">
               <div className="w-full max-w-sm rounded-lg border border-border/80 bg-card/95 p-5 text-center shadow-sm backdrop-blur">
                 <p className="text-sm font-medium text-foreground">No task in this project</p>
               </div>

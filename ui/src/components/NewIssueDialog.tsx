@@ -534,6 +534,7 @@ export function NewIssueDialog() {
       if (issue.projectId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(issue.projectId) });
       }
+      queryClient.invalidateQueries({ queryKey: ["projects", "detail"] });
       if (draftTimer.current) clearTimeout(draftTimer.current);
       const prefix = (companies.find((c) => c.id === companyId)?.issuePrefix ?? "").trim();
       const issueRef = issue.identifier ?? issue.id;

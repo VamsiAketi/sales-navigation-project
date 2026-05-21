@@ -18,6 +18,7 @@ import {
   projectWorkspaces,
 } from "@paperclipai/db";
 import { conflict, HttpError, notFound } from "../errors.js";
+import { resolveControlPlaneTenantName } from "../control-plane-tenant-name.js";
 import { logger } from "../middleware/logger.js";
 import { publishLiveEvent } from "./live-events.js";
 import { getRunLogStore, type RunLogHandle } from "./run-log-store.js";
@@ -400,11 +401,11 @@ function readModelCostCentsFromUsage(usageJson: unknown): number {
 }
 
 async function postControlPlaneCostingPayload(payload: {
+  tenantName: string;
   runId: string;
   runStartTime: string;
   runEndTime: string;
   agentId: string;
-  tenantId: string;
   modelCostCents: number;
 }) {
   const controlPlaneBaseUrl = process.env.CONTROL_PLANE_URL?.trim();
@@ -454,15 +455,6 @@ async function postControlPlaneCostingPayload(payload: {
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function resolveControlPlaneTenantId(): string {
-  return (
-    process.env.MS_GRAPH_TENANT_ID_EMAIL?.trim() ||
-    process.env.AI_HARNESS_AUTH_MICROSOFT_TENANT_ID?.trim() ||
-    process.env.PAPERCLIP_AUTH_MICROSOFT_TENANT_ID?.trim() ||
-    ""
-  );
 }
 
 async function resolveLedgerScopeForRun(
@@ -1664,19 +1656,12 @@ export function heartbeatService(db: Db) {
 
       if (TERMINAL_HEARTBEAT_STATUSES.has(updated.status) && previous?.status !== updated.status) {
         await walletReservations.releaseIfActive(updated.id);
-        const tenantId = resolveControlPlaneTenantId();
-        if (!tenantId) {
-          logger.warn(
-            { runId: updated.id, agentId: updated.agentId },
-            "tenant id env var missing; sending empty tenantId in cost callback payload",
-          );
-        }
         await postControlPlaneCostingPayload({
+          tenantName: resolveControlPlaneTenantName(),
           runId: updated.id,
           runStartTime: updated.startedAt ? new Date(updated.startedAt).toISOString() : "",
           runEndTime: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : "",
           agentId: updated.agentId,
-          tenantId,
           modelCostCents: readModelCostCentsFromUsage(updated.usageJson),
         });
       }

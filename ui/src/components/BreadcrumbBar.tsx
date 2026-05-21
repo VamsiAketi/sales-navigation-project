@@ -27,9 +27,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
+import type { UserNotification } from "../api/notifications";
 import { queryKeys } from "../lib/queryKeys";
+import {
+  buildAgentsByCompanyId,
+  formatNotificationActorText,
+  formatNotificationTitle,
+} from "../lib/notificationDisplay";
+import { cn } from "@/lib/utils";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
 import { notificationsApi } from "../api/notifications";
@@ -56,11 +64,44 @@ function NotificationsBell() {
     enabled: !!session?.user?.id,
     refetchInterval: 15_000,
   });
+
+  const notificationCompanyIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          (notifications ?? [])
+            .map((item) => item.companyId)
+            .filter((companyId): companyId is string => Boolean(companyId)),
+        ),
+      ],
+    [notifications],
+  );
+
+  const agentListQueries = useQueries({
+    queries: notificationCompanyIds.map((companyId) => ({
+      queryKey: queryKeys.agents.list(companyId),
+      queryFn: () => agentsApi.list(companyId),
+      staleTime: 60_000,
+    })),
+  });
+
+  const agentsByCompanyId = useMemo(
+    () =>
+      buildAgentsByCompanyId(
+        notificationCompanyIds,
+        agentListQueries.map((query) => query.data),
+      ),
+    [notificationCompanyIds, agentListQueries],
+  );
+
   if (!session?.user) return null;
   const unreadCount = unread?.count ?? 0;
 
-  const toPreviewText = (message: string) => {
-    const lines = message
+  const formatNotificationText = (item: UserNotification, text: string) =>
+    formatNotificationActorText(text, item.companyId, agentsByCompanyId);
+
+  const toPreviewText = (item: UserNotification) => {
+    const lines = formatNotificationText(item, item.message)
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
@@ -132,21 +173,47 @@ function NotificationsBell() {
           {(notifications ?? []).length === 0 ? (
             <div className="px-3 py-3 text-sm text-muted-foreground">No notifications.</div>
           ) : (
-            (notifications ?? []).map((item) => (
-              <DropdownMenuItem
-                key={item.id}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void handleNotificationSelect(item);
-                }}
-                className="cursor-pointer items-start py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-medium">{item.title}</p>
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{toPreviewText(item.message)}</p>
-                </div>
-              </DropdownMenuItem>
-            ))
+            (notifications ?? []).map((item) => {
+              const isUnread = !item.readAt;
+              return (
+                <DropdownMenuItem
+                  key={item.id}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void handleNotificationSelect(item);
+                  }}
+                  className={cn(
+                    "cursor-pointer items-start gap-2 py-2",
+                    isUnread && "bg-accent/50 focus:bg-accent/60 data-[highlighted]:bg-accent/60",
+                  )}
+                >
+                  {isUnread ? (
+                    <span
+                      className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600 dark:bg-blue-400"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={cn(
+                        "truncate text-xs font-medium",
+                        isUnread && "font-semibold text-foreground",
+                      )}
+                    >
+                      {formatNotificationText(item, formatNotificationTitle(item))}
+                    </p>
+                    <p
+                      className={cn(
+                        "mt-1 line-clamp-2 text-xs text-muted-foreground",
+                        isUnread && "text-foreground/80",
+                      )}
+                    >
+                      {toPreviewText(item)}
+                    </p>
+                  </div>
+                </DropdownMenuItem>
+              );
+            })
           )}
         </div>
       </DropdownMenuContent>

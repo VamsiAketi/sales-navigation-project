@@ -81,9 +81,17 @@ export function issueRoutes(db: Db, storage: StorageService) {
     limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
   });
 
-  function actorLabel(actorType: "agent" | "user" | "system", actorId: string) {
-    if (actorType === "agent") return `Agent ${actorId}`;
-    if (actorType === "user") return "A user";
+  async function resolveActorDisplayName(
+    actorType: "agent" | "user" | "system",
+    actorId: string | null | undefined,
+  ): Promise<string> {
+    if (actorType === "user" && actorId) {
+      return (await resolveUserNameById(actorId))?.trim() || "A user";
+    }
+    if (actorType === "agent" && actorId) {
+      const agent = await agentsSvc.getById(actorId);
+      return agent?.name?.trim() || "An agent";
+    }
     return "System";
   }
 
@@ -1014,7 +1022,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
         payload: {
           issueIdentifier: issue.identifier,
           issueTitle: issue.title,
-          actorLabel: actor.actorType === "user" ? (await resolveUserNameById(actor.actorId)) : actorLabel(actor.actorType, actor.actorId),
+          actorLabel: await resolveActorDisplayName(actor.actorType, actor.actorId),
           assignedUserId: issue.assigneeUserId,
           assignedUserName,
         },
@@ -1061,10 +1069,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
     if (!(await assertAgentRunCheckoutOwnership(req, res, existing))) return;
 
     const actor = getActorInfo(req);
-    const actorDisplayName =
-      actor.actorType === "user"
-        ? await resolveUserNameById(actor.actorId)
-        : actorLabel(actor.actorType, actor.actorId);
+    const actorDisplayName = await resolveActorDisplayName(actor.actorType, actor.actorId);
     const isClosed = existing.status === "done" || existing.status === "cancelled";
     const {
       comment: commentBody,
@@ -1689,10 +1694,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       payload: {
         issueIdentifier: currentIssue.identifier,
         issueTitle: currentIssue.title,
-        actorLabel:
-          actor.actorType === "user"
-            ? await resolveUserNameById(actor.actorId)
-            : actorLabel(actor.actorType, actor.actorId),
+        actorLabel: await resolveActorDisplayName(actor.actorType, actor.actorId),
         commentSnippet: comment.body.slice(0, 120),
       },
     });
@@ -1710,10 +1712,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
           payload: {
             issueIdentifier: currentIssue.identifier,
             issueTitle: currentIssue.title,
-            actorLabel:
-              actor.actorType === "user"
-                ? await resolveUserNameById(actor.actorId)
-                : actorLabel(actor.actorType, actor.actorId),
+            actorLabel: await resolveActorDisplayName(actor.actorType, actor.actorId),
             commentSnippet: comment.body.slice(0, 120),
           },
         });
