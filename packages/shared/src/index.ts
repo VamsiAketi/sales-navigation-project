@@ -733,17 +733,6 @@ export {
 } from "./project-issue-workflow.js";
 
 export {
-  projectIssueStatusDisplayLabel,
-  projectIssueStatusRequiresAssignee,
-  assigneeRequiredForStatusMessage,
-  assigneeRequiredToEnterStatusMessage,
-  cannotUnassignInStatusMessage,
-  workflowStatusHumanOnlyAssigneeMessage,
-  workflowStatusAgentOnlyAssigneeMessage,
-  workflowTransitionNotAllowedMessage,
-} from "./project-issue-workflow-messages.js";
-
-export {
   extractRoutineVariableNames,
   interpolateRoutineTemplate,
   isValidRoutineVariableName,
