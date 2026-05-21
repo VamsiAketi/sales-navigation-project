@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { BILLING_TYPES } from "../constants.js";
+import {
+  WALLET_PREPAID_TOPUP_MAX_CENTS,
+  WALLET_PREPAID_TOPUP_MIN_CENTS,
+} from "../wallet.js";
 
 export const createCostEventSchema = z.object({
   idempotencyKey: z.string().min(1).max(200).optional(),
@@ -34,7 +38,7 @@ export const updateBudgetSchema = z.object({
 export type UpdateBudget = z.infer<typeof updateBudgetSchema>;
 
 export const createStripeCheckoutSessionSchema = z.object({
-  amountCents: z.number().int().min(50).max(50_000_00),
+  amountCents: z.number().int().min(WALLET_PREPAID_TOPUP_MIN_CENTS).max(WALLET_PREPAID_TOPUP_MAX_CENTS),
   idempotencyKey: z.string().min(1).max(200).optional(),
   returnPath: z.string().startsWith("/").optional(),
 });
