@@ -53,16 +53,17 @@ export type IssueWorkflowInvocationPromptInput = {
 };
 
 export function buildIssueWorkflowInvocationPrompt(input: IssueWorkflowInvocationPromptInput): string {
-  const stage = input.projectWorkflow?.currentStage;
-  if (!stage) return "";
+  const workflow = input.projectWorkflow;
+  const stage = workflow?.currentStage;
+  if (!workflow || !stage) return "";
 
   const statusMeaning =
-    input.projectWorkflow.statusMeaning ??
+    workflow.statusMeaning ??
     formatProjectWorkflowStatusMeaning(stage.name, stage.value);
 
   const allowedNext =
-    input.projectWorkflow.allowedNextStages.length > 0
-      ? input.projectWorkflow.allowedNextStages.map((s) => `${s.name} (\`${s.value}\`)`).join(", ")
+    workflow.allowedNextStages.length > 0
+      ? workflow.allowedNextStages.map((s) => `${s.name} (\`${s.value}\`)`).join(", ")
       : stage.allowedNextStatusValues.map((v) => `\`${v}\``).join(", ");
 
   const stageSection = input.workflowSummary
