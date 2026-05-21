@@ -26,9 +26,13 @@ export type WalletAvailability = {
 
 type DbExecutor = Pick<Db, "select" | "insert" | "update" | "execute" | "transaction">;
 
+/** TEMP(testing): fixed $5 hold per run until real run-cost estimation is wired. Remove before production. */
+export const TEMP_RUN_HOLD_CENTS_FOR_TESTING = 500;
+
 /** Placeholder until run-cost estimation is wired; inject non-zero holds via tryReserve estimateCents. */
 export function estimateRunHoldCents(_run?: typeof heartbeatRuns.$inferSelect): number {
-  return 0;
+  void _run;
+  return TEMP_RUN_HOLD_CENTS_FOR_TESTING;
 }
 
 async function lockCompanyWallet(tx: DbExecutor, companyId: string) {
