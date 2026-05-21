@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS "project_view_widgets" (
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "project_view_widgets_company_view_position_idx" ON "project_view_widgets" ("company_id", "project_view_id", "position");
 --> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "project_view_widgets_company_view_title_uq" ON "project_view_widgets" ("company_id", "project_view_id", "normalized_title");
+CREATE UNIQUE INDEX IF NOT EXISTS "project_view_widgets_company_view_title_uq" ON "project_view_widgets" ("company_id", "project_view_id", "normalized_title") WHERE "normalized_title" IS NOT NULL;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "project_view_widgets_company_project_created_idx" ON "project_view_widgets" ("company_id", "project_id", "created_at");
 --> statement-breakpoint

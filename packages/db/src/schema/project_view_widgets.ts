@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, uuid, text, jsonb, integer, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { projects } from "./projects.js";
@@ -26,11 +27,9 @@ export const projectViewWidgets = pgTable(
       table.projectViewId,
       table.position,
     ),
-    companyViewTitleUq: uniqueIndex("project_view_widgets_company_view_title_uq").on(
-      table.companyId,
-      table.projectViewId,
-      table.normalizedTitle,
-    ),
+    companyViewTitleUq: uniqueIndex("project_view_widgets_company_view_title_uq")
+      .on(table.companyId, table.projectViewId, table.normalizedTitle)
+      .where(sql`${table.normalizedTitle} is not null`),
     companyProjectCreatedIdx: index("project_view_widgets_company_project_created_idx").on(
       table.companyId,
       table.projectId,

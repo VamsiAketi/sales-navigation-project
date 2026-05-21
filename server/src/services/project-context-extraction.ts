@@ -98,24 +98,23 @@ async function extractTextFromBuffer(input: {
   if (isPdfContent(contentType, extension)) {
     const mod = await import("pdf-parse");
     const parser = new mod.PDFParse({ data: input.buffer });
-    let parsed: Awaited<ReturnType<typeof parser.getText>>;
     try {
-      parsed = await parser.getText();
+      const parsed = await parser.getText();
+      const extractedText = (parsed.text ?? "").trim();
+      const chunk = chunkText(extractedText);
+      return {
+        status: "complete",
+        extractedText,
+        details: {
+          strategy: "pdf-parse",
+          pages: parsed.pages?.length ?? null,
+          extractedBytes: Buffer.byteLength(extractedText, "utf8"),
+          ...chunk,
+        },
+      };
     } finally {
       await parser.destroy();
     }
-    const extractedText = (parsed.text ?? "").trim();
-    const chunk = chunkText(extractedText);
-    return {
-      status: "complete",
-      extractedText,
-      details: {
-        strategy: "pdf-parse",
-        pages: parsed.pages?.length ?? null,
-        extractedBytes: Buffer.byteLength(extractedText, "utf8"),
-        ...chunk,
-      },
-    };
   }
 
   if (isDocxContent(contentType, extension)) {
