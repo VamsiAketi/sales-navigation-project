@@ -1,63 +1,25 @@
 #!/bin/sh
-# Install Cursor Agent CLI and place executables on a global PATH (for Paperclip adapters).
+# Install Cursor Agent CLI using the official installer (same as cursor.com/docs).
+# Leaves the native layout under $HOME/.local/bin and $HOME/.local/share/cursor-agent.
+# Do not copy or relocate the wrapper — it must stay beside its version directory.
 set -eu
 
-echo "Installing Cursor Agent CLI..."
-export HOME="${HOME:-/root}"
+export HOME="${PAPERCLIP_HOME:-${HOME:-/root}}"
+mkdir -p "$HOME"
+
+echo "Installing Cursor Agent CLI (HOME=${HOME})..."
 curl -fsSL https://cursor.com/install | bash
 
-find_cursor_agent_binary() {
-  for candidate in \
-    /root/.local/bin/agent \
-    /root/.local/bin/cursor-agent \
-    "${HOME:-/root}/.local/bin/agent" \
-    "${HOME:-/root}/.local/bin/cursor-agent" \
-    /paperclip/.local/bin/agent \
-    /paperclip/.local/bin/cursor-agent \
-    /home/node/.local/bin/agent \
-    /home/node/.local/bin/cursor-agent
-  do
-    if [ -x "$candidate" ]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done
-  return 1
-}
+export PATH="${HOME}/.local/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}"
 
-AGENT_BIN="$(find_cursor_agent_binary)" || {
-  echo "ERROR: Cursor Agent CLI install finished but no executable was found." >&2
-  echo "Checked ~/.local/bin under root, node, and /paperclip." >&2
-  exit 1
-}
-
-echo "Found Cursor Agent CLI at: ${AGENT_BIN}"
-install -m 755 "$AGENT_BIN" /usr/local/bin/agent
-
-if [ "$(basename "$AGENT_BIN")" = "cursor-agent" ]; then
-  ln -sf agent /usr/local/bin/cursor-agent
-else
-  OTHER="${AGENT_BIN%/*}/cursor-agent"
-  if [ -x "$OTHER" ]; then
-    install -m 755 "$OTHER" /usr/local/bin/cursor-agent
-  else
-    ln -sf agent /usr/local/bin/cursor-agent
+for cmd in agent cursor-agent; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    resolved="$(command -v "$cmd")"
+    version="$("$cmd" --version 2>/dev/null || true)"
+    echo "Cursor Agent CLI ready: ${resolved}${version:+ (${version})}}"
+    exit 0
   fi
-fi
+done
 
-export PATH="/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
-if ! test -x /usr/local/bin/agent; then
-  echo "ERROR: /usr/local/bin/agent is missing or not executable." >&2
-  exit 1
-fi
-
-if ! command -v agent >/dev/null 2>&1; then
-  echo "ERROR: agent is not on PATH after install." >&2
-  exit 1
-fi
-
-echo "Cursor Agent CLI ready:"
-command -v agent
-command -v cursor-agent || true
-ls -la /usr/local/bin/agent /usr/local/bin/cursor-agent
+echo "ERROR: Cursor install finished but agent is not on PATH (${HOME}/.local/bin)." >&2
+exit 1

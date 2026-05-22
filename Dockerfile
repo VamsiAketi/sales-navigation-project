@@ -92,6 +92,12 @@ RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/cod
   && mkdir -p /paperclip \
   && chown node:node /paperclip
 
+# Cursor Agent CLI (official installer; same layout as curl cursor.com/install | bash).
+COPY scripts/install-cursor-agent-cli.sh /tmp/install-cursor-agent-cli.sh
+RUN chmod +x /tmp/install-cursor-agent-cli.sh \
+  && PAPERCLIP_HOME=/paperclip /tmp/install-cursor-agent-cli.sh \
+  && rm /tmp/install-cursor-agent-cli.sh
+
 # Preinstall Chromium so deployed environments do not need runtime installs/root.
 RUN PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright pnpm exec playwright install chromium
 
@@ -100,6 +106,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production \
   HOME=/paperclip \
+  PATH=/paperclip/.local/bin:/usr/local/bin:/usr/bin:/bin \
   HOST=0.0.0.0 \
   PORT=3100 \
   SERVE_UI=true \

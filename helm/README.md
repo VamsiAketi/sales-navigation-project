@@ -11,7 +11,9 @@ Deploy Paperclip (control plane for AI-agent companies) on Kubernetes with Helm.
 
 ## Build and Push Image
 
-The chart expects an image built from the project Dockerfile (includes git and @openai/codex):
+The chart expects an image built from the project Dockerfile (includes git, @openai/codex, and Cursor Agent CLI via the official `curl cursor.com/install` installer).
+
+**Cursor local adapter:** set `CURSOR_API_KEY` in `server.extraEnv` (or agent env).
 
 ```sh
 # From repo root
