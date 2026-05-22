@@ -33,7 +33,6 @@ import { SwipeToArchive } from "../components/SwipeToArchive";
 
 import { StatusIcon } from "../components/StatusIcon";
 import { cn } from "../lib/utils";
-import { ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS } from "../lib/issue-list-layout";
 import { StatusBadge } from "../components/StatusBadge";
 import { Identity } from "../components/Identity";
 import { approvalLabel, defaultTypeIcon, typeIcon } from "../components/ApprovalPayload";
@@ -71,18 +70,25 @@ import {
 import {
   Inbox as InboxIcon,
   AlertTriangle,
-  XCircle,
   X,
   RotateCcw,
   UserPlus,
+  User,
   Columns3,
+  ChevronRight,
   Search,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { PageTabBar } from "../components/PageTabBar";
 import type { Approval, HeartbeatRun, Issue, JoinRequest } from "@paperclipai/shared";
 import {
   ACTIONABLE_APPROVAL_STATUSES,
+  DEFAULT_INBOX_AGENT_RUN_COLUMNS,
   DEFAULT_INBOX_ISSUE_COLUMNS,
   getAvailableInboxIssueColumns,
   getApprovalsForTab,
@@ -91,19 +97,42 @@ import {
   getLatestFailedRunsByAgent,
   getRecentTouchedIssues,
   isMineInboxTab,
+  inboxAgentRunColumns,
+  loadInboxAgentRunColumns,
   loadInboxIssueColumns,
+  normalizeInboxAgentRunColumns,
   normalizeInboxIssueColumns,
   resolveIssueWorkspaceName,
   resolveInboxSelectionIndex,
+  saveInboxAgentRunColumns,
   saveInboxIssueColumns,
   InboxApprovalFilter,
+  type InboxAgentRunColumn,
   type InboxIssueColumn,
+  loadInboxSectionsOpen,
+  saveInboxSectionsOpen,
+  ATTENTION_QUEUE_PAGE_LABEL,
   saveLastInboxTab,
   shouldShowInboxSection,
+  type InboxSectionId,
+  type InboxSectionsOpenState,
   type InboxTab,
   type InboxWorkItem,
 } from "../lib/inbox";
 import { useDismissedInboxItems, useReadInboxItems } from "../hooks/useInboxBadge";
+import {
+  buildInboxAgentRunTableGridColumns,
+  buildInboxGovernanceTableGridColumns,
+  buildInboxIssueTableGridColumns,
+  inboxTrailingColumnWidth,
+  INBOX_TABLE_CELL_META,
+  INBOX_TABLE_CELL_MUTED,
+  INBOX_TABLE_HEADER_CLASS,
+  INBOX_AGENT_RUN_STATUS_CELL_CLASS,
+  INBOX_AGENT_RUN_TABLE_ROW_CLASS,
+  INBOX_AGENT_RUN_TRAILING_CELL_CLASS,
+  ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
+} from "../lib/inbox-table-layout";
 
 type InboxCategoryFilter =
   | "everything"
@@ -128,6 +157,26 @@ function runFailureMessage(run: HeartbeatRun): string {
 
 function approvalStatusLabel(status: Approval["status"]): string {
   return status.replaceAll("_", " ");
+}
+
+function formatRunInboxWhen(run: HeartbeatRun): string {
+  return timeAgo(run.finishedAt ?? run.createdAt);
+}
+
+function formatRunInboxDetails(run: HeartbeatRun): ReactNode {
+  if (run.status === "succeeded") {
+    return <span>Completed</span>;
+  }
+  if (run.status === "running") {
+    return <span>In progress</span>;
+  }
+  if (run.status === "queued") {
+    return <span>Queued</span>;
+  }
+  if (run.status === "cancelled") {
+    return <span>Cancelled</span>;
+  }
+  return <span className="truncate">{runFailureMessage(run)}</span>;
 }
 
 function readIssueIdFromRun(run: HeartbeatRun): string | null {
@@ -155,6 +204,17 @@ const inboxIssueColumnLabels: Record<InboxIssueColumn, string> = {
   labels: "Tags",
   updated: "Last updated",
 };
+const inboxAgentRunColumnLabels: Record<InboxAgentRunColumn, string> = {
+  status: "Status",
+  details: "Details",
+  last_run: "Last run",
+};
+const inboxAgentRunColumnDescriptions: Record<InboxAgentRunColumn, string> = {
+  status: "Run outcome chip beside the unread control.",
+  details: "Error summary or run state text.",
+  last_run: "Relative time since the run finished or started.",
+};
+
 const inboxIssueColumnDescriptions: Record<InboxIssueColumn, string> = {
   status: "Issue state chip on the left edge.",
   id: "Ticket identifier like PAP-1009.",
@@ -164,6 +224,27 @@ const inboxIssueColumnDescriptions: Record<InboxIssueColumn, string> = {
   labels: "Issue labels and tags.",
   updated: "Latest visible activity time.",
 };
+
+function InboxLiveIndicator({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5",
+        !compact && "sm:gap-1.5 sm:px-2",
+      )}
+    >
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+      </span>
+      {!compact ? (
+        <span className="hidden text-[11px] font-medium text-blue-600 sm:inline dark:text-blue-400">
+          Live
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 export function InboxIssueMetaLeading({
   issue,
@@ -178,49 +259,27 @@ export function InboxIssueMetaLeading({
 }) {
   return (
     <>
-      {showStatus ? (
+      {showStatus || (isLive && !showIdentifier) ? (
         <span
           className={cn(
-            "hidden items-center justify-start sm:inline-flex",
+            "hidden items-center gap-1.5 sm:inline-flex",
             ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
           )}
         >
-          <span className="min-w-0 max-w-full">
-            <StatusIcon status={issue.status} />
-          </span>
+          {showStatus ? (
+            <span className="min-w-0 max-w-full">
+              <StatusIcon status={issue.status} />
+            </span>
+          ) : null}
+          {isLive ? <InboxLiveIndicator /> : null}
         </span>
       ) : null}
       {showIdentifier ? (
-        <span className="shrink-0 font-mono text-xs text-muted-foreground">
-          {issue.identifier ?? issue.id.slice(0, 8)}
+        <span className="inline-flex min-w-0 items-center gap-1.5 font-mono text-xs tabular-nums text-muted-foreground">
+          <span className="truncate">{issue.identifier ?? issue.id.slice(0, 8)}</span>
+          {isLive && !showStatus ? <InboxLiveIndicator compact /> : null}
         </span>
       ) : null}
-      {isLive && (
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 sm:gap-1.5 sm:px-2",
-            "bg-blue-500/10",
-          )}
-        >
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
-            <span
-              className={cn(
-                "relative inline-flex h-2 w-2 rounded-full",
-                "bg-blue-500",
-              )}
-            />
-          </span>
-          <span
-            className={cn(
-              "hidden text-[11px] font-medium sm:inline",
-              "text-blue-600 dark:text-blue-400",
-            )}
-          >
-            Live
-          </span>
-        </span>
-      )}
     </>
   );
 }
@@ -229,16 +288,247 @@ function issueActivityText(issue: Issue): string {
   return `Updated ${timeAgo(issue.lastActivityAt ?? issue.lastExternalCommentAt ?? issue.updatedAt)}`;
 }
 
-function issueTrailingGridTemplate(columns: InboxIssueColumn[]): string {
-  return columns
-    .map((column) => {
-      if (column === "assignee") return "minmax(7.5rem, 9.5rem)";
-      if (column === "project") return "minmax(6.5rem, 8.5rem)";
-      if (column === "workspace") return "minmax(9rem, 12rem)";
-      if (column === "labels") return "minmax(8rem, 10rem)";
-      return "minmax(6rem, 7rem)";
-    })
-    .join(" ");
+function InboxUnreadControl({
+  unreadState,
+  onMarkRead,
+  onArchive,
+  archiveDisabled,
+  selected = false,
+}: {
+  unreadState: NonIssueUnreadState;
+  onMarkRead?: () => void;
+  onArchive?: () => void;
+  archiveDisabled?: boolean;
+  selected?: boolean;
+}) {
+  const showUnreadDot = unreadState === "visible" || unreadState === "fading";
+  return (
+    <span className="flex items-center justify-center">
+      {showUnreadDot ? (
+        <button
+          type="button"
+          onClick={onMarkRead}
+          className={cn(
+            "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
+            selected ? "hover:bg-muted/80" : "hover:bg-blue-500/20",
+          )}
+          aria-label="Mark as read"
+        >
+          <span
+            className={cn(
+              "block h-2 w-2 rounded-full transition-opacity duration-300",
+              selected ? "bg-muted-foreground/70" : "bg-blue-600 dark:bg-blue-400",
+              unreadState === "fading" ? "opacity-0" : "opacity-100",
+            )}
+          />
+        </button>
+      ) : onArchive ? (
+        <button
+          type="button"
+          onClick={onArchive}
+          disabled={archiveDisabled}
+          className="inline-flex h-4 w-4 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
+          aria-label="Dismiss from inbox"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      ) : (
+        <span className="inline-flex h-4 w-4" aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
+function InboxTableColumnsMenu<Column extends string>({
+  menuTitle,
+  menuDescription,
+  availableColumns,
+  columnLabels,
+  columnDescriptions,
+  visibleColumnSet,
+  onToggleColumn,
+  onResetDefaults,
+  resetHint,
+}: {
+  menuTitle: string;
+  menuDescription: string;
+  availableColumns: Column[];
+  columnLabels: Record<Column, string>;
+  columnDescriptions: Record<Column, string>;
+  visibleColumnSet: Set<Column>;
+  onToggleColumn: (column: Column, enabled: boolean) => void;
+  onResetDefaults: () => void;
+  resetHint: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <Columns3 className="mr-1 h-3.5 w-3.5" />
+          Show / hide columns
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-[300px] rounded-xl border-border/70 p-1.5 shadow-xl shadow-black/10"
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <DropdownMenuLabel className="px-2 pb-1 pt-1.5">
+          <div className="space-y-1">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              {menuTitle}
+            </div>
+            <div className="text-sm font-medium text-foreground">{menuDescription}</div>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {availableColumns.map((column) => (
+          <DropdownMenuCheckboxItem
+            key={column}
+            checked={visibleColumnSet.has(column)}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={(checked) => onToggleColumn(column, checked === true)}
+            className="items-start rounded-lg px-3 py-2.5 pl-8"
+          >
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-foreground">{columnLabels[column]}</span>
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                {columnDescriptions[column]}
+              </span>
+            </span>
+          </DropdownMenuCheckboxItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onResetDefaults} className="rounded-lg px-3 py-2 text-sm">
+          Reset defaults
+          <span className="ml-auto text-xs text-muted-foreground">{resetHint}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function InboxCollapsibleSection({
+  sectionId,
+  title,
+  count,
+  open,
+  onOpenChange,
+  headerActions,
+  children,
+}: {
+  sectionId: InboxSectionId;
+  title: string;
+  count: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  headerActions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <section
+        className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm"
+        aria-labelledby={`inbox-section-${sectionId}`}
+      >
+        <CollapsibleTrigger
+          id={`inbox-section-${sectionId}`}
+          className="flex w-full items-center gap-2 border-b border-border/60 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:bg-muted/35"
+        >
+          <ChevronRight
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+              open && "rotate-90",
+            )}
+          />
+          <span className="text-sm font-semibold text-foreground">{title}</span>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {headerActions}
+            <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+              {count}
+            </span>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>{children}</CollapsibleContent>
+      </section>
+    </Collapsible>
+  );
+}
+
+function InboxRunsTableHeaderRow({
+  gridTemplateColumns,
+  showActions,
+  showStatus,
+  showDetails,
+  showLastRun,
+}: {
+  gridTemplateColumns: string;
+  showActions: boolean;
+  showStatus: boolean;
+  showDetails: boolean;
+  showLastRun: boolean;
+}) {
+  return (
+    <div
+      className={INBOX_TABLE_HEADER_CLASS}
+      style={{ gridTemplateColumns }}
+      aria-hidden="true"
+    >
+      {showStatus ? (
+        <span className={INBOX_AGENT_RUN_STATUS_CELL_CLASS}>
+          <span className="inline-flex h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>Status</span>
+        </span>
+      ) : null}
+      <span>Run</span>
+      {showDetails ? <span>Details</span> : null}
+      {showLastRun ? <span>Last run</span> : null}
+      <div className={INBOX_AGENT_RUN_TRAILING_CELL_CLASS}>
+        {showActions ? <span>Actions</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function InboxIssueTableHeader({
+  gridTemplateColumns,
+  showStatus,
+  showId,
+  trailingColumns,
+}: {
+  gridTemplateColumns: string;
+  showStatus: boolean;
+  showId: boolean;
+  trailingColumns: InboxIssueColumn[];
+}) {
+  return (
+    <div
+      className={INBOX_TABLE_HEADER_CLASS}
+      style={{ gridTemplateColumns }}
+      aria-hidden="true"
+    >
+      <span />
+      {showStatus ? <span>Status</span> : null}
+      {showId ? <span>ID</span> : null}
+      <span>Title</span>
+      {trailingColumns.map((column) => (
+        <span
+          key={column}
+          className={column === "updated" ? "text-right" : undefined}
+        >
+          {inboxIssueColumnLabels[column]}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export function InboxIssueTrailingColumns({
@@ -250,6 +540,7 @@ export function InboxIssueTrailingColumns({
   assigneeName,
   currentUserId,
   currentUserDisplayName,
+  variant = "grouped",
 }: {
   issue: Issue;
   columns: InboxIssueColumn[];
@@ -259,281 +550,452 @@ export function InboxIssueTrailingColumns({
   assigneeName: string | null;
   currentUserId: string | null;
   currentUserDisplayName?: string | null;
+  /** `flat` emits one grid cell per column for inbox-table rows. */
+  variant?: "grouped" | "flat";
 }) {
   const activityText = timeAgo(issue.lastActivityAt ?? issue.lastExternalCommentAt ?? issue.updatedAt);
   const userLabel =
     formatAssigneeUserLabel(issue.assigneeUserId, currentUserId, { currentUserDisplayName }) ?? "User";
 
-  return (
-    <span
-      className="grid items-center gap-2"
-      style={{ gridTemplateColumns: issueTrailingGridTemplate(columns) }}
-    >
-      {columns.map((column) => {
-        if (column === "assignee") {
-          if (issue.assigneeAgentId) {
-            return (
-              <span key={column} className="min-w-0 text-xs text-foreground">
-                <Identity
-                  name={assigneeName ?? issue.assigneeAgentId.slice(0, 8)}
-                  size="sm"
-                  className="min-w-0"
-                />
-              </span>
-            );
-          }
-
-          if (issue.assigneeUserId) {
-            return (
-              <span key={column} className="min-w-0 truncate text-xs font-medium text-muted-foreground">
-                {userLabel}
-              </span>
-            );
-          }
-
-          return (
-            <span key={column} className="min-w-0 truncate text-xs text-muted-foreground">
-              Unassigned
-            </span>
-          );
-        }
-
-        if (column === "project") {
-          if (projectName) {
-            return (
-              <span
-                key={column}
-                className="inline-flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground"
-              >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 shrink-0 rounded-full border border-border/40",
-                    projectStatusSwatchClass(projectStatus),
-                  )}
-                  title={projectStatus ? `Project status: ${projectStatus.replace(/_/g, " ")}` : undefined}
-                />
-                <span className="truncate text-foreground">{projectName}</span>
-              </span>
-            );
-          }
-
-          return (
-            <span key={column} className="min-w-0 truncate text-xs text-muted-foreground">
-              No project
-            </span>
-          );
-        }
-
-        if (column === "labels") {
-          if ((issue.labels ?? []).length > 0) {
-            return (
-              <span key={column} className="flex min-w-0 items-center gap-1 overflow-hidden text-[11px]">
-                {(issue.labels ?? []).slice(0, 2).map((label) => (
-                  <span
-                    key={label.id}
-                    className="inline-flex min-w-0 max-w-full items-center font-medium"
-                    style={{
-                      color: pickTextColorForPillBg(label.color, 0.12),
-                    }}
-                  >
-                    <span className="truncate">{label.name}</span>
-                  </span>
-                ))}
-                {(issue.labels ?? []).length > 2 ? (
-                  <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-                    +{(issue.labels ?? []).length - 2}
-                  </span>
-                ) : null}
-              </span>
-            );
-          }
-
-          return <span key={column} className="min-w-0" aria-hidden="true" />;
-        }
-
-        if (column === "workspace") {
-          if (!workspaceName) {
-            return <span key={column} className="min-w-0" aria-hidden="true" />;
-          }
-
-          return (
-            <span key={column} className="min-w-0 truncate text-xs text-muted-foreground">
-              {workspaceName}
-            </span>
-          );
-        }
-
+  const cells = columns.map((column) => {
+    if (column === "assignee") {
+      if (issue.assigneeAgentId) {
         return (
-          <span key={column} className="min-w-0 truncate text-right text-[11px] font-medium text-muted-foreground">
-            {activityText}
+          <span key={column} className="inline-flex min-w-0 max-w-full items-center text-xs text-foreground">
+            <Identity
+              name={assigneeName ?? issue.assigneeAgentId.slice(0, 8)}
+              size="sm"
+              className="min-w-0"
+            />
           </span>
         );
-      })}
+      }
+
+      if (issue.assigneeUserId) {
+        return (
+          <span key={column} className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-xs">
+            <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/35 bg-muted/30">
+              <User className="size-3.5" />
+            </span>
+            <span className="min-w-0 truncate font-medium text-foreground/90">{userLabel}</span>
+          </span>
+        );
+      }
+
+      return <span key={column} className={INBOX_TABLE_CELL_MUTED}>Unassigned</span>;
+    }
+
+    if (column === "project") {
+      if (projectName) {
+        return (
+          <span
+            key={column}
+            className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 shrink-0 rounded-full border border-border/40",
+                projectStatusSwatchClass(projectStatus),
+              )}
+              title={projectStatus ? `Project status: ${projectStatus.replace(/_/g, " ")}` : undefined}
+            />
+            <span className="truncate text-foreground/90">{projectName}</span>
+          </span>
+        );
+      }
+
+      return <span key={column} className={INBOX_TABLE_CELL_MUTED}>No project</span>;
+    }
+
+    if (column === "labels") {
+      if ((issue.labels ?? []).length > 0) {
+        return (
+          <span key={column} className="flex min-w-0 items-center gap-1 overflow-hidden text-xs">
+            {(issue.labels ?? []).slice(0, 2).map((label) => (
+              <span
+                key={label.id}
+                className="inline-flex min-w-0 max-w-full items-center font-medium"
+                style={{
+                  color: pickTextColorForPillBg(label.color, 0.12),
+                }}
+              >
+                <span className="truncate">{label.name}</span>
+              </span>
+            ))}
+            {(issue.labels ?? []).length > 2 ? (
+              <span className="shrink-0 font-medium text-muted-foreground">
+                +{(issue.labels ?? []).length - 2}
+              </span>
+            ) : null}
+          </span>
+        );
+      }
+
+      return <span key={column} className="min-w-0" aria-hidden="true" />;
+    }
+
+    if (column === "workspace") {
+      if (!workspaceName) {
+        return <span key={column} className="min-w-0" aria-hidden="true" />;
+      }
+
+      return <span key={column} className={INBOX_TABLE_CELL_MUTED}>{workspaceName}</span>;
+    }
+
+    return (
+      <span key={column} className={cn(INBOX_TABLE_CELL_META, "text-right")}>
+        {activityText}
+      </span>
+    );
+  });
+
+  if (variant === "flat") {
+    return <>{cells}</>;
+  }
+
+  return (
+    <span
+      className="hidden shrink-0 items-center sm:grid sm:gap-x-3"
+      style={{
+        gridTemplateColumns: columns
+          .map((column) => inboxTrailingColumnWidth(column))
+          .filter((width): width is string => width !== null)
+          .join(" "),
+      }}
+    >
+      {cells}
     </span>
   );
 }
 
-export function FailedRunInboxRow({
+function InboxAttentionTableRow({
+  gridTemplateColumns,
+  unreadState = null,
+  onMarkRead,
+  onArchive,
+  archiveDisabled,
+  selected = false,
+  status,
+  icon,
+  title,
+  meta,
+  href,
+  actions,
+  className,
+}: {
+  gridTemplateColumns: string;
+  unreadState?: NonIssueUnreadState;
+  onMarkRead?: () => void;
+  onArchive?: () => void;
+  archiveDisabled?: boolean;
+  selected?: boolean;
+  /** When set, renders a dedicated Status column (agent runs). */
+  status?: ReactNode;
+  icon?: ReactNode;
+  title: ReactNode;
+  meta: ReactNode;
+  href?: string;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  const titleNode = href ? (
+    <Link
+      to={href}
+      className={cn(
+        "min-w-0 truncate text-sm font-medium no-underline text-inherit transition-colors hover:text-foreground",
+        selected && "hover:text-inherit",
+      )}
+    >
+      {title}
+    </Link>
+  ) : (
+    <span className="min-w-0 truncate text-sm font-medium">{title}</span>
+  );
+  const unreadCell = unreadState !== null ? (
+    <InboxUnreadControl
+      unreadState={unreadState}
+      onMarkRead={onMarkRead}
+      onArchive={onArchive}
+      archiveDisabled={archiveDisabled}
+      selected={selected}
+    />
+  ) : (
+    <span className="inline-flex h-4 w-4" aria-hidden="true" />
+  );
+
+  return (
+    <div className={cn("group border-b border-border/80 last:border-b-0", className)}>
+      <div className="flex flex-col gap-2 px-3 py-3 sm:hidden">
+        <div className="flex items-start gap-2">
+          {unreadCell}
+          {status ? (
+            <span className="shrink-0 pt-0.5">{status}</span>
+          ) : icon ? (
+            <span className="flex shrink-0 items-center justify-center">{icon}</span>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            {titleNode}
+            <div className={cn("mt-1", INBOX_TABLE_CELL_MUTED)}>{meta}</div>
+          </div>
+        </div>
+        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      </div>
+      <div
+        className={cn(
+          "hidden items-center gap-x-3 px-3 py-2 sm:grid",
+          selected && "bg-accent/80",
+        )}
+        style={{ gridTemplateColumns }}
+      >
+        {unreadCell}
+        {status ? (
+          <span
+            className={cn(
+              "hidden min-w-0 items-center justify-start sm:inline-flex",
+              ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
+            )}
+          >
+            {status}
+          </span>
+        ) : icon ? (
+          <span className="flex items-center justify-center">{icon}</span>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <span className="min-w-0">{titleNode}</span>
+        <span className={INBOX_TABLE_CELL_MUTED}>{meta}</span>
+        {actions ? <div className="flex items-center justify-end gap-2">{actions}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function buildFailedRunInboxRowContent({
   run,
   issueById,
   agentName: linkedAgentName,
-  issueLinkState,
-  onDismiss,
+}: {
+  run: HeartbeatRun;
+  issueById: Map<string, Issue>;
+  agentName: string | null;
+}) {
+  const issueId = readIssueIdFromRun(run);
+  const issue = issueId ? issueById.get(issueId) ?? null : null;
+
+  return {
+    href: `/agents/${run.agentId}/runs/${run.id}`,
+    status: <StatusBadge status={run.status} />,
+    title: issue ? (
+      <>
+        <span className="mr-1.5 font-mono text-muted-foreground">
+          {issue.identifier ?? issue.id.slice(0, 8)}
+        </span>
+        {issue.title}
+      </>
+    ) : (
+      <>
+        Agent run
+        {linkedAgentName ? ` — ${linkedAgentName}` : ""}
+      </>
+    ),
+    meta: formatRunInboxDetails(run),
+    when: formatRunInboxWhen(run),
+  };
+}
+
+export function AgentRunInboxTableRow({
+  run,
+  issueById,
+  agentName,
   onRetry,
   isRetrying,
+  showActionsColumn = false,
+  hideRetryAndDismiss = false,
   unreadState = null,
   onMarkRead,
   onArchive,
   archiveDisabled,
   selected = false,
   className,
-  hideRetryAndDismiss = false,
+  gridTemplateColumns,
+  showStatus,
+  showDetails,
+  showLastRun,
+  onSelect,
 }: {
   run: HeartbeatRun;
   issueById: Map<string, Issue>;
   agentName: string | null;
-  issueLinkState: unknown;
-  onDismiss: () => void;
   onRetry: () => void;
   isRetrying: boolean;
+  gridTemplateColumns: string;
+  showStatus: boolean;
+  showDetails: boolean;
+  showLastRun: boolean;
+  showActionsColumn?: boolean;
+  hideRetryAndDismiss?: boolean;
   unreadState?: NonIssueUnreadState;
   onMarkRead?: () => void;
   onArchive?: () => void;
   archiveDisabled?: boolean;
   selected?: boolean;
   className?: string;
-  /** When true, hide Retry and row dismiss — view-only attention queue (no task/agent mutation grants). */
-  hideRetryAndDismiss?: boolean;
+  onSelect?: () => void;
 }) {
-  const issueId = readIssueIdFromRun(run);
-  const issue = issueId ? issueById.get(issueId) ?? null : null;
-  const displayError = runFailureMessage(run);
-  const showUnreadSlot = unreadState !== null;
-  const showUnreadDot = unreadState === "visible" || unreadState === "fading";
+  const { href, status, title, meta, when } = buildFailedRunInboxRowContent({ run, issueById, agentName });
+  const includeActions = showActionsColumn && !hideRetryAndDismiss;
+  const showRetry = includeActions && (run.status === "failed" || run.status === "timed_out");
+  const retryActions = showRetry ? (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-8 shrink-0 px-2.5"
+      onClick={(event) => {
+        event.stopPropagation();
+        onRetry();
+      }}
+      disabled={isRetrying}
+    >
+      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+      {isRetrying ? "Retrying…" : "Retry"}
+    </Button>
+  ) : null;
+  const unreadCell = unreadState !== null ? (
+    <InboxUnreadControl
+      unreadState={unreadState}
+      onMarkRead={onMarkRead}
+      onArchive={onArchive}
+      archiveDisabled={archiveDisabled}
+      selected={selected}
+    />
+  ) : (
+    <span className="inline-flex h-4 w-4" aria-hidden="true" />
+  );
+  const titleNode = (
+    <Link
+      to={href}
+      className={cn(
+        "block min-w-0 truncate text-sm font-medium no-underline text-inherit transition-colors hover:text-foreground",
+        selected && "hover:text-inherit",
+      )}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {title}
+    </Link>
+  );
 
   return (
-    <div className={cn(
-      "group border-b border-border px-2 py-2.5 last:border-b-0 sm:px-1 sm:pr-3 sm:py-2",
-      className,
-    )}>
-      <div className="flex items-start gap-2 sm:items-center">
-        {showUnreadSlot ? (
-          <span className="hidden sm:inline-flex h-4 w-4 shrink-0 items-center justify-center self-center">
-            {showUnreadDot ? (
-              <button
-                type="button"
-                onClick={onMarkRead}
-                className={cn(
-                  "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
-                  "hover:bg-blue-500/20",
-                )}
-                aria-label="Mark as read"
-              >
-                <span className={cn(
-                  "block h-2 w-2 rounded-full transition-opacity duration-300",
-                  "bg-blue-600 dark:bg-blue-400",
-                  unreadState === "fading" ? "opacity-0" : "opacity-100",
-                )} />
-              </button>
-            ) : onArchive ? (
-              <button
-                type="button"
-                onClick={onArchive}
-                disabled={archiveDisabled}
-                className="inline-flex h-4 w-4 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
-                aria-label="Dismiss from inbox"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            ) : (
-              <span className="inline-flex h-4 w-4" aria-hidden="true" />
-            )}
-          </span>
-        ) : null}
-        <Link
-          to={`/agents/${run.agentId}/runs/${run.id}`}
-          className={cn(
-            "flex min-w-0 flex-1 items-start gap-2 no-underline text-inherit transition-colors",
-            selected ? "hover:bg-transparent" : "hover:bg-accent/50",
-          )}
-        >
-          {!showUnreadSlot && <span className="hidden h-2 w-2 shrink-0 sm:inline-flex" aria-hidden="true" />}
-          <span className="hidden h-3.5 w-3.5 shrink-0 sm:inline-flex" aria-hidden="true" />
-          <span className="mt-0.5 shrink-0 rounded-md bg-red-500/20 p-1.5 sm:mt-0">
-            <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 text-sm font-medium sm:truncate sm:line-clamp-none">
-              {issue ? (
-                <>
-                  <span className="font-mono text-muted-foreground mr-1.5">
-                    {issue.identifier ?? issue.id.slice(0, 8)}
-                  </span>
-                  {issue.title}
-                </>
-              ) : (
-                <>Failed run{linkedAgentName ? ` — ${linkedAgentName}` : ""}</>
-              )}
-            </span>
-            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <StatusBadge status={run.status} />
-              {linkedAgentName && issue ? <span>{linkedAgentName}</span> : null}
-              <span className="truncate max-w-[300px]">{displayError}</span>
-              <span>{timeAgo(run.createdAt)}</span>
-            </span>
-          </span>
-        </Link>
-        {!hideRetryAndDismiss ? (
-          <div className="hidden shrink-0 items-center gap-2 sm:flex">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0 px-2.5"
-              onClick={onRetry}
-              disabled={isRetrying}
-            >
-              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              {isRetrying ? "Retrying…" : "Retry"}
-            </Button>
-            {!showUnreadSlot && (
-              <button
-                type="button"
-                onClick={onDismiss}
-                className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-                aria-label="Dismiss"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        ) : null}
+    <div
+      data-inbox-item
+      className={cn(
+        INBOX_AGENT_RUN_TABLE_ROW_CLASS,
+        "hidden cursor-pointer sm:grid",
+        selected && "bg-accent/80",
+        className,
+      )}
+      style={{ gridTemplateColumns }}
+      onClick={onSelect}
+    >
+      {showStatus ? (
+        <span className={INBOX_AGENT_RUN_STATUS_CELL_CLASS}>
+          {unreadCell}
+          {status}
+        </span>
+      ) : (
+        <span className="inline-flex min-w-0 items-center">{unreadCell}</span>
+      )}
+      {titleNode}
+      {showDetails ? <span className={INBOX_TABLE_CELL_MUTED}>{meta}</span> : null}
+      {showLastRun ? <span className={INBOX_TABLE_CELL_META}>{when}</span> : null}
+      <div className={INBOX_AGENT_RUN_TRAILING_CELL_CLASS}>
+        {includeActions ? retryActions : null}
       </div>
-      {!hideRetryAndDismiss ? (
-        <div className="mt-3 flex gap-2 sm:hidden">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 shrink-0 px-2.5"
-            onClick={onRetry}
-            disabled={isRetrying}
-          >
-            <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-            {isRetrying ? "Retrying…" : "Retry"}
-          </Button>
-          {!showUnreadSlot && (
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-              aria-label="Dismiss"
-            >
-              <X className="h-4 w-4" />
-            </button>
+    </div>
+  );
+}
+
+/** Mobile-only agent run row (desktop uses `AgentRunInboxTableRow`). */
+export function FailedRunInboxRow({
+  run,
+  issueById,
+  agentName,
+  onRetry,
+  isRetrying,
+  showActionsColumn = false,
+  hideRetryAndDismiss = false,
+  unreadState = null,
+  onMarkRead,
+  onArchive,
+  archiveDisabled,
+  selected = false,
+  className,
+}: {
+  run: HeartbeatRun;
+  issueById: Map<string, Issue>;
+  agentName: string | null;
+  onRetry: () => void;
+  isRetrying: boolean;
+  showActionsColumn?: boolean;
+  unreadState?: NonIssueUnreadState;
+  onMarkRead?: () => void;
+  onArchive?: () => void;
+  archiveDisabled?: boolean;
+  selected?: boolean;
+  className?: string;
+  hideRetryAndDismiss?: boolean;
+}) {
+  const { href, status, title, meta, when } = buildFailedRunInboxRowContent({ run, issueById, agentName });
+  const includeActions = showActionsColumn && !hideRetryAndDismiss;
+  const showRetry = includeActions && (run.status === "failed" || run.status === "timed_out");
+  const retryActions = showRetry ? (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-8 shrink-0 px-2.5"
+      onClick={onRetry}
+      disabled={isRetrying}
+    >
+      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+      {isRetrying ? "Retrying…" : "Retry"}
+    </Button>
+  ) : undefined;
+
+  return (
+    <div className={cn("group border-b border-border/80 last:border-b-0 sm:hidden", className)}>
+      <div className="flex flex-col gap-2 px-3 py-3">
+        <div className="flex items-start gap-2">
+          {unreadState !== null ? (
+            <InboxUnreadControl
+              unreadState={unreadState}
+              onMarkRead={onMarkRead}
+              onArchive={onArchive}
+              archiveDisabled={archiveDisabled}
+              selected={selected}
+            />
+          ) : (
+            <span className="inline-flex h-4 w-4" aria-hidden="true" />
           )}
+          <span className="shrink-0 pt-0.5">{status}</span>
+          <div className="min-w-0 flex-1">
+            <Link
+              to={href}
+              className={cn(
+                "min-w-0 truncate text-sm font-medium no-underline text-inherit transition-colors hover:text-foreground",
+                selected && "hover:text-inherit",
+              )}
+            >
+              {title}
+            </Link>
+            <div className={cn("mt-1 flex flex-wrap items-baseline gap-x-2", INBOX_TABLE_CELL_MUTED)}>
+              <span className="min-w-0">{meta}</span>
+              <span className={cn(INBOX_TABLE_CELL_META, "shrink-0")}>{when}</span>
+            </div>
+          </div>
         </div>
-      ) : null}
+        {retryActions ? <div className="flex flex-wrap gap-2">{retryActions}</div> : null}
+      </div>
     </div>
   );
 }
@@ -568,115 +1030,60 @@ function ApprovalInboxRow({
   const showResolutionButtons =
     approval.type !== "budget_override_required" &&
     ACTIONABLE_APPROVAL_STATUSES.has(approval.status);
-  const showUnreadSlot = unreadState !== null;
-  const showUnreadDot = unreadState === "visible" || unreadState === "fading";
+  const gridTemplateColumns = buildInboxGovernanceTableGridColumns(showResolutionButtons);
+  const resolutionActions = showResolutionButtons ? (
+    <>
+      <Button
+        size="sm"
+        className="h-8 bg-green-700 px-3 text-white hover:bg-green-600"
+        onClick={onApprove}
+        disabled={isPending}
+      >
+        Approve
+      </Button>
+      <Button
+        variant="destructive"
+        size="sm"
+        className="h-8 px-3"
+        onClick={onReject}
+        disabled={isPending}
+      >
+        Reject
+      </Button>
+    </>
+  ) : undefined;
 
   return (
-    <div className={cn(
-      "group border-b border-border px-2 py-2.5 last:border-b-0 sm:px-1 sm:pr-3 sm:py-2",
-      className,
-    )}>
-      <div className="flex items-start gap-2 sm:items-center">
-        {showUnreadSlot ? (
-          <span className="hidden sm:inline-flex h-4 w-4 shrink-0 items-center justify-center self-center">
-            {showUnreadDot ? (
-              <button
-                type="button"
-                onClick={onMarkRead}
-                className={cn(
-                  "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
-                  "hover:bg-blue-500/20",
-                )}
-                aria-label="Mark as read"
-              >
-                <span className={cn(
-                  "block h-2 w-2 rounded-full transition-opacity duration-300",
-                  "bg-blue-600 dark:bg-blue-400",
-                  unreadState === "fading" ? "opacity-0" : "opacity-100",
-                )} />
-              </button>
-            ) : onArchive ? (
-              <button
-                type="button"
-                onClick={onArchive}
-                disabled={archiveDisabled}
-                className="inline-flex h-4 w-4 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
-                aria-label="Dismiss from inbox"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            ) : (
-              <span className="inline-flex h-4 w-4" aria-hidden="true" />
-            )}
-          </span>
-        ) : null}
-        <Link
-          to={`/approvals/${approval.id}`}
-          className={cn(
-            "flex min-w-0 flex-1 items-start gap-2 no-underline text-inherit transition-colors",
-            selected ? "hover:bg-transparent" : "hover:bg-accent/50",
-          )}
-        >
-          {!showUnreadSlot && <span className="hidden h-2 w-2 shrink-0 sm:inline-flex" aria-hidden="true" />}
-          <span className="hidden h-3.5 w-3.5 shrink-0 sm:inline-flex" aria-hidden="true" />
-          <span className="mt-0.5 shrink-0 rounded-md bg-muted p-1.5 sm:mt-0">
-            <Icon className="h-4 w-4 text-muted-foreground" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 text-sm font-medium sm:truncate sm:line-clamp-none">
-              {label}
-            </span>
-            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span className="capitalize">{approvalStatusLabel(approval.status)}</span>
-              {requesterName ? <span>requested by {requesterName}</span> : null}
-              <span>updated {timeAgo(approval.updatedAt)}</span>
-            </span>
-          </span>
-        </Link>
-        {showResolutionButtons ? (
-          <div className="hidden shrink-0 items-center gap-2 sm:flex">
-            <Button
-              size="sm"
-              className="h-8 bg-green-700 px-3 text-white hover:bg-green-600"
-              onClick={onApprove}
-              disabled={isPending}
-            >
-              Approve
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-8 px-3"
-              onClick={onReject}
-              disabled={isPending}
-            >
-              Reject
-            </Button>
-          </div>
-        ) : null}
-      </div>
-      {showResolutionButtons ? (
-        <div className="mt-3 flex gap-2 sm:hidden">
-          <Button
-            size="sm"
-            className="h-8 bg-green-700 px-3 text-white hover:bg-green-600"
-            onClick={onApprove}
-            disabled={isPending}
-          >
-            Approve
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-8 px-3"
-            onClick={onReject}
-            disabled={isPending}
-          >
-            Reject
-          </Button>
-        </div>
-      ) : null}
-    </div>
+    <InboxAttentionTableRow
+      gridTemplateColumns={gridTemplateColumns}
+      unreadState={unreadState}
+      onMarkRead={onMarkRead}
+      onArchive={onArchive}
+      archiveDisabled={archiveDisabled}
+      selected={selected}
+      className={className}
+      href={`/approvals/${approval.id}`}
+      icon={(
+        <span className="rounded-md bg-muted/80 p-1.5 ring-1 ring-border/60">
+          <Icon className="h-4 w-4 text-muted-foreground" />
+        </span>
+      )}
+      title={label}
+      meta={(
+        <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="capitalize">{approvalStatusLabel(approval.status)}</span>
+          {requesterName ? (
+            <>
+              <span className="text-muted-foreground/50" aria-hidden="true">·</span>
+              <span>requested by {requesterName}</span>
+            </>
+          ) : null}
+          <span className="text-muted-foreground/50" aria-hidden="true">·</span>
+          <span className="shrink-0 tabular-nums">updated {timeAgo(approval.updatedAt)}</span>
+        </span>
+      )}
+      actions={resolutionActions}
+    />
   );
 }
 
@@ -707,65 +1114,38 @@ function JoinRequestInboxRow({
     joinRequest.requestType === "human"
       ? "Human join request"
       : `Agent join request${joinRequest.agentName ? `: ${joinRequest.agentName}` : ""}`;
-  const showUnreadSlot = unreadState !== null;
-  const showUnreadDot = unreadState === "visible" || unreadState === "fading";
+  const gridTemplateColumns = buildInboxGovernanceTableGridColumns(true);
 
   return (
-    <div className={cn(
-      "group border-b border-border px-2 py-2.5 last:border-b-0 sm:px-1 sm:pr-3 sm:py-2",
-      className,
-    )}>
-      <div className="flex items-start gap-2 sm:items-center">
-        {showUnreadSlot ? (
-          <span className="hidden sm:inline-flex h-4 w-4 shrink-0 items-center justify-center self-center">
-            {showUnreadDot ? (
-              <button
-                type="button"
-                onClick={onMarkRead}
-                className={cn(
-                  "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
-                  "hover:bg-blue-500/20",
-                )}
-                aria-label="Mark as read"
-              >
-                <span className={cn(
-                  "block h-2 w-2 rounded-full transition-opacity duration-300",
-                  "bg-blue-600 dark:bg-blue-400",
-                  unreadState === "fading" ? "opacity-0" : "opacity-100",
-                )} />
-              </button>
-            ) : onArchive ? (
-              <button
-                type="button"
-                onClick={onArchive}
-                disabled={archiveDisabled}
-                className="inline-flex h-4 w-4 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
-                aria-label="Dismiss from inbox"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            ) : (
-              <span className="inline-flex h-4 w-4" aria-hidden="true" />
-            )}
-          </span>
-        ) : null}
-        <div className="flex min-w-0 flex-1 items-start gap-2">
-          {!showUnreadSlot && <span className="hidden h-2 w-2 shrink-0 sm:inline-flex" aria-hidden="true" />}
-          <span className="hidden h-3.5 w-3.5 shrink-0 sm:inline-flex" aria-hidden="true" />
-          <span className="mt-0.5 shrink-0 rounded-md bg-muted p-1.5 sm:mt-0">
-            <UserPlus className="h-4 w-4 text-muted-foreground" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 text-sm font-medium sm:truncate sm:line-clamp-none">
-              {label}
-            </span>
-            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span>requested {timeAgo(joinRequest.createdAt)} from IP {joinRequest.requestIp}</span>
-              {joinRequest.adapterType && <span>adapter: {joinRequest.adapterType}</span>}
-            </span>
-          </span>
-        </div>
-        <div className="hidden shrink-0 items-center gap-2 sm:flex">
+    <InboxAttentionTableRow
+      gridTemplateColumns={gridTemplateColumns}
+      unreadState={unreadState}
+      onMarkRead={onMarkRead}
+      onArchive={onArchive}
+      archiveDisabled={archiveDisabled}
+      selected={selected}
+      className={className}
+      icon={(
+        <span className="rounded-md bg-muted/80 p-1.5 ring-1 ring-border/60">
+          <UserPlus className="h-4 w-4 text-muted-foreground" />
+        </span>
+      )}
+      title={label}
+      meta={(
+        <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="shrink-0 tabular-nums">requested {timeAgo(joinRequest.createdAt)}</span>
+          <span className="text-muted-foreground/50" aria-hidden="true">·</span>
+          <span>IP {joinRequest.requestIp}</span>
+          {joinRequest.adapterType ? (
+            <>
+              <span className="text-muted-foreground/50" aria-hidden="true">·</span>
+              <span>adapter {joinRequest.adapterType}</span>
+            </>
+          ) : null}
+        </span>
+      )}
+      actions={(
+        <>
           <Button
             size="sm"
             className="h-8 bg-green-700 px-3 text-white hover:bg-green-600"
@@ -783,28 +1163,9 @@ function JoinRequestInboxRow({
           >
             Reject
           </Button>
-        </div>
-      </div>
-      <div className="mt-3 flex gap-2 sm:hidden">
-        <Button
-          size="sm"
-          className="h-8 bg-green-700 px-3 text-white hover:bg-green-600"
-          onClick={onApprove}
-          disabled={isPending}
-        >
-          Approve
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          className="h-8 px-3"
-          onClick={onReject}
-          disabled={isPending}
-        >
-          Reject
-        </Button>
-      </div>
-    </div>
+        </>
+      )}
+    />
   );
 }
 
@@ -832,6 +1193,10 @@ export function Inbox() {
   const [allCategoryFilter, setAllCategoryFilter] = useState<InboxCategoryFilter>("everything");
   const [allApprovalFilter, setAllApprovalFilter] = useState<InboxApprovalFilter>("all");
   const [visibleIssueColumns, setVisibleIssueColumns] = useState<InboxIssueColumn[]>(loadInboxIssueColumns);
+  const [visibleAgentRunColumns, setVisibleAgentRunColumns] = useState<InboxAgentRunColumn[]>(
+    loadInboxAgentRunColumns,
+  );
+  const [sectionsOpen, setSectionsOpen] = useState<InboxSectionsOpenState>(loadInboxSectionsOpen);
   const { dismissed, dismiss } = useDismissedInboxItems();
   const { readItems, markRead: markItemRead, markUnread: markItemUnread } = useReadInboxItems();
 
@@ -844,7 +1209,7 @@ export function Inbox() {
   const issueLinkState = useMemo(
     () =>
       createIssueDetailLocationState(
-        "Inbox",
+        ATTENTION_QUEUE_PAGE_LABEL,
         `${location.pathname}${location.search}${location.hash}`,
         "inbox",
       ),
@@ -881,7 +1246,7 @@ export function Inbox() {
   });
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Inbox" }]);
+    setBreadcrumbs([{ label: ATTENTION_QUEUE_PAGE_LABEL }]);
   }, [setBreadcrumbs]);
 
   useEffect(() => {
@@ -960,6 +1325,8 @@ export function Inbox() {
     queryKey: queryKeys.heartbeats(selectedCompanyId!),
     queryFn: () => heartbeatsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
 
   const mineIssues = useMemo(() => getRecentTouchedIssues(mineIssuesRaw), [mineIssuesRaw]);
@@ -1031,6 +1398,7 @@ export function Inbox() {
     return map;
   }, [executionWorkspaces]);
   const visibleIssueColumnSet = useMemo(() => new Set(visibleIssueColumns), [visibleIssueColumns]);
+  const visibleAgentRunColumnSet = useMemo(() => new Set(visibleAgentRunColumns), [visibleAgentRunColumns]);
   const availableIssueColumns = useMemo(
     () => getAvailableInboxIssueColumns(isolatedWorkspacesEnabled),
     [isolatedWorkspacesEnabled],
@@ -1155,6 +1523,75 @@ export function Inbox() {
     projectWorkspaceById,
   ]);
 
+  const showInboxIssueStatus =
+    visibleIssueColumnSet.has("status") && availableIssueColumnSet.has("status");
+  const showInboxIssueId =
+    visibleIssueColumnSet.has("id") && availableIssueColumnSet.has("id");
+  const inboxIssueGridTemplateColumns = useMemo(
+    () =>
+      buildInboxIssueTableGridColumns({
+        showStatus: showInboxIssueStatus,
+        showId: showInboxIssueId,
+        trailingColumns: visibleTrailingIssueColumns,
+      }),
+    [showInboxIssueId, showInboxIssueStatus, visibleTrailingIssueColumns],
+  );
+  const filteredIssueItems = useMemo(
+    () => filteredWorkItems.filter((item): item is Extract<InboxWorkItem, { kind: "issue" }> => item.kind === "issue"),
+    [filteredWorkItems],
+  );
+  const filteredFailedRunItems = useMemo(
+    () =>
+      filteredWorkItems.filter(
+        (item): item is Extract<InboxWorkItem, { kind: "failed_run" }> => item.kind === "failed_run",
+      ),
+    [filteredWorkItems],
+  );
+  const filteredGovernanceItems = useMemo(
+    () =>
+      filteredWorkItems.filter(
+        (item): item is Extract<InboxWorkItem, { kind: "approval" | "join_request" }> =>
+          item.kind === "approval" || item.kind === "join_request",
+      ),
+    [filteredWorkItems],
+  );
+
+  const setSectionOpen = useCallback((sectionId: InboxSectionId, open: boolean) => {
+    setSectionsOpen((prev) => {
+      const next = { ...prev, [sectionId]: open };
+      saveInboxSectionsOpen(next);
+      return next;
+    });
+  }, []);
+
+  const keyboardNavItems = useMemo(() => {
+    const items: InboxWorkItem[] = [];
+    if (sectionsOpen.approvals) items.push(...filteredGovernanceItems);
+    if (sectionsOpen.tasks) items.push(...filteredIssueItems);
+    if (sectionsOpen.agent_runs) items.push(...filteredFailedRunItems);
+    return items;
+  }, [
+    filteredFailedRunItems,
+    filteredGovernanceItems,
+    filteredIssueItems,
+    sectionsOpen.agent_runs,
+    sectionsOpen.approvals,
+    sectionsOpen.tasks,
+  ]);
+
+  const showInboxAgentRunStatus = visibleAgentRunColumnSet.has("status");
+  const showInboxAgentRunDetails = visibleAgentRunColumnSet.has("details");
+  const showInboxAgentRunLastRun = visibleAgentRunColumnSet.has("last_run");
+  const agentRunsGridTemplateColumns = useMemo(
+    () =>
+      buildInboxAgentRunTableGridColumns({
+        showStatus: showInboxAgentRunStatus,
+        showDetails: showInboxAgentRunDetails,
+        showLastRun: showInboxAgentRunLastRun,
+      }),
+    [showInboxAgentRunDetails, showInboxAgentRunLastRun, showInboxAgentRunStatus],
+  );
+
   const agentName = (id: string | null) => {
     if (!id) return null;
     return agentById.get(id) ?? null;
@@ -1171,6 +1608,18 @@ export function Inbox() {
     }
     setIssueColumns(visibleIssueColumns.filter((value) => value !== column));
   }, [setIssueColumns, visibleIssueColumns]);
+  const setAgentRunColumns = useCallback((next: InboxAgentRunColumn[]) => {
+    const normalized = normalizeInboxAgentRunColumns(next);
+    setVisibleAgentRunColumns(normalized);
+    saveInboxAgentRunColumns(normalized);
+  }, []);
+  const toggleAgentRunColumn = useCallback((column: InboxAgentRunColumn, enabled: boolean) => {
+    if (enabled) {
+      setAgentRunColumns([...visibleAgentRunColumns, column]);
+      return;
+    }
+    setAgentRunColumns(visibleAgentRunColumns.filter((value) => value !== column));
+  }, [setAgentRunColumns, visibleAgentRunColumns]);
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => approvalsApi.approve(id),
@@ -1401,12 +1850,12 @@ export function Inbox() {
 
   // Keep selection valid when the list shape changes, but do not auto-select on initial load.
   useEffect(() => {
-    setSelectedIndex((prev) => resolveInboxSelectionIndex(prev, filteredWorkItems.length));
-  }, [filteredWorkItems.length]);
+    setSelectedIndex((prev) => resolveInboxSelectionIndex(prev, keyboardNavItems.length));
+  }, [keyboardNavItems.length]);
 
   // Use refs for keyboard handler to avoid stale closures
   const kbStateRef = useRef({
-    workItems: filteredWorkItems,
+    workItems: keyboardNavItems,
     selectedIndex,
     canArchive: canArchiveFromTab,
     archivingIssueIds,
@@ -1415,7 +1864,7 @@ export function Inbox() {
     readItems,
   });
   kbStateRef.current = {
-    workItems: filteredWorkItems,
+    workItems: keyboardNavItems,
     selectedIndex,
     canArchive: canArchiveFromTab,
     archivingIssueIds,
@@ -1867,116 +2316,67 @@ export function Inbox() {
       )}
 
       {showWorkItemsSection && (
-        <>
-          {showSeparatorBefore("work_items") && <Separator />}
-          <div>
-            <div ref={listRef} className="overflow-hidden rounded-xl border border-border bg-card">
-              {filteredWorkItems.flatMap((item, index) => {
-                const wrapItem = (key: string, isSelected: boolean, child: ReactNode) => (
-                  <div
-                    key={`sel-${key}`}
-                    data-inbox-item
-                    className="relative"
-                    onClick={() => setSelectedIndex(index)}
-                  >
-                    {child}
-                  </div>
-                );
-                const todayCutoff = Date.now() - 24 * 60 * 60 * 1000;
-                const showTodayDivider =
-                  index > 0 &&
-                  item.timestamp > 0 &&
-                  item.timestamp < todayCutoff &&
-                  filteredWorkItems[index - 1].timestamp >= todayCutoff;
-                const elements: ReactNode[] = [];
-                if (showTodayDivider) {
-                  elements.push(
-                    <div key="today-divider" className="flex items-center gap-3 px-4 my-2">
-                      <div className="flex-1 border-t border-zinc-600" />
-                      <span className="shrink-0 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                        Earlier
-                      </span>
-                    </div>,
-                  );
-                }
-                const isSelected = selectedIndex === index;
-
-                if (item.kind === "approval") {
-                  const approvalKey = `approval:${item.approval.id}`;
-                  const isArchiving = archivingNonIssueIds.has(approvalKey);
-                  const row = (
-                    <ApprovalInboxRow
-                      key={approvalKey}
-                      approval={item.approval}
-                      selected={isSelected}
-                      requesterName={agentName(item.approval.requestedByAgentId)}
-                      onApprove={() => approveMutation.mutate(item.approval.id)}
-                      onReject={() => rejectMutation.mutate(item.approval.id)}
-                      isPending={approveMutation.isPending || rejectMutation.isPending}
-                      unreadState={nonIssueUnreadState(approvalKey)}
-                      onMarkRead={() => handleMarkNonIssueRead(approvalKey)}
-                      onArchive={canArchiveFromTab ? () => handleArchiveNonIssue(approvalKey) : undefined}
-                      archiveDisabled={isArchiving}
-                      className={
-                        isArchiving
-                          ? "pointer-events-none -translate-x-4 scale-[0.98] opacity-0 transition-all duration-200 ease-out"
-                          : "transition-all duration-200 ease-out"
-                      }
-                    />
-                  );
-                  elements.push(wrapItem(approvalKey, isSelected, canArchiveFromTab ? (
-                    <SwipeToArchive
-                      key={approvalKey}
-                      selected={isSelected}
-                      disabled={isArchiving}
-                      onArchive={() => handleArchiveNonIssue(approvalKey)}
+        <div ref={listRef} className="space-y-4">
+          {filteredGovernanceItems.length > 0 ? (
+            <InboxCollapsibleSection
+              sectionId="approvals"
+              title="Approvals & requests"
+              count={filteredGovernanceItems.length}
+              open={sectionsOpen.approvals}
+              onOpenChange={(open) => setSectionOpen("approvals", open)}
+            >
+              <div className="overflow-x-auto">
+                {filteredGovernanceItems.map((item) => {
+                  const navIndex = keyboardNavItems.indexOf(item);
+                  const isSelected = selectedIndex === navIndex;
+                  const wrapItem = (key: string, child: ReactNode) => (
+                    <div
+                      key={`sel-${key}`}
+                      data-inbox-item
+                      className="relative"
+                      onClick={() => setSelectedIndex(navIndex)}
                     >
-                      {row}
-                    </SwipeToArchive>
-                  ) : row));
-                  return elements;
-                }
-
-                if (item.kind === "failed_run") {
-                  const runKey = `run:${item.run.id}`;
-                  const isArchiving = archivingNonIssueIds.has(runKey);
-                  const row = (
-                    <FailedRunInboxRow
-                      key={runKey}
-                      run={item.run}
-                      selected={isSelected}
-                      issueById={issueById}
-                      agentName={agentName(item.run.agentId)}
-                      issueLinkState={issueLinkState}
-                      onDismiss={() => dismiss(runKey)}
-                      onRetry={() => retryRunMutation.mutate(item.run)}
-                      isRetrying={retryingRunIds.has(item.run.id)}
-                      hideRetryAndDismiss={!canMutateAttentionQueue}
-                      unreadState={nonIssueUnreadState(runKey)}
-                      onMarkRead={() => handleMarkNonIssueRead(runKey)}
-                      onArchive={canArchiveFromTab ? () => handleArchiveNonIssue(runKey) : undefined}
-                      archiveDisabled={isArchiving}
-                      className={
-                        isArchiving
-                          ? "pointer-events-none -translate-x-4 scale-[0.98] opacity-0 transition-all duration-200 ease-out"
-                          : "transition-all duration-200 ease-out"
-                      }
-                    />
+                      {child}
+                    </div>
                   );
-                  elements.push(wrapItem(runKey, isSelected, canArchiveFromTab ? (
-                    <SwipeToArchive
-                      key={runKey}
-                      selected={isSelected}
-                      disabled={isArchiving}
-                      onArchive={() => handleArchiveNonIssue(runKey)}
-                    >
-                      {row}
-                    </SwipeToArchive>
-                  ) : row));
-                  return elements;
-                }
 
-                if (item.kind === "join_request") {
+                  if (item.kind === "approval") {
+                    const approvalKey = `approval:${item.approval.id}`;
+                    const isArchiving = archivingNonIssueIds.has(approvalKey);
+                    const row = (
+                      <ApprovalInboxRow
+                        key={approvalKey}
+                        approval={item.approval}
+                        selected={isSelected}
+                        requesterName={agentName(item.approval.requestedByAgentId)}
+                        onApprove={() => approveMutation.mutate(item.approval.id)}
+                        onReject={() => rejectMutation.mutate(item.approval.id)}
+                        isPending={approveMutation.isPending || rejectMutation.isPending}
+                        unreadState={nonIssueUnreadState(approvalKey)}
+                        onMarkRead={() => handleMarkNonIssueRead(approvalKey)}
+                        onArchive={canArchiveFromTab ? () => handleArchiveNonIssue(approvalKey) : undefined}
+                        archiveDisabled={isArchiving}
+                        className={
+                          isArchiving
+                            ? "pointer-events-none -translate-x-4 scale-[0.98] opacity-0 transition-all duration-200 ease-out"
+                            : "transition-all duration-200 ease-out"
+                        }
+                      />
+                    );
+                    return wrapItem(approvalKey, canArchiveFromTab ? (
+                      <SwipeToArchive
+                        key={approvalKey}
+                        selected={isSelected}
+                        disabled={isArchiving}
+                        onArchive={() => handleArchiveNonIssue(approvalKey)}
+                      >
+                        {row}
+                      </SwipeToArchive>
+                    ) : row);
+                  }
+
+                  if (item.kind !== "join_request") return null;
+
                   const joinKey = `join:${item.joinRequest.id}`;
                   const isArchiving = archivingNonIssueIds.has(joinKey);
                   const row = (
@@ -1998,7 +2398,7 @@ export function Inbox() {
                       }
                     />
                   );
-                  elements.push(wrapItem(joinKey, isSelected, canArchiveFromTab ? (
+                  return wrapItem(joinKey, canArchiveFromTab ? (
                     <SwipeToArchive
                       key={joinKey}
                       selected={isSelected}
@@ -2007,93 +2407,254 @@ export function Inbox() {
                     >
                       {row}
                     </SwipeToArchive>
-                  ) : row));
-                  return elements;
-                }
+                  ) : row);
+                })}
+              </div>
+            </InboxCollapsibleSection>
+          ) : null}
 
-                const issue = item.issue;
-                const isUnread = issue.isUnreadForMe && !fadingOutIssues.has(issue.id);
-                const isFading = fadingOutIssues.has(issue.id);
-                const isArchiving = archivingIssueIds.has(issue.id);
-                const issueProject = issue.projectId ? projectById.get(issue.projectId) ?? null : null;
-                const row = (
-                  <IssueRow
-                    key={`issue:${issue.id}`}
-                    issue={issue}
-                    issueLinkState={issueLinkState}
-                    selected={isSelected}
-                    className={
-                      isArchiving
-                        ? "pointer-events-none -translate-x-4 scale-[0.98] opacity-0 transition-all duration-200 ease-out"
-                        : "transition-all duration-200 ease-out"
-                    }
-                    desktopMetaLeading={
-                      <InboxIssueMetaLeading
-                        issue={issue}
-                        isLive={liveIssueIds.has(issue.id)}
-                        showStatus={visibleIssueColumnSet.has("status") && availableIssueColumnSet.has("status")}
-                        showIdentifier={visibleIssueColumnSet.has("id") && availableIssueColumnSet.has("id")}
-                      />
-                    }
-                    mobileMeta={issueActivityText(issue).toLowerCase()}
-                    unreadState={
-                      isUnread ? "visible" : isFading ? "fading" : "hidden"
-                    }
-                    onMarkRead={() => markReadMutation.mutate(issue.id)}
-                    onArchive={
-                      canArchiveFromTab
-                        ? () => archiveIssueMutation.mutate(issue.id)
-                        : undefined
-                    }
-                    archiveDisabled={isArchiving || archiveIssueMutation.isPending}
-                    desktopTrailing={
-                      visibleTrailingIssueColumns.length > 0 ? (
-                        <InboxIssueTrailingColumns
+          {filteredIssueItems.length > 0 ? (
+            <InboxCollapsibleSection
+              sectionId="tasks"
+              title="Tasks"
+              count={filteredIssueItems.length}
+              open={sectionsOpen.tasks}
+              onOpenChange={(open) => setSectionOpen("tasks", open)}
+              headerActions={(
+                <InboxTableColumnsMenu
+                  menuTitle="Desktop issue rows"
+                  menuDescription="Choose which task columns stay visible"
+                  availableColumns={availableIssueColumns}
+                  columnLabels={inboxIssueColumnLabels}
+                  columnDescriptions={inboxIssueColumnDescriptions}
+                  visibleColumnSet={visibleIssueColumnSet}
+                  onToggleColumn={toggleIssueColumn}
+                  onResetDefaults={() => setIssueColumns(DEFAULT_INBOX_ISSUE_COLUMNS)}
+                  resetHint="status, id, updated"
+                />
+              )}
+            >
+              <div className="overflow-x-auto">
+                <InboxIssueTableHeader
+                  gridTemplateColumns={inboxIssueGridTemplateColumns}
+                  showStatus={showInboxIssueStatus}
+                  showId={showInboxIssueId}
+                  trailingColumns={visibleTrailingIssueColumns}
+                />
+                {filteredIssueItems.map((item) => {
+                  const navIndex = keyboardNavItems.indexOf(item);
+                  const isSelected = selectedIndex === navIndex;
+                  const issue = item.issue;
+                  const isUnread = issue.isUnreadForMe && !fadingOutIssues.has(issue.id);
+                  const isFading = fadingOutIssues.has(issue.id);
+                  const isArchiving = archivingIssueIds.has(issue.id);
+                  const issueProject = issue.projectId ? projectById.get(issue.projectId) ?? null : null;
+                  const row = (
+                    <IssueRow
+                      key={`issue:${issue.id}`}
+                      issue={issue}
+                      issueLinkState={issueLinkState}
+                      layout="inbox-table"
+                      inboxGridTemplateColumns={inboxIssueGridTemplateColumns}
+                      selected={isSelected}
+                      className={
+                        isArchiving
+                          ? "pointer-events-none -translate-x-4 scale-[0.98] opacity-0 transition-all duration-200 ease-out"
+                          : "transition-all duration-200 ease-out"
+                      }
+                      desktopMetaLeading={
+                        <InboxIssueMetaLeading
                           issue={issue}
-                          columns={visibleTrailingIssueColumns}
-                          projectName={issueProject?.name ?? null}
-                          projectStatus={issueProject?.status ?? null}
-                          workspaceName={resolveIssueWorkspaceName(issue, {
-                            executionWorkspaceById,
-                            projectWorkspaceById,
-                            defaultProjectWorkspaceIdByProjectId,
-                          })}
-                          assigneeName={agentName(issue.assigneeAgentId)}
-                          currentUserId={currentUserId}
-                          currentUserDisplayName={currentUserDisplayName}
+                          isLive={liveIssueIds.has(issue.id)}
+                          showStatus={showInboxIssueStatus}
+                          showIdentifier={showInboxIssueId}
                         />
-                      ) : undefined
-                    }
-                  />
-                );
+                      }
+                      mobileMeta={issueActivityText(issue).toLowerCase()}
+                      unreadState={
+                        isUnread ? "visible" : isFading ? "fading" : "hidden"
+                      }
+                      onMarkRead={() => markReadMutation.mutate(issue.id)}
+                      onArchive={
+                        canArchiveFromTab
+                          ? () => archiveIssueMutation.mutate(issue.id)
+                          : undefined
+                      }
+                      archiveDisabled={isArchiving || archiveIssueMutation.isPending}
+                      desktopTrailing={
+                        visibleTrailingIssueColumns.length > 0 ? (
+                          <InboxIssueTrailingColumns
+                            variant="flat"
+                            issue={issue}
+                            columns={visibleTrailingIssueColumns}
+                            projectName={issueProject?.name ?? null}
+                            projectStatus={issueProject?.status ?? null}
+                            workspaceName={resolveIssueWorkspaceName(issue, {
+                              executionWorkspaceById,
+                              projectWorkspaceById,
+                              defaultProjectWorkspaceIdByProjectId,
+                            })}
+                            assigneeName={agentName(issue.assigneeAgentId)}
+                            currentUserId={currentUserId}
+                            currentUserDisplayName={currentUserDisplayName}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  );
 
-                elements.push(wrapItem(`issue:${issue.id}`, isSelected, canArchiveFromTab ? (
-                  <SwipeToArchive
-                    key={`issue:${issue.id}`}
-                    selected={isSelected}
-                    disabled={isArchiving || archiveIssueMutation.isPending}
-                    onArchive={() => archiveIssueMutation.mutate(issue.id)}
-                  >
-                    {row}
-                  </SwipeToArchive>
-                ) : row));
-                return elements;
-              })}
-            </div>
-          </div>
-        </>
+                  return (
+                    <div
+                      key={`sel-issue:${issue.id}`}
+                      data-inbox-item
+                      className="relative"
+                      onClick={() => setSelectedIndex(navIndex)}
+                    >
+                      {canArchiveFromTab ? (
+                        <SwipeToArchive
+                          selected={isSelected}
+                          disabled={isArchiving || archiveIssueMutation.isPending}
+                          onArchive={() => archiveIssueMutation.mutate(issue.id)}
+                        >
+                          {row}
+                        </SwipeToArchive>
+                      ) : (
+                        row
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </InboxCollapsibleSection>
+          ) : null}
+
+          {filteredFailedRunItems.length > 0 ? (
+            <InboxCollapsibleSection
+              sectionId="agent_runs"
+              title="Agent runs"
+              count={filteredFailedRunItems.length}
+              open={sectionsOpen.agent_runs}
+              onOpenChange={(open) => setSectionOpen("agent_runs", open)}
+              headerActions={(
+                <InboxTableColumnsMenu
+                  menuTitle="Desktop agent run rows"
+                  menuDescription="Choose which agent run columns stay visible"
+                  availableColumns={[...inboxAgentRunColumns]}
+                  columnLabels={inboxAgentRunColumnLabels}
+                  columnDescriptions={inboxAgentRunColumnDescriptions}
+                  visibleColumnSet={visibleAgentRunColumnSet}
+                  onToggleColumn={toggleAgentRunColumn}
+                  onResetDefaults={() => setAgentRunColumns(DEFAULT_INBOX_AGENT_RUN_COLUMNS)}
+                  resetHint="status, details, last run"
+                />
+              )}
+            >
+              <div className="overflow-x-auto">
+                <InboxRunsTableHeaderRow
+                  gridTemplateColumns={agentRunsGridTemplateColumns}
+                  showActions={canMutateAttentionQueue}
+                  showStatus={showInboxAgentRunStatus}
+                  showDetails={showInboxAgentRunDetails}
+                  showLastRun={showInboxAgentRunLastRun}
+                />
+                {filteredFailedRunItems.map((item) => {
+                  const navIndex = keyboardNavItems.indexOf(item);
+                  const isSelected = selectedIndex === navIndex;
+                  const runKey = `run:${item.run.id}`;
+                  const isArchiving = archivingNonIssueIds.has(runKey);
+                  return (
+                    <AgentRunInboxTableRow
+                      key={runKey}
+                      run={item.run}
+                      selected={isSelected}
+                      issueById={issueById}
+                      agentName={agentName(item.run.agentId)}
+                      gridTemplateColumns={agentRunsGridTemplateColumns}
+                      showStatus={showInboxAgentRunStatus}
+                      showDetails={showInboxAgentRunDetails}
+                      showLastRun={showInboxAgentRunLastRun}
+                      showActionsColumn={canMutateAttentionQueue}
+                      onRetry={() => retryRunMutation.mutate(item.run)}
+                      isRetrying={retryingRunIds.has(item.run.id)}
+                      hideRetryAndDismiss={!canMutateAttentionQueue}
+                      unreadState={nonIssueUnreadState(runKey)}
+                      onMarkRead={() => handleMarkNonIssueRead(runKey)}
+                      onArchive={canArchiveFromTab ? () => handleArchiveNonIssue(runKey) : undefined}
+                      archiveDisabled={isArchiving}
+                      onSelect={() => setSelectedIndex(navIndex)}
+                      className={
+                        isArchiving
+                          ? "pointer-events-none -translate-x-4 scale-[0.98] opacity-0 transition-all duration-200 ease-out"
+                          : "transition-all duration-200 ease-out"
+                      }
+                    />
+                  );
+                })}
+                <div className="sm:hidden">
+                  {filteredFailedRunItems.map((item) => {
+                    const navIndex = keyboardNavItems.indexOf(item);
+                    const isSelected = selectedIndex === navIndex;
+                    const runKey = `run:${item.run.id}`;
+                    const isArchiving = archivingNonIssueIds.has(runKey);
+                    const row = (
+                      <FailedRunInboxRow
+                        key={runKey}
+                        run={item.run}
+                        selected={isSelected}
+                        issueById={issueById}
+                        agentName={agentName(item.run.agentId)}
+                        showActionsColumn={canMutateAttentionQueue}
+                        onRetry={() => retryRunMutation.mutate(item.run)}
+                        isRetrying={retryingRunIds.has(item.run.id)}
+                        hideRetryAndDismiss={!canMutateAttentionQueue}
+                        unreadState={nonIssueUnreadState(runKey)}
+                        onMarkRead={() => handleMarkNonIssueRead(runKey)}
+                        onArchive={canArchiveFromTab ? () => handleArchiveNonIssue(runKey) : undefined}
+                        archiveDisabled={isArchiving}
+                        className={
+                          isArchiving
+                            ? "pointer-events-none -translate-x-4 scale-[0.98] opacity-0 transition-all duration-200 ease-out"
+                            : "transition-all duration-200 ease-out"
+                        }
+                      />
+                    );
+                    return (
+                      <div
+                        key={`sel-mobile-${runKey}`}
+                        className="relative"
+                        onClick={() => setSelectedIndex(navIndex)}
+                      >
+                        {canArchiveFromTab ? (
+                          <SwipeToArchive
+                            selected={isSelected}
+                            disabled={isArchiving}
+                            onArchive={() => handleArchiveNonIssue(runKey)}
+                          >
+                            {row}
+                          </SwipeToArchive>
+                        ) : (
+                          row
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </InboxCollapsibleSection>
+          ) : null}
+        </div>
       )}
 
       {showAlertsSection && (
         <>
           {showSeparatorBefore("alerts") && <Separator />}
           <div>
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Alerts
             </h3>
-            <div className="divide-y divide-border border border-border">
+            <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm divide-y divide-border/80">
               {showAggregateAgentError && (
-                <div className="group/alert relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50">
+                <div className="group/alert relative flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent/40">
                   <Link
                     to="/agents"
                     className="flex flex-1 cursor-pointer items-center gap-3 no-underline text-inherit"
@@ -2115,7 +2676,7 @@ export function Inbox() {
                 </div>
               )}
               {showBudgetAlert && (
-                <div className="group/alert relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50">
+                <div className="group/alert relative flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-accent/40">
                   <Link
                     to="/costs"
                     className="flex flex-1 cursor-pointer items-center gap-3 no-underline text-inherit"

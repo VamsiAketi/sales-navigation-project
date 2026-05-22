@@ -6,6 +6,7 @@ import { createIssueDetailPath, mergeIssueModalLocationState } from "../lib/issu
 import { cn } from "../lib/utils";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import { StatusIcon } from "./StatusIcon";
+import { INBOX_TABLE_CELL_MUTED } from "../lib/inbox-table-layout";
 import { ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS } from "../lib/issue-list-layout";
 
 type UnreadState = "hidden" | "visible" | "fading";
@@ -40,6 +41,10 @@ interface IssueRowProps {
   alignDesktopTrailingRight?: boolean;
   /** Keep the default left padding before trailing desktop metadata. */
   desktopTrailingPaddingLeft?: boolean;
+  /** Align columns with the Attention Queue table header (sm+). */
+  layout?: "default" | "inbox-table";
+  /** `grid-template-columns` for `layout="inbox-table"` (must match header). */
+  inboxGridTemplateColumns?: string;
 }
 
 export function IssueRow({
@@ -60,6 +65,8 @@ export function IssueRow({
   desktopTitleStyle,
   alignDesktopTrailingRight = true,
   desktopTrailingPaddingLeft = true,
+  layout = "default",
+  inboxGridTemplateColumns,
 }: IssueRowProps) {
   const location = useLocation();
   const issuePathId = issue.identifier ?? issue.id;
@@ -90,6 +97,114 @@ export function IssueRow({
     }
     return vars;
   }, [desktopTitleStyle]);
+
+  const isInboxTable = layout === "inbox-table" && Boolean(inboxGridTemplateColumns);
+  const unreadControl = showUnreadSlot ? (
+    <span className="flex items-center justify-center self-center">
+      {showUnreadDot ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onMarkRead?.();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.stopPropagation();
+              onMarkRead?.();
+            }
+          }}
+          className={cn(
+            "inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors",
+            selected ? "hover:bg-muted/80" : "hover:bg-blue-500/20",
+          )}
+          aria-label="Mark as read"
+        >
+          <span
+            className={cn(
+              "block h-2 w-2 rounded-full transition-opacity duration-300",
+              selected ? "bg-muted-foreground/70" : "bg-blue-600 dark:bg-blue-400",
+              unreadState === "fading" ? "opacity-0" : "opacity-100",
+            )}
+          />
+        </button>
+      ) : (
+        <span className="inline-flex h-4 w-4" aria-hidden="true" />
+      )}
+    </span>
+  ) : null;
+
+  if (isInboxTable) {
+    return (
+      <Link
+        id={`issue-surface-${issue.id}`}
+        data-inbox-issue-link
+        to={issueHref}
+        state={rowLinkState}
+        style={{ gridTemplateColumns: inboxGridTemplateColumns }}
+        className={cn(
+          "border-b border-border/80 text-sm no-underline text-inherit transition-colors hover:bg-accent/40 last:border-b-0",
+          "flex flex-col gap-2 px-3 py-3 sm:grid sm:items-center sm:gap-x-3 sm:py-2",
+          selected && "bg-accent/80 hover:bg-accent/80",
+          className,
+        )}
+      >
+        {showMobileLeading ? (
+          <span className="flex items-start gap-2 sm:hidden">
+            {mobileLeading ?? <StatusIcon status={issue.status} projectStatuses={projectStatuses} />}
+            <span className="min-w-0 flex-1">
+              {showNewBadge ? (
+                <span className={cn(NEW_ISSUE_BADGE_CLASS, "mb-1 inline-flex")} aria-label="Newly created task">
+                  New
+                </span>
+              ) : null}
+              <span className="line-clamp-2 font-medium">{issue.title}</span>
+              {mobileMeta ? <span className="mt-1 block text-xs text-muted-foreground">{mobileMeta}</span> : null}
+            </span>
+            {unreadControl}
+          </span>
+        ) : null}
+        <span className="hidden sm:contents">
+          {unreadControl}
+          {desktopMetaLeading ?? (
+            <>
+              <span
+                className={cn(
+                  "hidden items-center justify-start sm:inline-flex",
+                  ISSUE_LIST_STATUS_COLUMN_WIDTH_CLASS,
+                )}
+              >
+                <span className="min-w-0 max-w-full">
+                  <StatusIcon
+                    status={issue.status}
+                    projectStatuses={projectStatuses}
+                    className={selected ? "border-muted-foreground! text-muted-foreground!" : undefined}
+                  />
+                </span>
+              </span>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                {identifier}
+              </span>
+            </>
+          )}
+          <span className="min-w-0 truncate font-medium leading-snug">
+            {showNewBadge ? (
+              <span className={cn(NEW_ISSUE_BADGE_CLASS, "mr-2 shrink-0")} aria-label="Newly created task">
+                New
+              </span>
+            ) : null}
+            {issue.title}
+          </span>
+          {desktopTrailing}
+          {trailingMeta ? (
+            <span className={INBOX_TABLE_CELL_MUTED}>{trailingMeta}</span>
+          ) : null}
+        </span>
+      </Link>
+    );
+  }
 
   return (
     <Link
