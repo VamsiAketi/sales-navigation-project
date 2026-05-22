@@ -98,9 +98,6 @@ RUN chmod +x /tmp/install-cursor-agent-cli.sh \
   && PAPERCLIP_HOME=/paperclip /tmp/install-cursor-agent-cli.sh \
   && rm /tmp/install-cursor-agent-cli.sh
 
-# Preinstall Chromium so deployed environments do not need runtime installs/root.
-RUN PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright pnpm exec playwright install chromium
-
 COPY scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
@@ -117,8 +114,7 @@ ENV NODE_ENV=production \
   PAPERCLIP_CONFIG=/paperclip/instances/default/config.json \
   PAPERCLIP_DEPLOYMENT_MODE=authenticated \
   PAPERCLIP_DEPLOYMENT_EXPOSURE=private \
-  OPENCODE_ALLOW_ALL_MODELS=true \
-  PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+  OPENCODE_ALLOW_ALL_MODELS=true
 
 VOLUME ["/paperclip"]
 EXPOSE 3100

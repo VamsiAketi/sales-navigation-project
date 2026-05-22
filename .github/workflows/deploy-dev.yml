@@ -18,6 +18,7 @@ env:
 jobs:
   build-and-deploy-dev:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     # Create GitHub Environment "dev" (Settings → Environments) and add secrets there
     # (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY) to scope LLM keys to dev; repo secrets
     # remain available for Azure, ACR, Postgres, etc.
@@ -66,6 +67,9 @@ jobs:
 
       - name: Build and push image
         uses: docker/build-push-action@v6
+        env:
+          # Unbuffered BuildKit logs so long RUN steps do not look hung after download completes.
+          BUILDKIT_PROGRESS: plain
         with:
           context: .
           push: true
