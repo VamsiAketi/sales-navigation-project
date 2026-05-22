@@ -1097,7 +1097,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               );
               if (movingOutOfBacklog && !hasAssignee && !hasDefaultAssignee) {
                 setStatusUpdateError(
-                  "An Assignee is required when the task is not in backlog",
+                  "Assign a teammate or AI agent before moving this task out of Backlog.",
                 );
                 return;
               }

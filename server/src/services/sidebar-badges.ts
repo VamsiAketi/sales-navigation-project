@@ -23,7 +23,7 @@ export function sidebarBadgeService(db: Db) {
         )
         .then((rows) => Number(rows[0]?.count ?? 0));
 
-      const latestRunByAgent = await db
+      const latestFailedRunByAgent = await db
         .selectDistinctOn([heartbeatRuns.agentId], {
           runStatus: heartbeatRuns.status,
         })
@@ -34,13 +34,12 @@ export function sidebarBadgeService(db: Db) {
             eq(heartbeatRuns.companyId, companyId),
             eq(agents.companyId, companyId),
             not(eq(agents.status, "terminated")),
+            inArray(heartbeatRuns.status, FAILED_HEARTBEAT_STATUSES),
           ),
         )
         .orderBy(heartbeatRuns.agentId, desc(heartbeatRuns.createdAt));
 
-      const failedRuns = latestRunByAgent.filter((row) =>
-        FAILED_HEARTBEAT_STATUSES.includes(row.runStatus),
-      ).length;
+      const failedRuns = latestFailedRunByAgent.length;
 
       const joinRequests = extra?.joinRequests ?? 0;
       const unreadTouchedIssues = extra?.unreadTouchedIssues ?? 0;
