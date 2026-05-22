@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   PointerSensor,
+  TouchSensor,
   closestCenter,
   type DragEndEvent,
   useSensor,
@@ -42,6 +43,7 @@ import {
 import { useSearchParams } from "@/lib/router";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
+import { useSidebar } from "../context/SidebarContext";
 import { costsApi } from "../api/costs";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
@@ -212,21 +214,29 @@ function SortableBillingModule({
   order: number;
   children: ReactNode;
 }) {
+  const { isMobile } = useSidebar();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const dragHandleProps = isMobile ? {} : { ...attributes, ...listeners };
+  const mobileModuleDragProps = isMobile ? { ...attributes, ...listeners } : {};
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     order,
+    ...(isMobile ? { touchAction: "none" as const } : {}),
   };
   return (
-    <div ref={setNodeRef} style={style} className={cn("space-y-2", isDragging && "opacity-80")}>
-      <div className="flex items-start gap-2">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn("space-y-2", isDragging && "opacity-80", isMobile && "max-lg:touch-none")}
+      {...mobileModuleDragProps}
+    >
+      <div className={cn("flex items-start gap-2", isMobile && "max-lg:gap-0")}>
         <button
           type="button"
-          className="mt-1 inline-flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+          className="mt-1 inline-flex h-6 w-6 max-lg:hidden shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
           aria-label="Drag billing module to reorder"
-          {...attributes}
-          {...listeners}
+          {...dragHandleProps}
         >
           <GripVertical className="h-3.5 w-3.5" />
         </button>
@@ -240,6 +250,7 @@ export function Billing() {
   const queryClient = useQueryClient();
   const chartMoneyFillId = useId().replace(/:/g, "");
   const [searchParams] = useSearchParams();
+  const { isMobile } = useSidebar();
   const { selectedCompany, selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
 
@@ -397,6 +408,12 @@ export function Billing() {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: isMobile ? 180 : 250,
+        tolerance: isMobile ? 8 : 5,
+      },
     }),
   );
 
@@ -670,7 +687,7 @@ export function Billing() {
                   !canManageBillingPayments
                     ? "You do not have permission to manage billing payments."
                     : !stripeReadyForCheckout
-                      ? "Set STRIPE_SECRET_KEY (or PAPERCLIP_STRIPE_SECRET_KEY) on the server to enable Stripe."
+                      ? "Set STRIPE_SECRET_KEY on the server to enable Stripe."
                       : undefined
                 }
                 onClick={() => stripePortalMutation.mutate()}
@@ -692,7 +709,7 @@ export function Billing() {
                   !canManageBillingPayments
                     ? "You do not have permission to manage billing payments."
                     : !stripeReadyForCheckout
-                      ? "Set STRIPE_SECRET_KEY (or PAPERCLIP_STRIPE_SECRET_KEY) on the server to enable Stripe checkout."
+                      ? "Set STRIPE_SECRET_KEY on the server to enable Stripe checkout."
                       : undefined
                 }
                 onClick={() => stripeTopUpMutation.mutate()}
@@ -711,15 +728,13 @@ export function Billing() {
           ) : !stripeReadyForCheckout ? (
             <p className="text-xs text-muted-foreground">
               Stripe checkout is off until the server has a secret key. Set{" "}
-              <span className="font-mono text-[11px]">STRIPE_SECRET_KEY</span> or{" "}
-              <span className="font-mono text-[11px]">PAPERCLIP_STRIPE_SECRET_KEY</span> in the environment (see{" "}
+              <span className="font-mono text-[11px]">STRIPE_SECRET_KEY</span> in the environment (see{" "}
               <span className="font-mono text-[11px]">.env.example</span>), then restart the API.
             </p>
           ) : !stripeWebhookConfigured ? (
             <p className="text-xs text-amber-700 dark:text-amber-400">
               Top-up checkout is available, but prepaid balance will only increase automatically after you set{" "}
-              <span className="font-mono text-[11px]">STRIPE_WEBHOOK_SECRET</span> (or{" "}
-              <span className="font-mono text-[11px]">PAPERCLIP_STRIPE_WEBHOOK_SECRET</span>) and point Stripe&apos;s
+              <span className="font-mono text-[11px]">STRIPE_WEBHOOK_SECRET</span> and point Stripe&apos;s
               webhook to this instance&apos;s <span className="font-mono text-[11px]">/api/stripe/webhook</span>{" "}
               endpoint. Until then, you can still pay in Stripe and adjust prepaid credit manually in instance settings
               if needed.

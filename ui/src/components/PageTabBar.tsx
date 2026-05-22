@@ -31,7 +31,7 @@ export function PageTabBar({
       <select
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
-        className="h-9 rounded-md border border-border bg-background px-2 py-1 text-base focus:outline-none focus:ring-1 focus:ring-ring"
+        className="h-9 w-full rounded-md border border-border bg-background px-2 py-0 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
       >
         {items.map((item) => (
           <option key={item.value} value={item.value}>

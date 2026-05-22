@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link } from "@/lib/router";
 import { IssueLink } from "./IssueLink";
@@ -124,17 +124,34 @@ function shouldPresentExistingWorkspaceSelection(issue: Issue) {
   );
 }
 
+const IssuePropertiesCompactContext = createContext(false);
+
+function useIssuePropertiesCompact() {
+  return useContext(IssuePropertiesCompactContext);
+}
+
 interface IssuePropertiesProps {
   issue: Issue;
   onUpdate: (data: Record<string, unknown>) => Promise<unknown>;
   inline?: boolean;
+  /** Tighter rows for mobile properties sheet. */
+  compact?: boolean;
 }
 
 function PropertyRow({ label, children }: { label: string; children: React.ReactNode }) {
+  const compact = useIssuePropertiesCompact();
+  if (compact) {
+    return (
+      <div className="flex min-h-8 items-center justify-between gap-2 py-1">
+        <span className="shrink-0 text-[11px] font-medium text-muted-foreground">{label}</span>
+        <div className="flex min-w-0 max-w-[68%] items-center justify-end gap-1">{children}</div>
+      </div>
+    );
+  }
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="text-xs text-muted-foreground shrink-0 w-20">{label}</span>
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">{children}</div>
+    <div className="flex min-w-0 items-center gap-3 py-1.5">
+      <span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">{children}</div>
     </div>
   );
 }
@@ -163,22 +180,53 @@ function PropertyPicker({
   extra?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const compact = useIssuePropertiesCompact();
   const btnCn = cn(
-    "inline-flex items-center gap-1.5 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 py-0.5 transition-colors",
+    "inline-flex items-center gap-1.5 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors",
+    compact ? "gap-1 py-0" : "py-0.5",
     triggerClassName,
   );
+
+  if (inline && compact) {
+    return (
+      <div className="border-b border-border/50 last:border-b-0">
+        <PropertyRow label={label}>
+          <Popover open={open} onOpenChange={onOpenChange} modal>
+            <PopoverTrigger asChild>
+              <button type="button" className={cn(btnCn, "max-w-full min-w-0")}>
+                {triggerContent}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className={cn(
+                "z-[225] flex max-h-[min(52dvh,15rem)] flex-col overflow-hidden p-1 shadow-lg",
+                popoverClassName,
+              )}
+              align="end"
+              side="top"
+              sideOffset={6}
+              collisionPadding={20}
+            >
+              {children}
+            </PopoverContent>
+          </Popover>
+          {extra}
+        </PropertyRow>
+      </div>
+    );
+  }
 
   if (inline) {
     return (
       <div>
         <PropertyRow label={label}>
-          <button className={btnCn} onClick={() => onOpenChange(!open)}>
+          <button type="button" className={btnCn} onClick={() => onOpenChange(!open)}>
             {triggerContent}
           </button>
           {extra}
         </PropertyRow>
         {open && (
-          <div className={cn("rounded-md border border-border bg-popover p-1 mb-2", popoverClassName)}>
+          <div className={cn("mb-2 rounded-md border border-border bg-popover p-1", popoverClassName)}>
             {children}
           </div>
         )}
@@ -343,7 +391,7 @@ function LabelUnselectedRow({
   );
 }
 
-export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProps) {
+export function IssueProperties({ issue, onUpdate, inline, compact = false }: IssuePropertiesProps) {
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const companyId = issue.companyId ?? selectedCompanyId;
@@ -364,6 +412,15 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [createLabelOpen, setCreateLabelOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const persistedLabelSignature = (issue.labelIds ?? []).join(",");
+
+  const pickerListScrollClass = cn(
+    "overflow-y-auto overscroll-contain",
+    compact ? "max-h-[min(44dvh,11rem)]" : "max-h-48",
+  );
+  const labelPickerListScrollClass = cn(
+    "overflow-y-auto overscroll-contain space-y-0.5 py-1",
+    compact ? "max-h-[min(44dvh,11rem)]" : "max-h-40",
+  );
 
   useEffect(() => {
     setLabelDraftIds(issue.labelIds ?? []);
@@ -703,11 +760,11 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         placeholder="Search tags…"
         value={labelSearch}
         onChange={(e) => setLabelSearch(e.target.value)}
-        autoFocus={!inline}
+        autoFocus={!inline || compact}
       />
 
       {/* ── Unselected tags list ── */}
-      <div className="max-h-40 overflow-y-auto overscroll-contain space-y-0.5 py-1">
+      <div className={labelPickerListScrollClass}>
         {filteredUnselected.length === 0 && (
           <p className="text-[11px] text-muted-foreground px-2 py-1">
             {labelSearch.trim() ? "No matching tags" : selectedLabels.length > 0 ? "All tags selected" : "No tags yet"}
@@ -822,9 +879,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         placeholder="Search assignees..."
         value={assigneeSearch}
         onChange={(e) => setAssigneeSearch(e.target.value)}
-        autoFocus={!inline}
+        autoFocus={!inline || compact}
       />
-      <div className="max-h-48 overflow-y-auto overscroll-contain">
+      <div className={pickerListScrollClass}>
         <button
           className={cn(
             "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
@@ -1021,9 +1078,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         placeholder="Search projects..."
         value={projectSearch}
         onChange={(e) => setProjectSearch(e.target.value)}
-        autoFocus={!inline}
+        autoFocus={!inline || compact}
       />
-      <div className="max-h-48 overflow-y-auto overscroll-contain">
+      <div className={pickerListScrollClass}>
         <button
           className={cn(
             "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
@@ -1081,9 +1138,21 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     </>
   );
 
+  const compactDateClass = cn(
+    nativeDateLeftClass,
+    compact && "h-7 max-w-[6.75rem] text-xs",
+  );
+
   return (
-    <div className="space-y-4">
-      <div className="space-y-1">
+    <IssuePropertiesCompactContext.Provider value={compact}>
+    <div className={cn(compact ? "space-y-2 text-xs [&_.text-sm]:text-xs" : "space-y-4")}>
+      <div
+        className={cn(
+          compact
+            ? "divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card px-2.5"
+            : "space-y-1",
+        )}
+      >
         <PropertyRow label="Status">
           <StatusIcon
             status={issue.status}
@@ -1108,7 +1177,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           />
         </PropertyRow>
         {statusUpdateError ? (
-          <p className="text-[11px] text-destructive">{statusUpdateError}</p>
+          <p className={cn("text-[11px] text-destructive", compact && "px-0 py-1")}>{statusUpdateError}</p>
         ) : null}
 
         <PropertyRow label="Priority">
@@ -1123,7 +1192,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <input
               type="date"
-              className={nativeDateLeftClass}
+              className={compactDateClass}
               onPointerDown={(e) => openNativeDatePicker(e.currentTarget)}
               value={issuePlanningDateInputValue(issue.targetStartAt)}
               onChange={(e) => {
@@ -1139,7 +1208,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <input
               type="date"
-              className={nativeDateLeftClass}
+              className={compactDateClass}
               onPointerDown={(e) => openNativeDatePicker(e.currentTarget)}
               value={issuePlanningDateInputValue(issue.dueAt)}
               onChange={(e) => {
@@ -1253,9 +1322,9 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                 placeholder="Search goals..."
                 value={goalSearch}
                 onChange={(e) => setGoalSearch(e.target.value)}
-                autoFocus={!inline}
+                autoFocus={!inline || compact}
               />
-              <div className="max-h-48 overflow-y-auto overscroll-contain space-y-0.5">
+              <div className={cn(pickerListScrollClass, "space-y-0.5")}>
                 {goalCandidates
                   .filter((goal) => !goalSearch.trim() || goal.title.toLowerCase().includes(goalSearch.toLowerCase()))
                   .map((goal) => (
@@ -1395,9 +1464,15 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         )}
       </div>
 
-      <Separator />
+      {compact ? null : <Separator />}
 
-      <div className="space-y-1">
+      <div
+        className={cn(
+          compact
+            ? "divide-y divide-border/50 overflow-hidden rounded-lg border border-border bg-card px-2.5"
+            : "space-y-1",
+        )}
+      >
         {(issue.createdByAgentId || issue.createdByUserId) && (
           <PropertyRow label="Reporter">
             {issue.createdByAgentId ? (
@@ -1429,9 +1504,10 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <span className="text-sm">{formatDate(issue.createdAt)}</span>
         </PropertyRow>
         <PropertyRow label="Updated">
-          <span className="text-sm">{timeAgo(issue.updatedAt)}</span>
+          <span className={cn("text-sm", compact && "text-xs")}>{timeAgo(issue.updatedAt)}</span>
         </PropertyRow>
       </div>
     </div>
+    </IssuePropertiesCompactContext.Provider>
   );
 }

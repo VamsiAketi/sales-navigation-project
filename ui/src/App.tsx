@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "@/lib/router";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
+import { useSidebar } from "./context/SidebarContext";
 import type { Location as RouterLocation } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { Layout } from "./components/Layout";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { authApi } from "./api/auth";
@@ -19,7 +20,7 @@ import { Projects } from "./pages/Projects";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { ProjectWorkspaceDetail } from "./pages/ProjectWorkspaceDetail";
 import { Issues } from "./pages/Issues";
-import { IssueDetail } from "./pages/IssueDetail";
+import { IssueDetail, ISSUE_DETAIL_MOBILE_HEADER_PORTAL_ID } from "./pages/IssueDetail";
 import { Routines } from "./pages/Routines";
 import { RoutineDetail } from "./pages/RoutineDetail";
 import { ExecutionWorkspaceDetail } from "./pages/ExecutionWorkspaceDetail";
@@ -447,6 +448,7 @@ export function App() {
 function IssueDetailModal() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isMobile } = useSidebar();
   const { issueId } = useParams<{ issueId: string }>();
   const issuePageState = (() => {
     if (typeof location.state !== "object" || location.state === null) return undefined;
@@ -460,10 +462,32 @@ function IssueDetailModal() {
   return (
     <Dialog open onOpenChange={(open) => { if (!open) navigate(-1); }}>
       <DialogContent
-        className="h-[94dvh] w-[98vw] max-w-none overflow-hidden rounded-xl p-0 md:h-[90dvh] md:w-[74vw] md:min-w-[1120px]"
+        showCloseButton={!isMobile}
+        className="overflow-hidden rounded-xl p-0 max-md:top-[50%] max-md:flex max-md:h-[min(88dvh,calc(100dvh-7rem-env(safe-area-inset-top)-env(safe-area-inset-bottom)))] max-md:max-h-[min(88dvh,calc(100dvh-7rem-env(safe-area-inset-top)-env(safe-area-inset-bottom)))] max-md:w-[calc(100vw-1rem)] max-md:max-w-[calc(100vw-1rem)] max-md:translate-y-[-50%] max-md:flex-col md:h-[90dvh] md:w-[74vw] md:min-w-[1120px] md:max-w-none"
       >
-        <div className="flex h-full min-h-0">
-          <div className="min-w-0 flex-1 overflow-y-auto p-6">
+        <div className="flex h-full min-h-0 flex-col md:flex-row">
+          {isMobile ? (
+            <div className="shrink-0 border-b border-border bg-background">
+              <div className="flex min-h-10 items-center gap-2 px-3 py-2 pr-2">
+                <div
+                  id={ISSUE_DETAIL_MOBILE_HEADER_PORTAL_ID}
+                  className="min-h-8 min-w-0 flex-1"
+                />
+                <DialogClose asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-8 w-8 shrink-0"
+                    aria-label="Close task"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </DialogClose>
+              </div>
+            </div>
+          ) : null}
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain p-6 max-md:px-4 max-md:pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-md:pt-4">
             <IssueDetail fullWidth />
           </div>
           <IssueDetailModalTaskInfoPanel

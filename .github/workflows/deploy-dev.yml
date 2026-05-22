@@ -135,6 +135,8 @@ jobs:
           --set-string server.extraEnv.MS_GRAPH_CLIENT_ID_EMAIL="${{ secrets.MS_GRAPH_CLIENT_ID_EMAIL }}" \
           --set-string server.extraEnv.MS_GRAPH_CLIENT_SECRET_EMAIL="${{ secrets.MS_GRAPH_CLIENT_SECRET_EMAIL }}" \
           --set-string server.extraEnv.MS_GRAPH_SENDER_EMAIL="${{ secrets.MS_GRAPH_SENDER_EMAIL }}" \
+          --set-string server.extraEnv.STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
+          --set-string server.extraEnv.STRIPE_WEBHOOK_SECRET="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
           --set-string server.extraEnv.CONTROL_PLANE_URL="${{ secrets.CONTROL_PLANE_URL }}" \
           --set-string server.extraEnv.INTERNAL_SECRET="${{ secrets.INTERNAL_SECRET }}" \
           --set-string server.database.externalUrl="${DATABASE_URL}" \

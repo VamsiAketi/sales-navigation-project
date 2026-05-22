@@ -69,6 +69,7 @@ export function IssueRow({
     [issueLinkState, location],
   );
   const identifier = issue.identifier ?? issue.id.slice(0, 8);
+  const descriptionPreview = issue.description?.trim() ?? "";
   const showUnreadSlot = unreadState !== null;
   const showUnreadDot = unreadState === "visible" || unreadState === "fading";
   const showMobileLeading = mobileLeading !== false;
@@ -97,8 +98,8 @@ export function IssueRow({
       to={issueHref}
       state={rowLinkState}
       className={cn(
-        "flex items-start border-b border-border py-2.5 pl-2 pr-3 text-sm no-underline text-inherit transition-colors hover:bg-accent/50 first:pt-0 last:border-b-0 sm:items-center sm:gap-2 sm:py-2 sm:pl-1 sm:first:pt-0",
-        showMobileLeading ? "gap-2" : "gap-0",
+        "flex items-start gap-2.5 border-b border-border px-3 py-3 text-sm no-underline text-inherit transition-colors hover:bg-accent/50 first:pt-3 last:border-b-0 sm:items-center sm:gap-2 sm:px-3 sm:py-2 sm:pl-1 sm:pr-3 sm:first:pt-0",
+        !showMobileLeading && !mobileMeta && "gap-0 sm:gap-2",
         selected && "bg-accent hover:bg-transparent",
         className,
       )}
@@ -108,10 +109,10 @@ export function IssueRow({
           {mobileLeading ?? <StatusIcon status={issue.status} projectStatuses={projectStatuses} />}
         </span>
       ) : null}
-      <span className="flex min-w-0 flex-1 flex-col gap-1 sm:contents">
+      <span className="flex min-w-0 flex-1 flex-col gap-2 sm:contents sm:gap-0">
         <span
           className={cn(
-            "flex min-w-0 items-start gap-2 text-sm sm:order-2 sm:items-center",
+            "flex min-w-0 items-start gap-2 sm:order-2 sm:items-center",
             desktopTitleStyle
               ? "sm:flex-none sm:[width:var(--issue-row-title-width)] sm:[min-width:var(--issue-row-title-min-width)]"
               : "sm:flex-1",
@@ -126,9 +127,24 @@ export function IssueRow({
               New
             </span>
           ) : null}
-          <span className="min-w-0 flex-1 line-clamp-2 sm:truncate sm:line-clamp-none">{issue.title}</span>
+          <span
+            className={cn(
+              "min-w-0 flex-1 break-words text-[15px] font-medium leading-snug [overflow-wrap:anywhere] sm:truncate sm:text-sm sm:font-normal sm:leading-normal sm:line-clamp-none",
+              descriptionPreview ? "line-clamp-2" : "line-clamp-3",
+            )}
+          >
+            {issue.title}
+          </span>
         </span>
-        <span className="flex items-center gap-2 sm:order-1 sm:shrink-0">
+        {descriptionPreview ? (
+          <p className="min-w-0 line-clamp-2 break-words text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere] sm:hidden">
+            {descriptionPreview}
+          </p>
+        ) : null}
+        {mobileMeta ? (
+          <span className="flex min-w-0 flex-col gap-1.5 sm:hidden">{mobileMeta}</span>
+        ) : null}
+        <span className="hidden items-center gap-2 sm:order-1 sm:flex sm:shrink-0">
           {desktopLeadingSpacer ? (
             <span className="hidden w-3.5 shrink-0 sm:block" />
           ) : null}
@@ -153,14 +169,6 @@ export function IssueRow({
               </span>
             </>
           )}
-          {mobileMeta ? (
-            <>
-              <span className="text-xs text-muted-foreground sm:hidden" aria-hidden="true">
-                &middot;
-              </span>
-              <span className="text-xs text-muted-foreground sm:hidden">{mobileMeta}</span>
-            </>
-          ) : null}
         </span>
       </span>
       {(desktopTrailing || trailingMeta) ? (

@@ -160,8 +160,12 @@
   }
 
   [data-slot="toggle"],
-  [data-touch-target="icon"] {
+  [data-slot="checkbox"],
+  button[role="checkbox"],
+  [data-touch-target="icon"],
+  [data-touch-target="compact"] {
     min-height: unset;
+    min-width: unset;
   }
 }
 

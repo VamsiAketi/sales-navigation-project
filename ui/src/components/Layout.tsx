@@ -194,17 +194,28 @@ function SidebarFooterBar({
 
   // Expanded sidebar footer (sidebarOpen && !sidebarCompact)
   return (
-    <div className="flex w-full flex-col border-t border-r border-sidebar-border bg-sidebar">
-      <div className="flex min-h-0 min-w-0 flex-1 items-center gap-1 py-2 pr-2">
-        {showRailToggle ? (
+    <div
+      className={cn(
+        "flex w-full flex-col border-t border-r border-sidebar-border bg-sidebar",
+        isMobile && "shrink-0 pb-[env(safe-area-inset-bottom)]",
+      )}
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 items-center gap-1 px-2 py-2.5 max-md:min-h-11 md:py-2 md:pr-2 md:pl-0">
+        {showRailToggle || isMobile ? (
           <div className="flex w-5 shrink-0 items-center justify-center">
             <Button
               type="button"
               variant="ghost"
               className={cn(azureSidebarIcon.chrome, "h-7 w-5 shrink-0 px-0")}
-              onClick={toggleSidebarRailExpanded}
-              aria-label="Collapse sidebar to icons only"
-              title="Icon-only sidebar"
+              onClick={() => {
+                if (isMobile) {
+                  setSidebarOpen(false);
+                  return;
+                }
+                toggleSidebarRailExpanded();
+              }}
+              aria-label={isMobile ? "Close menu" : "Collapse sidebar to icons only"}
+              title={isMobile ? "Close menu" : "Icon-only sidebar"}
             >
               <ChevronsLeft className="h-4 w-4" />
             </Button>
@@ -634,49 +645,28 @@ export function Layout() {
         {isMobile ? (
           <div
             className={cn(
-              "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out",
-              sidebarOpen ? "translate-x-0" : "-translate-x-full"
+              "fixed inset-y-0 left-0 z-50 flex w-[min(100vw,18rem)] flex-col overflow-hidden pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out",
+              sidebarOpen ? "translate-x-0" : "-translate-x-full",
             )}
           >
             <div className="flex flex-1 min-h-0 overflow-hidden">
               {/* <CompanyRail /> */}
               {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar />}
             </div>
-            <div className="border-t border-r border-border px-3 py-2 bg-background">
-              <div className="flex items-center gap-1 min-w-0">
-                {versionLabel && (
-                  <span
-                    className="px-2 text-xs text-muted-foreground min-w-0 flex-1 truncate"
-                    title={versionLabel}
-                  >
-                    {versionLabel}
-                  </span>
-                )}
-                {/* <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
-                  <Link
-                    to={instanceSettingsTarget}
-                    aria-label="Instance settings"
-                    title="Instance settings"
-                    onClick={() => {
-                      if (isMobile) setSidebarOpen(false);
-                    }}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Link>
-                </Button> */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground shrink-0"
-                  onClick={toggleTheme}
-                  aria-label={`Switch to ${nextTheme} mode`}
-                  title={`Switch to ${nextTheme} mode`}
-                >
-                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
+            <SidebarFooterBar
+              isMobile
+              sidebarOpen={sidebarOpen}
+              sidebarCompact={false}
+              sidebarRailExpanded={sidebarRailExpanded}
+              toggleSidebarRailExpanded={toggleSidebarRailExpanded}
+              setSidebarOpen={setSidebarOpen}
+              theme={theme}
+              nextTheme={nextTheme}
+              toggleTheme={toggleTheme}
+              showRailToggle={false}
+              versionLabel={versionLabel}
+              instanceSettingsTarget={instanceSettingsTarget}
+            />
           </div>
         ) : (
           <div

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { createPortal } from "react-dom";
 import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link, useLocation, useNavigate, useParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +11,7 @@ import { authApi } from "../api/auth";
 import { accessApi } from "../api/access";
 import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
+import { useIssueModalOverlay } from "../context/IssueModalOverlayContext";
 import { usePanel } from "../context/PanelContext";
 import { useToast } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -43,7 +45,6 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Activity as ActivityIcon,
@@ -70,6 +71,8 @@ import {
   ISSUE_ATTACHMENT_FILE_INPUT_ACCEPT,
   markdownTokenForUploadedIssueFile,
 } from "../lib/issue-attachment-file-accept";
+
+export const ISSUE_DETAIL_MOBILE_HEADER_PORTAL_ID = "issue-detail-mobile-header-portal";
 
 type CommentReassignment = {
   assigneeAgentId: string | null;
@@ -256,6 +259,7 @@ function ActorIdentity({ evt, agentMap, userNameMap }: { evt: ActivityEvent; age
 export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   const { issueId } = useParams<{ issueId: string }>();
   const { selectedCompanyId } = useCompany();
+  const issueModalOverlay = useIssueModalOverlay();
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -802,8 +806,184 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
   // Ancestors are returned oldest-first from the server (root at end, immediate parent at start)
   const ancestors = issue.ancestors ?? [];
 
+  const issueMetaChips = (
+    <>
+      <StatusIcon
+        status={issue.status}
+        onChange={(status) => updateIssue.mutate({ status })}
+        projectStatuses={projectIssueStatuses.length > 0 ? projectIssueStatuses : undefined}
+      />
+      <PriorityIcon
+        priority={issue.priority}
+        onChange={(priority) => updateIssue.mutate({ priority })}
+      />
+      <span className="shrink-0 font-mono text-sm text-muted-foreground">
+        {issue.identifier ?? issue.id.slice(0, 8)}
+      </span>
+      {hasLiveRuns && (
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-cyan-600 dark:text-cyan-400">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-cyan-400 opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-cyan-400" />
+          </span>
+          Live
+        </span>
+      )}
+      {issue.originKind === "routine_execution" && issue.originId && (
+        <Link
+          to={`/routines/${issue.originId}`}
+          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-600 transition-colors hover:bg-violet-500/20 dark:text-violet-400"
+        >
+          <Repeat className="h-3 w-3" />
+          Routine
+        </Link>
+      )}
+      {issue.projectId ? (
+        <Link
+          to={`/projects/${issue.projectId}`}
+          className="inline-flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground -mx-1"
+        >
+          <Hexagon className="h-3 w-3 shrink-0" />
+          <span className="truncate">
+            {(projects ?? []).find((p) => p.id === issue.projectId)?.name ?? issue.projectId.slice(0, 8)}
+          </span>
+        </Link>
+      ) : (
+        <span className="inline-flex items-center gap-1 px-1 py-0.5 text-xs text-muted-foreground opacity-50 -mx-1">
+          <Hexagon className="h-3 w-3 shrink-0" />
+          No project
+        </span>
+      )}
+      {(issue.labels ?? []).length > 0 && (
+        <div className="hidden items-center gap-1 sm:flex">
+          {(issue.labels ?? []).slice(0, 4).map((label) => (
+            <span
+              key={label.id}
+              className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
+              style={{
+                borderColor: label.color,
+                color: pickTextColorForPillBg(label.color, 0.12),
+                backgroundColor: `${label.color}1f`,
+              }}
+            >
+              {label.name}
+            </span>
+          ))}
+          {(issue.labels ?? []).length > 4 && (
+            <span className="text-[10px] text-muted-foreground">+{(issue.labels ?? []).length - 4}</span>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const mobileHeaderActions = (
+    <div className="ml-auto flex shrink-0 items-center gap-0.5">
+      <Button variant="ghost" size="icon-xs" onClick={copyIssueToClipboard} title="Copy link to ticket">
+        {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+      </Button>
+      <Button variant="ghost" size="icon-xs" onClick={() => setMobilePropsOpen(true)} title="Properties">
+        <SlidersHorizontal className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+
+  const desktopHeaderActions = (
+    <div className="hidden shrink-0 items-center md:ml-auto md:flex">
+      <Button variant="ghost" size="icon-xs" onClick={copyIssueToClipboard} title="Copy link to ticket">
+        {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className={cn(
+          "shrink-0 transition-opacity duration-200",
+          panelVisible ? "pointer-events-none w-0 overflow-hidden opacity-0" : "opacity-100",
+        )}
+        onClick={() => setPanelVisible(true)}
+        title="Show properties"
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+      </Button>
+      <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="icon-xs" className="shrink-0">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-44 p-1" align="end">
+          {issue.hiddenAt ? (
+            <button
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-amber-600 hover:bg-accent/50 dark:text-amber-400"
+              onClick={() => {
+                updateIssue.mutate(
+                  { hiddenAt: null },
+                  { onSuccess: () => navigate("/issues/all") },
+                );
+                setMoreOpen(false);
+              }}
+            >
+              <Eye className="h-3 w-3" />
+              Unhide this Task
+            </button>
+          ) : (
+            <button
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50"
+              onClick={() => {
+                updateIssue.mutate(
+                  { hiddenAt: new Date().toISOString() },
+                  { onSuccess: () => navigate("/issues/all") },
+                );
+                setMoreOpen(false);
+              }}
+            >
+              <EyeOff className="h-3 w-3" />
+              Hide this Task
+            </button>
+          )}
+        </PopoverContent>
+      </Popover>
+      {!fullWidth ? (
+        <Link to={sourceBreadcrumbs[0].href}>
+          <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs[0].label}`}>
+            <X className="h-4 w-4" />
+          </Button>
+        </Link>
+      ) : null}
+    </div>
+  );
+
+  const mobileHeaderToolbar = (
+    <div className="flex min-h-8 min-w-0 w-full flex-wrap items-center gap-x-2 gap-y-1">
+      {issueMetaChips}
+      {mobileHeaderActions}
+    </div>
+  );
+
+  const mobileHeaderPortal =
+    fullWidth && typeof document !== "undefined"
+      ? document.getElementById(ISSUE_DETAIL_MOBILE_HEADER_PORTAL_ID)
+      : null;
+
+  const issueTitleEditor = (
+    <InlineEditor
+      value={issue.title}
+      onSave={(title) => updateIssue.mutateAsync({ title })}
+      as="h2"
+      className={cn(
+        "break-words text-xl font-bold [overflow-wrap:anywhere]",
+        fullWidth && "max-md:text-lg max-md:font-semibold max-md:leading-snug",
+      )}
+    />
+  );
+
   return (
-    <div className={fullWidth ? "space-y-6 pt-4" : "max-w-2xl space-y-6 pt-4"}>
+    <div
+      className={cn(
+        "space-y-6 pt-4",
+        fullWidth ? "min-w-0 max-w-full overflow-x-hidden max-md:pt-2" : "max-w-2xl",
+      )}
+    >
       {/* Parent chain breadcrumb */}
       {ancestors.length > 0 && (
         <nav className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
@@ -832,170 +1012,25 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
         </div>
       )}
 
+      {mobileHeaderPortal ? createPortal(mobileHeaderToolbar, mobileHeaderPortal) : null}
+
       <div className="space-y-3">
-        <div className="flex items-center gap-2 min-w-0 flex-wrap">
-          <StatusIcon
-            status={issue.status}
-            onChange={(status) => updateIssue.mutate({ status })}
-            projectStatuses={projectIssueStatuses.length > 0 ? projectIssueStatuses : undefined}
-          />
-          <PriorityIcon
-            priority={issue.priority}
-            onChange={(priority) => updateIssue.mutate({ priority })}
-          />
-          <span className="text-sm font-mono text-muted-foreground shrink-0">{issue.identifier ?? issue.id.slice(0, 8)}</span>
-
-          {hasLiveRuns && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-medium text-cyan-600 dark:text-cyan-400 shrink-0">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
-              </span>
-              Live
-            </span>
-          )}
-
-          {issue.originKind === "routine_execution" && issue.originId && (
-            <Link
-              to={`/routines/${issue.originId}`}
-              className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 border border-violet-500/30 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400 shrink-0 hover:bg-violet-500/20 transition-colors"
-            >
-              <Repeat className="h-3 w-3" />
-              Routine
-            </Link>
-          )}
-
-          {issue.projectId ? (
-            <Link
-              to={`/projects/${issue.projectId}`}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors rounded px-1 -mx-1 py-0.5 min-w-0"
-            >
-              <Hexagon className="h-3 w-3 shrink-0" />
-              <span className="truncate">{(projects ?? []).find((p) => p.id === issue.projectId)?.name ?? issue.projectId.slice(0, 8)}</span>
-            </Link>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground opacity-50 px-1 -mx-1 py-0.5">
-              <Hexagon className="h-3 w-3 shrink-0" />
-              No project
-            </span>
-          )}
-
-          {(issue.labels ?? []).length > 0 && (
-            <div className="hidden sm:flex items-center gap-1">
-              {(issue.labels ?? []).slice(0, 4).map((label) => (
-                <span
-                  key={label.id}
-                  className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                  style={{
-                    borderColor: label.color,
-                    color: pickTextColorForPillBg(label.color, 0.12),
-                    backgroundColor: `${label.color}1f`,
-                  }}
-                >
-                  {label.name}
-                </span>
-              ))}
-              {(issue.labels ?? []).length > 4 && (
-                <span className="text-[10px] text-muted-foreground">+{(issue.labels ?? []).length - 4}</span>
-              )}
-            </div>
-          )}
-
-          <div className="ml-auto flex items-center gap-0.5 md:hidden shrink-0">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={copyIssueToClipboard}
-              title="Copy link to ticket"
-            >
-              {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setMobilePropsOpen(true)}
-              title="Properties"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="hidden md:flex items-center md:ml-auto shrink-0">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={copyIssueToClipboard}
-              title="Copy link to ticket"
-            >
-              {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className={cn(
-                "shrink-0 transition-opacity duration-200",
-                panelVisible ? "opacity-0 pointer-events-none w-0 overflow-hidden" : "opacity-100",
-              )}
-              onClick={() => setPanelVisible(true)}
-              title="Show properties"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-
-            <Popover open={moreOpen} onOpenChange={setMoreOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon-xs" className="shrink-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-            <PopoverContent className="w-44 p-1" align="end">
-              {issue.hiddenAt ? (
-                <button
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-amber-600 dark:text-amber-400"
-                  onClick={() => {
-                    updateIssue.mutate(
-                      { hiddenAt: null },
-                      { onSuccess: () => navigate("/issues/all") },
-                    );
-                    setMoreOpen(false);
-                  }}
-                >
-                  <Eye className="h-3 w-3" />
-                  Unhide this Task
-                </button>
-              ) : (
-                <button
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
-                  onClick={() => {
-                    updateIssue.mutate(
-                      { hiddenAt: new Date().toISOString() },
-                      { onSuccess: () => navigate("/issues/all") },
-                    );
-                    setMoreOpen(false);
-                  }}
-                >
-                  <EyeOff className="h-3 w-3" />
-                  Hide this Task
-                </button>
-              )}
-            </PopoverContent>
-            </Popover>
-            {!fullWidth ? (
-              <Link to={sourceBreadcrumbs[0].href}>
-                <Button variant="ghost" size="icon-xs" title={`Back to ${sourceBreadcrumbs[0].label}`}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </Link>
-            ) : null}
-          </div>
+        <div className="hidden min-w-0 flex-wrap items-center gap-2 md:flex">
+          {issueMetaChips}
+          {desktopHeaderActions}
         </div>
 
-        <InlineEditor
-          value={issue.title}
-          onSave={(title) => updateIssue.mutateAsync({ title })}
-          as="h2"
-          className="text-xl font-bold"
-        />
+        {!fullWidth ? (
+          <div className="max-md:flex max-md:flex-col max-md:gap-1.5 max-md:rounded-md max-md:border max-md:border-border/60 max-md:bg-muted/20 max-md:px-2.5 max-md:py-2 md:contents">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 max-md:gap-x-2 max-md:gap-y-1 md:hidden">
+              {issueMetaChips}
+              {mobileHeaderActions}
+            </div>
+            {issueTitleEditor}
+          </div>
+        ) : (
+          issueTitleEditor
+        )}
 
         <InlineEditor
           ref={descriptionEditorRef}
@@ -1081,22 +1116,32 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
 
       <Separator />
 
-      <Tabs value={detailTab} onValueChange={setDetailTab} className="space-y-3">
-        <TabsList variant="line" className="w-full justify-start gap-1">
-          <TabsTrigger value="comments" className="gap-1.5">
+      <Tabs value={detailTab} onValueChange={setDetailTab} className={cn("min-w-0 space-y-3", fullWidth && "max-w-full")}>
+        <TabsList
+          variant="line"
+          className={cn(
+            "w-full justify-start gap-1",
+            fullWidth && "h-auto max-w-full flex-nowrap overflow-x-auto scrollbar-auto-hide",
+          )}
+        >
+          <TabsTrigger value="comments" className={cn("gap-1.5", fullWidth && "max-md:flex-none max-md:shrink-0")}>
             <MessageSquare className="h-3.5 w-3.5" />
             Comments
           </TabsTrigger>
-          <TabsTrigger value="subissues" className="gap-1.5">
+          <TabsTrigger value="subissues" className={cn("gap-1.5", fullWidth && "max-md:flex-none max-md:shrink-0")}>
             <ListTree className="h-3.5 w-3.5" />
             Sub-tasks
           </TabsTrigger>
-          <TabsTrigger value="activity" className="gap-1.5">
+          <TabsTrigger value="activity" className={cn("gap-1.5", fullWidth && "max-md:flex-none max-md:shrink-0")}>
             <ActivityIcon className="h-3.5 w-3.5" />
             Audit Log
           </TabsTrigger>
           {issuePluginTabItems.map((item) => (
-            <TabsTrigger key={item.value} value={item.value}>
+            <TabsTrigger
+              key={item.value}
+              value={item.value}
+              className={fullWidth ? "max-md:flex-none max-md:shrink-0" : undefined}
+            >
               {item.label}
             </TabsTrigger>
           ))}
@@ -1237,15 +1282,30 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
 
       {/* Mobile properties drawer */}
       <Sheet open={mobilePropsOpen} onOpenChange={setMobilePropsOpen}>
-        <SheetContent side="bottom" className="max-h-[85dvh] pb-[env(safe-area-inset-bottom)]">
-          <SheetHeader>
-            <SheetTitle className="text-sm">Properties</SheetTitle>
+        <SheetContent
+          side="bottom"
+          className={cn(
+            "h-auto max-h-[min(70dvh,24rem)] w-full gap-0 rounded-t-2xl border-x-0 border-b-0 p-0 pb-[env(safe-area-inset-bottom)]",
+            issueModalOverlay && "z-[220]",
+          )}
+          overlayClassName={issueModalOverlay ? "z-[215]" : undefined}
+        >
+          <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
+          <SheetHeader className="shrink-0 flex-row items-center justify-between space-y-0 border-b border-border px-3 py-2 pr-11">
+            <SheetTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Properties
+            </SheetTitle>
           </SheetHeader>
-          <ScrollArea className="flex-1 overflow-y-auto">
-            <div className="px-4 pb-4">
-              <IssueProperties issue={issue} onUpdate={(data) => updateIssue.mutateAsync(data)} inline />
+          <div className="max-h-[min(58dvh,20rem)] min-h-0 overflow-y-auto overscroll-contain">
+            <div className="px-2.5 py-2">
+              <IssueProperties
+                issue={issue}
+                onUpdate={(data) => updateIssue.mutateAsync(data)}
+                inline
+                compact
+              />
             </div>
-          </ScrollArea>
+          </div>
         </SheetContent>
       </Sheet>
 

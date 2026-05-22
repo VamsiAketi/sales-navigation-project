@@ -5,6 +5,7 @@ import {
   DragOverlay,
   MeasuringStrategy,
   PointerSensor,
+  TouchSensor,
   closestCenter,
   pointerWithin,
   useDraggable,
@@ -22,6 +23,7 @@ import { PriorityIcon } from "./PriorityIcon";
 import { cn } from "../lib/utils";
 import { pickTextColorForPillBg } from "../lib/color-contrast";
 import { useOptionalTheme } from "../context/ThemeContext";
+import { useSidebar } from "../context/SidebarContext";
 import { mergeIssueModalLocationState } from "../lib/issueDetailBreadcrumb";
 import { NEW_ISSUE_BADGE_CLASS } from "../lib/focus-created-issue";
 import { isProjectIssueWorkflowTransitionAllowed, type Issue, type ProjectIssueStatus } from "@paperclipai/shared";
@@ -58,14 +60,14 @@ export function AssigneeAvatar({
   active?: boolean;
 }) {
   const bgColor = isAgent ? "#4f46e5" : nameToColor(name);
-  const dim     = size === "md" ? "h-7 w-7 text-[11px]" : "h-6 w-6 text-[10px]";
+  const dim     = size === "md" ? "size-7 text-[11px]" : "size-6 text-[10px]";
   const ring    = active ? "ring-2 ring-white ring-offset-1 ring-offset-background" : "";
   return (
-    <span className={`relative inline-flex shrink-0 select-none ${dim}`}>
+    <span className={`relative inline-flex aspect-square shrink-0 select-none ${dim}`}>
       <span
         title={`${name} (${isAgent ? "AI Agent" : "Human"})`}
         style={{ backgroundColor: bgColor }}
-        className={`inline-flex h-full w-full items-center justify-center rounded-full font-semibold text-white ${ring}`}
+        className={`inline-flex size-full items-center justify-center rounded-full font-semibold text-white ${ring}`}
       >
         {nameToInitials(name)}
       </span>
@@ -326,6 +328,7 @@ function KanbanCard({
   statusColorMap,
   highlight,
   showNewBadge,
+  blockCardLinkClick,
 }: {
   issue: Issue;
   agentName: string | null;
@@ -336,7 +339,9 @@ function KanbanCard({
   statusColorMap?: Map<string, string>;
   highlight?: boolean;
   showNewBadge?: boolean;
+  blockCardLinkClick?: () => boolean;
 }) {
+  const { isMobile } = useSidebar();
   const data = useMemo(() => ({ issue }), [issue]);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: issue.id, data });
@@ -345,6 +350,8 @@ function KanbanCard({
     transform: CSS.Translate.toString(transform),
     visibility: isDragging && !isOverlay ? ("hidden" as const) : undefined,
     willChange: isOverlay ? "transform" : undefined,
+    background: "hsl(var(--card))",
+    ...(isMobile && !isOverlay ? { touchAction: "none" as const } : {}),
   };
 
   const accent = getAccent(issue.status, statusColorMap?.get(issue.status));
@@ -353,14 +360,12 @@ function KanbanCard({
     <div
       id={isOverlay ? undefined : `issue-surface-${issue.id}`}
       ref={setNodeRef}
-      style={{
-        ...style,
-        background: "hsl(var(--card))",
-      }}
+      style={style}
       {...attributes}
       {...listeners}
       className={cn(
         "kanban-card group rounded-md border border-border/60 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_20px_rgba(15,23,42,0.04)] transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_2px_6px_rgba(15,23,42,0.10),0_12px_28px_rgba(15,23,42,0.08)] cursor-grab active:cursor-grabbing dark:border-border/50 dark:bg-card",
+        isMobile && !isOverlay && "max-lg:touch-none",
         highlight &&
           "z-2 ring-2 ring-primary ring-offset-2 ring-offset-background shadow-md motion-safe:animate-[kanban-new-card_1.2s_ease-out_1]",
       )}
@@ -369,6 +374,9 @@ function KanbanCard({
         to={`/issues/${issue.identifier ?? issue.id}`}
         state={issueLinkState}
         className="block no-underline text-inherit"
+        onClick={(e) => {
+          if (blockCardLinkClick?.()) e.preventDefault();
+        }}
       >
         <KanbanCardContent
           issue={issue}
@@ -397,6 +405,7 @@ const KanbanColumn = memo(function KanbanColumn({
   highlightIssueId,
   newBadgeIssueId,
   dropDisabled,
+  blockCardLinkClick,
 }: {
   status: string;
   columnLabel?: string;
@@ -410,6 +419,7 @@ const KanbanColumn = memo(function KanbanColumn({
   highlightIssueId?: string | null;
   newBadgeIssueId?: string | null;
   dropDisabled?: boolean;
+  blockCardLinkClick?: () => boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status, disabled: dropDisabled });
   // columnColor (from projectStatuses) always wins; then hardcoded map; then neutral fallback
@@ -446,6 +456,7 @@ const KanbanColumn = memo(function KanbanColumn({
             statusColorMap={statusColorMap}
             highlight={highlightIssueId === issue.id}
             showNewBadge={newBadgeIssueId === issue.id}
+            blockCardLinkClick={blockCardLinkClick}
           />
         ))}
       </div>
@@ -465,8 +476,17 @@ export function KanbanBoard({
   highlightIssueId = null,
   newBadgeIssueId = null,
 }: KanbanBoardProps) {
+  const { isMobile, sidebarOpen } = useSidebar();
   const location = useLocation();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const blockCardLinkClickRef = useRef(false);
+  const blockCardLinkClick = useCallback(() => blockCardLinkClickRef.current, []);
+  const armBlockCardLinkClick = useCallback(() => {
+    blockCardLinkClickRef.current = true;
+    window.setTimeout(() => {
+      blockCardLinkClickRef.current = false;
+    }, 350);
+  }, []);
   const cardLinkState = useMemo(
     () => mergeIssueModalLocationState(issueLinkState, location),
     [issueLinkState, location],
@@ -493,7 +513,13 @@ export function KanbanBoard({
   }, [issues]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 3 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: isMobile ? 180 : 250,
+        tolerance: isMobile ? 8 : 5,
+      },
+    }),
   );
 
   const agentMap = useMemo(
@@ -554,6 +580,7 @@ export function KanbanBoard({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      armBlockCardLinkClick();
       setActiveId(null);
       const { active, over } = event;
       if (!over) return;
@@ -596,10 +623,13 @@ export function KanbanBoard({
         onUpdateIssue(issueId, { kanbanPosition: computePosition(before, after) });
       }
     },
-    [issues, activeColumns, columnIssues, onUpdateIssue, projectStatuses]
+    [issues, activeColumns, columnIssues, onUpdateIssue, projectStatuses, armBlockCardLinkClick]
   );
 
-  const handleDragCancel = useCallback(() => setActiveId(null), []);
+  const handleDragCancel = useCallback(() => {
+    armBlockCardLinkClick();
+    setActiveId(null);
+  }, [armBlockCardLinkClick]);
 
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const cardsScrollRef = useRef<HTMLDivElement>(null);
@@ -626,7 +656,14 @@ export function KanbanBoard({
           Lives outside the overflow-x-auto card container so sticky top-0 works
           against the page scroll. bg-background ensures no bleed between the two
           sibling divs. JS scroll-sync keeps columns aligned horizontally.       */}
-      <div className="sticky top-[52px] z-50 -mx-2 mb-0 overflow-hidden bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80" style={{ willChange: "transform" }}>
+      <div
+        className={cn(
+          "sticky -mx-2 mb-0 overflow-hidden bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80",
+          "top-[52px] z-50 max-lg:top-0 max-lg:z-10",
+          isMobile && sidebarOpen && "max-lg:invisible",
+        )}
+        style={isMobile ? undefined : { willChange: "transform" }}
+      >
         <div
           ref={headerScrollRef}
           className="flex gap-4 overflow-x-hidden px-2 pb-1"
@@ -684,7 +721,7 @@ export function KanbanBoard({
           so no card can ever paint on top of the sticky status row              */}
       <div
         ref={cardsScrollRef}
-        className="-mx-2 relative z-0 flex min-h-[calc(100dvh-16rem)] items-stretch gap-4 overflow-x-auto overscroll-x-none px-2 pb-4 [scrollbar-width:thin] [scrollbar-color:hsl(var(--border))_transparent] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border"
+        className="-mx-2 relative z-0 flex min-h-[calc(100dvh-16rem)] items-stretch gap-4 overflow-x-auto overscroll-x-none px-2 pb-4 [touch-action:pan-x] [scrollbar-width:thin] [scrollbar-color:hsl(var(--border))_transparent] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/70 [&::-webkit-scrollbar-thumb:hover]:bg-border"
         onScroll={onCardsScroll}
       >
         {activeColumns.map((status) => {
@@ -706,6 +743,7 @@ export function KanbanBoard({
               highlightIssueId={highlightIssueId}
               newBadgeIssueId={newBadgeIssueId}
               dropDisabled={dropDisabled}
+              blockCardLinkClick={blockCardLinkClick}
             />
           );
         })}
