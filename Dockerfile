@@ -73,6 +73,16 @@ COPY patches/ patches/
 
 RUN pnpm install --frozen-lockfile
 
+# Preinstall Chromium for agent runs and company skills that invoke Playwright from /app
+# (avoids runtime browser downloads as the non-root node user in deployed containers).
+RUN mkdir -p /app/.cache/ms-playwright \
+  && PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright \
+  bash -euxo pipefail -c '\
+    echo "[playwright] installing chromium..."; \
+    pnpm exec playwright install chromium; \
+    echo "[playwright] chromium install complete"; \
+    du -sh /app/.cache/ms-playwright'
+
 FROM base AS build
 WORKDIR /app
 COPY --from=deps /app /app
@@ -88,6 +98,7 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 WORKDIR /app
 COPY --chown=node:node --from=build /app /app
+RUN chown -R node:node /app/.cache/ms-playwright
 RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai \
   && mkdir -p /paperclip \
   && chown node:node /paperclip
@@ -114,7 +125,8 @@ ENV NODE_ENV=production \
   PAPERCLIP_CONFIG=/paperclip/instances/default/config.json \
   PAPERCLIP_DEPLOYMENT_MODE=authenticated \
   PAPERCLIP_DEPLOYMENT_EXPOSURE=private \
-  OPENCODE_ALLOW_ALL_MODELS=true
+  OPENCODE_ALLOW_ALL_MODELS=true \
+  PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
 
 VOLUME ["/paperclip"]
 EXPOSE 3100
