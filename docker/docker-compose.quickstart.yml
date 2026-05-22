@@ -8,6 +8,8 @@ services:
     environment:
       HOST: "0.0.0.0"
       PAPERCLIP_HOME: "/paperclip"
+      CURSOR_AGENT_INSTALL_HOME: "/opt/cursor-agent"
+      PATH: "/opt/cursor-agent/.local/bin:/usr/local/bin:/usr/bin:/bin"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       PAPERCLIP_DEPLOYMENT_MODE: "authenticated"

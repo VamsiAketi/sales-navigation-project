@@ -98,18 +98,19 @@ RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/cod
   && mkdir -p /paperclip \
   && chown node:node /paperclip
 
-# Cursor Agent CLI (official installer; same layout as curl cursor.com/install | bash).
-COPY scripts/install-cursor-agent-cli.sh /tmp/install-cursor-agent-cli.sh
-RUN chmod +x /tmp/install-cursor-agent-cli.sh \
-  && PAPERCLIP_HOME=/paperclip /tmp/install-cursor-agent-cli.sh \
-  && rm /tmp/install-cursor-agent-cli.sh
+# Cursor Agent CLI — install outside /paperclip so PVC/bind mounts do not hide the binary.
+COPY scripts/install-cursor-agent-cli.sh /usr/local/bin/install-cursor-agent-cli.sh
+RUN chmod +x /usr/local/bin/install-cursor-agent-cli.sh \
+  && CURSOR_AGENT_INSTALL_HOME=/opt/cursor-agent /usr/local/bin/install-cursor-agent-cli.sh \
+  && chown -R node:node /opt/cursor-agent
 
 COPY scripts/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production \
   HOME=/paperclip \
-  PATH=/paperclip/.local/bin:/usr/local/bin:/usr/bin:/bin \
+  CURSOR_AGENT_INSTALL_HOME=/opt/cursor-agent \
+  PATH=/opt/cursor-agent/.local/bin:/usr/local/bin:/usr/bin:/bin \
   HOST=0.0.0.0 \
   PORT=3100 \
   SERVE_UI=true \

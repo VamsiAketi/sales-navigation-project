@@ -48,12 +48,19 @@ All data is persisted under the bind mount (`./data/docker-paperclip`):
 - Local secrets key
 - Agent workspace data
 
-## Claude and Codex Adapters in Docker
+## Agent CLIs in Docker
 
 The Docker image pre-installs:
 
 - `claude` (Anthropic Claude Code CLI)
 - `codex` (OpenAI Codex CLI)
+- `agent` (Cursor Agent CLI at `/opt/cursor-agent/.local/bin`)
+
+Cursor is installed under `/opt/cursor-agent`, not `/paperclip`, so bind mounts and Kubernetes PVCs on `/paperclip` do not remove the CLI. Cursor auth and config still live under `/paperclip/.cursor` because `HOME` is `/paperclip`.
+
+The image install script tries `https://cursor.com/install` first, then falls back to Cursor’s download API and Linux tarball when that endpoint is unavailable (common in CI). Set `CURSOR_AGENT_VERSION` and `CURSOR_AGENT_URL_PREFIX` at build time to pin a specific CLI release.
+
+## Claude and Codex API Keys
 
 Pass API keys to enable local adapter runs inside the container:
 

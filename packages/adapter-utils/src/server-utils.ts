@@ -338,7 +338,13 @@ export function defaultPathForPlatform() {
   if (process.platform === "win32") {
     return "C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem";
   }
-  return "/usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin";
+  const cursorInstallHome =
+    typeof process.env.CURSOR_AGENT_INSTALL_HOME === "string"
+      ? process.env.CURSOR_AGENT_INSTALL_HOME.trim()
+      : "";
+  const cursorBin =
+    cursorInstallHome.length > 0 ? `${cursorInstallHome}/.local/bin` : "/opt/cursor-agent/.local/bin";
+  return `${cursorBin}:/usr/local/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin`;
 }
 
 function windowsPathExts(env: NodeJS.ProcessEnv): string[] {
@@ -428,12 +434,24 @@ export function ensurePathInEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const home = withDefaults.HOME ?? withDefaults.USERPROFILE;
   if (!home || process.platform === "win32") return withDefaults;
 
-  const localBin = path.join(home, ".local", "bin");
+  const delimiter = ":";
   const pathValue = withDefaults.PATH ?? "";
-  const segments = pathValue.split(":").filter(Boolean);
-  if (segments.includes(localBin)) return withDefaults;
+  const segments = pathValue.split(delimiter).filter(Boolean);
+  const prepend: string[] = [];
 
-  return { ...withDefaults, PATH: [localBin, ...segments].join(":") };
+  const cursorInstallHome =
+    typeof env.CURSOR_AGENT_INSTALL_HOME === "string" ? env.CURSOR_AGENT_INSTALL_HOME.trim() : "";
+  if (cursorInstallHome.length > 0) {
+    const cursorBin = path.join(cursorInstallHome, ".local", "bin");
+    if (!segments.includes(cursorBin)) prepend.push(cursorBin);
+  }
+
+  const localBin = path.join(home, ".local", "bin");
+  if (!segments.includes(localBin)) prepend.push(localBin);
+
+  if (prepend.length === 0) return withDefaults;
+
+  return { ...withDefaults, PATH: [...prepend, ...segments].join(delimiter) };
 }
 
 export async function ensureAbsoluteDirectory(

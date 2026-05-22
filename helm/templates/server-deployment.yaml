@@ -89,6 +89,11 @@ spec:
             - sh
             - -c
             - |
+              export PATH="/opt/cursor-agent/.local/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}"
+              if ! command -v agent >/dev/null 2>&1 && ! command -v cursor-agent >/dev/null 2>&1; then
+                echo "Cursor Agent CLI missing; installing to /opt/cursor-agent..."
+                CURSOR_AGENT_INSTALL_HOME=/opt/cursor-agent /usr/local/bin/install-cursor-agent-cli.sh
+              fi
               printenv OPENAI_API_KEY | codex login --with-api-key
               if [ ! -f "${PAPERCLIP_CONFIG}" ]; then
                 echo '=== WAITING FOR 30 SECONDS ===';
@@ -135,6 +140,10 @@ spec:
               value: /paperclip
             - name: PAPERCLIP_HOME
               value: /paperclip
+            - name: CURSOR_AGENT_INSTALL_HOME
+              value: /opt/cursor-agent
+            - name: PATH
+              value: /opt/cursor-agent/.local/bin:/usr/local/bin:/usr/bin:/bin
             - name: PAPERCLIP_INSTANCE_ID
               value: {{ .Values.server.paperclip.instanceId | quote }}
             - name: PAPERCLIP_ONBOARD_AUTO_RUN

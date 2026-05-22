@@ -28,6 +28,8 @@ services:
       NODE_ENV: "production"
       HOME: "/paperclip"
       PAPERCLIP_HOME: "/paperclip"
+      CURSOR_AGENT_INSTALL_HOME: "/opt/cursor-agent"
+      PATH: "/opt/cursor-agent/.local/bin:/usr/local/bin:/usr/bin:/bin"
       PAPERCLIP_INSTANCE_ID: "default"
       PAPERCLIP_ONBOARD_AUTO_RUN: "false"
       PAPERCLIP_CONFIG: "/paperclip/instances/default/config.json"
