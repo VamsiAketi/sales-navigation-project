@@ -1,4 +1,5 @@
 import type { Location } from "react-router-dom";
+import { ATTENTION_QUEUE_PAGE_LABEL } from "./inbox";
 
 type IssueDetailBreadcrumb = {
   label: string;
@@ -22,7 +23,7 @@ function isIssueDetailBreadcrumb(value: unknown): value is IssueDetailBreadcrumb
 
 function labelForSource(source: string | null): string | null {
   if (!source) return null;
-  if (source === "inbox") return "Inbox";
+  if (source === "inbox") return ATTENTION_QUEUE_PAGE_LABEL;
   if (source === "issues") return "Issues";
   return source.charAt(0).toUpperCase() + source.slice(1);
 }

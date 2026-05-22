@@ -7,6 +7,43 @@ export const DISMISSED_KEY = "paperclip:inbox:dismissed";
 export const READ_ITEMS_KEY = "paperclip:inbox:read-items";
 export const INBOX_LAST_TAB_KEY = "paperclip:inbox:last-tab";
 export const INBOX_ISSUE_COLUMNS_KEY = "paperclip:inbox:issue-columns";
+export const INBOX_SECTIONS_OPEN_KEY = "paperclip:inbox:sections-open";
+
+/** Page title shown in the header breadcrumb for `/inbox/*`. */
+export const ATTENTION_QUEUE_PAGE_LABEL = "Attention Queue";
+
+export type InboxSectionId = "tasks" | "agent_runs" | "approvals";
+
+export type InboxSectionsOpenState = Record<InboxSectionId, boolean>;
+
+const DEFAULT_INBOX_SECTIONS_OPEN: InboxSectionsOpenState = {
+  tasks: true,
+  agent_runs: true,
+  approvals: true,
+};
+
+export function loadInboxSectionsOpen(): InboxSectionsOpenState {
+  try {
+    const raw = localStorage.getItem(INBOX_SECTIONS_OPEN_KEY);
+    if (!raw) return { ...DEFAULT_INBOX_SECTIONS_OPEN };
+    const parsed = JSON.parse(raw) as Partial<InboxSectionsOpenState>;
+    return {
+      tasks: parsed.tasks ?? true,
+      agent_runs: parsed.agent_runs ?? true,
+      approvals: parsed.approvals ?? true,
+    };
+  } catch {
+    return { ...DEFAULT_INBOX_SECTIONS_OPEN };
+  }
+}
+
+export function saveInboxSectionsOpen(state: InboxSectionsOpenState) {
+  try {
+    localStorage.setItem(INBOX_SECTIONS_OPEN_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
 export type InboxTab = "mine" | "recent" | "unread" | "all";
 export type InboxApprovalFilter = "all" | "actionable" | "resolved";
 export const inboxIssueColumns = ["status", "id", "assignee", "project", "workspace", "labels", "updated"] as const;
@@ -267,19 +304,21 @@ export function getInboxKeyboardSelectionIndex(
     : Math.max(previousIndex - 1, 0);
 }
 
+/** Most recent failed/timed_out run per agent (ignores newer queued/running/succeeded runs). */
 export function getLatestFailedRunsByAgent(runs: HeartbeatRun[]): HeartbeatRun[] {
   const sorted = [...runs].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
-  const latestByAgent = new Map<string, HeartbeatRun>();
+  const latestFailedByAgent = new Map<string, HeartbeatRun>();
 
   for (const run of sorted) {
-    if (!latestByAgent.has(run.agentId)) {
-      latestByAgent.set(run.agentId, run);
+    if (!FAILED_RUN_STATUSES.has(run.status)) continue;
+    if (!latestFailedByAgent.has(run.agentId)) {
+      latestFailedByAgent.set(run.agentId, run);
     }
   }
 
-  return Array.from(latestByAgent.values()).filter((run) => FAILED_RUN_STATUSES.has(run.status));
+  return Array.from(latestFailedByAgent.values());
 }
 
 export function normalizeTimestamp(value: string | Date | null | undefined): number {

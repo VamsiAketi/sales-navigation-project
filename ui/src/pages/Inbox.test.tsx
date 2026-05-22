@@ -5,7 +5,13 @@ import type { ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import type { Issue } from "@paperclipai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FailedRunInboxRow, InboxIssueMetaLeading, InboxIssueTrailingColumns } from "./Inbox";
+import { buildInboxAgentRunTableGridColumns } from "../lib/inbox-table-layout";
+import {
+  AgentRunInboxTableRow,
+  FailedRunInboxRow,
+  InboxIssueMetaLeading,
+  InboxIssueTrailingColumns,
+} from "./Inbox";
 
 vi.mock("@/lib/router", () => ({
   Link: ({ children, className, ...props }: ComponentProps<"a">) => (
@@ -78,6 +84,7 @@ describe("FailedRunInboxRow", () => {
 
   it("suppresses accent hover styling when selected", () => {
     const root = createRoot(container);
+    const gridTemplateColumns = buildInboxAgentRunTableGridColumns();
     const run = {
       id: "run-1",
       companyId: "company-1",
@@ -115,12 +122,12 @@ describe("FailedRunInboxRow", () => {
 
     act(() => {
       root.render(
-        <FailedRunInboxRow
+        <AgentRunInboxTableRow
           run={run}
           issueById={new Map()}
           agentName="Agent"
-          issueLinkState={null}
-          onDismiss={() => {}}
+          gridTemplateColumns={gridTemplateColumns}
+          showActionsColumn
           onRetry={() => {}}
           isRetrying={false}
           selected
@@ -130,7 +137,7 @@ describe("FailedRunInboxRow", () => {
 
     const link = container.querySelector("a");
     expect(link).not.toBeNull();
-    expect(link?.className).toContain("hover:bg-transparent");
+    expect(link?.className).toContain("hover:text-inherit");
     expect(link?.className).not.toContain("hover:bg-accent/50");
 
     act(() => {
@@ -181,8 +188,6 @@ describe("FailedRunInboxRow", () => {
           run={run}
           issueById={new Map()}
           agentName="Agent"
-          issueLinkState={null}
-          onDismiss={() => {}}
           onRetry={() => {}}
           isRetrying={false}
           hideRetryAndDismiss

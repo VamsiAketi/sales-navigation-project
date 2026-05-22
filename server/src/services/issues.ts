@@ -52,7 +52,7 @@ function assertAssigneeRequiredUnlessListOnlyStage(
 ) {
   if (isBoardPinnedHiddenProjectIssueStatusValue(status)) return;
   if (assigneeUserId || assigneeAgentId) return;
-  throw unprocessable("An assignee is required when the task is not in Backlog.", {
+  throw unprocessable("Assignee is required. Tasks outside Backlog must have an assignee.", {
     field: "assignee",
   });
 }
