@@ -84,7 +84,11 @@ describe("FailedRunInboxRow", () => {
 
   it("suppresses accent hover styling when selected", () => {
     const root = createRoot(container);
-    const gridTemplateColumns = buildInboxAgentRunTableGridColumns();
+    const gridTemplateColumns = buildInboxAgentRunTableGridColumns({
+      showStatus: true,
+      showDetails: true,
+      showLastRun: true,
+    });
     const run = {
       id: "run-1",
       companyId: "company-1",
@@ -127,6 +131,9 @@ describe("FailedRunInboxRow", () => {
           issueById={new Map()}
           agentName="Agent"
           gridTemplateColumns={gridTemplateColumns}
+          showStatus
+          showDetails
+          showLastRun
           showActionsColumn
           onRetry={() => {}}
           isRetrying={false}

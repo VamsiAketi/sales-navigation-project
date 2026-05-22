@@ -11,6 +11,7 @@ import type {
   ProjectWorkspace,
 } from "@paperclipai/shared";
 import {
+  DEFAULT_INBOX_AGENT_RUN_COLUMNS,
   DEFAULT_INBOX_ISSUE_COLUMNS,
   computeInboxBadgeData,
   formatInboxBadgeTooltip,
@@ -22,12 +23,15 @@ import {
   getRecentTouchedIssues,
   getUnreadTouchedIssues,
   isMineInboxTab,
+  loadInboxAgentRunColumns,
   loadInboxIssueColumns,
   loadLastInboxTab,
+  normalizeInboxAgentRunColumns,
   normalizeInboxIssueColumns,
   RECENT_ISSUES_LIMIT,
   resolveIssueWorkspaceName,
   resolveInboxSelectionIndex,
+  saveInboxAgentRunColumns,
   saveInboxIssueColumns,
   saveLastInboxTab,
   shouldShowInboxSection,
@@ -573,6 +577,21 @@ describe("inbox helpers", () => {
   it("allows hiding every optional issue column down to the title-only view", () => {
     saveInboxIssueColumns([]);
     expect(loadInboxIssueColumns()).toEqual([]);
+  });
+
+  it("defaults agent run columns to status, details, and last run", () => {
+    expect(loadInboxAgentRunColumns()).toEqual(DEFAULT_INBOX_AGENT_RUN_COLUMNS);
+  });
+
+  it("normalizes saved agent run columns to valid values in canonical order", () => {
+    saveInboxAgentRunColumns(["last_run", "status", "details", "last_run"]);
+
+    expect(loadInboxAgentRunColumns()).toEqual(["status", "details", "last_run"]);
+    expect(normalizeInboxAgentRunColumns(["last_run", "status", "wat", "details"])).toEqual([
+      "status",
+      "details",
+      "last_run",
+    ]);
   });
 
   it("shows explicit workspace names but leaves the default workspace blank", () => {

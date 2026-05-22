@@ -88,6 +88,7 @@ import { PageTabBar } from "../components/PageTabBar";
 import type { Approval, HeartbeatRun, Issue, JoinRequest } from "@paperclipai/shared";
 import {
   ACTIONABLE_APPROVAL_STATUSES,
+  DEFAULT_INBOX_AGENT_RUN_COLUMNS,
   DEFAULT_INBOX_ISSUE_COLUMNS,
   getAvailableInboxIssueColumns,
   getApprovalsForTab,
@@ -96,12 +97,17 @@ import {
   getLatestFailedRunsByAgent,
   getRecentTouchedIssues,
   isMineInboxTab,
+  inboxAgentRunColumns,
+  loadInboxAgentRunColumns,
   loadInboxIssueColumns,
+  normalizeInboxAgentRunColumns,
   normalizeInboxIssueColumns,
   resolveIssueWorkspaceName,
   resolveInboxSelectionIndex,
+  saveInboxAgentRunColumns,
   saveInboxIssueColumns,
   InboxApprovalFilter,
+  type InboxAgentRunColumn,
   type InboxIssueColumn,
   loadInboxSectionsOpen,
   saveInboxSectionsOpen,
@@ -198,6 +204,17 @@ const inboxIssueColumnLabels: Record<InboxIssueColumn, string> = {
   labels: "Tags",
   updated: "Last updated",
 };
+const inboxAgentRunColumnLabels: Record<InboxAgentRunColumn, string> = {
+  status: "Status",
+  details: "Details",
+  last_run: "Last run",
+};
+const inboxAgentRunColumnDescriptions: Record<InboxAgentRunColumn, string> = {
+  status: "Run outcome chip beside the unread control.",
+  details: "Error summary or run state text.",
+  last_run: "Relative time since the run finished or started.",
+};
+
 const inboxIssueColumnDescriptions: Record<InboxIssueColumn, string> = {
   status: "Issue state chip on the left edge.",
   id: "Ticket identifier like PAP-1009.",
@@ -322,12 +339,90 @@ function InboxUnreadControl({
   );
 }
 
+function InboxTableColumnsMenu<Column extends string>({
+  menuTitle,
+  menuDescription,
+  availableColumns,
+  columnLabels,
+  columnDescriptions,
+  visibleColumnSet,
+  onToggleColumn,
+  onResetDefaults,
+  resetHint,
+}: {
+  menuTitle: string;
+  menuDescription: string;
+  availableColumns: Column[];
+  columnLabels: Record<Column, string>;
+  columnDescriptions: Record<Column, string>;
+  visibleColumnSet: Set<Column>;
+  onToggleColumn: (column: Column, enabled: boolean) => void;
+  onResetDefaults: () => void;
+  resetHint: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <Columns3 className="mr-1 h-3.5 w-3.5" />
+          Show / hide columns
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-[300px] rounded-xl border-border/70 p-1.5 shadow-xl shadow-black/10"
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <DropdownMenuLabel className="px-2 pb-1 pt-1.5">
+          <div className="space-y-1">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              {menuTitle}
+            </div>
+            <div className="text-sm font-medium text-foreground">{menuDescription}</div>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {availableColumns.map((column) => (
+          <DropdownMenuCheckboxItem
+            key={column}
+            checked={visibleColumnSet.has(column)}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={(checked) => onToggleColumn(column, checked === true)}
+            className="items-start rounded-lg px-3 py-2.5 pl-8"
+          >
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-foreground">{columnLabels[column]}</span>
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                {columnDescriptions[column]}
+              </span>
+            </span>
+          </DropdownMenuCheckboxItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onResetDefaults} className="rounded-lg px-3 py-2 text-sm">
+          Reset defaults
+          <span className="ml-auto text-xs text-muted-foreground">{resetHint}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function InboxCollapsibleSection({
   sectionId,
   title,
   count,
   open,
   onOpenChange,
+  headerActions,
   children,
 }: {
   sectionId: InboxSectionId;
@@ -335,6 +430,7 @@ function InboxCollapsibleSection({
   count: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  headerActions?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -354,9 +450,12 @@ function InboxCollapsibleSection({
             )}
           />
           <span className="text-sm font-semibold text-foreground">{title}</span>
-          <span className="ml-auto rounded-md bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
-            {count}
-          </span>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {headerActions}
+            <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+              {count}
+            </span>
+          </div>
         </CollapsibleTrigger>
         <CollapsibleContent>{children}</CollapsibleContent>
       </section>
@@ -367,9 +466,15 @@ function InboxCollapsibleSection({
 function InboxRunsTableHeaderRow({
   gridTemplateColumns,
   showActions,
+  showStatus,
+  showDetails,
+  showLastRun,
 }: {
   gridTemplateColumns: string;
   showActions: boolean;
+  showStatus: boolean;
+  showDetails: boolean;
+  showLastRun: boolean;
 }) {
   return (
     <div
@@ -377,13 +482,15 @@ function InboxRunsTableHeaderRow({
       style={{ gridTemplateColumns }}
       aria-hidden="true"
     >
-      <span className={INBOX_AGENT_RUN_STATUS_CELL_CLASS}>
-        <span className="inline-flex h-4 w-4 shrink-0" aria-hidden="true" />
-        <span>Status</span>
-      </span>
+      {showStatus ? (
+        <span className={INBOX_AGENT_RUN_STATUS_CELL_CLASS}>
+          <span className="inline-flex h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>Status</span>
+        </span>
+      ) : null}
       <span>Run</span>
-      <span>Details</span>
-      <span>Last run</span>
+      {showDetails ? <span>Details</span> : null}
+      {showLastRun ? <span>Last run</span> : null}
       <div className={INBOX_AGENT_RUN_TRAILING_CELL_CLASS}>
         {showActions ? <span>Actions</span> : null}
       </div>
@@ -711,6 +818,9 @@ export function AgentRunInboxTableRow({
   selected = false,
   className,
   gridTemplateColumns,
+  showStatus,
+  showDetails,
+  showLastRun,
   onSelect,
 }: {
   run: HeartbeatRun;
@@ -719,6 +829,9 @@ export function AgentRunInboxTableRow({
   onRetry: () => void;
   isRetrying: boolean;
   gridTemplateColumns: string;
+  showStatus: boolean;
+  showDetails: boolean;
+  showLastRun: boolean;
   showActionsColumn?: boolean;
   hideRetryAndDismiss?: boolean;
   unreadState?: NonIssueUnreadState;
@@ -784,13 +897,17 @@ export function AgentRunInboxTableRow({
       style={{ gridTemplateColumns }}
       onClick={onSelect}
     >
-      <span className={INBOX_AGENT_RUN_STATUS_CELL_CLASS}>
-        {unreadCell}
-        {status}
-      </span>
+      {showStatus ? (
+        <span className={INBOX_AGENT_RUN_STATUS_CELL_CLASS}>
+          {unreadCell}
+          {status}
+        </span>
+      ) : (
+        <span className="inline-flex min-w-0 items-center">{unreadCell}</span>
+      )}
       {titleNode}
-      <span className={INBOX_TABLE_CELL_MUTED}>{meta}</span>
-      <span className={INBOX_TABLE_CELL_META}>{when}</span>
+      {showDetails ? <span className={INBOX_TABLE_CELL_MUTED}>{meta}</span> : null}
+      {showLastRun ? <span className={INBOX_TABLE_CELL_META}>{when}</span> : null}
       <div className={INBOX_AGENT_RUN_TRAILING_CELL_CLASS}>
         {includeActions ? retryActions : null}
       </div>
@@ -1076,6 +1193,9 @@ export function Inbox() {
   const [allCategoryFilter, setAllCategoryFilter] = useState<InboxCategoryFilter>("everything");
   const [allApprovalFilter, setAllApprovalFilter] = useState<InboxApprovalFilter>("all");
   const [visibleIssueColumns, setVisibleIssueColumns] = useState<InboxIssueColumn[]>(loadInboxIssueColumns);
+  const [visibleAgentRunColumns, setVisibleAgentRunColumns] = useState<InboxAgentRunColumn[]>(
+    loadInboxAgentRunColumns,
+  );
   const [sectionsOpen, setSectionsOpen] = useState<InboxSectionsOpenState>(loadInboxSectionsOpen);
   const { dismissed, dismiss } = useDismissedInboxItems();
   const { readItems, markRead: markItemRead, markUnread: markItemUnread } = useReadInboxItems();
@@ -1278,6 +1398,7 @@ export function Inbox() {
     return map;
   }, [executionWorkspaces]);
   const visibleIssueColumnSet = useMemo(() => new Set(visibleIssueColumns), [visibleIssueColumns]);
+  const visibleAgentRunColumnSet = useMemo(() => new Set(visibleAgentRunColumns), [visibleAgentRunColumns]);
   const availableIssueColumns = useMemo(
     () => getAvailableInboxIssueColumns(isolatedWorkspacesEnabled),
     [isolatedWorkspacesEnabled],
@@ -1458,7 +1579,18 @@ export function Inbox() {
     sectionsOpen.tasks,
   ]);
 
-  const agentRunsGridTemplateColumns = buildInboxAgentRunTableGridColumns();
+  const showInboxAgentRunStatus = visibleAgentRunColumnSet.has("status");
+  const showInboxAgentRunDetails = visibleAgentRunColumnSet.has("details");
+  const showInboxAgentRunLastRun = visibleAgentRunColumnSet.has("last_run");
+  const agentRunsGridTemplateColumns = useMemo(
+    () =>
+      buildInboxAgentRunTableGridColumns({
+        showStatus: showInboxAgentRunStatus,
+        showDetails: showInboxAgentRunDetails,
+        showLastRun: showInboxAgentRunLastRun,
+      }),
+    [showInboxAgentRunDetails, showInboxAgentRunLastRun, showInboxAgentRunStatus],
+  );
 
   const agentName = (id: string | null) => {
     if (!id) return null;
@@ -1476,6 +1608,18 @@ export function Inbox() {
     }
     setIssueColumns(visibleIssueColumns.filter((value) => value !== column));
   }, [setIssueColumns, visibleIssueColumns]);
+  const setAgentRunColumns = useCallback((next: InboxAgentRunColumn[]) => {
+    const normalized = normalizeInboxAgentRunColumns(next);
+    setVisibleAgentRunColumns(normalized);
+    saveInboxAgentRunColumns(normalized);
+  }, []);
+  const toggleAgentRunColumn = useCallback((column: InboxAgentRunColumn, enabled: boolean) => {
+    if (enabled) {
+      setAgentRunColumns([...visibleAgentRunColumns, column]);
+      return;
+    }
+    setAgentRunColumns(visibleAgentRunColumns.filter((value) => value !== column));
+  }, [setAgentRunColumns, visibleAgentRunColumns]);
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => approvalsApi.approve(id),
@@ -1947,58 +2091,6 @@ export function Inbox() {
               className="h-8 w-[180px] pl-8 text-xs sm:w-[220px]"
             />
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <Columns3 className="mr-1 h-3.5 w-3.5" />
-                Show / hide columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[300px] rounded-xl border-border/70 p-1.5 shadow-xl shadow-black/10">
-              <DropdownMenuLabel className="px-2 pb-1 pt-1.5">
-                <div className="space-y-1">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                    Desktop issue rows
-                  </div>
-                  <div className="text-sm font-medium text-foreground">
-                    Choose which inbox columns stay visible
-                  </div>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {availableIssueColumns.map((column) => (
-                <DropdownMenuCheckboxItem
-                  key={column}
-                  checked={visibleIssueColumnSet.has(column)}
-                  onSelect={(event) => event.preventDefault()}
-                  onCheckedChange={(checked) => toggleIssueColumn(column, checked === true)}
-                  className="items-start rounded-lg px-3 py-2.5 pl-8"
-                >
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground">
-                      {inboxIssueColumnLabels[column]}
-                    </span>
-                    <span className="text-xs leading-relaxed text-muted-foreground">
-                      {inboxIssueColumnDescriptions[column]}
-                    </span>
-                  </span>
-                </DropdownMenuCheckboxItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => setIssueColumns(DEFAULT_INBOX_ISSUE_COLUMNS)}
-                className="rounded-lg px-3 py-2 text-sm"
-              >
-                Reset defaults
-                <span className="ml-auto text-xs text-muted-foreground">status, id, updated</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
           {canMarkAllRead && (
             <>
               <Button
@@ -2205,6 +2297,19 @@ export function Inbox() {
               count={filteredIssueItems.length}
               open={sectionsOpen.tasks}
               onOpenChange={(open) => setSectionOpen("tasks", open)}
+              headerActions={(
+                <InboxTableColumnsMenu
+                  menuTitle="Desktop issue rows"
+                  menuDescription="Choose which task columns stay visible"
+                  availableColumns={availableIssueColumns}
+                  columnLabels={inboxIssueColumnLabels}
+                  columnDescriptions={inboxIssueColumnDescriptions}
+                  visibleColumnSet={visibleIssueColumnSet}
+                  onToggleColumn={toggleIssueColumn}
+                  onResetDefaults={() => setIssueColumns(DEFAULT_INBOX_ISSUE_COLUMNS)}
+                  resetHint="status, id, updated"
+                />
+              )}
             >
               <div className="overflow-x-auto">
                 <InboxIssueTableHeader
@@ -2307,11 +2412,27 @@ export function Inbox() {
               count={filteredFailedRunItems.length}
               open={sectionsOpen.agent_runs}
               onOpenChange={(open) => setSectionOpen("agent_runs", open)}
+              headerActions={(
+                <InboxTableColumnsMenu
+                  menuTitle="Desktop agent run rows"
+                  menuDescription="Choose which agent run columns stay visible"
+                  availableColumns={[...inboxAgentRunColumns]}
+                  columnLabels={inboxAgentRunColumnLabels}
+                  columnDescriptions={inboxAgentRunColumnDescriptions}
+                  visibleColumnSet={visibleAgentRunColumnSet}
+                  onToggleColumn={toggleAgentRunColumn}
+                  onResetDefaults={() => setAgentRunColumns(DEFAULT_INBOX_AGENT_RUN_COLUMNS)}
+                  resetHint="status, details, last run"
+                />
+              )}
             >
               <div className="overflow-x-auto">
                 <InboxRunsTableHeaderRow
                   gridTemplateColumns={agentRunsGridTemplateColumns}
                   showActions={canMutateAttentionQueue}
+                  showStatus={showInboxAgentRunStatus}
+                  showDetails={showInboxAgentRunDetails}
+                  showLastRun={showInboxAgentRunLastRun}
                 />
                 {filteredFailedRunItems.map((item) => {
                   const navIndex = keyboardNavItems.indexOf(item);
@@ -2326,6 +2447,9 @@ export function Inbox() {
                       issueById={issueById}
                       agentName={agentName(item.run.agentId)}
                       gridTemplateColumns={agentRunsGridTemplateColumns}
+                      showStatus={showInboxAgentRunStatus}
+                      showDetails={showInboxAgentRunDetails}
+                      showLastRun={showInboxAgentRunLastRun}
                       showActionsColumn={canMutateAttentionQueue}
                       onRetry={() => retryRunMutation.mutate(item.run)}
                       isRetrying={retryingRunIds.has(item.run.id)}

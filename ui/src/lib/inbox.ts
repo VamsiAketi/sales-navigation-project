@@ -7,6 +7,7 @@ export const DISMISSED_KEY = "paperclip:inbox:dismissed";
 export const READ_ITEMS_KEY = "paperclip:inbox:read-items";
 export const INBOX_LAST_TAB_KEY = "paperclip:inbox:last-tab";
 export const INBOX_ISSUE_COLUMNS_KEY = "paperclip:inbox:issue-columns";
+export const INBOX_AGENT_RUN_COLUMNS_KEY = "paperclip:inbox:agent-run-columns";
 export const INBOX_SECTIONS_OPEN_KEY = "paperclip:inbox:sections-open";
 
 /** Page title shown in the header breadcrumb for `/inbox/*`. */
@@ -49,6 +50,15 @@ export type InboxApprovalFilter = "all" | "actionable" | "resolved";
 export const inboxIssueColumns = ["status", "id", "assignee", "project", "workspace", "labels", "updated"] as const;
 export type InboxIssueColumn = (typeof inboxIssueColumns)[number];
 export const DEFAULT_INBOX_ISSUE_COLUMNS: InboxIssueColumn[] = ["status", "id", "updated"];
+
+export const inboxAgentRunColumns = ["status", "details", "last_run"] as const;
+export type InboxAgentRunColumn = (typeof inboxAgentRunColumns)[number];
+export const DEFAULT_INBOX_AGENT_RUN_COLUMNS: InboxAgentRunColumn[] = [
+  "status",
+  "details",
+  "last_run",
+];
+
 export type InboxWorkItem =
   | {
       kind: "issue";
@@ -213,6 +223,36 @@ export function saveInboxIssueColumns(columns: InboxIssueColumn[]) {
     localStorage.setItem(
       INBOX_ISSUE_COLUMNS_KEY,
       JSON.stringify(normalizeInboxIssueColumns(columns)),
+    );
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
+export function normalizeInboxAgentRunColumns(
+  columns: Iterable<string | InboxAgentRunColumn>,
+): InboxAgentRunColumn[] {
+  const selected = new Set(columns);
+  return inboxAgentRunColumns.filter((column) => selected.has(column));
+}
+
+export function loadInboxAgentRunColumns(): InboxAgentRunColumn[] {
+  try {
+    const raw = localStorage.getItem(INBOX_AGENT_RUN_COLUMNS_KEY);
+    if (raw === null) return DEFAULT_INBOX_AGENT_RUN_COLUMNS;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_INBOX_AGENT_RUN_COLUMNS;
+    return normalizeInboxAgentRunColumns(parsed);
+  } catch {
+    return DEFAULT_INBOX_AGENT_RUN_COLUMNS;
+  }
+}
+
+export function saveInboxAgentRunColumns(columns: InboxAgentRunColumn[]) {
+  try {
+    localStorage.setItem(
+      INBOX_AGENT_RUN_COLUMNS_KEY,
+      JSON.stringify(normalizeInboxAgentRunColumns(columns)),
     );
   } catch {
     // Ignore localStorage failures.

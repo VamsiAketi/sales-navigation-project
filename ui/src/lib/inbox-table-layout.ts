@@ -58,15 +58,20 @@ export const INBOX_AGENT_RUN_COL_LAST_RUN = "minmax(5rem, 6.5rem)";
 /** Trailing column: grows to the table edge; Actions align to the end inside this cell. */
 export const INBOX_AGENT_RUN_COL_TRAILING = "minmax(0, 1fr)";
 
-/** Agent runs table: status (with inline unread), run, details, last run, trailing (actions). */
-export function buildInboxAgentRunTableGridColumns(): string {
-  const parts = [
-    "8.5rem",
-    INBOX_AGENT_RUN_COL_RUN,
-    INBOX_AGENT_RUN_COL_DETAILS,
-    INBOX_AGENT_RUN_COL_LAST_RUN,
-    INBOX_AGENT_RUN_COL_TRAILING,
-  ];
+export type InboxAgentRunTableVisibility = {
+  showStatus: boolean;
+  showDetails: boolean;
+  showLastRun: boolean;
+};
+
+/** Agent runs table: status (optional), run, details (optional), last run (optional), trailing (actions). */
+export function buildInboxAgentRunTableGridColumns(visibility: InboxAgentRunTableVisibility): string {
+  const parts: string[] = [];
+  if (visibility.showStatus) parts.push("8.5rem");
+  parts.push(INBOX_AGENT_RUN_COL_RUN);
+  if (visibility.showDetails) parts.push(INBOX_AGENT_RUN_COL_DETAILS);
+  if (visibility.showLastRun) parts.push(INBOX_AGENT_RUN_COL_LAST_RUN);
+  parts.push(INBOX_AGENT_RUN_COL_TRAILING);
   return parts.join(" ");
 }
 
