@@ -141,7 +141,8 @@ function NotificationsBell() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="relative ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+          data-touch-target="icon"
+          className="relative ml-2 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
           aria-label="Notifications"
         >
           <Bell className="h-4 w-4" />
@@ -303,7 +304,8 @@ function UserMenu() {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-touch-target="icon"
+            className="ml-2 inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-xs font-semibold leading-none text-primary-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="User menu"
           >
             {initial}
@@ -375,9 +377,11 @@ export function BreadcrumbBar() {
   if (breadcrumbs.length === 0) {
     return (
       <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center justify-end">
-        {globalToolbarSlots}
-        <NotificationsBell />
-        <UserMenu />
+        <div className="flex shrink-0 items-center gap-0">
+          {globalToolbarSlots}
+          <NotificationsBell />
+          <UserMenu />
+        </div>
       </div>
     );
   }
@@ -386,6 +390,7 @@ export function BreadcrumbBar() {
     <Button
       variant="ghost"
       size="icon-sm"
+      data-touch-target="icon"
       className="mr-2 shrink-0"
       onClick={toggleSidebar}
       aria-label="Open sidebar"
@@ -404,9 +409,11 @@ export function BreadcrumbBar() {
             {breadcrumbs[0].label}
           </h1>
         </div>
-        {globalToolbarSlots}
-        <NotificationsBell />
-        <UserMenu />
+        <div className="flex shrink-0 items-center gap-0">
+          {globalToolbarSlots}
+          <NotificationsBell />
+          <UserMenu />
+        </div>
       </div>
     );
   }
@@ -438,9 +445,11 @@ export function BreadcrumbBar() {
           </BreadcrumbList>
         </Breadcrumb>
       </div>
-      {globalToolbarSlots}
-      <NotificationsBell />
-      <UserMenu />
+      <div className="flex shrink-0 items-center gap-0">
+        {globalToolbarSlots}
+        <NotificationsBell />
+        <UserMenu />
+      </div>
     </div>
   );
 }
