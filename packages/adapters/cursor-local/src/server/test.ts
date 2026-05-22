@@ -18,6 +18,7 @@ import path from "node:path";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "../index.js";
 import { parseCursorJsonl } from "./parse.js";
 import { hasCursorTrustBypassArg } from "../shared/trust.js";
+import { applyCursorAgentStateDirs, resolveCursorConfigDir } from "./cursor-state.js";
 
 function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentTestResult["status"] {
   if (checks.some((check) => check.level === "error")) return "fail";
@@ -57,8 +58,8 @@ export interface CursorAuthInfo {
   userId: number | null;
 }
 
-export function cursorConfigPath(cursorHome?: string): string {
-  return path.join(cursorHome ?? path.join(os.homedir(), ".cursor"), "cli-config.json");
+export function cursorConfigPath(configDir?: string): string {
+  return path.join(configDir ?? path.join(os.homedir(), ".cursor"), "cli-config.json");
 }
 
 export async function readCursorAuthInfo(cursorHome?: string): Promise<CursorAuthInfo | null> {
@@ -118,6 +119,7 @@ export async function testEnvironment(
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
   }
+  applyCursorAgentStateDirs(`envtest-${ctx.companyId}`, env);
   const runtimeEnv = ensurePathInEnv({ ...process.env, ...env });
   try {
     await ensureCommandResolvable(command, cwd, runtimeEnv);
@@ -146,8 +148,8 @@ export async function testEnvironment(
       detail: `Detected in ${source}.`,
     });
   } else {
-    const cursorHome = isNonEmpty(env.CURSOR_HOME) ? env.CURSOR_HOME : undefined;
-    const cursorAuth = await readCursorAuthInfo(cursorHome).catch(() => null);
+    const cursorConfigDir = resolveCursorConfigDir(env);
+    const cursorAuth = await readCursorAuthInfo(cursorConfigDir).catch(() => null);
     if (cursorAuth) {
       checks.push({
         code: "cursor_native_auth_present",
@@ -155,7 +157,7 @@ export async function testEnvironment(
         message: "Cursor is authenticated via `agent login`.",
         detail: cursorAuth.email
           ? `Logged in as ${cursorAuth.email}.`
-          : `Credentials found in ${cursorConfigPath(cursorHome)}.`,
+          : `Credentials found in ${cursorConfigPath(cursorConfigDir)}.`,
       });
     } else {
       checks.push({

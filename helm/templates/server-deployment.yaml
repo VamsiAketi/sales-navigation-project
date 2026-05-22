@@ -140,6 +140,9 @@ spec:
               value: /paperclip
             - name: PAPERCLIP_HOME
               value: /paperclip
+            # Cursor CLI SQLite state on node-local disk (avoid SQLITE_BUSY on Azure Files /paperclip).
+            - name: PAPERCLIP_CURSOR_STATE_ROOT
+              value: /var/lib/cursor-state
             - name: CURSOR_AGENT_INSTALL_HOME
               value: /opt/cursor-agent
             - name: PATH
@@ -197,6 +200,8 @@ spec:
             - name: paperclip-data
               mountPath: /paperclip
               subPath: {{ .Values.server.paperclip.instanceId }}
+            - name: cursor-state
+              mountPath: /var/lib/cursor-state
           livenessProbe:
             httpGet:
               path: /api/health
@@ -212,6 +217,8 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
       volumes:
+        - name: cursor-state
+          emptyDir: {}
         - name: paperclip-data
           persistentVolumeClaim:
             claimName: {{ include "paperclip.fullname" . }}-paperclip-data

@@ -60,6 +60,8 @@ Cursor is installed under `/opt/cursor-agent`, not `/paperclip`, so bind mounts 
 
 The image install script tries `https://cursor.com/install` first, then falls back to Cursor’s download API and Linux tarball when that endpoint is unavailable (common in CI). Set `CURSOR_AGENT_VERSION` and `CURSOR_AGENT_URL_PREFIX` at build time to pin a specific CLI release.
 
+For Cursor agents, set `PAPERCLIP_CURSOR_STATE_ROOT` to a **local** directory (not a network filesystem) if you see `SQLITE_BUSY: database is locked`. The Helm chart mounts an `emptyDir` at `/var/lib/cursor-state` for this purpose.
+
 ## Claude and Codex API Keys
 
 Pass API keys to enable local adapter runs inside the container:

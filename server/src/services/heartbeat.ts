@@ -1892,12 +1892,21 @@ export function heartbeatService(db: Db) {
   function parseHeartbeatPolicy(agent: typeof agents.$inferSelect) {
     const runtimeConfig = parseObject(agent.runtimeConfig);
     const heartbeat = parseObject(runtimeConfig.heartbeat);
+    let maxConcurrentRuns = normalizeMaxConcurrentRuns(heartbeat.maxConcurrentRuns);
+    // Cursor Agent CLI uses SQLite under CURSOR_DATA_DIR; concurrent runs sharing one dir raise SQLITE_BUSY.
+    if (agent.adapterType === "cursor" && maxConcurrentRuns > 1) {
+      logger.warn(
+        { agentId: agent.id, configured: maxConcurrentRuns },
+        "cursor adapter maxConcurrentRuns capped to 1 to avoid SQLite lock contention",
+      );
+      maxConcurrentRuns = 1;
+    }
 
     return {
       enabled: asBoolean(heartbeat.enabled, false),
       intervalSec: Math.max(0, asNumber(heartbeat.intervalSec, 0)),
       wakeOnDemand: asBoolean(heartbeat.wakeOnDemand ?? heartbeat.wakeOnAssignment ?? heartbeat.wakeOnOnDemand ?? heartbeat.wakeOnAutomation, true),
-      maxConcurrentRuns: normalizeMaxConcurrentRuns(heartbeat.maxConcurrentRuns),
+      maxConcurrentRuns,
     };
   }
 

@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -13,6 +12,7 @@ import {
   readInstalledSkillTargets,
   resolvePaperclipDesiredSkillNames,
 } from "@paperclipai/adapter-utils/server-utils";
+import { applyCursorAgentStateDirs, resolveCursorSkillsHomeFromEnv } from "./cursor-state.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,20 +20,25 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-function resolveCursorSkillsHome(config: Record<string, unknown>) {
+function resolveCursorSkillsHome(config: Record<string, unknown>, agentId?: string) {
   const env =
     typeof config.env === "object" && config.env !== null && !Array.isArray(config.env)
       ? (config.env as Record<string, unknown>)
       : {};
-  const configuredHome = asString(env.HOME);
-  const home = configuredHome ? path.resolve(configuredHome) : os.homedir();
-  return path.join(home, ".cursor", "skills");
+  const stringEnv = Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+  const withState = agentId ? applyCursorAgentStateDirs(agentId, stringEnv) : stringEnv;
+  return resolveCursorSkillsHomeFromEnv(withState);
 }
 
-async function buildCursorSkillSnapshot(config: Record<string, unknown>): Promise<AdapterSkillSnapshot> {
+async function buildCursorSkillSnapshot(
+  config: Record<string, unknown>,
+  agentId?: string,
+): Promise<AdapterSkillSnapshot> {
   const availableEntries = await readPaperclipRuntimeSkillEntries(config, __moduleDir);
   const desiredSkills = resolvePaperclipDesiredSkillNames(config, availableEntries);
-  const skillsHome = resolveCursorSkillsHome(config);
+  const skillsHome = resolveCursorSkillsHome(config, agentId);
   const installed = await readInstalledSkillTargets(skillsHome);
   return buildPersistentSkillSnapshot({
     adapterType: "cursor",
@@ -49,7 +54,7 @@ async function buildCursorSkillSnapshot(config: Record<string, unknown>): Promis
 }
 
 export async function listCursorSkills(ctx: AdapterSkillContext): Promise<AdapterSkillSnapshot> {
-  return buildCursorSkillSnapshot(ctx.config);
+  return buildCursorSkillSnapshot(ctx.config, ctx.agentId);
 }
 
 export async function syncCursorSkills(
@@ -61,7 +66,7 @@ export async function syncCursorSkills(
     ...desiredSkills,
     ...availableEntries.filter((entry) => entry.required).map((entry) => entry.key),
   ]);
-  const skillsHome = resolveCursorSkillsHome(ctx.config);
+  const skillsHome = resolveCursorSkillsHome(ctx.config, ctx.agentId);
   await fs.mkdir(skillsHome, { recursive: true });
   const installed = await readInstalledSkillTargets(skillsHome);
   const availableByRuntimeName = new Map(availableEntries.map((entry) => [entry.runtimeName, entry]));
