@@ -2,8 +2,18 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+const CONTAINER_CURSOR_STATE_ROOT = "/var/lib/cursor-state";
+
 function asNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isContainerizedPaperclip(env: Record<string, string>): boolean {
+  return Boolean(
+    asNonEmptyString(env.PAPERCLIP_HOME)
+      ?? asNonEmptyString(process.env.PAPERCLIP_HOME)
+      ?? asNonEmptyString(process.env.KUBERNETES_SERVICE_HOST),
+  );
 }
 
 /** Root directory for one agent's isolated Cursor CLI config + data (SQLite lives here). */
@@ -14,9 +24,9 @@ export function resolveCursorAgentStateRoot(agentId: string, env: Record<string,
     return path.join(path.resolve(stateRoot), agentId);
   }
 
-  const agentHome = asNonEmptyString(env.AGENT_HOME);
-  if (agentHome) {
-    return path.join(path.resolve(agentHome), ".cursor-state");
+  // Never store Cursor SQLite on the /paperclip PVC (Azure Files/NFS); use node-local disk in containers.
+  if (isContainerizedPaperclip(env)) {
+    return path.join(CONTAINER_CURSOR_STATE_ROOT, agentId);
   }
 
   const paperclipHome =
@@ -52,11 +62,9 @@ export function applyCursorAgentStateDirs(
   }
 
   const root = resolveCursorAgentStateRoot(agentId, env);
-  return {
-    ...env,
-    CURSOR_CONFIG_DIR: path.join(root, "config"),
-    CURSOR_DATA_DIR: path.join(root, "data"),
-  };
+  env.CURSOR_CONFIG_DIR = path.join(root, "config");
+  env.CURSOR_DATA_DIR = path.join(root, "data");
+  return env;
 }
 
 export async function ensureCursorAgentStateDirs(env: Record<string, string>): Promise<void> {

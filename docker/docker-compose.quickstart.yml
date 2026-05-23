@@ -8,6 +8,7 @@ services:
     environment:
       HOST: "0.0.0.0"
       PAPERCLIP_HOME: "/paperclip"
+      PAPERCLIP_CURSOR_STATE_ROOT: "/var/lib/cursor-state"
       CURSOR_AGENT_INSTALL_HOME: "/opt/cursor-agent"
       PATH: "/opt/cursor-agent/.local/bin:/usr/local/bin:/usr/bin:/bin"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"

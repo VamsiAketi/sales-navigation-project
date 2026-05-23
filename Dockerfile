@@ -115,6 +115,7 @@ ENV NODE_ENV=production \
   PORT=3100 \
   SERVE_UI=true \
   PAPERCLIP_HOME=/paperclip \
+  PAPERCLIP_CURSOR_STATE_ROOT=/var/lib/cursor-state \
   PAPERCLIP_INSTANCE_ID=default \
   USER_UID=${USER_UID} \
   USER_GID=${USER_GID} \

@@ -21,6 +21,10 @@ ensure_cursor_agent_cli() {
 
 ensure_cursor_agent_cli
 
+cursor_state_root="${PAPERCLIP_CURSOR_STATE_ROOT:-/var/lib/cursor-state}"
+mkdir -p "$cursor_state_root"
+chown node:node "$cursor_state_root" 2>/dev/null || true
+
 # Capture runtime UID/GID from environment variables, defaulting to 1000
 PUID=${USER_UID:-1000}
 PGID=${USER_GID:-1000}

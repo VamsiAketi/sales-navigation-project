@@ -268,6 +268,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   }
   applyCursorAgentStateDirs(agent.id, env);
   await ensureCursorAgentStateDirs(env);
+  await onLog(
+    "stdout",
+    `[paperclip] Cursor CLI state: CURSOR_CONFIG_DIR=${env.CURSOR_CONFIG_DIR} CURSOR_DATA_DIR=${env.CURSOR_DATA_DIR}\n`,
+  );
   await ensureCursorSkillsInjected(onLog, {
     skillsEntries: cursorSkillEntries.filter((entry) => desiredCursorSkillNames.includes(entry.key)),
     skillsHome: cursorSkillsHome(env),
