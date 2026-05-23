@@ -254,8 +254,6 @@ const EXECUTION_WORKSPACE_MODES = [
   { value: "isolated_workspace", label: "New isolated workspace" },
   { value: "reuse_existing", label: "Reuse existing workspace" },
 ] as const;
-const PROJECT_STATUSES_FORCE_TODO_ON_CREATE = new Set(["backlog", "planned"]);
-
 const REQUIRED_FIELD_MARKER = "*";
 
 export function formatRequiredFieldLabel(label: string) {
@@ -368,9 +366,12 @@ export function NewIssueDialog() {
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
 
   const rawProjectStatuses = useProjectIssueStatuses(projectId || null);
-  /** All workflow stages (including list-only e.g. backlog) — used for new-task status chip and picker. */
-  const sortedProjectStatuses = useMemo(
-    () => [...rawProjectStatuses].sort((a, b) => a.position - b.position),
+  /** Backlog (list-only) plus board-visible columns — used for new-task status chip and picker. */
+  const selectableProjectStatuses = useMemo(
+    () =>
+      [...rawProjectStatuses]
+        .filter((s) => s.isActive || isBoardPinnedHiddenProjectIssueStatusValue(s.value))
+        .sort((a, b) => a.position - b.position),
     [rawProjectStatuses],
   );
   const newIssueStatusWorkflowMeta = useMemo(
@@ -463,6 +464,22 @@ export function NewIssueDialog() {
     companyId: effectiveCompanyId,
     userId: currentUserId,
   });
+
+  useEffect(() => {
+    if (!newIssueOpen || !projectId || rawProjectStatuses.length === 0 || isCreateAgentPreset) return;
+    const selectableValues = new Set(selectableProjectStatuses.map((s) => s.value));
+    if (selectableValues.size === 0) return;
+    if (selectableValues.has(status)) return;
+    setStatus("backlog");
+  }, [
+    isCreateAgentPreset,
+    newIssueOpen,
+    projectId,
+    rawProjectStatuses,
+    selectableProjectStatuses,
+    status,
+  ]);
+
   const aiAdminProject = useMemo(
     () => orderedProjects.find((project) => isAiAdminProject(project)) ?? null,
     [orderedProjects],
@@ -852,7 +869,7 @@ export function NewIssueDialog() {
     const selectedReusableExecutionWorkspace = deduplicatedReusableWorkspaces.find(
       (workspace) => workspace.id === selectedExecutionWorkspaceId,
     );
-    const submitStatus = shouldForceTodoOnCreate ? "todo" : status;
+    const submitStatus = status;
     const requestedExecutionWorkspaceMode =
       executionWorkspaceMode === "reuse_existing"
         ? issueExecutionWorkspaceModeForExistingWorkspace(selectedReusableExecutionWorkspace?.mode)
@@ -958,17 +975,16 @@ export function NewIssueDialog() {
     ? (agents ?? []).find((a) => a.id === selectedAssigneeAgentId)
     : null;
   const currentProject = orderedProjects.find((project) => project.id === projectId);
-  const shouldForceTodoOnCreate = Boolean(
-    currentProject && PROJECT_STATUSES_FORCE_TODO_ON_CREATE.has(currentProject.status),
-  );
-  const statusForCreate = shouldForceTodoOnCreate ? "todo" : status;
+  const statusForCreate = status;
   const currentStatus =
-    sortedProjectStatuses.length > 0
-      ? (sortedProjectStatuses.find((s) => s.value === statusForCreate) ?? sortedProjectStatuses[0]!)
-      : (statuses.find((s) => s.value === statusForCreate) ?? statuses[1]!);
+    selectableProjectStatuses.length > 0
+      ? (selectableProjectStatuses.find((s) => s.value === statusForCreate)
+        ?? selectableProjectStatuses.find((s) => s.value === "backlog")
+        ?? selectableProjectStatuses[0]!)
+      : (statuses.find((s) => s.value === statusForCreate) ?? statuses[0]!);
   const currentStatusLabel =
-    sortedProjectStatuses.length > 0
-      ? (currentStatus as (typeof sortedProjectStatuses)[number]).name
+    selectableProjectStatuses.length > 0
+      ? (currentStatus as (typeof selectableProjectStatuses)[number]).name
       : (currentStatus as (typeof statuses)[number]).label;
   const currentPriority = priorities.find((p) => p.value === priority);
   const selectedLabels = useMemo(
@@ -1099,12 +1115,15 @@ export function NewIssueDialog() {
     if (nextProjectId) {
       setProjectValidationError(null);
     }
+    if (!isCreateAgentPreset) {
+      setStatus("backlog");
+    }
     const nextProject = orderedProjects.find((project) => project.id === nextProjectId);
     executionWorkspaceDefaultProjectId.current = nextProjectId || null;
     setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(nextProject));
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(nextProject));
     setSelectedExecutionWorkspaceId("");
-  }, [lockProjectToAiAdmin, orderedProjects]);
+  }, [isCreateAgentPreset, lockProjectToAiAdmin, orderedProjects]);
 
   useEffect(() => {
     if (!newIssueOpen || !projectId || executionWorkspaceDefaultProjectId.current === projectId) {
@@ -1422,11 +1441,6 @@ export function NewIssueDialog() {
               </span>
             </div>
           </div>
-          {shouldForceTodoOnCreate ? (
-            <div className="pt-1 text-xs text-muted-foreground">
-              This project will create the task in Todo.
-            </div>
-          ) : null}
         </div>
 
         {currentProject && currentProjectSupportsExecutionWorkspace && (
@@ -1644,33 +1658,15 @@ export function NewIssueDialog() {
         {/* Property chips bar */}
         <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap shrink-0">
           {/* Status chip */}
-          <Popover
-            open={statusOpen}
-            onOpenChange={(open) => {
-              if (shouldForceTodoOnCreate) {
-                setStatusOpen(false);
-                return;
-              }
-              setStatusOpen(open);
-            }}
-          >
+          <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
               <button
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs transition-colors",
-                  shouldForceTodoOnCreate ? "cursor-default text-muted-foreground" : "hover:bg-accent/50",
-                )}
-                disabled={shouldForceTodoOnCreate}
-                title={
-                  shouldForceTodoOnCreate
-                    ? "New tasks in Backlog or Planned projects start in Todo."
-                    : undefined
-                }
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-accent/50"
               >
-                {sortedProjectStatuses.length > 0 ? (
+                {selectableProjectStatuses.length > 0 ? (
                   <span
                     className="inline-flex h-3 w-3 rounded-full border-2 shrink-0"
-                    style={{ borderColor: (currentStatus as (typeof sortedProjectStatuses)[number]).color }}
+                    style={{ borderColor: (currentStatus as (typeof selectableProjectStatuses)[number]).color }}
                   />
                 ) : (
                   <CircleDot className={cn("h-3 w-3", (currentStatus as (typeof statuses)[number]).color)} />
@@ -1679,8 +1675,8 @@ export function NewIssueDialog() {
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-36 p-1" align="start">
-              {sortedProjectStatuses.length > 0
-                ? sortedProjectStatuses.map((s) => (
+              {selectableProjectStatuses.length > 0
+                ? selectableProjectStatuses.map((s) => (
                     <button
                       key={s.value}
                       className={cn(

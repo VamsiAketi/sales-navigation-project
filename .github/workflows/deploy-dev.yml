@@ -6,6 +6,11 @@ on:
       - master
   workflow_dispatch:
 
+# When master gets several merges in a row, cancel older runs and keep only the latest deploy.
+concurrency:
+  group: deploy-dev-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   IMAGE_NAME: ai-harness
   DEV_RELEASE_NAME: ai-harness-dev
