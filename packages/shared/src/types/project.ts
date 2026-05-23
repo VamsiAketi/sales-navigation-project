@@ -25,6 +25,14 @@ export interface ProjectGoalRef {
   title: string;
 }
 
+/** Minimal project fields for nav/breadcrumb lookups (no workspaces or goals). */
+export interface ProjectNavItem {
+  id: string;
+  companyId: string;
+  name: string;
+  urlKey: string;
+}
+
 export interface ProjectWorkspace {
   id: string;
   companyId: string;

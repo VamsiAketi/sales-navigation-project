@@ -230,6 +230,7 @@ export type {
   AdapterEnvironmentTestResult,
   AssetImage,
   Project,
+  ProjectNavItem,
   ProjectCodebase,
   ProjectCodebaseOrigin,
   ProjectGoalRef,

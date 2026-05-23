@@ -184,6 +184,20 @@ export function projectRoutes(db: Db) {
     }
   });
 
+  router.get("/companies/:companyId/projects/nav", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const actor = projectAuthActorFromRequest(req);
+    const allowedIds = await access.listProjectIdsVisibleToActor(companyId, actor);
+    const result = await svc.listNav(companyId);
+    if (allowedIds !== null) {
+      const allow = new Set(allowedIds);
+      res.json(result.filter((p) => allow.has(p.id)));
+      return;
+    }
+    res.json(result);
+  });
+
   router.get("/companies/:companyId/projects", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);

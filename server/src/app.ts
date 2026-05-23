@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import type { StorageService } from "./storage/types.js";
 import { httpLogger, errorHandler } from "./middleware/index.js";
+import { accessRequestCacheMiddleware } from "./middleware/access-request-cache.js";
 import { actorMiddleware } from "./middleware/auth.js";
 import { boardMutationGuard } from "./middleware/board-mutation-guard.js";
 import { privateHostnameGuard, resolvePrivateHostnameAllowSet } from "./middleware/private-hostname-guard.js";
@@ -127,6 +128,7 @@ export async function createApp(
       microsoftSsoAutoProvision: opts.microsoftSsoAutoProvision ?? null,
     }),
   );
+  app.use(accessRequestCacheMiddleware);
   app.get("/api/auth/get-session", async (req, res) => {
     if (req.actor.type !== "board" || !req.actor.userId) {
       res.status(401).json({ error: "Unauthorized" });

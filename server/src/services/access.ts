@@ -29,6 +29,7 @@ import {
 } from "@paperclipai/shared";
 import { badRequest } from "../errors.js";
 import { isOwnerMembershipRole, normalizeMembershipRole } from "../lib/membership-role.js";
+import { getAccessRequestCache } from "../middleware/access-request-cache.js";
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
 type GrantInput = {
@@ -127,12 +128,18 @@ export function accessService(db: Db) {
 
   async function isInstanceAdmin(userId: string | null | undefined): Promise<boolean> {
     if (!userId) return false;
+    const cache = getAccessRequestCache();
+    if (cache?.instanceAdminByUserId.has(userId)) {
+      return cache.instanceAdminByUserId.get(userId)!;
+    }
     const row = await db
       .select({ id: instanceUserRoles.id })
       .from(instanceUserRoles)
       .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
       .then((rows) => rows[0] ?? null);
-    return Boolean(row);
+    const result = Boolean(row);
+    cache?.instanceAdminByUserId.set(userId, result);
+    return result;
   }
 
   async function getInstanceOwnerUserId(): Promise<string | null> {
@@ -160,12 +167,21 @@ export function accessService(db: Db) {
     }
   }
 
+  function membershipCacheKey(companyId: string, principalType: PrincipalType, principalId: string) {
+    return `${companyId}:${principalType}:${principalId}`;
+  }
+
   async function getMembership(
     companyId: string,
     principalType: PrincipalType,
     principalId: string,
   ): Promise<MembershipRow | null> {
-    return db
+    const cache = getAccessRequestCache();
+    const cacheKey = membershipCacheKey(companyId, principalType, principalId);
+    if (cache?.membershipByKey.has(cacheKey)) {
+      return (cache.membershipByKey.get(cacheKey) as MembershipRow | null) ?? null;
+    }
+    const row = await db
       .select()
       .from(companyMemberships)
       .where(
@@ -176,7 +192,14 @@ export function accessService(db: Db) {
         ),
       )
       .then((rows) => rows[0] ?? null);
+    cache?.membershipByKey.set(cacheKey, row);
+    return row;
   }
+
+  type CompanyPermissionPrincipal =
+    | { kind: "full_access" }
+    | { kind: "user"; userId: string }
+    | { kind: "agent"; agentId: string };
 
   async function hasPermission(
     companyId: string,
@@ -184,24 +207,12 @@ export function accessService(db: Db) {
     principalId: string,
     permissionKey: PermissionKey,
   ): Promise<boolean> {
-    const membership = await getMembership(companyId, principalType, principalId);
-    if (!membership || membership.status !== "active") return false;
-    if (principalType === "user" && isOwnerMembershipRole(membership.membershipRole)) {
-      return true;
-    }
-    const grant = await db
-      .select({ id: principalPermissionGrants.id })
-      .from(principalPermissionGrants)
-      .where(
-        and(
-          eq(principalPermissionGrants.companyId, companyId),
-          eq(principalPermissionGrants.principalType, principalType),
-          eq(principalPermissionGrants.principalId, principalId),
-          eq(principalPermissionGrants.permissionKey, permissionKey),
-        ),
-      )
-      .then((rows) => rows[0] ?? null);
-    return Boolean(grant);
+    const principal: CompanyPermissionPrincipal =
+      principalType === "user"
+        ? { kind: "user", userId: principalId }
+        : { kind: "agent", agentId: principalId };
+    const has = await resolveCompanyPermissions(companyId, principal);
+    return has(permissionKey);
   }
 
   async function canUser(
@@ -210,8 +221,58 @@ export function accessService(db: Db) {
     permissionKey: PermissionKey,
   ): Promise<boolean> {
     if (!userId) return false;
-    if (await isInstanceAdmin(userId)) return true;
-    return hasPermission(companyId, "user", userId, permissionKey);
+    const has = await resolveCompanyPermissions(companyId, { kind: "user", userId });
+    return has(permissionKey);
+  }
+
+  function companyPermissionsCacheKey(companyId: string, principal: CompanyPermissionPrincipal) {
+    if (principal.kind === "full_access") return `${companyId}:full_access`;
+    return `${companyId}:${principal.kind}:${principal.kind === "user" ? principal.userId : principal.agentId}`;
+  }
+
+  async function resolveCompanyPermissions(
+    companyId: string,
+    principal: CompanyPermissionPrincipal,
+  ): Promise<(permissionKey: PermissionKey) => boolean> {
+    const cache = getAccessRequestCache();
+    const cacheKey = companyPermissionsCacheKey(companyId, principal);
+    const cached = cache?.companyPermissionsByKey.get(cacheKey);
+    if (cached) return cached;
+
+    let resolver: (permissionKey: PermissionKey) => boolean;
+    if (principal.kind === "full_access") {
+      resolver = () => true;
+    } else {
+      const principalType = principal.kind;
+      const principalId = principal.kind === "user" ? principal.userId : principal.agentId;
+
+      if (principal.kind === "user" && (await isInstanceAdmin(principal.userId))) {
+        resolver = () => true;
+      } else {
+        const membership = await getMembership(companyId, principalType, principalId);
+        if (!membership || membership.status !== "active") {
+          resolver = () => false;
+        } else if (principalType === "user" && isOwnerMembershipRole(membership.membershipRole)) {
+          resolver = () => true;
+        } else {
+          const grantRows = await db
+            .select({ permissionKey: principalPermissionGrants.permissionKey })
+            .from(principalPermissionGrants)
+            .where(
+              and(
+                eq(principalPermissionGrants.companyId, companyId),
+                eq(principalPermissionGrants.principalType, principalType),
+                eq(principalPermissionGrants.principalId, principalId),
+              ),
+            );
+          const granted = new Set(grantRows.map((row) => row.permissionKey));
+          resolver = (permissionKey: PermissionKey) => granted.has(permissionKey);
+        }
+      }
+    }
+
+    cache?.companyPermissionsByKey.set(cacheKey, resolver);
+    return resolver;
   }
 
   async function listMembers(companyId: string) {
@@ -866,12 +927,18 @@ export function accessService(db: Db) {
   }
 
   async function companyUsesRestrictedProjectAccess(companyId: string): Promise<boolean> {
+    const cache = getAccessRequestCache();
+    if (cache?.companyRestrictedAccess.has(companyId)) {
+      return cache.companyRestrictedAccess.get(companyId)!;
+    }
     const row = await db
       .select({ mode: companies.projectAccessMode })
       .from(companies)
       .where(eq(companies.id, companyId))
       .then((rows) => rows[0] ?? null);
-    return row?.mode === "restricted";
+    const result = row?.mode === "restricted";
+    cache?.companyRestrictedAccess.set(companyId, result);
+    return result;
   }
 
   async function hasProjectGrant(
@@ -925,10 +992,25 @@ export function accessService(db: Db) {
    * When project access is restricted, returns project IDs the principal may see (`project:read`).
    * Returns `null` when the full company project list is allowed (open mode or unrestricted actor).
    */
+  function visibleProjectIdsCacheKey(companyId: string, actor: ProjectAuthActor) {
+    if (actor.kind === "none") return `${companyId}:none`;
+    if (actor.kind === "local_implicit_board") return `${companyId}:local_implicit_board`;
+    if (actor.kind === "user") return `${companyId}:user:${actor.userId}:${actor.isInstanceAdmin ? "admin" : "member"}`;
+    if (actor.kind === "agent") return `${companyId}:agent:${actor.agentId}`;
+    return `${companyId}:unknown`;
+  }
+
   async function listProjectIdsVisibleToActor(
     companyId: string,
     actor: ProjectAuthActor,
   ): Promise<string[] | null> {
+    const cache = getAccessRequestCache();
+    const cacheKey = visibleProjectIdsCacheKey(companyId, actor);
+    if (cache?.visibleProjectIdsByKey.has(cacheKey)) {
+      return cache.visibleProjectIdsByKey.get(cacheKey)!;
+    }
+
+    const resolve = async (): Promise<string[] | null> => {
     if (!(await companyUsesRestrictedProjectAccess(companyId))) return null;
     if (actor.kind === "none") return [];
     if (actor.kind === "local_implicit_board") return null;
@@ -967,6 +1049,11 @@ export function accessService(db: Db) {
       return Array.from(new Set(rows.map((r) => r.projectId)));
     }
     return [];
+    };
+
+    const result = await resolve();
+    cache?.visibleProjectIdsByKey.set(cacheKey, result);
+    return result;
   }
 
   async function listProjectPrincipalGrants(projectId: string, companyId: string) {
@@ -1141,6 +1228,7 @@ export function accessService(db: Db) {
     isInstanceAdmin,
     canUser,
     hasPermission,
+    resolveCompanyPermissions,
     getMembership,
     ensureMembership,
     getInstanceOwnerUserId,

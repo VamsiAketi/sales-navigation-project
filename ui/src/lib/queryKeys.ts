@@ -75,6 +75,7 @@ export const queryKeys = {
   },
   projects: {
     list: (companyId: string) => ["projects", companyId] as const,
+    listNav: (companyId: string) => ["projects", companyId, "nav"] as const,
     detail: (id: string) => ["projects", "detail", id] as const,
     context: (projectId: string) => ["projects", "context", projectId] as const,
     contextFiles: (projectId: string) => ["projects", "context-files", projectId] as const,

@@ -140,7 +140,56 @@ export interface IssueFilters {
   originId?: string;
   includeRoutineExecutions?: boolean;
   includeHidden?: boolean;
+  /** Include description and large JSON fields (default false for list payloads). */
+  includeDetails?: boolean;
   q?: string;
+}
+
+const ISSUE_LIST_SELECT = {
+  id: issues.id,
+  companyId: issues.companyId,
+  projectId: issues.projectId,
+  projectWorkspaceId: issues.projectWorkspaceId,
+  goalId: issues.goalId,
+  parentId: issues.parentId,
+  title: issues.title,
+  status: issues.status,
+  priority: issues.priority,
+  assigneeAgentId: issues.assigneeAgentId,
+  assigneeUserId: issues.assigneeUserId,
+  checkoutRunId: issues.checkoutRunId,
+  executionRunId: issues.executionRunId,
+  executionAgentNameKey: issues.executionAgentNameKey,
+  executionLockedAt: issues.executionLockedAt,
+  createdByAgentId: issues.createdByAgentId,
+  createdByUserId: issues.createdByUserId,
+  issueNumber: issues.issueNumber,
+  identifier: issues.identifier,
+  originKind: issues.originKind,
+  originId: issues.originId,
+  originRunId: issues.originRunId,
+  requestDepth: issues.requestDepth,
+  billingCode: issues.billingCode,
+  executionWorkspaceId: issues.executionWorkspaceId,
+  executionWorkspacePreference: issues.executionWorkspacePreference,
+  startedAt: issues.startedAt,
+  completedAt: issues.completedAt,
+  cancelledAt: issues.cancelledAt,
+  hiddenAt: issues.hiddenAt,
+  targetStartAt: issues.targetStartAt,
+  dueAt: issues.dueAt,
+  kanbanPosition: issues.kanbanPosition,
+  createdAt: issues.createdAt,
+  updatedAt: issues.updatedAt,
+} as const;
+
+function toIssueListRow(row: Record<string, unknown>): IssueRow {
+  return {
+    ...row,
+    description: null,
+    assigneeAdapterOverrides: null,
+    executionWorkspaceSettings: null,
+  } as IssueRow;
 }
 
 type IssueRow = typeof issues.$inferSelect;
@@ -834,11 +883,19 @@ export function issueService(db: Db) {
           ELSE 6
         END
       `;
-      const rows = await db
-        .select()
-        .from(issues)
-        .where(and(...conditions))
-        .orderBy(hasSearch ? asc(searchOrder) : asc(priorityOrder), asc(priorityOrder), desc(issues.updatedAt));
+      const includeDetails = filters?.includeDetails === true;
+      const rows = includeDetails
+        ? await db
+          .select()
+          .from(issues)
+          .where(and(...conditions))
+          .orderBy(hasSearch ? asc(searchOrder) : asc(priorityOrder), asc(priorityOrder), desc(issues.updatedAt))
+        : await db
+          .select(ISSUE_LIST_SELECT)
+          .from(issues)
+          .where(and(...conditions))
+          .orderBy(hasSearch ? asc(searchOrder) : asc(priorityOrder), asc(priorityOrder), desc(issues.updatedAt))
+          .then((listRows) => listRows.map((row) => toIssueListRow(row)));
       const withLabels = await withIssueLabels(db, rows);
       const runMap = await activeRunMapForIssues(db, withLabels);
       const withRuns = withActiveRuns(withLabels, runMap);

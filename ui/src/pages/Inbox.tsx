@@ -1292,7 +1292,7 @@ export function Inbox() {
 
   const { data: issues, isLoading: isIssuesLoading } = useQuery({
     queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { includeDetails: true }),
     enabled: !!selectedCompanyId,
   });
   const {
@@ -1305,6 +1305,7 @@ export function Inbox() {
         touchedByUserId: "me",
         inboxArchivedByUserId: "me",
         status: INBOX_MINE_ISSUE_STATUS_FILTER,
+        includeDetails: true,
       }),
     enabled: !!selectedCompanyId,
   });
@@ -1317,6 +1318,7 @@ export function Inbox() {
       issuesApi.list(selectedCompanyId!, {
         touchedByUserId: "me",
         status: INBOX_MINE_ISSUE_STATUS_FILTER,
+        includeDetails: true,
       }),
     enabled: !!selectedCompanyId,
   });

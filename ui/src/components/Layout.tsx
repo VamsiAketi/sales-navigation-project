@@ -311,9 +311,10 @@ export function Layout() {
     queryFn: () => instanceSettingsApi.getGeneral(),
   }).data?.keyboardShortcuts === true;
   const { data: companyProjects } = useQuery({
-    queryKey: queryKeys.projects.list(selectedCompanyId!),
-    queryFn: () => projectsApi.list(selectedCompanyId!),
+    queryKey: queryKeys.projects.listNav(selectedCompanyId!),
+    queryFn: () => projectsApi.listNav(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    staleTime: 60_000,
   });
   const { data: sidebarBadges } = useQuery({
     queryKey: selectedCompanyId ? queryKeys.sidebarBadges(selectedCompanyId) : ["sidebar-badges", "none"],

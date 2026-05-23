@@ -64,6 +64,7 @@ export type {
   ProjectCodebase,
   ProjectCodebaseOrigin,
   ProjectGoalRef,
+  ProjectNavItem,
   ProjectWorkspace,
   ProjectIssueStatus,
   ProjectDocument,

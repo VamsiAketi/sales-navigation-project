@@ -11,6 +11,7 @@ import {
   type ProjectExecutionWorkspacePolicy,
   type ProjectNotificationConfig,
   type ProjectGoalRef,
+  type ProjectNavItem,
   type ProjectWorkspaceRuntimeConfig,
   type ProjectWorkspace,
   type WorkspaceRuntimeService,
@@ -485,6 +486,24 @@ async function ensureSinglePrimaryWorkspace(
 
 export function projectService(db: Db) {
   return {
+    listNav: async (companyId: string): Promise<ProjectNavItem[]> => {
+      const rows = await db
+        .select({
+          id: projects.id,
+          companyId: projects.companyId,
+          name: projects.name,
+        })
+        .from(projects)
+        .where(eq(projects.companyId, companyId))
+        .orderBy(asc(projects.name), asc(projects.id));
+      return rows.map((row) => ({
+        id: row.id,
+        companyId: row.companyId,
+        name: row.name,
+        urlKey: deriveProjectUrlKey(row.name, row.id),
+      }));
+    },
+
     list: async (companyId: string): Promise<ProjectWithGoals[]> => {
       const rows = await db.select().from(projects).where(eq(projects.companyId, companyId));
       const withGoals = await attachGoals(db, rows);

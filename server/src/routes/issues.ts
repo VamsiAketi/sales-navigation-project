@@ -485,9 +485,11 @@ export function issueRoutes(db: Db, storage: StorageService) {
   router.get("/companies/:companyId/issues", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    await assertCanReadTasks(req, companyId);
     const actor = projectAuthActorFromRequest(req);
-    const allowedProjectIds = await access.listProjectIdsVisibleToActor(companyId, actor);
+    const [, allowedProjectIds] = await Promise.all([
+      assertCanReadTasks(req, companyId),
+      access.listProjectIdsVisibleToActor(companyId, actor),
+    ]);
     if (allowedProjectIds !== null && allowedProjectIds.length === 0) {
       res.json([]);
       return;
@@ -549,6 +551,8 @@ export function issueRoutes(db: Db, storage: StorageService) {
         req.query.includeRoutineExecutions === "true" || req.query.includeRoutineExecutions === "1",
       includeHidden:
         req.query.includeHidden === "true" || req.query.includeHidden === "1",
+      includeDetails:
+        req.query.includeDetails === "true" || req.query.includeDetails === "1",
       q: req.query.q as string | undefined,
     });
     res.json(result);

@@ -105,5 +105,45 @@ export function dashboardService(db: Db) {
         },
       };
     },
+
+    /** Lightweight counts for sidebar inbox badge (avoids full dashboard + budget overview). */
+    alertSignals: async (companyId: string) => {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      const [company, agentErrorRow, monthSpendRow] = await Promise.all([
+        db
+          .select({ budgetMonthlyCents: companies.budgetMonthlyCents })
+          .from(companies)
+          .where(eq(companies.id, companyId))
+          .then((rows) => rows[0] ?? null),
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(agents)
+          .where(and(eq(agents.companyId, companyId), eq(agents.status, "error")))
+          .then((rows) => Number(rows[0]?.count ?? 0)),
+        db
+          .select({
+            monthSpend: sql<number>`coalesce(sum(${costEvents.modelCostCents}), 0)::int`,
+          })
+          .from(costEvents)
+          .where(and(eq(costEvents.companyId, companyId), gte(costEvents.occurredAt, monthStart)))
+          .then((rows) => Number(rows[0]?.monthSpend ?? 0)),
+      ]);
+
+      if (!company) throw notFound("Company not found");
+
+      const monthSpendCents = monthSpendRow;
+      const utilization =
+        company.budgetMonthlyCents > 0
+          ? (monthSpendCents / company.budgetMonthlyCents) * 100
+          : 0;
+
+      return {
+        agentsInError: agentErrorRow,
+        monthBudgetCents: company.budgetMonthlyCents,
+        monthUtilizationPercent: Number(utilization.toFixed(2)),
+      };
+    },
   };
 }

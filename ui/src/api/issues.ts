@@ -36,6 +36,7 @@ export const issuesApi = {
       originId?: string;
       includeRoutineExecutions?: boolean;
       includeHidden?: boolean;
+      includeDetails?: boolean;
       q?: string;
     },
   ) => {
@@ -54,6 +55,7 @@ export const issuesApi = {
     if (filters?.originId) params.set("originId", filters.originId);
     if (filters?.includeRoutineExecutions) params.set("includeRoutineExecutions", "true");
     if (filters?.includeHidden) params.set("includeHidden", "true");
+    if (filters?.includeDetails) params.set("includeDetails", "true");
     if (filters?.q) params.set("q", filters.q);
     const qs = params.toString();
     return api.get<Issue[]>(`/companies/${companyId}/issues${qs ? `?${qs}` : ""}`);
