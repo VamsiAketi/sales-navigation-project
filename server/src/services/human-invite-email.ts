@@ -1,4 +1,10 @@
 import { logger } from "../middleware/logger.js";
+import {
+  buildHumanInviteEmailBodies,
+  buildPasswordResetEmailBodies,
+} from "./system-email-templates.js";
+
+export { buildPasswordResetEmailBodies } from "./system-email-templates.js";
 
 export type HumanInviteEmailInput = {
   toEmail: string;
@@ -203,85 +209,6 @@ function graphCorrelationHeaders(response: Response): Record<string, string | un
   };
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function escapeHtmlAttr(text: string): string {
-  return escapeHtml(text).replace(/'/g, "&#39;");
-}
-
-/**
- * Plain + HTML bodies for password reset. Uses table layout and inline styles for broad client support.
- */
-export function buildPasswordResetEmailBodies(input: { resetUrl: string; recipientEmail: string }): {
-  textBody: string;
-  htmlBody: string;
-} {
-  const textBody = [
-    "Reset your AI-Harness password",
-    "",
-    "We received a request to reset the password for:",
-    input.recipientEmail,
-    "",
-    "Open this link to choose a new password (it expires after a short time):",
-    input.resetUrl,
-    "",
-    "If you did not ask for this, you can ignore this email. Your password will stay the same.",
-  ].join("\r\n");
-
-  const safeEmail = escapeHtml(input.recipientEmail);
-  const href = escapeHtmlAttr(input.resetUrl);
-
-  const htmlBody = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="color-scheme" content="light dark" />
-<title>Reset your password</title>
-</head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;-webkit-text-size-adjust:100%;">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f4f4f5;margin:0;padding:0;">
-  <tr>
-    <td align="center" style="padding:32px 16px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;background-color:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e4e4e7;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <tr>
-          <td style="padding:28px 28px 8px 28px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;color:#18181b;">
-            <p style="margin:0 0 8px 0;font-size:20px;font-weight:600;letter-spacing:-0.02em;color:#18181b;">Reset your password</p>
-            <p style="margin:0 0 20px 0;color:#52525b;font-size:14px;line-height:1.55;">We received a request to reset your AI-Harness password. Use the button below to choose a new one.</p>
-            <p style="margin:0 0 20px 0;font-size:13px;color:#71717a;"><strong style="color:#3f3f46;">Account</strong><br />${safeEmail}</p>
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px 0;">
-              <tr>
-                <td align="center" bgcolor="#4f46e5" style="border-radius:9999px;background-color:#4f46e5;">
-                  <a href="${href}" style="display:inline-block;padding:12px 28px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:9999px;">Choose a new password</a>
-                </td>
-              </tr>
-            </table>
-            <p style="margin:0 0 12px 0;font-size:12px;color:#a1a1aa;line-height:1.5;">If the button does not work, copy and paste this link into your browser:</p>
-            <p style="margin:0;font-size:12px;word-break:break-all;color:#6366f1;"><a href="${href}" style="color:#6366f1;text-decoration:underline;">${href}</a></p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:16px 28px 24px 28px;border-top:1px solid #f4f4f5;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#a1a1aa;">
-            If you did not request a password reset, you can ignore this message. Your password will not be changed.
-          </td>
-        </tr>
-      </table>
-      <p style="margin:20px 0 0 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:11px;color:#a1a1aa;text-align:center;">AI-Harness &mdash; control plane for AI companies</p>
-    </td>
-  </tr>
-</table>
-</body>
-</html>`;
-
-  return { textBody, htmlBody };
-}
-
 async function sendViaGraphMail(config: GraphMailConfig, input: SystemEmailInput): Promise<void> {
   const token = await acquireGraphAccessToken(config);
   const userSegment = await resolveGraphSendMailUserSegment(config, token);
@@ -369,20 +296,17 @@ async function sendViaGraphMail(config: GraphMailConfig, input: SystemEmailInput
 export async function sendHumanInviteEmail(
   input: HumanInviteEmailInput,
 ): Promise<HumanInviteEmailDelivery> {
+  const { textBody, htmlBody } = buildHumanInviteEmailBodies({
+    toName: input.toName,
+    temporaryUsername: input.temporaryUsername,
+    temporaryPassword: input.temporaryPassword,
+    signInUrl: input.signInUrl,
+  });
   const delivery = await sendSystemEmail({
     toEmail: input.toEmail,
     subject: "You have been invited to AI-Harness",
-    textBody: [
-      `Hello ${input.toName},`,
-      "",
-      "You have been granted access to AI-Harness.",
-      "",
-      `Sign in: ${input.signInUrl}`,
-      `Email: ${input.temporaryUsername}`,
-      `Temporary password: ${input.temporaryPassword}`,
-      "",
-      "Please sign in and change your password.",
-    ].join("\n"),
+    textBody,
+    htmlBody,
   });
   if (delivery.status === "sent") {
     return {

@@ -84,8 +84,9 @@ export type InboxWorkItem =
 export interface InboxBadgeData {
   /**
    * Total open items for the Attention Queue badge: actionable approvals, visible join requests,
-   * latest failed runs per agent, unread tasks you touched (`Mine`), and undismissed dashboard
-   * alerts (agent errors / budget), minus rows dismissed in the queue.
+   * latest failed runs per agent (only when still the agent's most recent run), unread tasks you
+   * touched (`Mine`), and undismissed dashboard alerts (agent errors / budget), minus rows
+   * dismissed in the queue.
    */
   inbox: number;
   approvals: number;
@@ -344,21 +345,20 @@ export function getInboxKeyboardSelectionIndex(
     : Math.max(previousIndex - 1, 0);
 }
 
-/** Most recent failed/timed_out run per agent (ignores newer queued/running/succeeded runs). */
+/** Failed/timed_out runs whose agent has no newer run (e.g. a later success supersedes the failure). */
 export function getLatestFailedRunsByAgent(runs: HeartbeatRun[]): HeartbeatRun[] {
   const sorted = [...runs].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
-  const latestFailedByAgent = new Map<string, HeartbeatRun>();
+  const latestRunByAgent = new Map<string, HeartbeatRun>();
 
   for (const run of sorted) {
-    if (!FAILED_RUN_STATUSES.has(run.status)) continue;
-    if (!latestFailedByAgent.has(run.agentId)) {
-      latestFailedByAgent.set(run.agentId, run);
+    if (!latestRunByAgent.has(run.agentId)) {
+      latestRunByAgent.set(run.agentId, run);
     }
   }
 
-  return Array.from(latestFailedByAgent.values());
+  return Array.from(latestRunByAgent.values()).filter((run) => FAILED_RUN_STATUSES.has(run.status));
 }
 
 export function normalizeTimestamp(value: string | Date | null | undefined): number {

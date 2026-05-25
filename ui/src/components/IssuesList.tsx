@@ -409,6 +409,8 @@ interface IssuesListProps {
   fixedStatusFilter?: string[];
   /** Hide the Status filter popover (e.g. project Backlog tab). */
   hideStatusFilter?: boolean;
+  /** When true, board view stays hidden until project workflow columns have loaded. */
+  statusesLoading?: boolean;
   /**
    * When set (project Tasks view), Done/Cancelled issues older than this many full days (from completed/cancelled time)
    * are omitted from the board only; list view still shows the full filtered set. Omit on company-wide Issues.
@@ -633,6 +635,7 @@ export function IssuesList({
   forceListView = false,
   fixedStatusFilter,
   hideStatusFilter = false,
+  statusesLoading = false,
   boardClosedRetentionDays,
   pastBoardClosedRetentionDays,
 }: IssuesListProps) {
@@ -790,6 +793,12 @@ export function IssuesList({
     },
     enabled: !!selectedCompanyId && viewState.showHidden,
   });
+
+  const hiddenBranchLoading = viewState.showHidden && hiddenLoading;
+  const boardViewLoading =
+    isLoading ||
+    hiddenBranchLoading ||
+    (!forceListView && viewState.viewMode === "board" && statusesLoading);
 
   const agentName = useCallback((id: string | null) => {
     if (!id || !agents) return null;
@@ -1622,7 +1631,7 @@ export function IssuesList({
         </div>
       </div>
 
-      {(isLoading || (viewState.showHidden && hiddenLoading)) && <PageSkeleton variant="issues-list" />}
+      {boardViewLoading && <PageSkeleton variant="issues-list" />}
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
       {viewState.showHidden && !hiddenLoading && (
@@ -1632,7 +1641,7 @@ export function IssuesList({
         </div>
       )}
 
-      {!(isLoading || (viewState.showHidden && hiddenLoading)) && filtered.length === 0 && (forceListView || viewState.viewMode === "list") && (
+      {!(boardViewLoading || (viewState.showHidden && hiddenLoading)) && filtered.length === 0 && (forceListView || viewState.viewMode === "list") && (
         <EmptyState
           icon={viewState.showHidden ? EyeOff : CircleDot}
           message={
@@ -1653,7 +1662,7 @@ export function IssuesList({
         />
       )}
 
-      {!isLoading && filtered.length > 0 && (forceListView || viewState.viewMode === "list") && (
+      {!boardViewLoading && filtered.length > 0 && (forceListView || viewState.viewMode === "list") && (
         <div
           ref={listHeaderRef}
           className="sticky top-[3.25rem] z-50 hidden sm:flex items-center gap-2 border-b border-border bg-background/95 py-1.5 pl-1 pr-3 text-xs font-medium text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/90 select-none"
@@ -1747,7 +1756,7 @@ export function IssuesList({
         </div>
       )}
 
-      {!forceListView && viewState.viewMode === "board" ? (
+      {!forceListView && viewState.viewMode === "board" && !boardViewLoading ? (
         <KanbanBoard
           issues={boardIssues}
           agents={agents}

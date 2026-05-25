@@ -538,6 +538,7 @@ export function InboxIssueTrailingColumns({
   projectStatus,
   workspaceName,
   assigneeName,
+  assigneeUserName,
   currentUserId,
   currentUserDisplayName,
   variant = "grouped",
@@ -548,6 +549,7 @@ export function InboxIssueTrailingColumns({
   projectStatus: string | null;
   workspaceName: string | null;
   assigneeName: string | null;
+  assigneeUserName?: string | null;
   currentUserId: string | null;
   currentUserDisplayName?: string | null;
   /** `flat` emits one grid cell per column for inbox-table rows. */
@@ -555,7 +557,9 @@ export function InboxIssueTrailingColumns({
 }) {
   const activityText = timeAgo(issue.lastActivityAt ?? issue.lastExternalCommentAt ?? issue.updatedAt);
   const userLabel =
-    formatAssigneeUserLabel(issue.assigneeUserId, currentUserId, { currentUserDisplayName }) ?? "User";
+    assigneeUserName
+    ?? formatAssigneeUserLabel(issue.assigneeUserId, currentUserId, { currentUserDisplayName })
+    ?? "User";
 
   const cells = columns.map((column) => {
     if (column === "assignee") {
@@ -1413,6 +1417,23 @@ export function Inbox() {
   const currentUserId = session?.user.id ?? session?.session.userId ?? null;
   const currentUserDisplayName =
     session?.user?.name?.trim() || session?.user?.email?.trim() || null;
+
+  const { data: companyMembers } = useQuery({
+    queryKey: queryKeys.access.members(selectedCompanyId!),
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const userLabel = useCallback(
+    (userId: string | null | undefined): string | null => {
+      if (!userId) return null;
+      const member = (companyMembers ?? []).find((m) => m.user?.id === userId);
+      if (member?.user?.name?.trim()) return member.user.name.trim();
+      if (member?.user?.email?.trim()) return member.user.email.trim();
+      return formatAssigneeUserLabel(userId, currentUserId, { currentUserDisplayName });
+    },
+    [companyMembers, currentUserId, currentUserDisplayName],
+  );
 
   const failedRuns = useMemo(
     () => getLatestFailedRunsByAgent(heartbeatRuns ?? []).filter((r) => !dismissed.has(`run:${r.id}`)),
@@ -2374,6 +2395,9 @@ export function Inbox() {
                               defaultProjectWorkspaceIdByProjectId,
                             })}
                             assigneeName={agentName(issue.assigneeAgentId)}
+                            assigneeUserName={
+                              issue.assigneeUserId ? userLabel(issue.assigneeUserId) : null
+                            }
                             currentUserId={currentUserId}
                             currentUserDisplayName={currentUserDisplayName}
                           />

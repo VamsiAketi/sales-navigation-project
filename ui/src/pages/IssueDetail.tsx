@@ -280,7 +280,7 @@ export function IssueDetail({ fullWidth }: { fullWidth?: boolean } = {}) {
     enabled: !!issueId,
   });
   const resolvedCompanyId = issue?.companyId ?? selectedCompanyId;
-  const projectIssueStatuses = useProjectIssueStatuses(issue?.projectId ?? null);
+  const { statuses: projectIssueStatuses } = useProjectIssueStatuses(issue?.projectId ?? null);
 
   const { data: comments } = useQuery({
     queryKey: queryKeys.issues.comments(issueId!),
