@@ -4116,6 +4116,8 @@ export function heartbeatService(db: Db) {
         message: "run cancelled",
       });
       await releaseIssueExecutionAndPromote(cancelled);
+      const { cancelMaintenanceRequestForHeartbeatRun } = await import("./project-maintenance-queue.js");
+      await cancelMaintenanceRequestForHeartbeatRun(db, cancelled.id, reason);
     }
 
     runningProcesses.delete(run.id);
@@ -4148,6 +4150,8 @@ export function heartbeatService(db: Db) {
         runningProcesses.delete(run.id);
       }
       await releaseIssueExecutionAndPromote(run);
+      const { cancelMaintenanceRequestForHeartbeatRun } = await import("./project-maintenance-queue.js");
+      await cancelMaintenanceRequestForHeartbeatRun(db, run.id, reason);
     }
 
     return runs.length;

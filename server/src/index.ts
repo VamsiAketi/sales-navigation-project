@@ -683,7 +683,7 @@ export async function startServer(): Promise<StartedServer> {
     void projectContextExtraction.markStuckProcessingAsPending().catch((err) => {
       logger.error({ err }, "startup project context extraction recovery failed");
     });
-    void projectContextBootstrap.backfillExistingProjects().catch((err) => {
+    void projectContextBootstrap.backfillExistingProjects({ enqueueSync: false }).catch((err) => {
       logger.error({ err }, "startup project context backfill failed");
     });
     setInterval(() => {

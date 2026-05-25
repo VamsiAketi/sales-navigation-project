@@ -107,12 +107,15 @@ export function projectContextService(db: Db) {
         description: normalizedDescription,
         contextRef,
       });
-      const dedupeHash = stableHash({
-        type: input.payload.type,
-        description: normalizedDescription,
-        contextRef,
-        requestedByUserId: input.actorUserId ?? null,
-      });
+      const dedupeHash =
+        input.payload.type === "context_summary"
+          ? stableHash({ type: input.payload.type, projectId: input.projectId })
+          : stableHash({
+              type: input.payload.type,
+              description: normalizedDescription,
+              contextRef,
+              requestedByUserId: input.actorUserId ?? null,
+            });
 
       const existing = await db
         .select({ id: projectMaintenanceRequests.id })

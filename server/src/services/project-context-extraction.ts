@@ -152,6 +152,7 @@ async function extractTextFromBuffer(input: {
 async function enqueueProjectContextSync(projectId: string, db: Db) {
   const context = projectContextService(db);
   const sync = projectContextSyncService(db);
+  let created = false;
   try {
     await context.createMaintenanceRequest({
       projectId,
@@ -162,12 +163,15 @@ async function enqueueProjectContextSync(projectId: string, db: Db) {
         contextRef: null,
       },
     });
+    created = true;
   } catch (error) {
     if (!(error instanceof HttpError) || error.status !== 409) {
       throw error;
     }
   }
-  await sync.dispatchPendingForProject(projectId);
+  if (created) {
+    await sync.dispatchPendingForProject(projectId);
+  }
 }
 
 export function projectContextExtractionService(db: Db, storage: StorageService) {
