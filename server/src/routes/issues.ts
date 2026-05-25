@@ -12,6 +12,7 @@ import {
   createIssueSchema,
   linkIssueApprovalSchema,
   issueDocumentKeySchema,
+  isIssueIdentifierLike,
   manualIssueProjectIdRequiredMessage,
   updateIssueWorkProductSchema,
   upsertIssueDocumentSchema,
@@ -409,7 +410,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
   }
 
   async function normalizeIssueIdentifier(rawId: string): Promise<string> {
-    if (/^[A-Z]+-\d+$/i.test(rawId)) {
+    if (isIssueIdentifierLike(rawId)) {
       const issue = await svc.getByIdentifier(rawId);
       if (issue) {
         return issue.id;

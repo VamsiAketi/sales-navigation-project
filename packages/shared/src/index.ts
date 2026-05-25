@@ -747,6 +747,7 @@ export {
 } from "./wallet.js";
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
+export { ISSUE_IDENTIFIER_RE, isIssueIdentifierLike } from "./issue-identifier.js";
 export { deriveProjectUrlKey, normalizeProjectUrlKey, hasNonAsciiContent } from "./project-url-key.js";
 export {
   AGENT_MENTION_SCHEME,
