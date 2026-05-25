@@ -4,13 +4,17 @@ import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import type { ProjectIssueStatus } from "@paperclipai/shared";
 
-export function useProjectIssueStatuses(projectId: string | null | undefined): ProjectIssueStatus[] {
+export function useProjectIssueStatuses(projectId: string | null | undefined): {
+  statuses: ProjectIssueStatus[];
+  isLoading: boolean;
+} {
   const { selectedCompanyId } = useCompany();
-  const { data } = useQuery({
+  const enabled = !!projectId;
+  const { data, isLoading } = useQuery({
     queryKey: queryKeys.projects.issueStatuses(projectId ?? ""),
     queryFn: () => projectsApi.listIssueStatuses(projectId!, selectedCompanyId ?? undefined),
-    enabled: !!projectId,
+    enabled,
     staleTime: 60_000,
   });
-  return data ?? [];
+  return { statuses: data ?? [], isLoading: enabled && isLoading };
 }

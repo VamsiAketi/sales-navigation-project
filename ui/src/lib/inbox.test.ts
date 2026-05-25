@@ -20,6 +20,7 @@ import {
   getApprovalsForTab,
   getInboxWorkItems,
   getInboxKeyboardSelectionIndex,
+  getLatestFailedRunsByAgent,
   getRecentTouchedIssues,
   getUnreadTouchedIssues,
   isMineInboxTab,
@@ -282,6 +283,33 @@ const dashboard: DashboardSummary = {
 describe("inbox helpers", () => {
   beforeEach(() => {
     storage.clear();
+  });
+
+  it("only surfaces failed runs that are still each agent's latest run", () => {
+    const runs = [
+      makeRun("run-failed", "failed", "2026-03-11T00:00:00.000Z"),
+      makeRun("run-recovered", "succeeded", "2026-03-11T01:00:00.000Z"),
+      makeRun("run-still-failed", "timed_out", "2026-03-11T02:00:00.000Z", "agent-2"),
+    ];
+
+    expect(getLatestFailedRunsByAgent(runs).map((run) => run.id)).toEqual(["run-still-failed"]);
+  });
+
+  it("drops failed runs superseded by a newer success from badge counts", () => {
+    const result = computeInboxBadgeData({
+      approvals: [],
+      joinRequests: [],
+      dashboard: undefined,
+      heartbeatRuns: [
+        makeRun("run-failed", "failed", "2026-03-11T00:00:00.000Z"),
+        makeRun("run-recovered", "succeeded", "2026-03-11T01:00:00.000Z"),
+      ],
+      mineIssues: [],
+      dismissed: new Set<string>(),
+    });
+
+    expect(result.failedRuns).toBe(0);
+    expect(result.inbox).toBe(0);
   });
 
   it("counts the same inbox sources the badge uses", () => {

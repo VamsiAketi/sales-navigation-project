@@ -365,7 +365,7 @@ export function NewIssueDialog() {
   const effectiveCompanyId = dialogCompanyId ?? selectedCompanyId;
   const dialogCompany = companies.find((c) => c.id === effectiveCompanyId) ?? selectedCompany;
 
-  const rawProjectStatuses = useProjectIssueStatuses(projectId || null);
+  const { statuses: rawProjectStatuses } = useProjectIssueStatuses(projectId || null);
   /** Backlog (list-only) plus board-visible columns — used for new-task status chip and picker. */
   const selectableProjectStatuses = useMemo(
     () =>

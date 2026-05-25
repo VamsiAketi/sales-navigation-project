@@ -10,6 +10,10 @@ import {
 } from "@paperclipai/shared";
 import { logger } from "../middleware/logger.js";
 import { sendSystemEmail } from "./human-invite-email.js";
+import {
+  buildHumanApprovalEmailBodies,
+  buildIssueNotificationEmailBodies,
+} from "./system-email-templates.js";
 import { notificationService } from "./notifications.js";
 
 type IssueNotificationEventInput = {
@@ -112,50 +116,6 @@ function humanizeCommentSnippet(snippet: string | null | undefined): string | nu
     .replace(/\s+/g, " ")
     .trim();
   return normalizedMentions.length > 0 ? normalizedMentions : null;
-}
-
-function buildEmailBody(input: {
-  recipientName: string;
-  issueIdentifier: string | null;
-  issueTitle: string;
-  eventType: ProjectNotificationEventType;
-  actorType: "agent" | "user" | "system";
-  actorLabel?: string | null;
-  oldStatus?: string | null;
-  newStatus?: string | null;
-  commentSnippet?: string | null;
-  assignedUserName?: string | null;
-  issueUrl?: string | null;
-}) {
-  const issueRef = input.issueIdentifier ?? input.issueTitle;
-  const actor = input.actorLabel?.trim() || input.actorType;
-  const lines = [`Hello ${input.recipientName},`, "", `Update on issue ${issueRef} (${input.issueTitle}):`, ""];
-  if (input.eventType === "issue.status_changed" && input.newStatus) {
-    lines.push(
-      `${actor} changed status from "${input.oldStatus ?? "unknown"}" to "${input.newStatus}".`,
-    );
-  }
-  if (input.eventType === "issue.comment_added") {
-    lines.push(`${actor} added a comment.`);
-    if (input.commentSnippet) {
-      lines.push(`Comment: "${input.commentSnippet}"`);
-    }
-  }
-  if (input.eventType === "issue.comment_mentioned") {
-    lines.push(`${actor} mentioned you in a comment.`);
-    if (input.commentSnippet) {
-      lines.push(`Comment: "${input.commentSnippet}"`);
-    }
-  }
-  if (input.eventType === "issue.assigned") {
-    const assignee = input.assignedUserName?.trim() || "a user";
-    lines.push(`${actor} assigned this issue to ${assignee}.`);
-  }
-  if (input.issueUrl) {
-    lines.push("", `Open ticket: ${input.issueUrl}`);
-  }
-  lines.push("", "This email was sent by your project notification settings.");
-  return lines.join("\n");
 }
 
 function defaultUserPreferences(): UserNotificationPreferences {
@@ -288,7 +248,7 @@ export function issueNotificationService(db: Db) {
               : input.eventType === "issue.comment_mentioned"
                 ? `${actor} mentioned you in a comment${readableCommentSnippet ? `: "${readableCommentSnippet}"` : "."}`
                 : `${actor} assigned this task to ${resolvedAssignedUserName || "a user"}.`;
-        const message = buildEmailBody({
+        const { textBody: message, htmlBody } = buildIssueNotificationEmailBodies({
           recipientName: recipient.name,
           issueIdentifier: input.payload.issueIdentifier,
           issueTitle: input.payload.issueTitle,
@@ -336,6 +296,7 @@ export function issueNotificationService(db: Db) {
           toEmail: recipient.email!,
           subject: `[AI-Harness] ${emailSubjectTitle}`,
           textBody: message,
+          htmlBody,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
         if (delivery.status === "failed") {
@@ -359,8 +320,14 @@ export function issueNotificationService(db: Db) {
       };
     }) => {
       const issue = await db
-        .select({ id: issues.id, companyId: issues.companyId, projectId: issues.projectId })
+        .select({
+          id: issues.id,
+          companyId: issues.companyId,
+          projectId: issues.projectId,
+          issuePrefix: companies.issuePrefix,
+        })
         .from(issues)
+        .innerJoin(companies, eq(companies.id, issues.companyId))
         .where(eq(issues.id, input.issueId))
         .then((rows) => rows[0] ?? null);
       if (!issue?.projectId) return;
@@ -392,6 +359,15 @@ export function issueNotificationService(db: Db) {
       const config = mergeNotificationConfig(project.notificationConfig);
       if (config.enabled === false) return;
 
+      const appBaseUrl =
+        process.env.PAPERCLIP_PUBLIC_URL ??
+        process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
+        process.env.BETTER_AUTH_URL ??
+        process.env.BETTER_AUTH_BASE_URL ??
+        "http://localhost:3100";
+      const normalizedAppBaseUrl = appBaseUrl.replace(/\/+$/, "");
+      const issueUrl = `${normalizedAppBaseUrl}/${encodeURIComponent(issue.issuePrefix)}/issues/${encodeURIComponent(issue.id)}`;
+
       // Notify only the designated approvers for this step
       const members = await db
         .select({ id: authUsers.id, name: authUsers.name, email: authUsers.email })
@@ -414,17 +390,13 @@ export function issueNotificationService(db: Db) {
       for (const member of members) {
         if (input.actorType === "user" && input.actorId && member.id === input.actorId) continue;
 
-        const textBody = [
-          `Hello ${member.name},`,
-          "",
-          `Human approval is required for issue ${issueRef} (${input.payload.issueTitle}).`,
-          "",
-          `The issue has entered the "${approvalStatus.name}" step and is awaiting your review.`,
-          "",
-          "Please log in to review and take action.",
-          "",
-          "This email was sent by your project notification settings.",
-        ].join("\n");
+        const { textBody, htmlBody } = buildHumanApprovalEmailBodies({
+          recipientName: member.name,
+          issueIdentifier: input.payload.issueIdentifier,
+          issueTitle: input.payload.issueTitle,
+          approvalStepName: approvalStatus.name,
+          issueUrl,
+        });
 
         const createdNotification = await notifications.create({
           userId: member.id,
@@ -452,6 +424,7 @@ export function issueNotificationService(db: Db) {
           toEmail: member.email,
           subject: `[AI-Harness] ${emailSubjectTitle}`,
           textBody,
+          htmlBody,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
         if (delivery.status === "failed") {
@@ -569,7 +542,7 @@ export function issueNotificationService(db: Db) {
         const readableCommentSnippet = humanizeCommentSnippet(input.payload.commentSnippet);
 
         const inAppMessage = `${actor} mentioned you in a comment${readableCommentSnippet ? `: "${readableCommentSnippet}"` : "."}`;
-        const emailText = buildEmailBody({
+        const { textBody: emailText, htmlBody } = buildIssueNotificationEmailBodies({
           recipientName: recipient.name,
           issueIdentifier: input.payload.issueIdentifier,
           issueTitle: input.payload.issueTitle,
@@ -613,6 +586,7 @@ export function issueNotificationService(db: Db) {
           toEmail: recipient.email!,
           subject: `[AI-Harness] ${emailSubjectTitle}`,
           textBody: emailText,
+          htmlBody,
         });
         await notifications.updateEmailDeliveryStatus(createdNotification.id, delivery.status);
         if (delivery.status === "failed") {

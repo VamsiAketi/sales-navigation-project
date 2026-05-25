@@ -8,6 +8,10 @@ function asNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function resolveEffectiveHome(env: Record<string, string>): string {
+  return asNonEmptyString(env.HOME) ?? os.homedir();
+}
+
 function isContainerizedPaperclip(env: Record<string, string>): boolean {
   return Boolean(
     asNonEmptyString(env.PAPERCLIP_HOME)
@@ -35,17 +39,20 @@ export function resolveCursorAgentStateRoot(agentId: string, env: Record<string,
     return path.join(path.resolve(paperclipHome), "cursor-state", agentId);
   }
 
-  return path.join(os.homedir(), ".cursor-state", agentId);
+  return path.join(resolveEffectiveHome(env), ".cursor-state", agentId);
 }
 
 export function resolveCursorConfigDir(env: Record<string, string>): string {
   const explicit = asNonEmptyString(env.CURSOR_CONFIG_DIR);
   if (explicit) return path.resolve(explicit);
 
+  const cursorHome = asNonEmptyString(env.CURSOR_HOME);
+  if (cursorHome) return path.resolve(cursorHome);
+
   const xdgConfig = asNonEmptyString(env.XDG_CONFIG_HOME);
   if (xdgConfig) return path.join(path.resolve(xdgConfig), "cursor");
 
-  return path.join(os.homedir(), ".cursor");
+  return path.join(resolveEffectiveHome(env), ".cursor");
 }
 
 export function resolveCursorSkillsHomeFromEnv(env: Record<string, string>): string {
@@ -57,7 +64,11 @@ export function applyCursorAgentStateDirs(
   agentId: string,
   env: Record<string, string>,
 ): Record<string, string> {
-  if (asNonEmptyString(env.CURSOR_CONFIG_DIR) || asNonEmptyString(env.CURSOR_DATA_DIR)) {
+  if (
+    asNonEmptyString(env.CURSOR_CONFIG_DIR) ||
+    asNonEmptyString(env.CURSOR_DATA_DIR) ||
+    asNonEmptyString(env.CURSOR_HOME)
+  ) {
     return env;
   }
 
@@ -69,7 +80,7 @@ export function applyCursorAgentStateDirs(
 
 export async function ensureCursorAgentStateDirs(env: Record<string, string>): Promise<void> {
   const configDir = resolveCursorConfigDir(env);
-  const dataDir = asNonEmptyString(env.CURSOR_DATA_DIR) ?? path.join(os.homedir(), ".cursor");
+  const dataDir = asNonEmptyString(env.CURSOR_DATA_DIR) ?? path.join(resolveEffectiveHome(env), ".cursor");
   await fs.mkdir(path.join(configDir, "skills"), { recursive: true });
   await fs.mkdir(dataDir, { recursive: true });
 }

@@ -82,7 +82,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
 
 function ProjectBacklogList({ projectId, companyId, issueLinkState }: { projectId: string; companyId: string; issueLinkState?: unknown }) {
   const queryClient = useQueryClient();
-  const projectStatuses = useProjectIssueStatuses(projectId);
+  const { statuses: projectStatuses } = useProjectIssueStatuses(projectId);
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(companyId),
@@ -151,7 +151,7 @@ function ProjectArchiveList({
   issueLinkState?: unknown;
 }) {
   const queryClient = useQueryClient();
-  const projectStatuses = useProjectIssueStatuses(projectId);
+  const { statuses: projectStatuses } = useProjectIssueStatuses(projectId);
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(companyId),
@@ -220,7 +220,7 @@ function ProjectIssuesList({
   boardClosedRetentionDays: number;
 }) {
   const queryClient = useQueryClient();
-  const projectStatuses = useProjectIssueStatuses(projectId);
+  const { statuses: projectStatuses, isLoading: statusesLoading } = useProjectIssueStatuses(projectId);
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(companyId),
@@ -270,6 +270,7 @@ function ProjectIssuesList({
       issueLinkState={issueLinkState}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
       projectStatuses={projectStatuses.length > 0 ? projectStatuses : undefined}
+      statusesLoading={statusesLoading}
       boardClosedRetentionDays={boardClosedRetentionDays}
     />
   );
@@ -343,7 +344,7 @@ export function ProjectDetail() {
   const canonicalProjectRef = project ? projectRouteRef(project) : routeProjectRef;
   const projectLookupRef = project?.id ?? routeProjectRef;
   const resolvedCompanyId = project?.companyId ?? selectedCompanyId;
-  const configStatuses = useProjectIssueStatuses(project?.id ?? null);
+  const { statuses: configStatuses } = useProjectIssueStatuses(project?.id ?? null);
   const {
     slots: pluginDetailSlots,
     isLoading: pluginDetailSlotsLoading,

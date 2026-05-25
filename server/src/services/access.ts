@@ -171,6 +171,17 @@ export function accessService(db: Db) {
     return `${companyId}:${principalType}:${principalId}`;
   }
 
+  function setMembershipCache(
+    companyId: string,
+    principalType: PrincipalType,
+    principalId: string,
+    row: MembershipRow | null,
+  ) {
+    const cache = getAccessRequestCache();
+    if (!cache) return;
+    cache.membershipByKey.set(membershipCacheKey(companyId, principalType, principalId), row);
+  }
+
   async function getMembership(
     companyId: string,
     principalType: PrincipalType,
@@ -192,7 +203,7 @@ export function accessService(db: Db) {
         ),
       )
       .then((rows) => rows[0] ?? null);
-    cache?.membershipByKey.set(cacheKey, row);
+    setMembershipCache(companyId, principalType, principalId, row);
     return row;
   }
 
@@ -781,12 +792,14 @@ export function accessService(db: Db) {
           .where(eq(companyMemberships.id, existing.id))
           .returning()
           .then((rows) => rows[0] ?? null);
-        return updated ?? existing;
+        const result = updated ?? existing;
+        setMembershipCache(companyId, principalType, principalId, result);
+        return result;
       }
       return existing;
     }
 
-    return db
+    const created = await db
       .insert(companyMemberships)
       .values({
         companyId,
@@ -797,6 +810,8 @@ export function accessService(db: Db) {
       })
       .returning()
       .then((rows) => rows[0]);
+    setMembershipCache(companyId, principalType, principalId, created);
+    return created;
   }
 
   async function setPrincipalGrants(
