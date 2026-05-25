@@ -27,6 +27,7 @@ import { PluginSlotOutlet } from "@/plugins/slots";
 import { CompanyPatternIcon } from "./CompanyPatternIcon";
 import { useSidebar } from "../context/SidebarContext";
 import { cn } from "../lib/utils";
+import { mobileAppHeaderRowClass } from "../lib/mobileHeader";
 import { Link } from "@/lib/router";
 import { azureSidebarIcon } from "../lib/sidebar-icon-tints";
 import { SidebarPrimaryNav, SidebarCompanyNavSection } from "./SidebarSortableNav";
@@ -176,7 +177,9 @@ export function Sidebar() {
       <div
         className={cn(
           "flex shrink-0 items-center gap-1 border-b border-sidebar-border",
-          sidebarCompact ? "flex-col justify-center px-0.5 py-2 min-h-[3rem]" : "h-12 px-3",
+          sidebarCompact
+            ? "flex-col justify-center px-0.5 py-2 min-h-[3rem]"
+            : cn("px-3", mobileAppHeaderRowClass),
         )}
       >
         {sidebarCompact ? (

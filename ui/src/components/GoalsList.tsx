@@ -5,8 +5,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import { Link, useNavigate } from "@/lib/router";
 import type { Goal, Project } from "@paperclipai/shared";
@@ -63,6 +65,93 @@ const GOAL_COLUMN_MIN_WIDTHS: Record<GoalListColumn, number> = {
 };
 
 const GOAL_LIST_COLUMN_GAP_PX = 12;
+
+/** Below lg (1024px): stacked toolbar and viewport-sized filter popovers. */
+const GOALS_COMPACT_TOOLBAR_MQ = "(max-width: 1023px)";
+
+const GOALS_POPOVER_PANEL_CLASS =
+  "z-230 max-h-[min(32rem,calc(100dvh-6rem))] overflow-y-auto overscroll-contain shadow-lg";
+
+const GOALS_POPOVER_WIDE_CLASS = cn(
+  GOALS_POPOVER_PANEL_CLASS,
+  "w-[calc(100vw-1.5rem)] sm:w-[min(40rem,calc(100vw-2rem))]",
+);
+
+const GOALS_POPOVER_NARROW_CLASS = cn(
+  GOALS_POPOVER_PANEL_CLASS,
+  "w-[calc(100vw-1.5rem)] sm:w-72",
+);
+
+function useGoalsCompactToolbar() {
+  const [compact, setCompact] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(GOALS_COMPACT_TOOLBAR_MQ).matches,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(GOALS_COMPACT_TOOLBAR_MQ);
+    const onChange = () => setCompact(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return compact;
+}
+
+function GoalsFilterPopover({ children, ...props }: ComponentProps<typeof Popover>) {
+  const compact = useGoalsCompactToolbar();
+  return (
+    <Popover modal={compact} {...props}>
+      {children}
+    </Popover>
+  );
+}
+
+function GoalsFilterPopoverContent({
+  className,
+  narrow = false,
+  ...props
+}: ComponentProps<typeof PopoverContent> & { narrow?: boolean }) {
+  const compact = useGoalsCompactToolbar();
+  return (
+    <PopoverContent
+      align={compact ? "start" : "end"}
+      side={compact ? "bottom" : undefined}
+      collisionPadding={compact ? 16 : 8}
+      sideOffset={compact ? 8 : undefined}
+      className={cn(
+        compact
+          ? narrow
+            ? GOALS_POPOVER_NARROW_CLASS
+            : GOALS_POPOVER_WIDE_CLASS
+          : narrow
+            ? "z-220 max-h-[min(32rem,calc(100dvh-3rem))] w-56 overflow-y-auto"
+            : "z-220 max-h-[min(33.5rem,calc(100dvh-3rem))] w-[min(40rem,calc(100vw-1rem))] overflow-y-auto",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function GoalsFilterOptionRow({
+  checked,
+  onToggle,
+  children,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-2 text-sm hover:bg-accent/50 max-lg:min-h-11 lg:py-1.5">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={() => onToggle()}
+        className="size-4 shrink-0 self-center"
+      />
+      {children}
+    </label>
+  );
+}
 
 function goalListGapPx(columnCount: number): number {
   return Math.max(0, columnCount - 1) * GOAL_LIST_COLUMN_GAP_PX;
@@ -193,6 +282,7 @@ export function GoalsList({
   onNewGoal,
 }: GoalsListProps) {
   const navigate = useNavigate();
+  const goalsCompactToolbar = useGoalsCompactToolbar();
   const [goalSearch, setGoalSearch] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [levelFilters, setLevelFilters] = useState<string[]>([]);
@@ -629,189 +719,226 @@ export function GoalsList({
   return (
     <div className="space-y-0">
       <div className="-mx-4 border-b border-border/80 bg-background/95 px-4 py-2 backdrop-blur supports-backdrop-filter:bg-background/80 md:sticky md:top-0 md:z-60 md:-mx-6 md:px-6">
-        <div className="flex items-center gap-2.5 overflow-x-auto whitespace-nowrap scrollbar-auto-hide md:overflow-visible md:whitespace-normal">
-          <div className="relative w-44 shrink-0 sm:w-56 md:w-64">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={goalSearch}
-              onChange={(e) => setGoalSearch(e.target.value)}
-              placeholder="Search goals..."
-              className="h-9 pl-7 text-sm"
-              aria-label="Search goals"
-            />
+        <div className="flex max-lg:flex-col max-lg:gap-2 lg:flex-row lg:items-center lg:gap-2.5">
+          <div className="flex min-w-0 items-center gap-2 max-lg:w-full lg:min-w-0 lg:shrink-0 lg:gap-2.5">
+            <div className="relative min-w-0 flex-1 max-lg:min-w-0 lg:w-64">
+              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={goalSearch}
+                onChange={(e) => setGoalSearch(e.target.value)}
+                placeholder="Search goals..."
+                className="h-9 w-full pl-7 text-sm"
+                aria-label="Search goals"
+              />
+            </div>
+            {canWriteGoals && onNewGoal ? (
+              <Button size="sm" className="h-9 w-9 shrink-0 p-0 lg:hidden" onClick={onNewGoal}>
+                <Plus className="h-4 w-4" aria-hidden />
+                <span className="sr-only">New Goal</span>
+              </Button>
+            ) : null}
           </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 px-3 text-xs">
-                <span>Status</span>
-                {statusFilters.length > 0 ? (
-                  <span className="text-[10px] font-medium">{statusFilters.length}</span>
-                ) : null}
-                <ChevronDown className="hidden h-3.5 w-3.5 md:block" />
+
+          <div
+            className={cn(
+              "flex min-w-0 gap-1.5 lg:shrink-0 lg:items-center",
+              goalsCompactToolbar
+                ? "max-lg:w-full max-lg:flex-col max-lg:rounded-md max-lg:border max-lg:border-border max-lg:bg-muted/20 max-lg:p-2"
+                : "max-lg:w-full max-lg:flex-wrap max-lg:items-center",
+            )}
+          >
+            {(activeFilterCount > 0 || sortField !== "created" || sortDir !== "asc") ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-9 shrink-0 px-3 text-xs text-muted-foreground hover:text-foreground",
+                  goalsCompactToolbar && "max-lg:self-start",
+                )}
+                onClick={resetFiltersAndSort}
+              >
+                Clear filters
               </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-56 p-2">
-              <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
-                {GOAL_STATUS_ORDER.map((status) => (
-                  <label
-                    key={status}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50"
+            ) : null}
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5 max-lg:w-full">
+              <GoalsFilterPopover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-9 max-lg:shrink-0 gap-1.5 px-3 text-xs",
+                      statusFilters.length > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300",
+                    )}
                   >
-                    <Checkbox
-                      checked={statusFilters.includes(status)}
-                      onCheckedChange={() => {
-                        setStatusFilters((prev) =>
-                          prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status],
-                        );
-                      }}
-                    />
-                    <StatusBadge status={status} />
-                  </label>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 px-3 text-xs">
-                <span>Level</span>
-                {levelFilters.length > 0 ? (
-                  <span className="text-[10px] font-medium">{levelFilters.length}</span>
-                ) : null}
-                <ChevronDown className="hidden h-3.5 w-3.5 md:block" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-56 p-2">
-              <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
-                {GOAL_LEVEL_ORDER.map((level) => (
-                  <label
-                    key={level}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm capitalize hover:bg-accent/50"
-                  >
-                    <Checkbox
-                      checked={levelFilters.includes(level)}
-                      onCheckedChange={() => {
-                        setLevelFilters((prev) =>
-                          prev.includes(level) ? prev.filter((l) => l !== level) : [...prev, level],
-                        );
-                      }}
-                    />
-                    <span>{level}</span>
-                  </label>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          {projectFilterOptions.length > 0 ? (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 px-3 text-xs">
-                  <span>Project</span>
-                  {projectFilters.length > 0 ? (
-                    <span className="text-[10px] font-medium">{projectFilters.length}</span>
-                  ) : null}
-                  <ChevronDown className="hidden h-3.5 w-3.5 md:block" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-64 p-2">
-                <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
-                  {projectFilterOptions.map((project) => (
-                    <label
-                      key={project.id}
-                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50"
-                    >
-                      <Checkbox
-                        checked={projectFilters.includes(project.id)}
-                        onCheckedChange={() => {
-                          setProjectFilters((prev) =>
-                            prev.includes(project.id)
-                              ? prev.filter((id) => id !== project.id)
-                              : [...prev, project.id],
+                    <span>Status</span>
+                    {statusFilters.length > 0 ? (
+                      <span className="text-[10px] font-medium">{statusFilters.length}</span>
+                    ) : null}
+                    <ChevronDown className="hidden h-3.5 w-3.5 lg:block" />
+                  </Button>
+                </PopoverTrigger>
+                <GoalsFilterPopoverContent narrow className="p-2">
+                  <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                    {GOAL_STATUS_ORDER.map((status) => (
+                      <GoalsFilterOptionRow
+                        key={status}
+                        checked={statusFilters.includes(status)}
+                        onToggle={() => {
+                          setStatusFilters((prev) =>
+                            prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status],
                           );
                         }}
-                      />
-                      <span className="truncate">{project.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-          ) : null}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 px-3 text-xs">
-                <ArrowUpDown className="h-3.5 w-3.5" />
-                <span>Sort</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-44 p-0">
-              <div className="space-y-0.5 p-2">
-                {([
-                  ["name", "Name"],
-                  ["status", "Status"],
-                  ["level", "Level"],
-                  ["created", "Created date"],
-                ] as const).map(([field, label]) => (
-                  <button
-                    key={field}
-                    type="button"
+                      >
+                        <StatusBadge status={status} />
+                      </GoalsFilterOptionRow>
+                    ))}
+                  </div>
+                </GoalsFilterPopoverContent>
+              </GoalsFilterPopover>
+              <GoalsFilterPopover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className={cn(
-                      "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm",
-                      sortField === field ? "bg-accent/50 text-foreground" : "text-muted-foreground hover:bg-accent/50",
+                      "h-9 max-lg:shrink-0 gap-1.5 px-3 text-xs",
+                      levelFilters.length > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300",
                     )}
-                    onClick={() => applySort(field)}
                   >
-                    <span>{label}</span>
-                    {sortField === field ? (
-                      <span className="text-xs text-muted-foreground">{sortDir === "asc" ? "↑" : "↓"}</span>
+                    <span>Level</span>
+                    {levelFilters.length > 0 ? (
+                      <span className="text-[10px] font-medium">{levelFilters.length}</span>
                     ) : null}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 shrink-0 gap-1.5 px-3 text-xs">
-                <Columns3 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Columns</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Show columns</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {goalListColumns.map((column) => (
-                <DropdownMenuCheckboxItem
-                  key={column}
-                  checked={visibleColumnSet.has(column)}
-                  onSelect={(event) => event.preventDefault()}
-                  onCheckedChange={(checked) => toggleColumn(column, checked === true)}
-                >
-                  {goalListColumnLabels[column]}
-                </DropdownMenuCheckboxItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setColumns(DEFAULT_GOAL_LIST_COLUMNS)}>
-                Reset defaults
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {(activeFilterCount > 0 || sortField !== "created" || sortDir !== "asc") ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 shrink-0 px-3 text-xs text-muted-foreground hover:text-foreground"
-              onClick={resetFiltersAndSort}
-            >
-              Clear filters
-            </Button>
-          ) : null}
-          {canWriteGoals && onNewGoal ? (
-            <Button size="sm" className="h-9 shrink-0 px-3 md:ml-auto" onClick={onNewGoal}>
-              <Plus className="h-4 w-4 sm:mr-1" />
-              <span>New Goal</span>
-            </Button>
-          ) : null}
+                    <ChevronDown className="hidden h-3.5 w-3.5 lg:block" />
+                  </Button>
+                </PopoverTrigger>
+                <GoalsFilterPopoverContent narrow className="p-2">
+                  <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                    {GOAL_LEVEL_ORDER.map((level) => (
+                      <GoalsFilterOptionRow
+                        key={level}
+                        checked={levelFilters.includes(level)}
+                        onToggle={() => {
+                          setLevelFilters((prev) =>
+                            prev.includes(level) ? prev.filter((l) => l !== level) : [...prev, level],
+                          );
+                        }}
+                      >
+                        <span className="capitalize">{level}</span>
+                      </GoalsFilterOptionRow>
+                    ))}
+                  </div>
+                </GoalsFilterPopoverContent>
+              </GoalsFilterPopover>
+              {projectFilterOptions.length > 0 ? (
+                <GoalsFilterPopover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-9 max-lg:shrink-0 gap-1.5 px-3 text-xs",
+                        projectFilters.length > 0 && "border-blue-400/50 text-blue-700 dark:text-blue-300",
+                      )}
+                    >
+                      <span>Project</span>
+                      {projectFilters.length > 0 ? (
+                        <span className="text-[10px] font-medium">{projectFilters.length}</span>
+                      ) : null}
+                      <ChevronDown className="hidden h-3.5 w-3.5 lg:block" />
+                    </Button>
+                  </PopoverTrigger>
+                  <GoalsFilterPopoverContent narrow className="p-2">
+                    <div className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-border/80 bg-muted/15 p-1.5">
+                      {projectFilterOptions.map((project) => (
+                        <GoalsFilterOptionRow
+                          key={project.id}
+                          checked={projectFilters.includes(project.id)}
+                          onToggle={() => {
+                            setProjectFilters((prev) =>
+                              prev.includes(project.id)
+                                ? prev.filter((id) => id !== project.id)
+                                : [...prev, project.id],
+                            );
+                          }}
+                        >
+                          <span className="truncate">{project.name}</span>
+                        </GoalsFilterOptionRow>
+                      ))}
+                    </div>
+                  </GoalsFilterPopoverContent>
+                </GoalsFilterPopover>
+              ) : null}
+              <GoalsFilterPopover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 max-lg:shrink-0 gap-1.5 px-3 text-xs">
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                    <span>Sort</span>
+                  </Button>
+                </PopoverTrigger>
+                <GoalsFilterPopoverContent narrow className="p-0">
+                  <div className="space-y-0.5 p-2">
+                    {([
+                      ["name", "Name"],
+                      ["status", "Status"],
+                      ["level", "Level"],
+                      ["created", "Created date"],
+                    ] as const).map(([field, label]) => (
+                      <button
+                        key={field}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm max-lg:min-h-11",
+                          sortField === field
+                            ? "bg-accent/50 text-foreground"
+                            : "text-muted-foreground hover:bg-accent/50",
+                        )}
+                        onClick={() => applySort(field)}
+                      >
+                        <span>{label}</span>
+                        {sortField === field ? (
+                          <span className="text-xs text-muted-foreground">{sortDir === "asc" ? "↑" : "↓"}</span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </GoalsFilterPopoverContent>
+              </GoalsFilterPopover>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="hidden h-9 shrink-0 gap-1.5 px-3 text-xs lg:inline-flex">
+                    <Columns3 className="h-3.5 w-3.5" />
+                    <span>Columns</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {goalListColumns.map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column}
+                      checked={visibleColumnSet.has(column)}
+                      onSelect={(event) => event.preventDefault()}
+                      onCheckedChange={(checked) => toggleColumn(column, checked === true)}
+                    >
+                      {goalListColumnLabels[column]}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setColumns(DEFAULT_GOAL_LIST_COLUMNS)}>
+                    Reset defaults
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {canWriteGoals && onNewGoal ? (
+                <Button size="sm" className="hidden h-9 shrink-0 px-3 lg:ml-auto lg:inline-flex" onClick={onNewGoal}>
+                  <Plus className="h-4 w-4 sm:mr-1" />
+                  <span>New Goal</span>
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -829,39 +956,80 @@ export function GoalsList({
           >
             {orderedVisibleColumns.map((column) => renderHeaderCell(column))}
           </div>
-          <div className="w-full min-w-0 border border-border">
+          <div className="w-full min-w-0 border border-border max-lg:border-x-0 max-lg:border-t-0">
             {visibleGoals.map((goal) => (
               <div
                 key={goal.id}
                 role="link"
                 tabIndex={0}
-                className="block w-full min-w-0 cursor-pointer border-b border-border px-2 py-2.5 text-sm text-inherit transition-colors hover:bg-accent/50 last:border-b-0 md:grid md:items-center md:gap-3 md:py-2"
+                className="block w-full min-w-0 cursor-pointer border-b border-border px-3 py-3 text-sm text-inherit transition-colors hover:bg-accent/50 last:border-b-0 md:grid md:items-center md:gap-3 md:px-2 md:py-2"
                 style={goalGridStyle}
                 onClick={(event) => handleGoalRowClick(goal.id, event)}
                 onKeyDown={(event) => handleGoalRowKeyDown(goal.id, event)}
               >
-                <span className="min-w-0 md:hidden">
-                  <span className="block truncate pr-2" title={goal.title}>
-                    {goal.title}
+                <span className="flex min-w-0 flex-col gap-1.5 md:hidden">
+                  <span className="flex min-w-0 items-start justify-between gap-2">
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span
+                        className="inline-flex shrink-0"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        {canWriteGoals && onUpdateGoal ? (
+                          <GoalEnumPicker
+                            current={goal.status}
+                            options={GOAL_STATUSES}
+                            onChange={(status) => onUpdateGoal(goal.id, { status })}
+                          >
+                            <StatusBadge status={goal.status} />
+                          </GoalEnumPicker>
+                        ) : (
+                          <StatusBadge status={goal.status} />
+                        )}
+                      </span>
+                      <span
+                        className="min-w-0 break-words text-[15px] font-medium leading-snug [overflow-wrap:anywhere]"
+                        title={goal.title}
+                      >
+                        {goal.title}
+                      </span>
+                    </span>
+                    <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                      {formatDate(goal.createdAt)}
+                    </span>
                   </span>
-                  <span className="mt-1 inline-flex max-w-full items-center gap-x-1 text-xs text-muted-foreground">
-                    <span className="truncate capitalize">{goal.status.replace(/_/g, " ")}</span>
-                    <span className="text-muted-foreground/80" aria-hidden>
-                      ·
+                  <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <span
+                      className="inline-flex shrink-0 items-center rounded-md border border-border/80 bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium capitalize text-muted-foreground"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      {canWriteGoals && onUpdateGoal ? (
+                        <GoalEnumPicker
+                          current={goal.level}
+                          options={GOAL_LEVELS}
+                          onChange={(level) => onUpdateGoal(goal.id, { level })}
+                        >
+                          <span>{goal.level}</span>
+                        </GoalEnumPicker>
+                      ) : (
+                        <span>{goal.level}</span>
+                      )}
                     </span>
-                    <span className="truncate capitalize">{goal.level}</span>
-                    <span className="text-muted-foreground/80" aria-hidden>
-                      ·
+                    <span className="max-w-full truncate text-[11px] text-muted-foreground">
+                      {mobileProjectsSummary(goal.id)}
                     </span>
-                    <span className="truncate">{parentGoalLabel(goal)}</span>
-                    <span className="text-muted-foreground/80" aria-hidden>
-                      ·
-                    </span>
-                    <span className="truncate">{mobileProjectsSummary(goal.id)}</span>
-                    <span className="text-muted-foreground/80" aria-hidden>
-                      ·
-                    </span>
-                    <span>{formatDate(goal.createdAt)}</span>
+                    {goal.parentId ? (
+                      <span className="max-w-full truncate text-[11px] text-muted-foreground">
+                        {parentGoalLabel(goal)}
+                      </span>
+                    ) : null}
                   </span>
                 </span>
                 {orderedVisibleColumns.map((column) => renderRowCell(goal, column))}

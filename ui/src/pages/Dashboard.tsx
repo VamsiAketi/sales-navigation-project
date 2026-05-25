@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DndContext, PointerSensor, rectIntersection, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, PointerSensor, TouchSensor, rectIntersection, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -16,6 +16,7 @@ import { goalsApi } from "../api/goals";
 import { costsApi } from "../api/costs";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
+import { useSidebar } from "../context/SidebarContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -863,11 +864,14 @@ function CostsMtdSection({ data }: { data: DashboardSummary }) {
 
 // ── Draggable sections ─────────────────────────────────────────────────────
 
-function SectionDragHandle(props: ButtonHTMLAttributes<HTMLButtonElement>) {
+function SectionDragHandle({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
-      className="mt-0.5 flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted active:cursor-grabbing"
+      className={cn(
+        "mt-0.5 flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-muted active:cursor-grabbing",
+        className,
+      )}
       title="Drag to reorder section"
       {...props}
     >
@@ -892,16 +896,28 @@ function DraggableSection({
   headerRight?: ReactNode;
   children: ReactNode;
 }) {
+  const { isMobile } = useSidebar();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const showHeaderRow = Boolean(title) || Boolean(headerRight);
+  const dragHandleProps = isMobile ? {} : { ...attributes, ...listeners };
+  const mobileSectionDragProps = isMobile ? { ...attributes, ...listeners } : {};
 
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("flex gap-1.5", isDragging ? "z-50 opacity-50" : "")}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(isMobile ? { touchAction: "none" as const } : {}),
+      }}
+      className={cn(
+        "flex gap-1.5 max-lg:gap-0",
+        isDragging ? "z-50 opacity-50" : "",
+        isMobile && "max-lg:touch-none",
+      )}
+      {...mobileSectionDragProps}
     >
-      <SectionDragHandle {...attributes} {...listeners} />
+      <SectionDragHandle className="max-lg:hidden" {...dragHandleProps} />
       <div className="min-w-0 flex-1 space-y-2">
         {showHeaderRow ? (
           <div className="flex items-center justify-between gap-2">
@@ -926,10 +942,19 @@ function getRecentIssues(issues: Issue[]): Issue[] {
 
 export function Dashboard() {
   const { selectedCompanyId, companies } = useCompany();
+  const { isMobile } = useSidebar();
   const { openOnboarding } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [sectionOrder, setSectionOrder] = useState<DashboardSectionId[]>(() => [...DASHBOARD_SECTION_IDS]);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: isMobile ? 180 : 250,
+        tolerance: isMobile ? 8 : 5,
+      },
+    }),
+  );
 
   const { data: session, status: sessionStatus } = useQuery({
     queryKey: queryKeys.auth.session,

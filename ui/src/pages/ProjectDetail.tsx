@@ -627,8 +627,8 @@ export function ProjectDetail() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 pt-4">
+    <div className="space-y-6 max-lg:space-y-1">
+      <div className="flex items-center gap-3 pt-4 max-lg:pt-0">
         <div
           className={cn(
             "h-7 w-7 shrink-0 rounded-md border border-border",
@@ -686,7 +686,11 @@ export function ProjectDetail() {
         itemClassName="inline-flex"
       />
 
-      <Tabs value={activeTab ?? "list"} onValueChange={(value) => handleTabChange(value as ProjectTab)}>
+      <Tabs
+        value={activeTab ?? "list"}
+        onValueChange={(value) => handleTabChange(value as ProjectTab)}
+        className="max-lg:gap-0"
+      >
         <PageTabBar
           items={[
             { value: "overview", label: "Overview" },
