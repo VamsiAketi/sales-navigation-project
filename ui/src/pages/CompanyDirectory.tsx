@@ -2355,8 +2355,8 @@ export function CompanyDirectory() {
         <div className="mt-4">
           <div className="grid items-stretch gap-4">
             <div className="flex h-[72vh] min-h-[36rem] flex-col overflow-hidden rounded-md border border-border/70 bg-background shadow-sm">
-              <div className="z-30 border-b border-border/70 bg-muted/35 px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="z-30 border-b border-border/70 bg-muted/35 px-4 py-3 max-lg:px-3 max-lg:py-2">
+                <div className="flex flex-wrap items-center justify-between gap-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
                   <div className="min-w-0">
                     <div className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
                       <Users className="size-4 text-muted-foreground" aria-hidden />
@@ -2365,36 +2365,40 @@ export function CompanyDirectory() {
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       Manage humans and AI agents in one place. Edits save automatically.
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
+                        data-touch-target="icon"
                         onClick={() => setTeamTypeFilter("human")}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors",
                           teamTypeFilter === "human"
                             ? "border-primary/50 bg-primary/10 text-primary"
                             : "border-border bg-background text-foreground hover:bg-muted",
                         )}
                       >
-                        <UserRound className="size-3.5 text-muted-foreground" aria-hidden />
-                        {activeHumanMembers.length} humans
+                        <UserRound className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="tabular-nums">{activeHumanMembers.length}</span>
+                        <span>{activeHumanMembers.length === 1 ? "human" : "humans"}</span>
                       </button>
                       <button
                         type="button"
+                        data-touch-target="icon"
                         onClick={() => setTeamTypeFilter("agent")}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors",
                           teamTypeFilter === "agent"
                             ? "border-primary/50 bg-primary/10 text-primary"
                             : "border-border bg-background text-foreground hover:bg-muted",
                         )}
                       >
-                        <Bot className="size-3.5 text-muted-foreground" aria-hidden />
-                        {activeAgentMembers.length} agent{activeAgentMembers.length === 1 ? "" : "s"}
+                        <Bot className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="tabular-nums">{activeAgentMembers.length}</span>
+                        <span>agent{activeAgentMembers.length === 1 ? "" : "s"}</span>
                       </button>
                     </div>
                   </div>
-                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                  <div className="flex w-full flex-col gap-2 max-lg:gap-1.5 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                     <div className="w-full min-w-0 sm:w-64">
                       <Input
                         value={search}
@@ -2403,35 +2407,39 @@ export function CompanyDirectory() {
                         className="h-9 rounded-lg border-border/60 bg-background"
                       />
                     </div>
-                    {canInviteHumans ? (
-                      <Button
-                        type="button"
-                        className="h-9 rounded-md border border-indigo-500 bg-indigo-500 px-4 text-white hover:border-indigo-600 hover:bg-indigo-600"
-                        variant="default"
-                        onClick={() => setInviteDialogOpen(true)}
-                      >
-                        Invite Human
-                      </Button>
-                    ) : null}
-                    {canOpenRolesAndTitlesDialog ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="h-9 rounded-md border border-border/70 bg-background px-4 font-semibold text-foreground hover:bg-muted"
-                        onClick={() => setRolesDialogOpen(true)}
-                      >
-                        {canEditTeams
-                          ? hasTitleAccess
-                            ? "Manage roles & titles"
-                            : "Manage roles"
-                          : "Manage titles"}
-                      </Button>
+                    {canInviteHumans || canOpenRolesAndTitlesDialog ? (
+                      <div className="flex w-full min-w-0 items-stretch gap-2 max-lg:gap-1.5 sm:contents">
+                        {canInviteHumans ? (
+                          <Button
+                            type="button"
+                            className="h-9 min-w-0 rounded-md border border-indigo-500 bg-indigo-500 px-4 text-sm text-white hover:border-indigo-600 hover:bg-indigo-600 max-lg:flex-1 max-lg:px-2 sm:flex-initial"
+                            variant="default"
+                            onClick={() => setInviteDialogOpen(true)}
+                          >
+                            Invite Human
+                          </Button>
+                        ) : null}
+                        {canOpenRolesAndTitlesDialog ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-9 min-w-0 rounded-md border border-border/70 bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted max-lg:flex-1 max-lg:truncate max-lg:px-2 sm:flex-initial"
+                            onClick={() => setRolesDialogOpen(true)}
+                          >
+                            {canEditTeams
+                              ? hasTitleAccess
+                                ? "Manage roles & titles"
+                                : "Manage roles"
+                              : "Manage titles"}
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                     {hasActiveTeamFilters ? (
                       <Button
                         type="button"
                         variant="ghost"
-                        className="h-9 rounded-full px-3 text-xs"
+                        className="h-9 shrink-0 rounded-full px-3 text-xs max-lg:w-full sm:w-auto"
                         onClick={() => {
                           setSearch("");
                           setTeamSortKey("displayName");

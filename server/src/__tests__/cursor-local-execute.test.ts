@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { execute } from "@paperclipai/adapter-cursor-local/server";
+import { execute, applyCursorAgentStateDirs, resolveCursorSkillsHomeFromEnv } from "@paperclipai/adapter-cursor-local/server";
 
 async function writeFakeCursorCommand(commandPath: string): Promise<void> {
   const script = `#!/usr/bin/env node
@@ -246,8 +246,11 @@ describe("cursor execute", () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.errorMessage).toBeNull();
-      expect((await fs.lstat(path.join(root, ".cursor", "skills", "ascii-heart"))).isSymbolicLink()).toBe(true);
-      expect(await fs.realpath(path.join(root, ".cursor", "skills", "ascii-heart"))).toBe(
+      const skillsHome = resolveCursorSkillsHomeFromEnv(
+        applyCursorAgentStateDirs("agent-1", { HOME: root }),
+      );
+      expect((await fs.lstat(path.join(skillsHome, "ascii-heart"))).isSymbolicLink()).toBe(true);
+      expect(await fs.realpath(path.join(skillsHome, "ascii-heart"))).toBe(
         await fs.realpath(asciiHeartDir),
       );
     } finally {

@@ -159,8 +159,13 @@
     min-height: 44px;
   }
 
-  [data-slot="toggle"] {
-    min-height: 0;
+  [data-slot="toggle"],
+  [data-slot="checkbox"],
+  button[role="checkbox"],
+  [data-touch-target="icon"],
+  [data-touch-target="compact"] {
+    min-height: unset;
+    min-width: unset;
   }
 }
 

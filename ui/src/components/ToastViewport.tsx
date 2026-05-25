@@ -50,7 +50,9 @@ function AnimatedToast({
     <li
       className={cn(
         "pointer-events-auto rounded-md border shadow-lg backdrop-blur-xl transition-[transform,opacity] duration-200 ease-out",
-        visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+        visible
+          ? "translate-y-0 opacity-100"
+          : "max-md:-translate-y-2 md:translate-y-2 opacity-0",
         toneClasses[toast.tone],
       )}
     >
@@ -140,9 +142,14 @@ export function ToastViewport() {
     <aside
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed bottom-4 right-4 top-auto left-auto z-[9999] w-[min(100vw-2rem,24rem)] max-w-sm"
+      className={cn(
+        "pointer-events-none fixed z-[9999]",
+        "max-md:top-[max(1rem,env(safe-area-inset-top))] max-md:right-4 max-md:left-auto max-md:bottom-auto",
+        "max-md:w-[min(17.5rem,calc(100vw-2.5rem))] max-md:max-w-[min(17.5rem,calc(100vw-2.5rem))]",
+        "md:bottom-4 md:right-4 md:top-auto md:left-auto md:w-[min(100vw-2rem,24rem)] md:max-w-sm",
+      )}
     >
-      <ol className="flex w-full flex-col-reverse gap-2">
+      <ol className="flex w-full flex-col gap-2 md:flex-col-reverse">
         {toasts.map((toast) => (
           <AnimatedToast
             key={toast.id}

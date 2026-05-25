@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, forwardRef, useEffect, useMemo, useState, type ButtonHTMLAttributes } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
@@ -38,13 +38,41 @@ import {
   formatNotificationTitle,
 } from "../lib/notificationDisplay";
 import { cn } from "@/lib/utils";
+import { mobileAppHeaderRowClass } from "../lib/mobileHeader";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
 import { notificationsApi } from "../api/notifications";
 import { useToast } from "../context/ToastContext";
 
+const NotificationBellTrigger = forwardRef<
+  HTMLButtonElement,
+  { unreadCount: number } & ButtonHTMLAttributes<HTMLButtonElement>
+>(function NotificationBellTrigger({ unreadCount, className, ...props }, ref) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      data-touch-target="icon"
+      className={cn(
+        "relative ml-2 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+        className,
+      )}
+      aria-label="Notifications"
+      {...props}
+    >
+      <Bell className="h-4 w-4" />
+      {unreadCount > 0 ? (
+        <span className="absolute -right-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white">
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </span>
+      ) : null}
+    </button>
+  );
+});
+
 function NotificationsBell() {
   const navigate = useNavigate();
+  const { isMobile } = useSidebar();
   const { companies } = useCompany();
   const queryClient = useQueryClient();
   const { data: session } = useQuery({
@@ -136,84 +164,124 @@ function NotificationsBell() {
     }
   };
 
+  const markAllRead = async () => {
+    await notificationsApi.markAllRead();
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.me(10) }),
+    ]);
+  };
+
+  const notificationItems = (notifications ?? []).map((item) => {
+    const isUnread = !item.readAt;
+    const title = formatNotificationText(item, formatNotificationTitle(item));
+    const preview = toPreviewText(item);
+    return { item, isUnread, title, preview };
+  });
+
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={isMobile}>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="relative ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-          aria-label="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-          {unreadCount > 0 ? (
-            <span className="absolute -right-0.5 -top-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          ) : null}
-        </button>
+        <NotificationBellTrigger unreadCount={unreadCount} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96">
-        <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground">
-          <span>Notifications</span>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={isMobile ? 8 : 4}
+        collisionPadding={isMobile ? 12 : 8}
+        className={cn(
+          "w-96",
+          isMobile &&
+            "z-230 w-[min(calc(100vw-1rem),22rem)] max-h-[min(70dvh,26rem)] overflow-hidden p-0 shadow-lg",
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground",
+            isMobile && "shrink-0 border-b border-border px-4 py-3 text-sm text-foreground",
+          )}
+        >
+          <span className={cn(isMobile && "font-semibold")}>Notifications</span>
           <button
             type="button"
-            className="hover:text-foreground"
-            onClick={async () => {
-              await notificationsApi.markAllRead();
-              await Promise.all([
-                queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount }),
-                queryClient.invalidateQueries({ queryKey: queryKeys.notifications.me(10) }),
-              ]);
+            className={cn(
+              "hover:text-foreground",
+              isMobile && "text-xs font-medium text-muted-foreground",
+            )}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void markAllRead();
             }}
           >
             Mark all read
           </button>
         </div>
-        <div className="max-h-96 overflow-auto">
-          {(notifications ?? []).length === 0 ? (
-            <div className="px-3 py-3 text-sm text-muted-foreground">No notifications.</div>
+        <div
+          className={cn(
+            "max-h-96 overflow-y-auto overscroll-contain",
+            isMobile && "max-h-[min(58dvh,22rem)] px-2 py-2",
+          )}
+        >
+          {notificationItems.length === 0 ? (
+            <div
+              className={cn(
+                "px-3 py-3 text-sm text-muted-foreground",
+                isMobile && "py-6 text-center",
+              )}
+            >
+              No notifications.
+            </div>
           ) : (
-            (notifications ?? []).map((item) => {
-              const isUnread = !item.readAt;
-              return (
-                <DropdownMenuItem
-                  key={item.id}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    void handleNotificationSelect(item);
-                  }}
-                  className={cn(
-                    "cursor-pointer items-start gap-2 py-2",
-                    isUnread && "bg-accent/50 focus:bg-accent/60 data-[highlighted]:bg-accent/60",
-                  )}
-                >
-                  {isUnread ? (
-                    <span
-                      className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600 dark:bg-blue-400"
-                      aria-hidden
-                    />
-                  ) : null}
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className={cn(
-                        "truncate text-xs font-medium",
-                        isUnread && "font-semibold text-foreground",
-                      )}
-                    >
-                      {formatNotificationText(item, formatNotificationTitle(item))}
-                    </p>
-                    <p
-                      className={cn(
-                        "mt-1 line-clamp-2 text-xs text-muted-foreground",
-                        isUnread && "text-foreground/80",
-                      )}
-                    >
-                      {toPreviewText(item)}
-                    </p>
-                  </div>
-                </DropdownMenuItem>
-              );
-            })
+            notificationItems.map(({ item, isUnread, title, preview }) => (
+              <DropdownMenuItem
+                key={item.id}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void handleNotificationSelect(item);
+                }}
+                onClick={(event) => {
+                  if (!isMobile) return;
+                  event.preventDefault();
+                  void handleNotificationSelect(item);
+                }}
+                className={cn(
+                  "cursor-pointer items-start gap-2 py-2",
+                  isUnread && "bg-accent/50 focus:bg-accent/60 data-[highlighted]:bg-accent/60",
+                  isMobile &&
+                    "mx-0.5 my-0.5 rounded-lg border border-border/60 px-3 py-3 focus:bg-accent/40 data-[highlighted]:bg-accent/40",
+                  isMobile && isUnread && "border-border/80 bg-accent/40",
+                )}
+              >
+                {isUnread ? (
+                  <span
+                    className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600 dark:bg-blue-400"
+                    aria-hidden
+                  />
+                ) : isMobile ? (
+                  <span className="mt-1.5 h-2 w-2 shrink-0" aria-hidden />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      "truncate text-xs font-medium",
+                      isUnread && "font-semibold text-foreground",
+                      isMobile && "break-words text-sm leading-snug [overflow-wrap:anywhere] max-md:whitespace-normal",
+                    )}
+                  >
+                    {title}
+                  </p>
+                  <p
+                    className={cn(
+                      "mt-1 line-clamp-2 text-xs text-muted-foreground",
+                      isUnread && "text-foreground/80",
+                      isMobile && "line-clamp-3 leading-relaxed",
+                    )}
+                  >
+                    {preview}
+                  </p>
+                </div>
+              </DropdownMenuItem>
+            ))
           )}
         </div>
       </DropdownMenuContent>
@@ -303,7 +371,8 @@ function UserMenu() {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-touch-target="icon"
+            className="ml-2 inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-xs font-semibold leading-none text-primary-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="User menu"
           >
             {initial}
@@ -372,12 +441,19 @@ export function BreadcrumbBar() {
 
   const globalToolbarSlots = <GlobalToolbarPlugins context={globalToolbarSlotContext} />;
 
+  const barClassName = cn(
+    "flex shrink-0 items-center border-b border-border px-4 md:px-6",
+    mobileAppHeaderRowClass,
+  );
+
   if (breadcrumbs.length === 0) {
     return (
-      <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center justify-end">
-        {globalToolbarSlots}
-        <NotificationsBell />
-        <UserMenu />
+      <div className={cn(barClassName, "justify-end")}>
+        <div className="flex shrink-0 items-center gap-0">
+          {globalToolbarSlots}
+          <NotificationsBell />
+          <UserMenu />
+        </div>
       </div>
     );
   }
@@ -386,6 +462,7 @@ export function BreadcrumbBar() {
     <Button
       variant="ghost"
       size="icon-sm"
+      data-touch-target="icon"
       className="mr-2 shrink-0"
       onClick={toggleSidebar}
       aria-label="Open sidebar"
@@ -397,23 +474,25 @@ export function BreadcrumbBar() {
   // Single breadcrumb = page title (uppercase)
   if (breadcrumbs.length === 1) {
     return (
-      <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center">
+      <div className={barClassName}>
         {menuButton}
         <div className="min-w-0 overflow-hidden flex-1">
           <h1 className="text-sm font-semibold uppercase tracking-wider truncate">
             {breadcrumbs[0].label}
           </h1>
         </div>
-        {globalToolbarSlots}
-        <NotificationsBell />
-        <UserMenu />
+        <div className="flex shrink-0 items-center gap-0">
+          {globalToolbarSlots}
+          <NotificationsBell />
+          <UserMenu />
+        </div>
       </div>
     );
   }
 
   // Multiple breadcrumbs = breadcrumb trail
   return (
-    <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center">
+    <div className={barClassName}>
       {menuButton}
       <div className="min-w-0 overflow-hidden flex-1">
         <Breadcrumb className="min-w-0 overflow-hidden">
@@ -438,9 +517,11 @@ export function BreadcrumbBar() {
           </BreadcrumbList>
         </Breadcrumb>
       </div>
-      {globalToolbarSlots}
-      <NotificationsBell />
-      <UserMenu />
+      <div className="flex shrink-0 items-center gap-0">
+        {globalToolbarSlots}
+        <NotificationsBell />
+        <UserMenu />
+      </div>
     </div>
   );
 }

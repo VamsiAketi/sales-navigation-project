@@ -538,6 +538,7 @@ export function InboxIssueTrailingColumns({
   projectStatus,
   workspaceName,
   assigneeName,
+  assigneeUserName,
   currentUserId,
   currentUserDisplayName,
   variant = "grouped",
@@ -548,6 +549,7 @@ export function InboxIssueTrailingColumns({
   projectStatus: string | null;
   workspaceName: string | null;
   assigneeName: string | null;
+  assigneeUserName?: string | null;
   currentUserId: string | null;
   currentUserDisplayName?: string | null;
   /** `flat` emits one grid cell per column for inbox-table rows. */
@@ -555,7 +557,9 @@ export function InboxIssueTrailingColumns({
 }) {
   const activityText = timeAgo(issue.lastActivityAt ?? issue.lastExternalCommentAt ?? issue.updatedAt);
   const userLabel =
-    formatAssigneeUserLabel(issue.assigneeUserId, currentUserId, { currentUserDisplayName }) ?? "User";
+    assigneeUserName
+    ?? formatAssigneeUserLabel(issue.assigneeUserId, currentUserId, { currentUserDisplayName })
+    ?? "User";
 
   const cells = columns.map((column) => {
     if (column === "assignee") {
@@ -1414,6 +1418,23 @@ export function Inbox() {
   const currentUserDisplayName =
     session?.user?.name?.trim() || session?.user?.email?.trim() || null;
 
+  const { data: companyMembers } = useQuery({
+    queryKey: queryKeys.access.members(selectedCompanyId!),
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const userLabel = useCallback(
+    (userId: string | null | undefined): string | null => {
+      if (!userId) return null;
+      const member = (companyMembers ?? []).find((m) => m.user?.id === userId);
+      if (member?.user?.name?.trim()) return member.user.name.trim();
+      if (member?.user?.email?.trim()) return member.user.email.trim();
+      return formatAssigneeUserLabel(userId, currentUserId, { currentUserDisplayName });
+    },
+    [companyMembers, currentUserId, currentUserDisplayName],
+  );
+
   const failedRuns = useMemo(
     () => getLatestFailedRunsByAgent(heartbeatRuns ?? []).filter((r) => !dismissed.has(`run:${r.id}`)),
     [heartbeatRuns, dismissed],
@@ -2064,42 +2085,164 @@ export function Inbox() {
   const canMarkAllRead = unreadIssueIds.length > 0;
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-2">
-        <Tabs value={tab} onValueChange={(value) => navigate(`/inbox/${value}`)}>
-          <PageTabBar
-            items={[
-              {
-                value: "mine",
-                label: "Mine",
-              },
-              {
-                value: "recent",
-                label: "Recent",
-              },
-              { value: "unread", label: "Unread" },
-              { value: "all", label: "All" },
-            ]}
-          />
-        </Tabs>
-
-        <div className="flex items-center gap-2">
-          <div className="relative">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-2">
+        <div className="order-1 flex w-full min-w-0 items-center gap-2 lg:order-2 lg:w-[180px] lg:gap-0 sm:lg:w-[220px]">
+          <div className="relative min-w-0 flex-1 lg:w-full">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search inbox…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 w-[180px] pl-8 text-xs sm:w-[220px]"
+              aria-label="Search inbox"
+              className="h-9 w-full pl-8 text-sm lg:h-8 lg:text-xs"
             />
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 w-9 shrink-0 p-0 lg:hidden"
+                title="Show / hide columns"
+              >
+                <Columns3 className="h-4 w-4" aria-hidden />
+                <span className="sr-only">Show / hide columns</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="z-230 w-[min(calc(100vw-2rem),300px)] rounded-xl border-border/70 p-1.5 shadow-xl shadow-black/10"
+            >
+              <DropdownMenuLabel className="px-2 pb-1 pt-1.5">
+                <div className="space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                    Issue rows
+                  </div>
+                  <div className="text-sm font-medium text-foreground">
+                    Choose which inbox columns stay visible
+                  </div>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {availableIssueColumns.map((column) => (
+                <DropdownMenuCheckboxItem
+                  key={column}
+                  checked={visibleIssueColumnSet.has(column)}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={(checked) => toggleIssueColumn(column, checked === true)}
+                  className="items-start rounded-lg px-3 py-2.5 pl-8 max-lg:min-h-11"
+                >
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium text-foreground">
+                      {inboxIssueColumnLabels[column]}
+                    </span>
+                    <span className="text-xs leading-relaxed text-muted-foreground">
+                      {inboxIssueColumnDescriptions[column]}
+                    </span>
+                  </span>
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => setIssueColumns(DEFAULT_INBOX_ISSUE_COLUMNS)}
+                className="rounded-lg px-3 py-2 text-sm max-lg:min-h-11"
+              >
+                Reset defaults
+                <span className="ml-auto text-xs text-muted-foreground">status, id, updated</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div className="order-2 flex min-w-0 max-lg:w-full max-lg:flex-col max-lg:gap-1.5 lg:order-1 lg:min-w-0 lg:flex-1 lg:flex-row lg:items-center lg:justify-between lg:gap-2">
+          <Tabs
+            value={tab}
+            onValueChange={(value) => navigate(`/inbox/${value}`)}
+            className={cn(
+              "min-w-0 flex-1 max-lg:w-full lg:overflow-visible",
+              "max-lg:[&_[data-slot=tabs-list]]:grid max-lg:[&_[data-slot=tabs-list]]:h-10 max-lg:[&_[data-slot=tabs-list]]:w-full max-lg:[&_[data-slot=tabs-list]]:grid-cols-4 max-lg:[&_[data-slot=tabs-list]]:gap-0 max-lg:[&_[data-slot=tabs-list]]:rounded-none max-lg:[&_[data-slot=tabs-list]]:border-b max-lg:[&_[data-slot=tabs-list]]:border-border max-lg:[&_[data-slot=tabs-list]]:bg-transparent max-lg:[&_[data-slot=tabs-list]]:p-0",
+              "max-lg:[&_[data-slot=tabs-trigger]]:h-10 max-lg:[&_[data-slot=tabs-trigger]]:flex-none max-lg:[&_[data-slot=tabs-trigger]]:px-1 max-lg:[&_[data-slot=tabs-trigger]]:text-sm",
+            )}
+          >
+            <PageTabBar
+              align="start"
+              items={[
+                {
+                  value: "mine",
+                  label: "Mine",
+                },
+                {
+                  value: "recent",
+                  label: "Recent",
+                },
+                { value: "unread", label: "Unread" },
+                { value: "all", label: "All" },
+              ]}
+            />
+          </Tabs>
+
+          <div className="flex shrink-0 items-center justify-end gap-2 max-lg:w-full">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="hidden h-8 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground lg:inline-flex"
+              >
+                <Columns3 className="mr-1 h-3.5 w-3.5" />
+                Show / hide columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[300px] rounded-xl border-border/70 p-1.5 shadow-xl shadow-black/10">
+              <DropdownMenuLabel className="px-2 pb-1 pt-1.5">
+                <div className="space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                    Desktop issue rows
+                  </div>
+                  <div className="text-sm font-medium text-foreground">
+                    Choose which inbox columns stay visible
+                  </div>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {availableIssueColumns.map((column) => (
+                <DropdownMenuCheckboxItem
+                  key={column}
+                  checked={visibleIssueColumnSet.has(column)}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={(checked) => toggleIssueColumn(column, checked === true)}
+                  className="items-start rounded-lg px-3 py-2.5 pl-8"
+                >
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium text-foreground">
+                      {inboxIssueColumnLabels[column]}
+                    </span>
+                    <span className="text-xs leading-relaxed text-muted-foreground">
+                      {inboxIssueColumnDescriptions[column]}
+                    </span>
+                  </span>
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => setIssueColumns(DEFAULT_INBOX_ISSUE_COLUMNS)}
+                className="rounded-lg px-3 py-2 text-sm"
+              >
+                Reset defaults
+                <span className="ml-auto text-xs text-muted-foreground">status, id, updated</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {canMarkAllRead && (
             <>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 shrink-0"
+                className="h-9 shrink-0 max-lg:ml-auto lg:h-8"
                 onClick={() => setShowMarkAllReadConfirm(true)}
                 disabled={markAllReadMutation.isPending}
               >
@@ -2130,6 +2273,7 @@ export function Inbox() {
               </Dialog>
             </>
           )}
+          </div>
         </div>
       </div>
 
@@ -2374,6 +2518,9 @@ export function Inbox() {
                               defaultProjectWorkspaceIdByProjectId,
                             })}
                             assigneeName={agentName(issue.assigneeAgentId)}
+                            assigneeUserName={
+                              issue.assigneeUserId ? userLabel(issue.assigneeUserId) : null
+                            }
                             currentUserId={currentUserId}
                             currentUserDisplayName={currentUserDisplayName}
                           />

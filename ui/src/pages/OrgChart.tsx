@@ -1105,19 +1105,19 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
   return (
     <div className="flex min-h-[68dvh] flex-col gap-2 md:h-full md:min-h-0">
       {/* Toolbar */}
-      <div className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
+      <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full items-stretch gap-2 sm:w-auto">
           {canImportHybridOrg && (
-            <Link to="/company/import">
-              <Button variant="outline" size="sm">
+            <Link to="/company/import" className="min-w-0 flex-1 sm:flex-none">
+              <Button variant="outline" size="sm" className="w-full sm:w-auto">
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
                 Import
               </Button>
             </Link>
           )}
           {canExportHybridOrg && (
-            <Link to="/company/export">
-              <Button variant="outline" size="sm">
+            <Link to="/company/export" className="min-w-0 flex-1 sm:flex-none">
+              <Button variant="outline" size="sm" className="w-full sm:w-auto">
                 <Download className="mr-1.5 h-3.5 w-3.5" />
                 Export
               </Button>
@@ -1125,25 +1125,28 @@ function OrgChartImpl({ companyId }: { companyId: string }) {
           )}
         </div>
 
-        {/* Stats pills */}
-        <div className="flex items-center gap-2">
+        {/* Stats pills — single-line, same height as toolbar buttons */}
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto sm:justify-end">
           <Link
             to={{ pathname: "/company/people", search: "?tab=users" }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/40"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-blue-100 bg-blue-50 px-3 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/40"
           >
-            <User className="h-3 w-3" />
-            {humanCount} {humanCount === 1 ? "Human" : "Humans"}
+            <User className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="tabular-nums">{humanCount}</span>
+            <span>{humanCount === 1 ? "Human" : "Humans"}</span>
           </Link>
           <Link
             to={{ pathname: "/company/people", search: "?tab=agents" }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-600 transition-colors hover:bg-violet-100 dark:border-violet-900/50 dark:bg-violet-950/40 dark:text-violet-400 dark:hover:bg-violet-900/40"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-violet-100 bg-violet-50 px-3 text-xs font-medium text-violet-600 transition-colors hover:bg-violet-100 dark:border-violet-900/50 dark:bg-violet-950/40 dark:text-violet-400 dark:hover:bg-violet-900/40"
           >
-            <Network className="h-3 w-3" />
-            {agentCount} {agentCount === 1 ? "AI Agent" : "AI Agents"}
+            <Network className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="tabular-nums">{agentCount}</span>
+            <span>{agentCount === 1 ? "AI Agent" : "AI Agents"}</span>
           </Link>
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 px-2.5 py-1 rounded-full">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            {liveCount} Live
+          <span className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-100 bg-emerald-50 px-3 text-xs font-medium text-emerald-600 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-400">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
+            <span className="tabular-nums">{liveCount}</span>
+            <span>Live</span>
           </span>
         </div>
       </div>

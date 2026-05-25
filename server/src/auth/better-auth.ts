@@ -15,7 +15,8 @@ import {
 } from "@paperclipai/db";
 import type { Config } from "../config.js";
 import { logger } from "../middleware/logger.js";
-import { buildPasswordResetEmailBodies, sendSystemEmail } from "../services/human-invite-email.js";
+import { sendSystemEmail } from "../services/human-invite-email.js";
+import { buildPasswordResetEmailBodies, buildSignInOtpEmailBodies } from "../services/system-email-templates.js";
 
 export type BetterAuthSessionUser = {
   id: string;
@@ -186,20 +187,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         expiresIn: 10 * 60,
         async sendVerificationOTP(input: { email: string; otp: string; type: string }) {
           const email = input.email.trim().toLowerCase();
-          const textBody = [
-            "Your AI-Harness sign-in code:",
-            "",
-            input.otp,
-            "",
-            "This code expires in 10 minutes.",
-            "If you did not request this code, you can ignore this email.",
-          ].join("\n");
-          const htmlBody = [
-            "<p>Your AI-Harness sign-in code:</p>",
-            `<p style="font-size: 24px; font-weight: 700; letter-spacing: 0.08em;">${input.otp}</p>`,
-            "<p>This code expires in 10 minutes.</p>",
-            "<p>If you did not request this code, you can ignore this email.</p>",
-          ].join("");
+          const { textBody, htmlBody } = buildSignInOtpEmailBodies({ otp: input.otp });
           const delivery = await sendSystemEmail({
             toEmail: email,
             subject: "Your AI-Harness sign-in code",

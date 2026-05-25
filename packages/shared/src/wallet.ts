@@ -1,3 +1,10 @@
+/** Stripe prepaid top-up bounds (must match `createStripeCheckoutSessionSchema`). */
+export const WALLET_PREPAID_TOPUP_MIN_CENTS = 50;
+export const WALLET_PREPAID_TOPUP_MAX_CENTS = 50_000_00;
+
+/** Quick-select amounts shown on the billing wallet top-up dialog (USD). */
+export const WALLET_PREPAID_TOPUP_PRESET_CENTS = [1_000, 2_000, 3_000, 5_000] as const;
+
 /** Machine-readable codes on wallet-related HTTP 402 responses and cancelled run rows. */
 export const WALLET_PAYMENT_ERROR_CODE = {
   INSUFFICIENT_AVAILABLE: "wallet_insufficient_available",

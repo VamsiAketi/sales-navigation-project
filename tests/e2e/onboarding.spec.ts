@@ -107,7 +107,7 @@ test.describe("Onboarding wizard", () => {
     ).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md"]);
 
     const issuesRes = await page.request.get(
-      `${baseUrl}/api/companies/${company.id}/issues`
+      `${baseUrl}/api/companies/${company.id}/issues?includeDetails=true`
     );
     expect(issuesRes.ok()).toBe(true);
     const issues = await issuesRes.json();
