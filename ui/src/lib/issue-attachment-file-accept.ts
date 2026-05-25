@@ -27,11 +27,23 @@ export const ISSUE_ATTACHMENT_FILE_INPUT_ACCEPT = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/markdown",
+  "text/plain",
+  "application/json",
+  "text/csv",
+  "text/html",
   ".pdf",
   ".doc",
   ".docx",
   ".xls",
   ".xlsx",
+  ".html",
+  ".htm",
+  ".md",
+  ".markdown",
+  ".txt",
+  ".json",
+  ".csv",
 ].join(",");
 
 /** Escape `[]\` for use inside markdown `[]()` link or image labels. */
