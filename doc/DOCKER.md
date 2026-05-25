@@ -121,6 +121,25 @@ Granular overrides remain available if needed (`PAPERCLIP_AUTH_PUBLIC_BASE_URL`,
 
 Set `PAPERCLIP_ALLOWED_HOSTNAMES` explicitly only when you need additional hostnames beyond the public URL host (for example Tailscale/LAN aliases or multiple private hostnames).
 
+### GitHub secrets (Azure Helm deploy)
+
+`deploy-dev` and `deploy-tenant` inject sensitive configuration from GitHub Actions secrets (per **Environment**, e.g. `dev` or a tenant name). Add these alongside `MS_GRAPH_*_EMAIL` when billing or outbound email is required:
+
+| GitHub secret | Container env | Purpose |
+|---------------|---------------|---------|
+| `MS_GRAPH_TENANT_ID_EMAIL` | `MS_GRAPH_TENANT_ID_EMAIL` | Microsoft Graph mail (tenant directory) |
+| `MS_GRAPH_CLIENT_ID_EMAIL` | `MS_GRAPH_CLIENT_ID_EMAIL` | Graph app registration client id |
+| `MS_GRAPH_CLIENT_SECRET_EMAIL` | `MS_GRAPH_CLIENT_SECRET_EMAIL` | Graph app client secret |
+| `MS_GRAPH_SENDER_EMAIL` | `MS_GRAPH_SENDER_EMAIL` | Sender mailbox UPN |
+| `STRIPE_SECRET_KEY` | `STRIPE_SECRET_KEY` | Stripe API (`sk_test_…` / `sk_live_…`) |
+| `STRIPE_WEBHOOK_SECRET` | `STRIPE_WEBHOOK_SECRET` | Signing secret for `POST /api/stripe/webhook` |
+
+Stripe keys are stored in the Kubernetes `*-server` Secret (not plain Deployment env literals). After deploy, register the webhook in Stripe Dashboard:
+
+`https://<PAPERCLIP_PUBLIC_URL host>/api/stripe/webhook`
+
+Subscribe at least `checkout.session.completed`. Use that endpoint’s signing secret as `STRIPE_WEBHOOK_SECRET`.
+
 ## Claude + Codex Local Adapters in Docker
 
 The image pre-installs:

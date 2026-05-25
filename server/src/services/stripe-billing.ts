@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import type { StripeCheckoutCreditResult } from "@paperclipai/shared";
 import type { Db } from "@paperclipai/db";
 import { billingAlerts, companies, companyWalletTransactions, stripeCheckoutIntents, stripeProcessedEvents } from "@paperclipai/db";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -196,16 +197,104 @@ async function upsertCheckoutIntentFromSession(db: Db, session: Stripe.Checkout.
     });
 }
 
+type DbExecutor = Pick<Db, "insert" | "update" | "select" | "transaction">;
+
+async function creditWalletFromPaidCheckoutSession(
+  db: DbExecutor,
+  session: Stripe.Checkout.Session,
+  audit: { stripeEventId: string; actorId: string; eventType?: string },
+): Promise<StripeCheckoutCreditResult> {
+  const companyId = session.metadata?.[COMPANY_METADATA_KEY]?.trim();
+  if (!companyId) return "no_company";
+
+  await upsertCheckoutIntentFromSession(db as Db, session, session.payment_status === "paid" ? "paid" : "created", audit.stripeEventId);
+  if (session.payment_status !== "paid") return "not_paid";
+
+  const amountCents = session.amount_total ?? 0;
+  if (!Number.isFinite(amountCents) || amountCents <= 0) return "invalid_amount";
+
+  if (await hasWalletCreditForCheckoutSession(db as Db, companyId, session.id)) {
+    return "already_credited";
+  }
+
+  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+  await db.insert(companyWalletTransactions).values({
+    companyId,
+    amountCents,
+    currency: (session.currency ?? "usd").toLowerCase(),
+    direction: "credit",
+    sourceType: "stripe_checkout",
+    sourceId: session.id,
+    stripeEventId: audit.stripeEventId,
+    checkoutSessionId: session.id,
+    paymentIntentId,
+    metadataJson: {
+      stripeEventType: audit.eventType ?? "checkout.session.completed",
+      paymentStatus: session.payment_status,
+      creditSource: audit.actorId,
+    },
+  }).onConflictDoNothing();
+
+  await db
+    .update(stripeCheckoutIntents)
+    .set({
+      status: "credited",
+      webhookEventId: audit.stripeEventId,
+      updatedAt: new Date(),
+    })
+    .where(eq(stripeCheckoutIntents.checkoutSessionId, session.id));
+
+  return "credited";
+}
+
+async function logCheckoutWalletCredit(
+  db: Db,
+  session: Stripe.Checkout.Session,
+  audit: { stripeEventId: string; actorId: string },
+): Promise<void> {
+  const companyId = session.metadata?.[COMPANY_METADATA_KEY]?.trim();
+  if (!companyId) return;
+  const amountCents = session.amount_total ?? 0;
+  await logActivity(db, {
+    companyId,
+    actorType: "system",
+    actorId: audit.actorId,
+    action: "billing.prepaid_credit.added",
+    entityType: "company_wallet_transaction",
+    entityId: session.id,
+    details: {
+      stripeEventId: audit.stripeEventId,
+      amountCents,
+      currency: session.currency,
+      checkoutSessionId: session.id,
+      paymentStatus: session.payment_status,
+    },
+  });
+}
+
+/** Apply wallet credit after Stripe redirect when webhooks have not reached the server yet (e.g. local dev). */
+export async function syncStripeCheckoutSessionCredit(
+  db: Db,
+  session: Stripe.Checkout.Session,
+): Promise<StripeCheckoutCreditResult> {
+  const audit = {
+    stripeEventId: `checkout_sync:${session.id}`,
+    actorId: "stripe-checkout-sync",
+    eventType: "checkout.session.completed",
+  };
+  const result = await creditWalletFromPaidCheckoutSession(db, session, audit);
+  if (result === "credited") {
+    await logCheckoutWalletCredit(db, session, audit);
+  }
+  return result;
+}
+
 export async function applyStripeCheckoutCreditFromEvent(db: Db, event: Stripe.CheckoutSessionCompletedEvent): Promise<void> {
   const session = event.data.object;
   const companyId = session.metadata?.[COMPANY_METADATA_KEY]?.trim();
   if (!companyId) return;
-  await upsertCheckoutIntentFromSession(db, session, "paid", event.id);
-  if (session.payment_status !== "paid") return;
-  const amountCents = session.amount_total ?? 0;
-  if (!Number.isFinite(amountCents) || amountCents <= 0) return;
-  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
 
+  let creditResult: StripeCheckoutCreditResult | null = null;
   await db.transaction(async (tx) => {
     const inserted = await tx
       .insert(stripeProcessedEvents)
@@ -218,51 +307,18 @@ export async function applyStripeCheckoutCreditFromEvent(db: Db, event: Stripe.C
       .then((rows) => rows[0] ?? null);
     if (!inserted) return;
 
-    await tx
-      .insert(companyWalletTransactions)
-      .values({
-        companyId,
-        amountCents,
-        currency: (session.currency ?? "usd").toLowerCase(),
-        direction: "credit",
-        sourceType: "stripe_checkout",
-        sourceId: session.id,
-        stripeEventId: event.id,
-        checkoutSessionId: session.id,
-        paymentIntentId,
-        metadataJson: {
-          stripeEventType: event.type,
-          paymentStatus: session.payment_status,
-        },
-      })
-      .onConflictDoNothing();
-
-    await tx
-      .update(stripeCheckoutIntents)
-      .set({
-        status: "credited",
-        webhookEventId: event.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(stripeCheckoutIntents.checkoutSessionId, session.id));
-
-  });
-
-  await logActivity(db, {
-    companyId,
-    actorType: "system",
-    actorId: "stripe-webhook",
-    action: "billing.prepaid_credit.added",
-    entityType: "company_wallet_transaction",
-    entityId: session.id,
-    details: {
+    creditResult = await creditWalletFromPaidCheckoutSession(tx, session, {
       stripeEventId: event.id,
-      amountCents,
-      currency: session.currency,
-      checkoutSessionId: session.id,
-      paymentStatus: session.payment_status,
-    },
+      actorId: "stripe-webhook",
+      eventType: event.type,
+    });
   });
+
+  if (creditResult === "credited") {
+    await logCheckoutWalletCredit(db, session, { stripeEventId: event.id, actorId: "stripe-webhook" });
+  } else if (creditResult === "already_credited") {
+    await markCheckoutIntentLifecycle(db, session.id, "credited", event.id);
+  }
 }
 
 export async function handleStripeInvoicePaidEvent(db: Db, event: Stripe.InvoicePaidEvent): Promise<void> {

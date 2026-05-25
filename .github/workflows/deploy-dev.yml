@@ -25,8 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     # Create GitHub Environment "dev" (Settings → Environments) and add secrets there
-    # (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY) to scope LLM keys to dev; repo secrets
-    # remain available for Azure, ACR, Postgres, etc.
+    # (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY, MS_GRAPH_*_EMAIL, STRIPE_SECRET_KEY,
+    # STRIPE_WEBHOOK_SECRET) to scope per-environment keys; repo secrets remain available
+    # for Azure, ACR, Postgres, etc.
     environment: dev
 
     steps:
@@ -140,8 +141,8 @@ jobs:
           --set-string server.extraEnv.MS_GRAPH_CLIENT_ID_EMAIL="${{ secrets.MS_GRAPH_CLIENT_ID_EMAIL }}" \
           --set-string server.extraEnv.MS_GRAPH_CLIENT_SECRET_EMAIL="${{ secrets.MS_GRAPH_CLIENT_SECRET_EMAIL }}" \
           --set-string server.extraEnv.MS_GRAPH_SENDER_EMAIL="${{ secrets.MS_GRAPH_SENDER_EMAIL }}" \
-          --set-string server.extraEnv.STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
-          --set-string server.extraEnv.STRIPE_WEBHOOK_SECRET="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
+          --set-string server.secrets.stripeSecretKey="${{ secrets.STRIPE_SECRET_KEY }}" \
+          --set-string server.secrets.stripeWebhookSecret="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
           --set-string server.extraEnv.CONTROL_PLANE_URL="${{ secrets.CONTROL_PLANE_URL }}" \
           --set-string server.extraEnv.INTERNAL_SECRET="${{ secrets.INTERNAL_SECRET }}" \
           --set-string server.database.externalUrl="${DATABASE_URL}" \

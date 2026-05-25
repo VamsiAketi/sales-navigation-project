@@ -34,7 +34,9 @@ import {
   markCheckoutIntentLifecycle,
   stripeBillingBrandingFromEnv,
   stripeSecretsFromEnv,
+  syncStripeCheckoutSessionCredit,
 } from "../services/stripe-billing.js";
+import type { StripeCheckoutCreditResult } from "@paperclipai/shared";
 import { getWalletAvailability } from "../services/wallet-reservations.js";
 
 export function costRoutes(db: Db) {
@@ -414,6 +416,30 @@ export function costRoutes(db: Db) {
     },
   );
 
+  async function buildCheckoutSessionStatusResponse(input: {
+    companyId: string;
+    sessionId: string;
+    session: Stripe.Checkout.Session;
+    creditResult?: StripeCheckoutCreditResult;
+  }) {
+    const credited = await hasWalletCreditForCheckoutSession(db, input.companyId, input.sessionId);
+    const paid = input.session.payment_status === "paid" && credited;
+    if (paid) {
+      await markCheckoutIntentLifecycle(db, input.sessionId, "reconciled");
+    } else if (input.session.payment_status === "paid") {
+      await markCheckoutIntentLifecycle(db, input.sessionId, "paid");
+    } else {
+      await markCheckoutIntentLifecycle(db, input.sessionId, "failed");
+    }
+    return {
+      sessionId: input.sessionId,
+      status: paid ? ("paid" as const) : ("unpaid" as const),
+      paymentStatus: input.session.payment_status ?? null,
+      credited,
+      creditResult: input.creditResult ?? null,
+    };
+  }
+
   router.get("/companies/:companyId/billing/stripe/checkout-session/:sessionId/status", async (req, res) => {
     const companyId = req.params.companyId as string;
     const sessionId = req.params.sessionId as string;
@@ -430,20 +456,27 @@ export function costRoutes(db: Db) {
       res.status(404).json({ error: "Checkout session not found" });
       return;
     }
-    const credited = await hasWalletCreditForCheckoutSession(db, companyId, sessionId);
-    const paid = session.payment_status === "paid" && credited;
-    if (paid) {
-      await markCheckoutIntentLifecycle(db, sessionId, "reconciled");
-    } else if (session.payment_status === "paid") {
-      await markCheckoutIntentLifecycle(db, sessionId, "paid");
-    } else {
-      await markCheckoutIntentLifecycle(db, sessionId, "failed");
+    res.json(await buildCheckoutSessionStatusResponse({ companyId, sessionId, session }));
+  });
+
+  router.post("/companies/:companyId/billing/stripe/checkout-session/:sessionId/sync", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const sessionId = req.params.sessionId as string;
+    await assertBoardBillingPaymentsManage(req, companyId);
+    const { stripeSecretKey } = stripeSecretsFromEnv();
+    const stripe = getStripeFromConfig({ stripeSecretKey });
+    if (!stripe) {
+      res.status(503).json({ error: "Stripe is not configured" });
+      return;
     }
-    res.json({
-      sessionId,
-      status: paid ? "paid" : "unpaid",
-      paymentStatus: session.payment_status ?? null,
-    });
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const sessionCompanyId = session.metadata?.paperclip_company_id?.trim();
+    if (!sessionCompanyId || sessionCompanyId !== companyId) {
+      res.status(404).json({ error: "Checkout session not found" });
+      return;
+    }
+    const creditResult = await syncStripeCheckoutSessionCredit(db, session);
+    res.json(await buildCheckoutSessionStatusResponse({ companyId, sessionId, session, creditResult }));
   });
 
   router.get("/companies/:companyId/costs/daily", async (req, res) => {

@@ -16,6 +16,7 @@ Paperclip has been deployed.
    - Ensure BETTER_AUTH_SECRET is set (override server.secrets.betterAuthSecret)
    - Generate with: openssl rand -base64 32
    - For AI adapters (Codex/Claude), set server.paperclip.openaiApiKey and/or anthropicApiKey
+   - For billing: set server.secrets.stripeSecretKey and stripeWebhookSecret (or inject via CI from STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET GitHub secrets), then point Stripe webhooks at {{ .Values.server.paperclip.publicUrl }}/api/stripe/webhook
 
 3. Verify health:
    curl {{ .Values.server.paperclip.publicUrl }}/api/health

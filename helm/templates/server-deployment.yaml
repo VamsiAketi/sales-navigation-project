@@ -192,6 +192,20 @@ spec:
                   name: {{ include "paperclip.fullname" . }}-server
                   key: anthropic-api-key
             {{- end }}
+            {{- if and .Values.server.secrets.stripeSecretKey (ne .Values.server.secrets.stripeSecretKey "") }}
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paperclip.fullname" . }}-server
+                  key: stripe-secret-key
+            {{- end }}
+            {{- if and .Values.server.secrets.stripeWebhookSecret (ne .Values.server.secrets.stripeWebhookSecret "") }}
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paperclip.fullname" . }}-server
+                  key: stripe-webhook-secret
+            {{- end }}
             {{- range $key, $value := .Values.server.extraEnv }}
             - name: {{ $key }}
               value: {{ $value | quote }}

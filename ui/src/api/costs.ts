@@ -16,6 +16,7 @@ import type {
   StripeBillingStatus,
   StripePortalSession,
   StripeCheckoutSession,
+  StripeCheckoutSessionStatus,
   StripeInvoicesResponse,
 } from "@paperclipai/shared";
 import { api } from "./client";
@@ -41,6 +42,11 @@ export const costsApi = {
     api.post<StripePortalSession>(`/companies/${companyId}/billing/stripe/portal-session`, {}),
   createStripeCheckoutSession: (companyId: string, amountCents: number) =>
     api.post<StripeCheckoutSession>(`/companies/${companyId}/billing/stripe/checkout-session`, { amountCents }),
+  syncStripeCheckoutSession: (companyId: string, sessionId: string) =>
+    api.post<StripeCheckoutSessionStatus>(
+      `/companies/${companyId}/billing/stripe/checkout-session/${sessionId}/sync`,
+      {},
+    ),
   stripeInvoices: (companyId: string) =>
     api.get<StripeInvoicesResponse>(`/companies/${companyId}/billing/stripe/invoices`),
   byAgent: (companyId: string, from?: string, to?: string) =>
