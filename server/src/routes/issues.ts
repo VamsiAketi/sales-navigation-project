@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import type { Db } from "@paperclipai/db";
-import { authUsers, projectContextSnapshots, projects, projectViews } from "@paperclipai/db";
+import { authUsers, projectContextSnapshots, projects } from "@paperclipai/db";
 import { and, desc, eq } from "drizzle-orm";
 import {
   addIssueCommentSchema,
@@ -44,6 +44,10 @@ import {
   assertAgentCreationIssueUpdateAllowed,
 } from "../services/ai-admin-project.js";
 import { buildHeartbeatProjectWorkflowContext } from "../services/heartbeat-project-workflow.js";
+import {
+  buildProjectDashboardApiGuide,
+  buildProjectDataApiGuide,
+} from "../services/project-data-api-guide.js";
 import { logger } from "../middleware/logger.js";
 import { forbidden, HttpError, unauthorized, unprocessable } from "../errors.js";
 import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
@@ -95,47 +99,6 @@ export function issueRoutes(db: Db, storage: StorageService) {
     return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max)}\n\n...[truncated]`;
   }
 
-  function buildProjectDataApiGuide(
-    projectId: string,
-    dataSchemaName: string | null,
-    dataObjects: Array<{ kind: string; name: string; definition: Record<string, unknown> }>,
-  ) {
-    const tableRows = dataObjects
-      .filter((row) => row.kind === "table")
-      .map((row) => {
-        const primaryKey = row.definition.primaryKey;
-        return {
-          name: row.name,
-          primaryKey: Array.isArray(primaryKey)
-            ? primaryKey.filter((value): value is string => typeof value === "string")
-            : [],
-        };
-      });
-    const exampleTable = tableRows[0]?.name ?? "{tableName}";
-    return {
-      note:
-        "dataSchemaName is the internal PostgreSQL schema — never put it in API URLs. Use the project UUID and registered table names from this guide.",
-      dataSchemaName,
-      projectId,
-      permissionForRowWrites: "project:edit tickets",
-      permissionForSchemaWrites: "project:edit configuration",
-      routes: {
-        listObjects: `GET /api/projects/${projectId}/data/objects`,
-        query: `POST /api/projects/${projectId}/data/query`,
-        insertRows: `POST /api/projects/${projectId}/data/{tableName}/rows`,
-        updateRow: `PATCH /api/projects/${projectId}/data/{tableName}/rows`,
-        deleteRow: `DELETE /api/projects/${projectId}/data/{tableName}/rows`,
-        createTable: `POST /api/projects/${projectId}/data/tables`,
-        createView: `POST /api/projects/${projectId}/data/views`,
-      },
-      insertRowsBody: { rows: [{ "column_name": "value" }] },
-      updateRowBody: { primaryKey: { id: "row-id" }, patch: { column_name: "new value" } },
-      queryBody: { ref: { kind: "table", name: exampleTable }, limit: 50, offset: 0 },
-      tables: tableRows,
-      views: dataObjects.filter((row) => row.kind === "view").map((row) => ({ name: row.name })),
-    };
-  }
-
   async function buildIssueProjectContext(
     projectId: string | null,
     projectWorkflow: ReturnType<typeof buildHeartbeatProjectWorkflowContext>,
@@ -145,7 +108,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
     if (typeof (documentsSvc as { listProjectDocuments?: unknown }).listProjectDocuments !== "function") return null;
 
     try {
-      const [projectRow, docs, latestWorkflowSnapshot, dashboards, dataObjects] = await Promise.all([
+      const [projectRow, docs, latestWorkflowSnapshot, viewRows, dataObjects] = await Promise.all([
         db
           .select({ dataSchemaName: projects.dataSchemaName })
           .from(projects)
@@ -164,12 +127,22 @@ export function issueRoutes(db: Db, storage: StorageService) {
           .orderBy(desc(projectContextSnapshots.createdAt))
           .limit(1)
           .then((rows) => rows[0] ?? null),
-        db
-          .select({ id: projectViews.id })
-          .from(projectViews)
-          .where(eq(projectViews.projectId, projectId)),
+        projectDataSvc.listViews(projectId).catch(() => []),
         projectDataSvc.listDataObjects(projectId).catch(() => [] as Awaited<ReturnType<typeof projectDataSvc.listDataObjects>>),
       ]);
+
+      const widgetsByView = await Promise.all(
+        viewRows.slice(0, 8).map(async (view) => ({
+          view,
+          widgets: await projectDataSvc.listWidgets(projectId, view.id).catch(() => []),
+        })),
+      );
+
+      const mappedDataObjects = dataObjects.map((row) => ({
+        kind: row.kind,
+        name: row.name,
+        definition: (row.definition as Record<string, unknown>) ?? {},
+      }));
 
       const summaryDoc = docs.find((doc) => doc.key === "summary") ?? null;
       const workflowDoc = docs.find((doc) => doc.key === "workflow") ?? null;
@@ -191,13 +164,24 @@ export function issueRoutes(db: Db, storage: StorageService) {
         projectDataApi: buildProjectDataApiGuide(
           projectId,
           projectRow?.dataSchemaName ?? null,
-          dataObjects.map((row) => ({
-            kind: row.kind,
-            name: row.name,
-            definition: (row.definition as Record<string, unknown>) ?? {},
-          })),
+          mappedDataObjects,
         ),
-        dashboardCount: dashboards.length,
+        projectDashboardApi: buildProjectDashboardApiGuide(
+          projectId,
+          widgetsByView.map(({ view, widgets }) => ({
+            id: view.id,
+            name: view.name,
+            description: view.description,
+            widgets: widgets.map((widget) => ({
+              id: widget.id,
+              title: widget.title,
+              type: widget.type,
+              queryRef: widget.queryRef,
+            })),
+          })),
+          { exampleTableName: mappedDataObjects.find((row) => row.kind === "table")?.name ?? null },
+        ),
+        dashboardCount: viewRows.length,
       };
     } catch {
       return null;

@@ -51,6 +51,10 @@ import {
 } from "../services/ai-admin-project.js";
 import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
 import { logger } from "../middleware/logger.js";
+import {
+  buildProjectDashboardApiGuide,
+  buildProjectDataApiGuide,
+} from "../services/project-data-api-guide.js";
 
 export function projectRoutes(db: Db) {
   const router = Router();
@@ -243,11 +247,24 @@ export function projectRoutes(db: Db) {
     }
     assertCompanyAccess(req, project.companyId);
     await requireProjectPermission(req, project.companyId, id, "project:read");
-    const [documents, maintenanceRequests, statuses] = await Promise.all([
+    const [documents, maintenanceRequests, statuses, dataObjects, viewRows] = await Promise.all([
       documentsSvc.listProjectDocuments(id),
       projectContextSvc.listMaintenanceRequests(id, 20, 0),
       statusSvc.list(id),
+      projectDataSvc.listDataObjects(id).catch(() => []),
+      projectDataSvc.listViews(id).catch(() => []),
     ]);
+    const widgetsByView = await Promise.all(
+      viewRows.slice(0, 8).map(async (view) => ({
+        view,
+        widgets: await projectDataSvc.listWidgets(id, view.id).catch(() => []),
+      })),
+    );
+    const mappedDataObjects = dataObjects.map((row) => ({
+      kind: row.kind,
+      name: row.name,
+      definition: (row.definition as Record<string, unknown>) ?? {},
+    }));
     res.json({
       projectId: id,
       dataSchemaName: project.dataSchemaName ?? null,
@@ -256,6 +273,23 @@ export function projectRoutes(db: Db) {
       documents,
       maintenanceRequests,
       workflowStatuses: statuses,
+      projectDataApi: buildProjectDataApiGuide(id, project.dataSchemaName ?? null, mappedDataObjects),
+      projectDashboardApi: buildProjectDashboardApiGuide(
+        id,
+        widgetsByView.map(({ view, widgets }) => ({
+          id: view.id,
+          name: view.name,
+          description: view.description,
+          widgets: widgets.map((widget) => ({
+            id: widget.id,
+            title: widget.title,
+            type: widget.type,
+            queryRef: widget.queryRef,
+          })),
+        })),
+        { exampleTableName: mappedDataObjects.find((row) => row.kind === "table")?.name ?? null },
+      ),
+      dashboardCount: viewRows.length,
     });
   });
 

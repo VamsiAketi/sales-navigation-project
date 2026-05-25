@@ -131,9 +131,12 @@ For project-scoped issues, `GET /api/issues/{issueId}/heartbeat-context` returns
 | `projectWorkflow.allowedNextStages` | `{ value, name }[]` for legal PATCH targets |
 | `projectContext.workflowSummary` | Full playbook markdown |
 | `projectContext.currentStagePlaybook` | Current stage exit criteria (when set) |
-| `projectContext.projectDataApi` | Canonical project DB routes, table names, and payload shapes |
+| `projectContext.projectDataApi` | Canonical project DB routes, table names, columns, and payload shapes |
+| `projectContext.projectDashboardApi` | Dashboard/view/widget routes and existing widgets |
 
 **Project database rows:** `projectContext.dataSchemaName` (e.g. `prj_…`) is the internal PostgreSQL schema — **not** an API path. Use `projectContext.projectDataApi.routes` from heartbeat-context (or `GET /api/projects/{projectId}/data/objects`). Insert with `POST /api/projects/{projectId}/data/{tableName}/rows` and body `{ "rows": [ { ... } ] }`. Requires `project:edit tickets` (granted to issue assignees on restricted projects).
+
+**Mandatory adapter prompt:** project-scoped issue runs prepend `## Project data & dashboards (mandatory)` with table columns and dashboard routes — follow it before marking stage work complete. Issue comments are narrative; durable records belong in data tables and dashboards.
 
 Use **`currentStage.name` + playbook** to decide behavior; use **`issue.status` / stage `value`** only when calling checkout or PATCH.
 

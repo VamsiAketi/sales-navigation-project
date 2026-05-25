@@ -43,21 +43,40 @@ Use the **project UUID** and registered **table names**:
 | Delete row by PK | `DELETE /api/projects/{projectId}/data/{tableName}/rows` | `project:edit tickets` |
 | Create table / view (DDL) | `POST /api/projects/{projectId}/data/tables` or `.../data/views` | `project:edit configuration` |
 
-**Insert example** (table `leads`):
+**Insert example** (replace `{tableName}` with a table you designed for this project):
 
 ```json
-POST /api/projects/{projectId}/data/leads/rows
-{ "rows": [{ "company": "Acme Corp", "email": "ops@acme.com", "source": "apollo" }] }
+POST /api/projects/{projectId}/data/{tableName}/rows
+{ "rows": [{ "column_a": "value", "column_b": "value" }] }
 ```
 
 **Query example:**
 
 ```json
 POST /api/projects/{projectId}/data/query
-{ "ref": { "kind": "table", "name": "leads" }, "limit": 50, "offset": 0 }
+{ "ref": { "kind": "table", "name": "{tableName}" }, "limit": 50, "offset": 0 }
 ```
 
 On issue heartbeats, prefer `projectContext.projectDataApi` from `GET /api/issues/{issueId}/heartbeat-context` — it lists registered tables and the exact route templates for that project.
+
+**Mandatory on every issue run:** the adapter prompt includes `## Project data & dashboards (mandatory)` built from the same tables/dashboards — you do not need a separate heartbeat-context fetch for route templates if you follow that section. Still use heartbeat-context or `GET .../context` when you need the full playbook or maintenance state.
+
+## Dashboard API (views / widgets)
+
+Dashboards live under **Project → Context → Dashboards** in the UI. Widgets visualize data via `queryRef` (a `POST .../data/query` payload).
+
+| Action | Route | Permission |
+| ------ | ----- | ---------- |
+| List dashboards | `GET /api/projects/{projectId}/views` | `project:read` |
+| Create dashboard | `POST /api/projects/{projectId}/views` | `project:edit configuration` |
+| List widgets | `GET /api/projects/{projectId}/views/{viewId}/widgets` | `project:read` |
+| Read widget data | `GET /api/projects/{projectId}/views/{viewId}/widgets/data` | `project:read` |
+| Add widget | `POST /api/projects/{projectId}/views/{viewId}/widgets` | `project:edit configuration` |
+| Update widget | `PATCH /api/projects/{projectId}/views/{viewId}/widgets/{widgetId}` | `project:edit configuration` |
+
+Widget `type`: `kpi`, `table`, `chart`, or `markdown`. Set `queryRef` to `{ ref: { kind: "table", name: "{tableName}" }, limit: 25, offset: 0 }` using a registered table name.
+
+`GET /api/projects/{projectId}/context` returns `projectDataApi` and `projectDashboardApi` summaries (tables with columns, existing dashboards/widgets). **Do not** use `/data-objects` — the correct path is `/data/objects`.
 
 ## Maintenance request types
 
@@ -202,12 +221,20 @@ Synthesize and curate from `GET .../context-files` extracted text, existing docu
 
 ## Task heartbeats (agents working issues)
 
-From `GET /api/issues/{issueId}/heartbeat-context`:
+Every issue adapter prompt includes mandatory sections when the task is project-scoped:
+
+1. `## Current task — workflow rules (mandatory)` — stage transitions and handoffs.
+2. `## Project data & dashboards (mandatory)` — table names, columns, insert/query routes, and existing dashboards.
+
+From `GET /api/issues/{issueId}/heartbeat-context` (for deeper context):
 
 1. Read `issue.statusMeaning` — business stage vs API key.
 2. Read `projectContext.workflowSummary` for the full playbook.
 3. Read `projectContext.currentStagePlaybook` when set (stage `agentInstructions`).
-4. Use `projectWorkflow.allowedNextStages` before PATCH; never guess generic `in_progress`.
+4. Read `projectContext.projectDataApi` / `projectContext.projectDashboardApi` for structured data and visibility.
+5. Use `projectWorkflow.allowedNextStages` before PATCH; never guess generic `in_progress`.
+
+**Data discipline:** structured operational records belong in project data tables — not only in issue comments. Design table/column and dashboard names from project summary, workflow, and stage playbook. After writes, verify with `POST .../data/query`. Create or update widgets when operators need ongoing visibility.
 
 ## Context sync (`project_maintenance_request` / `project_context_sync`)
 
