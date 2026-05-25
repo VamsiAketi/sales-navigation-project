@@ -23,7 +23,7 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "../index.js";
 import { parseCursorJsonl, isCursorUnknownSessionError } from "./parse.js";
-import { normalizeCursorStreamLine } from "../shared/stream.js";
+import { appendCursorStreamChunk } from "../shared/stream.js";
 import { hasCursorTrustBypassArg } from "../shared/trust.js";
 import {
   applyCursorAgentStateDirs,
@@ -417,26 +417,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     }
 
     let stdoutLineBuffer = "";
-    const emitNormalizedStdoutLine = async (rawLine: string) => {
-      const normalized = normalizeCursorStreamLine(rawLine);
-      if (!normalized.line) return;
-      await onLog(normalized.stream ?? "stdout", `${normalized.line}\n`);
-    };
     const flushStdoutChunk = async (chunk: string, finalize = false) => {
-      const combined = `${stdoutLineBuffer}${chunk}`;
-      const lines = combined.split(/\r?\n/);
-      stdoutLineBuffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        await emitNormalizedStdoutLine(line);
-      }
-
-      if (finalize) {
-        const trailing = stdoutLineBuffer.trim();
-        stdoutLineBuffer = "";
-        if (trailing) {
-          await emitNormalizedStdoutLine(trailing);
-        }
+      const flushed = appendCursorStreamChunk(stdoutLineBuffer, chunk, finalize);
+      stdoutLineBuffer = flushed.lineBuffer;
+      for (const batch of flushed.batches) {
+        await onLog(batch.stream, batch.text);
       }
     };
 

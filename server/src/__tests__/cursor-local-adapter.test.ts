@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { isCursorUnknownSessionError, parseCursorJsonl } from "@paperclipai/adapter-cursor-local/server";
+import {
+  appendCursorStreamChunk,
+  isCursorUnknownSessionError,
+  parseCursorJsonl,
+} from "@paperclipai/adapter-cursor-local/server";
 import { parseCursorStdoutLine } from "@paperclipai/adapter-cursor-local/ui";
 import { printCursorStreamEvent } from "@paperclipai/adapter-cursor-local/cli";
 
@@ -63,6 +67,45 @@ describe("cursor stale session detection", () => {
   it("treats missing/unknown session messages as an unknown session error", () => {
     expect(isCursorUnknownSessionError("", "unknown session id chat_123")).toBe(true);
     expect(isCursorUnknownSessionError("", "chat abc not found")).toBe(true);
+  });
+});
+
+describe("cursor stream log batching", () => {
+  it("batches complete lines from one chunk into a single stdout log batch", () => {
+    const lineA = JSON.stringify({ type: "system", subtype: "init", session_id: "s1" });
+    const lineB = JSON.stringify({ type: "assistant", message: { content: [{ type: "output_text", text: "hi" }] } });
+    const flushed = appendCursorStreamChunk("", `${lineA}\n${lineB}\n`, false);
+
+    expect(flushed.lineBuffer).toBe("");
+    expect(flushed.batches).toEqual([
+      { stream: "stdout", text: `${lineA}\n${lineB}\n` },
+    ]);
+  });
+
+  it("preserves partial line buffering across chunks", () => {
+    const line = JSON.stringify({ type: "result", subtype: "success" });
+    const first = appendCursorStreamChunk("", line.slice(0, 12), false);
+    expect(first.batches).toEqual([]);
+    expect(first.lineBuffer).toBe(line.slice(0, 12));
+
+    const second = appendCursorStreamChunk(first.lineBuffer, line.slice(12), true);
+    expect(second.lineBuffer).toBe("");
+    expect(second.batches).toEqual([{ stream: "stdout", text: `${line}\n` }]);
+  });
+
+  it("routes prefixed stderr lines into a separate batch", () => {
+    const stdoutLine = JSON.stringify({ type: "system", subtype: "init" });
+    const stderrLine = JSON.stringify({ type: "error", message: "boom" });
+    const flushed = appendCursorStreamChunk(
+      "",
+      `stdout${stdoutLine}\nstderr${stderrLine}\n`,
+      false,
+    );
+
+    expect(flushed.batches).toEqual([
+      { stream: "stdout", text: `${stdoutLine}\n` },
+      { stream: "stderr", text: `${stderrLine}\n` },
+    ]);
   });
 });
 
