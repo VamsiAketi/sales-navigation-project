@@ -192,7 +192,9 @@ export function accessService(db: Db) {
         ),
       )
       .then((rows) => rows[0] ?? null);
-    cache?.membershipByKey.set(cacheKey, row);
+    if (row) {
+      cache?.membershipByKey.set(cacheKey, row);
+    }
     return row;
   }
 
@@ -772,6 +774,8 @@ export function accessService(db: Db) {
   ) {
     const normalizedMembershipRole = normalizeMembershipRole(membershipRole);
     await assertOwnerAssignmentAllowed(principalType, principalId, normalizedMembershipRole);
+    const cache = getAccessRequestCache();
+    const cacheKey = membershipCacheKey(companyId, principalType, principalId);
     const existing = await getMembership(companyId, principalType, principalId);
     if (existing) {
       if (existing.status !== status || existing.membershipRole !== normalizedMembershipRole) {
@@ -781,12 +785,14 @@ export function accessService(db: Db) {
           .where(eq(companyMemberships.id, existing.id))
           .returning()
           .then((rows) => rows[0] ?? null);
-        return updated ?? existing;
+        const resolved = updated ?? existing;
+        cache?.membershipByKey.set(cacheKey, resolved);
+        return resolved;
       }
       return existing;
     }
 
-    return db
+    const created = await db
       .insert(companyMemberships)
       .values({
         companyId,
@@ -797,6 +803,8 @@ export function accessService(db: Db) {
       })
       .returning()
       .then((rows) => rows[0]);
+    cache?.membershipByKey.set(cacheKey, created);
+    return created;
   }
 
   async function setPrincipalGrants(

@@ -38,6 +38,7 @@ describe("cursor local skill sync", () => {
       config: {
         env: {
           HOME: home,
+          CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
         },
         paperclipSkillSync: {
           desiredSkills: [paperclipKey],
@@ -72,6 +73,7 @@ describe("cursor local skill sync", () => {
       config: {
         env: {
           HOME: home,
+          CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
         },
         paperclipRuntimeSkills: [
           {
@@ -115,6 +117,7 @@ describe("cursor local skill sync", () => {
       config: {
         env: {
           HOME: home,
+          CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
         },
         paperclipSkillSync: {
           desiredSkills: [paperclipKey],
@@ -129,6 +132,7 @@ describe("cursor local skill sync", () => {
       config: {
         env: {
           HOME: home,
+          CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
         },
         paperclipSkillSync: {
           desiredSkills: [],

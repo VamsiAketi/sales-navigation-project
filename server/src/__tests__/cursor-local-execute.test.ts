@@ -221,6 +221,9 @@ describe("cursor execute", () => {
           command: commandPath,
           cwd: workspace,
           model: "auto",
+          env: {
+            CURSOR_CONFIG_DIR: path.join(root, ".cursor"),
+          },
           paperclipRuntimeSkills: [
             {
               name: "paperclip",
