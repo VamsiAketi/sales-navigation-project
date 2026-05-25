@@ -20,7 +20,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, CheckCircle2, Clock3, ExternalLink, GripVertical, Receipt, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, ExternalLink, GripVertical, Plus, Receipt, Zap } from "lucide-react";
 import type { CostDailyTotal } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,7 @@ import { useCompany } from "../context/CompanyContext";
 import { costsApi } from "../api/costs";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { queryKeys } from "../lib/queryKeys";
+import { WalletTopUpDialog } from "../components/WalletTopUpDialog";
 import { cn, formatCents } from "../lib/utils";
 
 const INVOICE_MONTH_LABELS = [
@@ -301,10 +302,17 @@ export function Billing() {
       window.location.assign(result.url);
     },
   });
+  const [walletTopUpDialogOpen, setWalletTopUpDialogOpen] = useState(false);
+  const [walletTopUpSubmitError, setWalletTopUpSubmitError] = useState<string | null>(null);
   const stripeTopUpMutation = useMutation({
-    mutationFn: () => costsApi.createStripeCheckoutSession(selectedCompanyId!, 10_000),
+    mutationFn: (amountCents: number) =>
+      costsApi.createStripeCheckoutSession(selectedCompanyId!, amountCents),
+    onMutate: () => setWalletTopUpSubmitError(null),
     onSuccess: (result) => {
       window.location.assign(result.url);
+    },
+    onError: (error: Error) => {
+      setWalletTopUpSubmitError(error.message || "Could not start Stripe checkout.");
     },
   });
 
@@ -679,14 +687,13 @@ export function Billing() {
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="default"
                 size="sm"
-                className="shrink-0"
+                className="shrink-0 gap-1.5"
                 disabled={
                   stripeStatusLoading ||
                   !stripeReadyForCheckout ||
-                  !canManageBillingPayments ||
-                  stripeTopUpMutation.isPending
+                  !canManageBillingPayments
                 }
                 title={
                   !canManageBillingPayments
@@ -695,9 +702,13 @@ export function Billing() {
                       ? "Set STRIPE_SECRET_KEY (or PAPERCLIP_STRIPE_SECRET_KEY) on the server to enable Stripe checkout."
                       : undefined
                 }
-                onClick={() => stripeTopUpMutation.mutate()}
+                onClick={() => {
+                  setWalletTopUpSubmitError(null);
+                  setWalletTopUpDialogOpen(true);
+                }}
               >
-                {stripeTopUpMutation.isPending ? "Opening checkout..." : "Add $100 test credit"}
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+                Add funds
               </Button>
             </div>
           </div>
@@ -989,6 +1000,16 @@ export function Billing() {
       </SortableContext>
       </DndContext>
 
+      <WalletTopUpDialog
+        open={walletTopUpDialogOpen}
+        onOpenChange={(open) => {
+          if (!stripeTopUpMutation.isPending) setWalletTopUpDialogOpen(open);
+        }}
+        onConfirm={(amountCents) => stripeTopUpMutation.mutate(amountCents)}
+        isSubmitting={stripeTopUpMutation.isPending}
+        submitError={walletTopUpSubmitError}
+      />
+
       <Dialog
         open={topUpSuccessDialogOpen}
         onOpenChange={(open) => {
@@ -998,7 +1019,7 @@ export function Billing() {
       >
         <DialogContent className="max-w-sm rounded-2xl border-border/60" showCloseButton={false}>
           <DialogHeader className="items-center text-center sm:items-center sm:text-center">
-            {billingDialogStatus === "topup-success" ? (
+            {billingDialogStatus === "payment-success" || billingDialogStatus === "topup-success" ? (
               <>
                 <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
                   <CheckCircle2 className="h-6 w-6" aria-hidden />
@@ -1008,7 +1029,7 @@ export function Billing() {
                   Payment is complete and your account balance is updating.
                 </DialogDescription>
               </>
-            ) : billingDialogStatus === "topup-cancelled" ? (
+            ) : billingDialogStatus === "payment-cancelled" || billingDialogStatus === "topup-cancelled" ? (
               <>
                 <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
                   <AlertTriangle className="h-6 w-6" aria-hidden />
