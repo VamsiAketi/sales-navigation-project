@@ -166,20 +166,12 @@ export function agentRoutes(db: Db) {
     };
   }
 
-  async function applyDefaultAgentTaskAssignGrant(
+  async function applyDefaultAgentCompanyGrants(
     companyId: string,
-    agentId: string,
+    agent: { id: string; role: string },
     grantedByUserId: string | null,
   ) {
-    await access.ensureMembership(companyId, "agent", agentId, "member", "active");
-    await access.setPrincipalPermission(
-      companyId,
-      "agent",
-      agentId,
-      "tasks:assign",
-      true,
-      grantedByUserId,
-    );
+    await access.ensureDefaultAgentCompanyGrants(companyId, agent.id, agent.role, grantedByUserId);
   }
 
   async function assertCanCreateAgentsForCompany(req: Request, companyId: string) {
@@ -1640,9 +1632,9 @@ export function agentRoutes(db: Db) {
       },
     });
 
-    await applyDefaultAgentTaskAssignGrant(
+    await applyDefaultAgentCompanyGrants(
       companyId,
-      agent.id,
+      agent,
       actor.actorType === "user" ? actor.actorId : null,
     );
 
@@ -1722,9 +1714,9 @@ export function agentRoutes(db: Db) {
       },
     });
 
-    await applyDefaultAgentTaskAssignGrant(
+    await applyDefaultAgentCompanyGrants(
       companyId,
-      agent.id,
+      agent,
       req.actor.type === "board" ? (req.actor.userId ?? null) : null,
     );
 

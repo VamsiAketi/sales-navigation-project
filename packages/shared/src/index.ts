@@ -748,6 +748,13 @@ export {
   isWalletInsufficientAvailableErrorCode,
   type WalletPaymentErrorCode,
 } from "./wallet.js";
+export {
+  AGENT_BASE_COMPANY_PERMISSIONS,
+  AGENT_CEO_EXTRA_COMPANY_PERMISSIONS,
+  defaultCompanyPermissionsForAgentRole,
+  mergeAgentCompanyPermissionGrants,
+  type AgentCompanyPermissionGrant,
+} from "./agent-company-permissions.js";
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
 export { ISSUE_IDENTIFIER_RE, isIssueIdentifierLike } from "./issue-identifier.js";

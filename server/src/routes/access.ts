@@ -37,7 +37,8 @@ import {
   updateMemberPermissionsSchema,
   updateProjectPrincipalGrantsSchema,
   updateUserCompanyAccessSchema,
-  PERMISSION_KEYS
+  PERMISSION_KEYS,
+  mergeAgentCompanyPermissionGrants,
 } from "@paperclipai/shared";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import {
@@ -1523,22 +1524,14 @@ function grantsFromDefaults(
 }
 
 export function agentJoinGrantsFromDefaults(
-  defaultsPayload: Record<string, unknown> | null | undefined
+  defaultsPayload: Record<string, unknown> | null | undefined,
+  role: string = "general",
 ): Array<{
   permissionKey: (typeof PERMISSION_KEYS)[number];
   scope: Record<string, unknown> | null;
 }> {
-  const grants = grantsFromDefaults(defaultsPayload, "agent");
-  if (grants.some((grant) => grant.permissionKey === "tasks:assign")) {
-    return grants;
-  }
-  return [
-    ...grants,
-    {
-      permissionKey: "tasks:assign",
-      scope: null
-    }
-  ];
+  const inviteGrants = grantsFromDefaults(defaultsPayload, "agent");
+  return mergeAgentCompanyPermissionGrants(inviteGrants, role);
 }
 
 export function humanInviteGrants(): Array<{
@@ -3050,22 +3043,16 @@ export function accessRoutes(
           metadata: null
         });
         createdAgentId = created.id;
-        await access.ensureMembership(
-          companyId,
+        const inviteGrants = grantsFromDefaults(
+          invite.defaultsPayload as Record<string, unknown> | null,
           "agent",
-          created.id,
-          "member",
-          "active"
         );
-        const grants = agentJoinGrantsFromDefaults(
-          invite.defaultsPayload as Record<string, unknown> | null
-        );
-        await access.setPrincipalGrants(
+        await access.ensureDefaultAgentCompanyGrants(
           companyId,
-          "agent",
           created.id,
-          grants,
-          req.actor.userId ?? null
+          created.role,
+          req.actor.userId ?? null,
+          inviteGrants,
         );
       }
 

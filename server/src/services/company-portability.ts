@@ -4021,13 +4021,10 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         }
 
         let created = await agents.create(targetCompany.id, patch);
-        await access.ensureMembership(targetCompany.id, "agent", created.id, "member", "active");
-        await access.setPrincipalPermission(
+        await access.ensureDefaultAgentCompanyGrants(
           targetCompany.id,
-          "agent",
           created.id,
-          "tasks:assign",
-          true,
+          created.role,
           actorUserId ?? null,
         );
         try {
