@@ -218,22 +218,31 @@ async function creditWalletFromPaidCheckoutSession(
   }
 
   const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
-  await db.insert(companyWalletTransactions).values({
-    companyId,
-    amountCents,
-    currency: (session.currency ?? "usd").toLowerCase(),
-    direction: "credit",
-    sourceType: "stripe_checkout",
-    sourceId: session.id,
-    stripeEventId: audit.stripeEventId,
-    checkoutSessionId: session.id,
-    paymentIntentId,
-    metadataJson: {
-      stripeEventType: audit.eventType ?? "checkout.session.completed",
-      paymentStatus: session.payment_status,
-      creditSource: audit.actorId,
-    },
-  }).onConflictDoNothing();
+  const inserted = await db
+    .insert(companyWalletTransactions)
+    .values({
+      companyId,
+      amountCents,
+      currency: (session.currency ?? "usd").toLowerCase(),
+      direction: "credit",
+      sourceType: "stripe_checkout",
+      sourceId: session.id,
+      stripeEventId: audit.stripeEventId,
+      checkoutSessionId: session.id,
+      paymentIntentId,
+      metadataJson: {
+        stripeEventType: audit.eventType ?? "checkout.session.completed",
+        paymentStatus: session.payment_status,
+        creditSource: audit.actorId,
+      },
+    })
+    .onConflictDoNothing()
+    .returning({ id: companyWalletTransactions.id })
+    .then((rows) => rows[0] ?? null);
+
+  if (!inserted) {
+    return "already_credited";
+  }
 
   await db
     .update(stripeCheckoutIntents)
@@ -510,10 +519,134 @@ export async function markStripeEventProcessed(db: Db, eventId: string, eventTyp
   return Boolean(row);
 }
 
+export async function findCheckoutIntentByIdempotencyKey(
+  db: Db,
+  companyId: string,
+  idempotencyKey: string,
+): Promise<typeof stripeCheckoutIntents.$inferSelect | null> {
+  return db
+    .select()
+    .from(stripeCheckoutIntents)
+    .where(
+      and(
+        eq(stripeCheckoutIntents.companyId, companyId),
+        eq(stripeCheckoutIntents.idempotencyKey, idempotencyKey),
+      ),
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+}
+
+function checkoutSessionIsOpenForPayment(session: Stripe.Checkout.Session): boolean {
+  return session.status === "open" && typeof session.url === "string" && session.url.length > 0;
+}
+
+export type CreateIdempotentCheckoutSessionResult = {
+  sessionId: string;
+  url: string;
+  reused: boolean;
+};
+
+/**
+ * Start or resume a wallet top-up Checkout session.
+ * - Stripe idempotency key prevents duplicate charges on transport retries.
+ * - DB idempotency key returns the same open session without calling Stripe again.
+ */
+export async function createIdempotentStripeCheckoutSession(input: {
+  db: Db;
+  stripe: Stripe;
+  companyId: string;
+  amountCents: number;
+  idempotencyKey: string;
+  customerId: string;
+  successUrl: string;
+  cancelUrl: string;
+  branding: { businessName: string; businessDescription: string };
+  requestedBy?: string;
+}): Promise<CreateIdempotentCheckoutSessionResult> {
+  const existingIntent = await findCheckoutIntentByIdempotencyKey(
+    input.db,
+    input.companyId,
+    input.idempotencyKey,
+  );
+  if (existingIntent) {
+    const existingSession = await input.stripe.checkout.sessions.retrieve(existingIntent.checkoutSessionId);
+    if (existingSession.payment_status === "paid" || existingSession.status === "complete") {
+      throw new Error("CHECKOUT_ALREADY_PAID");
+    }
+    if (checkoutSessionIsOpenForPayment(existingSession) && existingSession.url) {
+      return {
+        sessionId: existingSession.id,
+        url: existingSession.url,
+        reused: true,
+      };
+    }
+  }
+
+  const session = await input.stripe.checkout.sessions.create(
+    {
+      mode: "payment",
+      customer: input.customerId,
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      payment_method_types: ["card"],
+      payment_method_options: {
+        card: {
+          request_three_d_secure: "automatic",
+        },
+      },
+      invoice_creation: { enabled: true },
+      metadata: {
+        [COMPANY_METADATA_KEY]: input.companyId,
+        paperclip_kind: "prepaid_topup",
+        paperclip_idempotency_key: input.idempotencyKey,
+      },
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: input.amountCents,
+            product_data: {
+              name: "Wallet funds added",
+              description: `Top-up for ${input.branding.businessName}`,
+            },
+          },
+        },
+      ],
+    },
+    { idempotencyKey: input.idempotencyKey },
+  );
+
+  if (!session.url) {
+    throw new Error("Stripe checkout session did not include a redirect URL");
+  }
+
+  await createCheckoutIntentRecord({
+    db: input.db,
+    companyId: input.companyId,
+    checkoutSessionId: session.id,
+    idempotencyKey: input.idempotencyKey,
+    amountCents: input.amountCents,
+    currency: "usd",
+    stripeCustomerId: input.customerId,
+    paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null,
+    status: "created",
+    metadata: { requestedBy: input.requestedBy ?? null, idempotencyKey: input.idempotencyKey },
+  });
+
+  return {
+    sessionId: session.id,
+    url: session.url,
+    reused: false,
+  };
+}
+
 export async function createCheckoutIntentRecord(input: {
   db: Db;
   companyId: string;
   checkoutSessionId: string;
+  idempotencyKey?: string | null;
   amountCents: number;
   currency: string;
   stripeCustomerId: string | null;
@@ -527,6 +660,7 @@ export async function createCheckoutIntentRecord(input: {
     .values({
       companyId: input.companyId,
       checkoutSessionId: input.checkoutSessionId,
+      idempotencyKey: input.idempotencyKey ?? null,
       amountCents: input.amountCents,
       currency: input.currency.toLowerCase(),
       stripeCustomerId: input.stripeCustomerId,
@@ -539,6 +673,7 @@ export async function createCheckoutIntentRecord(input: {
     .onConflictDoUpdate({
       target: stripeCheckoutIntents.checkoutSessionId,
       set: {
+        idempotencyKey: input.idempotencyKey ?? null,
         amountCents: input.amountCents,
         currency: input.currency.toLowerCase(),
         stripeCustomerId: input.stripeCustomerId,

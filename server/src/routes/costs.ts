@@ -26,7 +26,7 @@ import { badRequest, forbidden } from "../errors.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 import { getStripeFromConfig } from "../stripe-client.js";
 import {
-  createCheckoutIntentRecord,
+  createIdempotentStripeCheckoutSession,
   findStripeCustomerByCompanyId,
   getCompanyWalletTotals,
   getOrCreateStripeCustomerForCompany,
@@ -363,56 +363,33 @@ export function costRoutes(db: Db) {
       const returnPath = req.body.returnPath?.startsWith("/") ? req.body.returnPath : "/company/billing";
       const successUrl = `${baseUrl}${returnPath}?stripe=payment-success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${baseUrl}${returnPath}?stripe=payment-cancelled`;
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        customer: customer.id,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        payment_method_types: ["card"],
-        payment_method_options: {
-          card: {
-            request_three_d_secure: "automatic",
-          },
-        },
-        // One-time Checkout does not create a Stripe Invoice by default; enable so top-ups show under Invoices / PDF.
-        invoice_creation: { enabled: true },
-        metadata: {
-          paperclip_company_id: companyId,
-          paperclip_kind: "prepaid_topup",
-        },
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: "usd",
-              unit_amount: req.body.amountCents,
-              product_data: {
-                name: "Wallet funds added",
-                description: `Top-up for ${branding.businessName}`,
-              },
-            },
-          },
-        ],
-      }, req.body.idempotencyKey ? { idempotencyKey: req.body.idempotencyKey } : undefined);
-      if (!session.url) {
-        res.status(500).json({ error: "Stripe checkout session did not include a redirect URL" });
-        return;
+      try {
+        const checkout = await createIdempotentStripeCheckoutSession({
+          db,
+          stripe,
+          companyId,
+          amountCents: req.body.amountCents,
+          idempotencyKey: req.body.idempotencyKey,
+          customerId: customer.id,
+          successUrl,
+          cancelUrl,
+          branding,
+          requestedBy: req.actor.type,
+        });
+        res.json({
+          sessionId: checkout.sessionId,
+          url: checkout.url,
+          reused: checkout.reused,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "CHECKOUT_ALREADY_PAID") {
+          res.status(409).json({
+            error: "This top-up was already paid. Refresh billing to see your updated balance.",
+          });
+          return;
+        }
+        throw error;
       }
-      await createCheckoutIntentRecord({
-        db,
-        companyId,
-        checkoutSessionId: session.id,
-        amountCents: req.body.amountCents,
-        currency: "usd",
-        stripeCustomerId: customer.id,
-        paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null,
-        status: "created",
-        metadata: { requestedBy: req.actor.type, idempotencyKey: req.body.idempotencyKey ?? null },
-      });
-      res.json({
-        sessionId: session.id,
-        url: session.url,
-      });
     },
   );
 

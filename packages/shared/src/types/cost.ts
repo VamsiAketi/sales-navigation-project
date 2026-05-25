@@ -59,6 +59,8 @@ export interface StripePortalSession {
 export interface StripeCheckoutSession {
   sessionId: string;
   url: string;
+  /** True when an existing open Checkout session was returned for the same idempotency key. */
+  reused?: boolean;
 }
 
 export type StripeCheckoutCreditResult =

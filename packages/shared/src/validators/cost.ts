@@ -39,7 +39,8 @@ export type UpdateBudget = z.infer<typeof updateBudgetSchema>;
 
 export const createStripeCheckoutSessionSchema = z.object({
   amountCents: z.number().int().min(WALLET_PREPAID_TOPUP_MIN_CENTS).max(WALLET_PREPAID_TOPUP_MAX_CENTS),
-  idempotencyKey: z.string().min(1).max(200).optional(),
+  /** Stable per top-up attempt; retries must reuse the same key (Stripe + server dedupe). */
+  idempotencyKey: z.string().min(8).max(200),
   returnPath: z.string().startsWith("/").optional(),
 });
 

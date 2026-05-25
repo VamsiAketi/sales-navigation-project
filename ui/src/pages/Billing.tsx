@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -315,9 +315,14 @@ export function Billing() {
   });
   const [walletTopUpDialogOpen, setWalletTopUpDialogOpen] = useState(false);
   const [walletTopUpSubmitError, setWalletTopUpSubmitError] = useState<string | null>(null);
+  const topUpIdempotencyKeyRef = useRef<string | null>(null);
   const stripeTopUpMutation = useMutation({
-    mutationFn: (amountCents: number) =>
-      costsApi.createStripeCheckoutSession(selectedCompanyId!, amountCents),
+    mutationFn: (input: { amountCents: number; idempotencyKey: string }) =>
+      costsApi.createStripeCheckoutSession(
+        selectedCompanyId!,
+        input.amountCents,
+        input.idempotencyKey,
+      ),
     onMutate: () => setWalletTopUpSubmitError(null),
     onSuccess: (result) => {
       window.location.assign(result.url);
@@ -1080,9 +1085,20 @@ export function Billing() {
       <WalletTopUpDialog
         open={walletTopUpDialogOpen}
         onOpenChange={(open) => {
-          if (!stripeTopUpMutation.isPending) setWalletTopUpDialogOpen(open);
+          if (!stripeTopUpMutation.isPending) {
+            if (!open) topUpIdempotencyKeyRef.current = null;
+            setWalletTopUpDialogOpen(open);
+          }
         }}
-        onConfirm={(amountCents) => stripeTopUpMutation.mutate(amountCents)}
+        onConfirm={(amountCents, idempotencyKey) => {
+          if (!topUpIdempotencyKeyRef.current) {
+            topUpIdempotencyKeyRef.current = idempotencyKey;
+          }
+          stripeTopUpMutation.mutate({
+            amountCents,
+            idempotencyKey: topUpIdempotencyKeyRef.current,
+          });
+        }}
         isSubmitting={stripeTopUpMutation.isPending}
         submitError={walletTopUpSubmitError}
       />

@@ -40,8 +40,11 @@ export const costsApi = {
     api.get<StripeBillingStatus>(`/companies/${companyId}/billing/stripe-status`),
   createStripePortalSession: (companyId: string) =>
     api.post<StripePortalSession>(`/companies/${companyId}/billing/stripe/portal-session`, {}),
-  createStripeCheckoutSession: (companyId: string, amountCents: number) =>
-    api.post<StripeCheckoutSession>(`/companies/${companyId}/billing/stripe/checkout-session`, { amountCents }),
+  createStripeCheckoutSession: (companyId: string, amountCents: number, idempotencyKey: string) =>
+    api.post<StripeCheckoutSession>(`/companies/${companyId}/billing/stripe/checkout-session`, {
+      amountCents,
+      idempotencyKey,
+    }),
   syncStripeCheckoutSession: (companyId: string, sessionId: string) =>
     api.post<StripeCheckoutSessionStatus>(
       `/companies/${companyId}/billing/stripe/checkout-session/${sessionId}/sync`,
