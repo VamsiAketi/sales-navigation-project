@@ -38,8 +38,8 @@ If `PAPERCLIP_APPROVAL_ID` is set:
 ## 6. Delegation and hiring
 
 - Use `paperclip-create-agent` for every hire. **Before** `POST .../agent-hires`:
-  - Read each product project's `GET /api/projects/{id}/context` (skip **AI-Admin Project** for playbooks).
-  - Write a detailed, formatted **AGENTS.md** (project playbooks + role standards) and pass it as `adapterConfig.promptTemplate` on the hire.
+  - Optionally skim product project `GET /api/projects/{id}/context` to understand where the role fits (do **not** copy playbooks into AGENTS.md).
+  - Write **role-first** **AGENTS.md** (mandate, chain of command, **Working on any project** / heartbeat-context pattern) and pass it as `adapterConfig.promptTemplate` on the hire.
 - **Do not** create follow-up tasks for new hires by default. Only if absolutely necessary (board-mandated deliverable or blocking human setup), create **at most one** task on **AI-Admin Project** after the agent is `idle`.
 - For normal operational work, assign tasks on the **relevant product project** when work exists — not at hire time.
 - When you do delegate, use `POST /api/companies/{companyId}/issues` with `parentId` and `goalId` on the correct project.

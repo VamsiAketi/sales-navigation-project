@@ -14,8 +14,8 @@ export const CREATE_AGENT_ISSUE_DESCRIPTION = `## Hire request
 
 Describe the agent you want added to this company. The assignee (AI Admin) will use **paperclip-create-agent** to:
 
-1. Review product project context summaries and decide where the agent contributes
-2. Author a detailed **AGENTS.md** (role mandate, Paperclip rules, per-project playbooks)
+1. Review product projects to understand where the role fits (planning only — do not copy playbooks into AGENTS.md)
+2. Author **role-first** **AGENTS.md** (mandate, Paperclip rules, runtime heartbeat-context pattern for any project)
 3. Submit the hire (or board approval)
 
 **Coordination rules:** Hire work stays on **AI-Admin Project**. The AI Admin should **not** create follow-up tasks for the new agent unless absolutely necessary (see skill). Product work is assigned later on the relevant projects.

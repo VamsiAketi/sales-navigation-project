@@ -19,6 +19,32 @@ You need either:
 
 If you do not have this permission, escalate to your CEO or board.
 
+## Role-first AGENTS.md (critical)
+
+**AGENTS.md is the agent's durable role contract — not a copy of project playbooks.**
+
+| Belongs in AGENTS.md (hire time) | Belongs in project runtime (per task) |
+| -------------------------------- | ------------------------------------- |
+| Role, mandate, success criteria | Workflow summary, stage playbooks |
+| Chain of command, handoff peers | Current stage rules (`agentInstructions`) |
+| Company-wide policies (if stable) | Registered data tables, dashboards |
+| How to use Paperclip APIs | Issue-specific brief, parent description |
+| Role quality bar (generic) | Exact status API keys for **this** project |
+
+Paperclip injects **current project and stage context on every issue run** (`heartbeat-context`, mandatory workflow/data sections in the adapter prompt). Agents assigned on a different project must not follow playbooks frozen into AGENTS.md from another project.
+
+**When hiring, read project context only to inform your hire decision** (fit, capabilities text, which workflow stages this role typically owns). **Do not paste** project summaries, UUIDs, identifier prefixes, stage value keys, deliverable templates, or ICP tables into AGENTS.md.
+
+### Anti-patterns (reject before submit)
+
+- Sections per product project with embedded project ids, URL paths, or prefixes
+- Hardcoded workflow stage keys (`todo`, `lead_generation`, etc.) as if universal
+- Copy-paste of `workflowSummary` or `documents/workflow` from `GET .../context`
+- Campaign-specific CSV columns, geography lists, or product claims that change per project
+- "Before starting on Project X, read …" with a fixed id — use the runtime pattern below instead
+
+---
+
 ## Workflow
 
 1. Confirm identity and company context.
@@ -56,29 +82,36 @@ curl -sS "$PAPERCLIP_API_URL/llms/agent-icons.txt" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
-6. **Review company projects** (before drafting instructions):
+6. **Review company projects** (for hire planning only — do not transcribe into AGENTS.md):
 
 ```sh
 curl -sS "$PAPERCLIP_API_URL/api/companies/$PAPERCLIP_COMPANY_ID/projects" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
-For each active project (skip **AI-Admin Project** — that is org/hiring ops only), read context:
+For each active product project (skip **AI-Admin Project**), optionally skim context to understand pipelines and whether this role fits:
 
 ```sh
 curl -sS "$PAPERCLIP_API_URL/api/projects/<project-id>/context" \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY"
 ```
 
-Use `summary`, `workflowSummary`, and goals to decide **where this agent can contribute**. You will encode that in **AGENTS.md** (see step 6b), not by spamming tasks across projects.
+Use what you learn only for:
+
+- `capabilities` on the hire payload
+- Role mandate wording (business terms, not project ids)
+- AI-Admin hire-issue comment ("this agent supports research stages on sales-style pipelines")
+- Deciding if workflow maintenance is needed later (separate maintenance request — not in AGENTS.md)
 
 6b. **Author a detailed `AGENTS.md`** for the new hire (required). See [AGENTS.md template](#agentsmd-template-required) below.
 
 - Put the full markdown in `adapterConfig.promptTemplate` on the hire request (Paperclip materializes it into the managed instructions bundle as `AGENTS.md`).
 - After hire, you may refine with `PUT /api/agents/{agentId}/instructions-bundle/file` (`path`: `AGENTS.md`).
-- Do **not** rely on a vague one-line `promptTemplate`; the file must be properly structured markdown with headings, bullets, and project-specific sections where relevant.
+- Do **not** rely on a vague one-line `promptTemplate`; the file must be structured markdown with headings and bullets.
+- Keep it **role-first**; point agents at runtime context APIs for project specifics.
 
 6c. Draft the hire config:
+
 - role/title/name
 - icon (required in practice; use one from `/llms/agent-icons.txt`)
 - reporting line (`reportsTo`)
@@ -151,7 +184,7 @@ For each linked issue, either:
 
 **Default: do not create a follow-up task for the new agent.** The hire is complete when:
 
-1. **AGENTS.md** is written (with project playbooks from step 6), and
+1. **AGENTS.md** is written (role-first; runtime project context documented), and
 2. The hire/approval is documented on the linked **AI-Admin Project** issue (comment or close).
 
 Create **at most one** follow-up issue for the new agent **only if absolutely necessary**, for example:
@@ -174,44 +207,54 @@ Operational work for product projects is assigned **later**, on those projects, 
 
 ## AGENTS.md template (required)
 
-Use this structure. Replace placeholders; remove sections that do not apply.
+Use this structure. Replace placeholders; remove sections that do not apply. **Do not add per-project playbook sections.**
 
 ```markdown
 # <Agent display name> — <Role / title>
 
 ## Role and mandate
-- Why this agent exists (outcome, scope, success in the first 30 days)
-- What they own vs what they escalate
+- Why this agent exists (outcomes, scope, success in the first 30 days)
+- What they own vs what they escalate (business language)
+- Types of workflow stages they typically execute (e.g. "research", "verification") — **not** hardcoded API status keys
 
 ## Chain of command
 - Reports to: <name / role>
-- Peers and who to route work to
+- Peers and who to route work to (handoffs)
 
 ## Paperclip operating rules
-- Identity: `GET /api/agents/me`; wake context (`PAPERCLIP_TASK_ID`, `PAPERCLIP_WAKE_REASON`)
-- Assignments: `GET /api/agents/me/inbox-lite` or company issues filtered by assignee
+- Identity: `GET /api/agents/me`; wake context (`PAPERCLIP_TASK_ID`, `PAPERCLIP_WAKE_REASON`, `PAPERCLIP_COMPANY_ID`)
+- Assignments: `GET /api/agents/me/inbox-lite`
 - Checkout before work: `POST /api/issues/{id}/checkout`; never retry 409
 - Coordination: Paperclip skill; `X-Paperclip-Run-Id` on mutating calls
 - Only work assigned work; no self-assign unless @-mentioned
+- Status changes: use stage keys from **heartbeat-context** / `projectWorkflow` for the **current** issue — never assume generic `todo` / `in_progress`
 
-## Company context
-- Mission / priorities (short bullets from board or CEO)
+## Working on any project (required)
+You may be assigned issues on **any** company product project. Project-specific rules change per project; always load them at runtime:
 
-## Project playbooks
-<!-- One subsection per project where this agent may contribute. Omit projects with no fit. -->
+1. **`GET /api/issues/{issueId}/heartbeat-context`** — issue state, `projectWorkflow` (current stage, allowed next stages, `statusMeaning`), `projectContext` (workflow summary, stage playbook, data/dashboard APIs), parent/goal context.
+2. **Mandatory injected prompt sections** on each run (when project-scoped): workflow rules and project data/dashboard inventory for the **current** project.
+3. **`GET /api/projects/{projectId}/context`** — only when you need full document index, maintenance requests, or context beyond heartbeat-context.
+4. **Issue and parent descriptions** — campaign briefs and one-off constraints for the task at hand.
 
-### <Project name>
-**Where you contribute:** <1–3 sentences from that project's summary/workflow>
-**When you are assigned work here:**
-- Read `GET /api/projects/<project-id>/context` (or issue heartbeat-context) before starting
-- Follow that project's workflow summary and stage rules
-- <Role-specific behaviors, handoffs, quality bar>
+Do **not** follow project playbooks copied into this file. If this file disagrees with heartbeat-context for an issue, **heartbeat-context wins**.
+
+## Company context (optional)
+- Stable company-wide facts only (mission, global policies, compliance themes)
+- Omit or keep minimal if projects differ widely
 
 ## Role-specific standards
-<!-- Engineers: git/PR rules, feature flags, etc. Other roles: domain checklist. -->
+- Domain quality bar (evidence, citations, no fabrication, comment structure, attachments, etc.)
+- Constraints that apply regardless of project (e.g. "no external send", "no pricing commitments")
+
+## Deliverables and handoffs
+- How to comment, attach files, advance stages, and @-mention peers — in role terms
+- Escalation triggers (generic), not project-specific disqualifier lists
 ```
 
-Also ensure **HEARTBEAT.md** / **SOUL.md** exist or are referenced if the adapter uses a multi-file bundle; **AGENTS.md** is the canonical role + project playbook entry.
+Also ensure **HEARTBEAT.md** / **SOUL.md** exist or are referenced if the adapter uses a multi-file bundle. **AGENTS.md** is the canonical **role** entry; **project** playbooks live in project documents and runtime APIs.
+
+To change how a project pipeline works (stages, workflow doc, data schema), use **workflow maintenance** on that project — not a rewrite of every agent's AGENTS.md.
 
 ---
 
@@ -222,8 +265,9 @@ Any agent created **MUST** comply with the **Paperclip agent framework** and hav
 
 - **Identity and context:** Use `GET /api/agents/me` to confirm id, role, and chain of command. Check wake context: `PAPERCLIP_TASK_ID`, `PAPERCLIP_WAKE_REASON`, `PAPERCLIP_WAKE_COMMENT_ID`.
 - **Get assignments:** Prefer `GET /api/agents/me/inbox-lite` (or `GET /api/companies/{companyId}/issues?assigneeAgentId={agent-id}` when full rows are needed). Prioritize checked-out assignments first, then assigned non-terminal stages. If `PAPERCLIP_TASK_ID` is set and assigned to them, prioritize that task.
+- **Project context at runtime:** On each issue, read `GET /api/issues/{issueId}/heartbeat-context` and follow injected workflow/data sections — do not rely on stale project text in AGENTS.md.
 - **Checkout before working:** Always `POST /api/issues/{id}/checkout` before working on a task. Never retry a 409 — that task belongs to someone else.
-- **Act on tickets properly:** Do the work, then update status and post a comment when done. Comment in concise markdown: status line + bullets + links. Comment on any in-progress work before exiting.
+- **Act on tickets properly:** Do the work, then update status and post a comment when done. Comment in concise markdown: status line + bullets + links. Upload task-relevant files as issue attachments on the completion comment — not only disk paths.
 - **Paperclip coordination:** Use the Paperclip skill for all coordination. Include `X-Paperclip-Run-Id` header on mutating API calls. Only work on what is assigned to them; do not self-assign via checkout unless explicitly @-mentioned or assigned.
 
 Ensure every new agent has a heartbeat checklist (e.g. HEARTBEAT.md , SOUL.md, AGENTS.md and other files in their home directory) that they run on every heartbeat, covering the above. Without this, the agent is not compliant with the Paperclip agent framework.
@@ -232,7 +276,7 @@ Ensure every new agent has a heartbeat checklist (e.g. HEARTBEAT.md , SOUL.md, A
 
 When you create an **engineering** agent, apply **all** of the general instructions above inside **AGENTS.md**, and **in addition**:
 
-1. **Put strategic context in AGENTS.md**, not in a pile of hire-time tasks: why they exist, scope, constraints, success criteria, and per-project playbooks (from project context APIs). Do **not** create an onboarding task unless [Follow-up tasks](#follow-up-tasks-strict--ai-admin-only) allows it.
+1. **Put strategic context in AGENTS.md**, not in a pile of hire-time tasks: why they exist, scope, constraints, success criteria, and the **Working on any project** runtime pattern. Do **not** embed per-project playbooks or repo-specific task lists. Do **not** create an onboarding task unless [Follow-up tasks](#follow-up-tasks-strict--ai-admin-only) allows it.
 
 2. **Include the standard engineering instructions below** in the **Role-specific standards** section of AGENTS.md.
 
@@ -299,8 +343,9 @@ An engineering agent must **never** commit directly to the default branch on the
 
 Before sending a hire request:
 
-- **AGENTS.md** is complete, formatted, and includes project playbooks where the agent will contribute
-- Project context was read for each relevant project (not only AI-Admin Project)
+- **AGENTS.md** is complete, formatted, and **role-first** (no per-project playbooks, ids, or frozen stage keys)
+- Project context was reviewed for hire planning but **not** copied into AGENTS.md
+- **Working on any project** section explains heartbeat-context and injected prompts
 - No unnecessary follow-up tasks planned; any exception uses **AI-Admin Project** only
 - If the role needs skills, they exist in the company library or install them first via the company-skills workflow
 - Reuse proven config patterns from related agents where possible
@@ -311,5 +356,4 @@ Before sending a hire request:
 
 For endpoint payload shapes and full examples, read:
 `skills/paperclip-create-agent/references/api-reference.md`
-
 

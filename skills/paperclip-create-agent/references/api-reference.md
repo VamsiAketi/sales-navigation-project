@@ -107,5 +107,5 @@ For hire approvals:
 - All actions are logged in activity for auditability.
 - Use markdown in issue/approval comments and include links to approval, agent, and source issue.
 - After approval resolution, requester may be woken with `PAPERCLIP_APPROVAL_ID` and should reconcile linked issues.
-- AI Admin should author **AGENTS.md** before/at hire (`promptTemplate` on hire body, or `PUT .../instructions-bundle/file` after). Read `GET /api/projects/:id/context` for per-project playbooks.
+- AI Admin should author **AGENTS.md** before/at hire (`promptTemplate` on hire body, or `PUT .../instructions-bundle/file` after). Keep AGENTS.md **role-first**; agents load per-project playbooks at runtime via `GET /api/issues/:issueId/heartbeat-context` and injected workflow/data prompt sections — do not embed project UUIDs, stage keys, or copied workflow summaries in AGENTS.md.
 - Hire-time follow-up issues for new agents are **discouraged**; if required, use **AI-Admin Project** only (`CREATE_AGENT_ISSUE_TITLE` coordination task).
