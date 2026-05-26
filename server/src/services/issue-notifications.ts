@@ -13,6 +13,7 @@ import { sendSystemEmail } from "./human-invite-email.js";
 import {
   buildHumanApprovalEmailBodies,
   buildIssueNotificationEmailBodies,
+  issueCommentUrl,
 } from "./system-email-templates.js";
 import { notificationService } from "./notifications.js";
 
@@ -143,6 +144,11 @@ export function issueNotificationService(db: Db) {
           assigneeUserId: issues.assigneeUserId,
           createdByUserId: issues.createdByUserId,
           issuePrefix: companies.issuePrefix,
+          companyName: companies.name,
+          issueDescription: issues.description,
+          issuePriority: issues.priority,
+          issueStatus: issues.status,
+          issueDueAt: issues.dueAt,
         })
         .from(issues)
         .innerJoin(companies, eq(companies.id, issues.companyId))
@@ -179,6 +185,7 @@ export function issueNotificationService(db: Db) {
         "http://localhost:3100";
       const normalizedAppBaseUrl = appBaseUrl.replace(/\/+$/, "");
       const issueUrl = `${normalizedAppBaseUrl}/${encodeURIComponent(issue.issuePrefix)}/issues/${encodeURIComponent(issue.id)}`;
+      const boardUrl = `${normalizedAppBaseUrl}/${encodeURIComponent(issue.issuePrefix)}/projects/${encodeURIComponent(issue.projectId)}/issues`;
 
       const resolvedActorLabel = await resolveActorLabel(db, {
         actorType: input.actorType,
@@ -257,9 +264,19 @@ export function issueNotificationService(db: Db) {
           actorLabel: resolvedActorLabel,
           oldStatus: input.payload.oldStatus,
           newStatus: input.payload.newStatus,
+          changes: null,
           commentSnippet: readableCommentSnippet,
           assignedUserName: resolvedAssignedUserName,
           issueUrl,
+          commentUrl: null,
+          projectName: project.name,
+          departmentPath: null,
+          issueDescription: issue.issueDescription,
+          priority: issue.issuePriority,
+          currentStatus: input.payload.newStatus ?? issue.issueStatus,
+          dueAt: issue.issueDueAt,
+          boardUrl,
+          occurredAt: new Date(),
         });
         const createdNotification = await notifications.create({
           userId: recipient.id,
@@ -396,6 +413,14 @@ export function issueNotificationService(db: Db) {
           issueTitle: input.payload.issueTitle,
           approvalStepName: approvalStatus.name,
           issueUrl,
+          approveUrl: null,
+          rejectUrl: null,
+          decisionDeadline: null,
+          governanceDescription: null,
+          actorLabel: input.payload.actorLabel ?? null,
+          actorType: input.actorType,
+          projectName: project.name,
+          departmentPath: null,
         });
 
         const createdNotification = await notifications.create({
@@ -542,6 +567,7 @@ export function issueNotificationService(db: Db) {
         const readableCommentSnippet = humanizeCommentSnippet(input.payload.commentSnippet);
 
         const inAppMessage = `${actor} mentioned you in a comment${readableCommentSnippet ? `: "${readableCommentSnippet}"` : "."}`;
+        const commentUrl = issueCommentUrl(issueUrl, input.commentId);
         const { textBody: emailText, htmlBody } = buildIssueNotificationEmailBodies({
           recipientName: recipient.name,
           issueIdentifier: input.payload.issueIdentifier,
@@ -551,6 +577,10 @@ export function issueNotificationService(db: Db) {
           actorLabel: resolvedActorLabel,
           commentSnippet: readableCommentSnippet,
           issueUrl,
+          commentUrl,
+          projectName: notificationTitleScope,
+          departmentPath: null,
+          occurredAt: new Date(),
         });
 
         const createdNotification = await notifications.create({

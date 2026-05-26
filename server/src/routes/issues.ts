@@ -52,7 +52,11 @@ import { logger } from "../middleware/logger.js";
 import { forbidden, HttpError, unauthorized, unprocessable } from "../errors.js";
 import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
 import { shouldWakeAssigneeOnCheckout } from "./issues-checkout-wakeup.js";
-import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
+import {
+  isAllowedContentType,
+  MAX_ATTACHMENT_BYTES,
+  resolveAttachmentContentType,
+} from "../attachment-types.js";
 import { queueIssueAssignmentWakeup } from "../services/issue-assignment-wakeup.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
@@ -2006,7 +2010,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       res.status(400).json({ error: "Missing file field 'file'" });
       return;
     }
-    const contentType = (file.mimetype || "").toLowerCase();
+    const contentType = resolveAttachmentContentType(file.mimetype, file.originalname);
     if (!isAllowedContentType(contentType)) {
       res.status(422).json({ error: `Unsupported attachment type: ${contentType || "unknown"}` });
       return;

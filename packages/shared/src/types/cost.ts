@@ -59,12 +59,23 @@ export interface StripePortalSession {
 export interface StripeCheckoutSession {
   sessionId: string;
   url: string;
+  /** True when an existing open Checkout session was returned for the same idempotency key. */
+  reused?: boolean;
 }
+
+export type StripeCheckoutCreditResult =
+  | "credited"
+  | "already_credited"
+  | "not_paid"
+  | "invalid_amount"
+  | "no_company";
 
 export interface StripeCheckoutSessionStatus {
   sessionId: string;
   status: "paid" | "unpaid";
   paymentStatus: string | null;
+  credited: boolean;
+  creditResult: StripeCheckoutCreditResult | null;
 }
 
 /** Stripe Invoice summary for Billing UI (from `stripe.invoices.list`). */

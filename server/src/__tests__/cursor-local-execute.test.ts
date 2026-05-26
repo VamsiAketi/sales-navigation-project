@@ -301,6 +301,9 @@ describe("cursor execute", () => {
           command: commandPath,
           cwd: workspace,
           model: "auto",
+          env: {
+            CURSOR_CONFIG_DIR: path.join(root, ".cursor"),
+          },
           paperclipRuntimeSkills: [
             {
               name: "paperclip",
@@ -327,7 +330,10 @@ describe("cursor execute", () => {
       expect(result.exitCode).toBe(0);
       expect(result.errorMessage).toBeNull();
       const skillsHome = resolveCursorSkillsHomeFromEnv(
-        applyCursorAgentStateDirs("agent-1", { HOME: root }),
+        applyCursorAgentStateDirs("agent-1", {
+          HOME: root,
+          CURSOR_CONFIG_DIR: path.join(root, ".cursor"),
+        }),
       );
       expect((await fs.lstat(path.join(skillsHome, "ascii-heart"))).isSymbolicLink()).toBe(true);
       expect(await fs.realpath(path.join(skillsHome, "ascii-heart"))).toBe(

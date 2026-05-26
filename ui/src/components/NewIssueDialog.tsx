@@ -254,10 +254,16 @@ const EXECUTION_WORKSPACE_MODES = [
   { value: "isolated_workspace", label: "New isolated workspace" },
   { value: "reuse_existing", label: "Reuse existing workspace" },
 ] as const;
+/** Matches server: first task on a backlog/planned project is always created in Todo. */
+const PROJECT_STATUSES_FORCE_TODO_ON_CREATE = new Set(["backlog", "planned"]);
 const REQUIRED_FIELD_MARKER = "*";
 
 export function formatRequiredFieldLabel(label: string) {
   return `${label} ${REQUIRED_FIELD_MARKER}`;
+}
+
+export function shouldForceTodoStatusOnCreateForProject(projectStatus: string | null | undefined) {
+  return Boolean(projectStatus && PROJECT_STATUSES_FORCE_TODO_ON_CREATE.has(projectStatus));
 }
 
 function defaultProjectWorkspaceIdForProject(project: { workspaces?: Array<{ id: string; isPrimary: boolean }>; executionWorkspacePolicy?: { defaultProjectWorkspaceId?: string | null } | null } | null | undefined) {
@@ -464,9 +470,20 @@ export function NewIssueDialog() {
     companyId: effectiveCompanyId,
     userId: currentUserId,
   });
+  const currentProject = useMemo(
+    () => orderedProjects.find((project) => project.id === projectId),
+    [orderedProjects, projectId],
+  );
+  const shouldForceTodoOnCreate = shouldForceTodoStatusOnCreateForProject(currentProject?.status);
+
+  useEffect(() => {
+    if (!newIssueOpen || !shouldForceTodoOnCreate) return;
+    setStatus("todo");
+  }, [newIssueOpen, shouldForceTodoOnCreate, projectId]);
 
   useEffect(() => {
     if (!newIssueOpen || !projectId || rawProjectStatuses.length === 0 || isCreateAgentPreset) return;
+    if (shouldForceTodoOnCreate) return;
     const selectableValues = new Set(selectableProjectStatuses.map((s) => s.value));
     if (selectableValues.size === 0) return;
     if (selectableValues.has(status)) return;
@@ -477,6 +494,7 @@ export function NewIssueDialog() {
     projectId,
     rawProjectStatuses,
     selectableProjectStatuses,
+    shouldForceTodoOnCreate,
     status,
   ]);
 
@@ -869,7 +887,7 @@ export function NewIssueDialog() {
     const selectedReusableExecutionWorkspace = deduplicatedReusableWorkspaces.find(
       (workspace) => workspace.id === selectedExecutionWorkspaceId,
     );
-    const submitStatus = status;
+    const submitStatus = shouldForceTodoOnCreate ? "todo" : status;
     const requestedExecutionWorkspaceMode =
       executionWorkspaceMode === "reuse_existing"
         ? issueExecutionWorkspaceModeForExistingWorkspace(selectedReusableExecutionWorkspace?.mode)
@@ -974,8 +992,7 @@ export function NewIssueDialog() {
   const currentAssignee = selectedAssigneeAgentId
     ? (agents ?? []).find((a) => a.id === selectedAssigneeAgentId)
     : null;
-  const currentProject = orderedProjects.find((project) => project.id === projectId);
-  const statusForCreate = status;
+  const statusForCreate = shouldForceTodoOnCreate ? "todo" : status;
   const currentStatus =
     selectableProjectStatuses.length > 0
       ? (selectableProjectStatuses.find((s) => s.value === statusForCreate)
@@ -1115,10 +1132,10 @@ export function NewIssueDialog() {
     if (nextProjectId) {
       setProjectValidationError(null);
     }
-    if (!isCreateAgentPreset) {
-      setStatus("backlog");
-    }
     const nextProject = orderedProjects.find((project) => project.id === nextProjectId);
+    if (!isCreateAgentPreset) {
+      setStatus(shouldForceTodoStatusOnCreateForProject(nextProject?.status) ? "todo" : "backlog");
+    }
     executionWorkspaceDefaultProjectId.current = nextProjectId || null;
     setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(nextProject));
     setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(nextProject));
@@ -1441,6 +1458,11 @@ export function NewIssueDialog() {
               </span>
             </div>
           </div>
+          {shouldForceTodoOnCreate ? (
+            <div className="pt-1 text-xs text-muted-foreground">
+              This project will create the task in Todo.
+            </div>
+          ) : null}
         </div>
 
         {currentProject && currentProjectSupportsExecutionWorkspace && (
@@ -1658,10 +1680,28 @@ export function NewIssueDialog() {
         {/* Property chips bar */}
         <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap shrink-0">
           {/* Status chip */}
-          <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+          <Popover
+            open={statusOpen}
+            onOpenChange={(open) => {
+              if (shouldForceTodoOnCreate) {
+                setStatusOpen(false);
+                return;
+              }
+              setStatusOpen(open);
+            }}
+          >
             <PopoverTrigger asChild>
               <button
-                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-accent/50"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs transition-colors",
+                  shouldForceTodoOnCreate ? "cursor-default text-muted-foreground" : "hover:bg-accent/50",
+                )}
+                disabled={shouldForceTodoOnCreate}
+                title={
+                  shouldForceTodoOnCreate
+                    ? "New tasks in Backlog or Planned projects start in Todo."
+                    : undefined
+                }
               >
                 {selectableProjectStatuses.length > 0 ? (
                   <span

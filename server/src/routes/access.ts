@@ -16,6 +16,7 @@ import {
   agentApiKeys,
   assets,
   authUsers,
+  companies,
   companyMemberships,
   instanceUserRoles,
   invites,
@@ -2323,12 +2324,40 @@ export function accessRoutes(
       );
       const signInBaseUrl = requestBaseUrl(req);
       const signInUrl = signInBaseUrl ? `${signInBaseUrl}/auth` : "/auth";
+
+      const company = await db
+        .select({ name: companies.name, issuePrefix: companies.issuePrefix })
+        .from(companies)
+        .where(eq(companies.id, companyId))
+        .then((rows) => rows[0] ?? null);
+
+      let inviterName: string | null = null;
+      if (req.actor.type === "board" && req.actor.userId) {
+        inviterName = await db
+          .select({ name: authUsers.name })
+          .from(authUsers)
+          .where(eq(authUsers.id, req.actor.userId))
+          .then((rows) => rows[0]?.name?.trim() ?? null);
+      } else if (req.actor.type === "agent" && req.actor.agentId) {
+        inviterName = await db
+          .select({ name: dbAgents.name })
+          .from(dbAgents)
+          .where(eq(dbAgents.id, req.actor.agentId))
+          .then((rows) => rows[0]?.name?.trim() ?? null);
+      }
+
       const emailDelivery = await sendHumanInviteEmail({
         toEmail: createdAuthUser.userEmail,
         toName: createdAuthUser.userName,
         temporaryUsername: createdAuthUser.userEmail,
         temporaryPassword,
-        signInUrl
+        signInUrl,
+        inviterName,
+        companyName: company?.name ?? null,
+        workspaceSlug: null,
+        membershipRole: null,
+        projectNames: null,
+        expiryHours: null,
       });
       if (emailDelivery.status === "failed") {
         logger.warn(

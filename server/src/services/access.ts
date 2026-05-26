@@ -179,7 +179,8 @@ export function accessService(db: Db) {
     row: MembershipRow | null,
   ) {
     const cache = getAccessRequestCache();
-    if (!cache) return;
+    // Do not cache absent lookups; otherwise ensureMembership can insert twice in one request.
+    if (!cache || !row) return;
     cache.membershipByKey.set(membershipCacheKey(companyId, principalType, principalId), row);
   }
 

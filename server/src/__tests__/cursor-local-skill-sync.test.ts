@@ -14,7 +14,10 @@ async function makeTempDir(prefix: string): Promise<string> {
 }
 
 function cursorSkillsHomeForAgent(home: string, agentId: string): string {
-  const env = applyCursorAgentStateDirs(agentId, { HOME: home });
+  const env = applyCursorAgentStateDirs(agentId, {
+    HOME: home,
+    CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
+  });
   return resolveCursorSkillsHomeFromEnv(env);
 }
 
@@ -45,6 +48,7 @@ describe("cursor local skill sync", () => {
       config: {
         env: {
           HOME: home,
+          CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
         },
         paperclipSkillSync: {
           desiredSkills: [paperclipKey],
@@ -81,6 +85,7 @@ describe("cursor local skill sync", () => {
       config: {
         env: {
           HOME: home,
+          CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
         },
         paperclipRuntimeSkills: [
           {
@@ -126,6 +131,7 @@ describe("cursor local skill sync", () => {
       config: {
         env: {
           HOME: home,
+          CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
         },
         paperclipSkillSync: {
           desiredSkills: [paperclipKey],
@@ -140,6 +146,7 @@ describe("cursor local skill sync", () => {
       config: {
         env: {
           HOME: home,
+          CURSOR_CONFIG_DIR: path.join(home, ".cursor"),
         },
         paperclipSkillSync: {
           desiredSkills: [],

@@ -2,9 +2,22 @@ import { logger } from "../middleware/logger.js";
 import {
   buildHumanInviteEmailBodies,
   buildPasswordResetEmailBodies,
+  humanInviteEmailSubject,
 } from "./system-email-templates.js";
 
-export { buildPasswordResetEmailBodies } from "./system-email-templates.js";
+export {
+  buildDailyDigestEmailBodies,
+  buildHumanApprovalEmailBodies,
+  buildHumanInviteEmailBodies,
+  buildIssueNotificationEmailBodies,
+  buildPasswordResetEmailBodies,
+  buildSignInOtpEmailBodies,
+  buildSystemAlertEmailBodies,
+  humanInviteEmailSubject,
+  issueCommentUrl,
+} from "./system-email-templates.js";
+export { issueEmailBatchWindowMs, mergeIssueEmailChanges } from "./issue-notification-email-batch.js";
+export { readBrandedFromEmail, readEmailFooterLinks } from "./email-footer-config.js";
 
 export type HumanInviteEmailInput = {
   toEmail: string;
@@ -12,6 +25,12 @@ export type HumanInviteEmailInput = {
   temporaryUsername: string;
   temporaryPassword: string;
   signInUrl: string;
+  inviterName?: string | null;
+  companyName?: string | null;
+  workspaceSlug?: string | null;
+  membershipRole?: string | null;
+  projectNames?: string[] | null;
+  expiryHours?: number | null;
 };
 
 export type HumanInviteEmailDelivery = {
@@ -301,10 +320,16 @@ export async function sendHumanInviteEmail(
     temporaryUsername: input.temporaryUsername,
     temporaryPassword: input.temporaryPassword,
     signInUrl: input.signInUrl,
+    inviterName: input.inviterName,
+    companyName: input.companyName,
+    workspaceSlug: input.workspaceSlug,
+    membershipRole: input.membershipRole,
+    projectNames: input.projectNames,
+    expiryHours: input.expiryHours,
   });
   const delivery = await sendSystemEmail({
     toEmail: input.toEmail,
-    subject: "You have been invited to AI-Harness",
+    subject: humanInviteEmailSubject(input.companyName),
     textBody,
     htmlBody,
   });
