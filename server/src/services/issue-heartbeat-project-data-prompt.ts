@@ -4,6 +4,7 @@ import { projectDataService } from "./project-data.js";
 import {
   buildProjectDashboardApiGuide,
   buildProjectDataApiGuide,
+  formatProjectDashboardAgentGuidance,
   type ProjectDataObjectGuideInput,
 } from "./project-data-api-guide.js";
 
@@ -45,10 +46,9 @@ export function buildIssueProjectDataInvocationPrompt(input: IssueProjectDataInv
   lines.push(
     "",
     "### Dashboards (read + maintain)",
-    ...projectDashboardApi.rules.map((rule) => `- ${rule}`),
-    `- List dashboards: \`${projectDashboardApi.routes.listViews}\``,
-    `- Read widget data: \`${projectDashboardApi.routes.widgetData}\``,
-    `- Add widget: \`${projectDashboardApi.routes.createWidget}\` (types: kpi, table, chart, markdown; set queryRef to a data/query payload)`,
+    formatProjectDashboardAgentGuidance(),
+    `- List: \`${projectDashboardApi.routes.listViews}\` · Widget data: \`${projectDashboardApi.routes.widgetData}\``,
+    `- Add widget: \`${projectDashboardApi.routes.createWidget}\` (types: kpi, table, chart, markdown)`,
   );
 
   if (projectDashboardApi.dashboards.length > 0) {
@@ -126,7 +126,10 @@ export async function loadIssueProjectDataPromptForRun(
         id: widget.id,
         title: widget.title,
         type: widget.type,
+        position: widget.position,
         queryRef: widget.queryRef,
+        config: widget.config,
+        layout: widget.layout,
       })),
     })),
     { exampleTableName: projectDataApi.tables[0]?.name ?? null },

@@ -4,7 +4,7 @@ import {
   computeIssueRunPromptFingerprint,
   stageLikelyNeedsProjectData,
 } from "../services/issue-run-prompt-digest.js";
-import { buildProjectDashboardApiGuide, buildProjectDataApiGuide } from "../services/project-data-api-guide.js";
+import { buildProjectDashboardApiGuide, buildProjectDataApiGuide, formatProjectDashboardAgentGuidance } from "../services/project-data-api-guide.js";
 
 describe("stageLikelyNeedsProjectData", () => {
   it("includes data when tables exist", () => {
@@ -44,6 +44,15 @@ describe("stageLikelyNeedsProjectData", () => {
   });
 });
 
+describe("formatProjectDashboardAgentGuidance", () => {
+  it("discourages agent telemetry dashboards", () => {
+    const text = formatProjectDashboardAgentGuidance();
+    expect(text).toContain("business users");
+    expect(text).toContain("heartbeat runs");
+    expect(text).toContain("run logs");
+  });
+});
+
 describe("buildCompactDataSection", () => {
   it("lists tables without repeating full rule blocks", () => {
     const projectId = "proj-1";
@@ -61,7 +70,8 @@ describe("buildCompactDataSection", () => {
     const text = buildCompactDataSection(projectId, projectDataApi, projectDashboardApi);
     expect(text).toContain("**items**");
     expect(text).toContain("POST /api/projects/proj-1/data");
-    expect(text).not.toContain("Design table and column names");
+    expect(text).toContain("operators");
+    expect(text).toContain("heartbeat logs");
   });
 });
 

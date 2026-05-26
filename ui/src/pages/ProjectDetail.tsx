@@ -724,7 +724,7 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "overview" && project?.id && resolvedCompanyId && (
-        <div className="max-w-5xl pb-2">
+        <div className="pb-6">
           <ProjectContextPanel
             projectId={project.id}
             companyId={resolvedCompanyId}
@@ -821,7 +821,7 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "dashboards" && project?.id && resolvedCompanyId && (
-        <div className="max-w-5xl pb-2">
+        <div className="pb-4">
           <ProjectContextPanel projectId={project.id} companyId={resolvedCompanyId} mode="dashboards" />
         </div>
       )}

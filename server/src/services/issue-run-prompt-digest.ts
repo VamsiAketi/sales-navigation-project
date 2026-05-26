@@ -170,7 +170,7 @@ export function buildCompactDataSection(
   }
 
   if (projectDashboardApi.dashboards.length > 0) {
-    lines.push("- Dashboards:");
+    lines.push("- Dashboards (business-facing — KPIs/charts on operational data, not run logs):");
     for (const dashboard of projectDashboardApi.dashboards.slice(0, MAX_DASHBOARDS_LISTED)) {
       const widgetSummary =
         dashboard.widgets.length > 0
@@ -180,6 +180,11 @@ export function buildCompactDataSection(
     }
     lines.push(`- Widget data: \`${projectDashboardApi.routes.widgetData}\``);
   }
+
+  lines.push(
+    "",
+    "**Dashboards:** for operators — pipeline KPIs, funnel charts, readable tables. Never widget run IDs, heartbeat logs, or agent telemetry.",
+  );
 
   return lines.join("\n").trim();
 }

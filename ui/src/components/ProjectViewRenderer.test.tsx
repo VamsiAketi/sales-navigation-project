@@ -25,6 +25,10 @@ function makeWidget(overrides: Partial<ProjectViewWidget>): ProjectViewWidget {
   };
 }
 
+function makeRows(count: number): Record<string, unknown>[] {
+  return Array.from({ length: count }, (_, i) => ({ name: `Row ${i + 1}`, value: i + 1 }));
+}
+
 describe("ProjectViewRenderer", () => {
   let container: HTMLDivElement;
 
@@ -65,6 +69,7 @@ describe("ProjectViewRenderer", () => {
         type: "markdown",
         title: "Notes",
         config: { markdown: "## Summary\nhello" },
+        layout: { maxHeight: 200 },
       }),
       makeWidget({ id: "tbl-1", type: "table", title: "Table widget" }),
     ];
@@ -79,6 +84,61 @@ describe("ProjectViewRenderer", () => {
 
     expect(container.textContent).toContain("Summary");
     expect(container.textContent).toContain("Invalid widget queryRef configuration");
+    const scroll = container.querySelector("[style*='max-height']");
+    expect(scroll).toBeTruthy();
+
+    act(() => root.unmount());
+  });
+
+  it("paginates table rows using config.pageSize", () => {
+    const root = createRoot(container);
+    const widgets = [
+      makeWidget({
+        id: "tbl-1",
+        type: "table",
+        title: "Leads",
+        config: { pageSize: 5 },
+      }),
+    ];
+    const widgetDataById = {
+      "tbl-1": { rows: makeRows(12), error: null },
+    };
+
+    act(() => {
+      root.render(<ProjectViewRenderer widgets={widgets} widgetDataById={widgetDataById} />);
+    });
+
+    expect(container.textContent).toContain("Row 1");
+    expect(container.textContent).not.toContain("Row 6");
+    expect(container.textContent).toContain("1–5 of 12");
+
+    const next = container.querySelector('button[aria-label="Next page"]') as HTMLButtonElement;
+    act(() => next.click());
+
+    expect(container.textContent).toContain("Row 6");
+    expect(container.textContent).toContain("6–10 of 12");
+
+    act(() => root.unmount());
+  });
+
+  it("applies colSpan layout classes for wide widgets", () => {
+    const root = createRoot(container);
+    const widgets = [
+      makeWidget({
+        id: "tbl-1",
+        type: "table",
+        layout: { colSpan: 2 },
+      }),
+    ];
+    const widgetDataById = {
+      "tbl-1": { rows: makeRows(1), error: null },
+    };
+
+    act(() => {
+      root.render(<ProjectViewRenderer widgets={widgets} widgetDataById={widgetDataById} />);
+    });
+
+    expect(container.querySelector(".sm\\:col-span-2")).toBeTruthy();
 
     act(() => root.unmount());
   });

@@ -7,6 +7,7 @@ import {
   cancelMaintenanceRequestForHeartbeatRun,
   reconcileMaintenanceRequestForFinishedRun,
 } from "./project-maintenance-queue.js";
+import { formatProjectDashboardAgentGuidance } from "./project-data-api-guide.js";
 
 const RETRY_BACKOFF_BASE_MS = Number(process.env.PAPERCLIP_CONTEXT_SYNC_RETRY_BACKOFF_MS ?? 15_000);
 
@@ -125,6 +126,9 @@ function wakePromptForRequest(row: MaintenanceRow) {
       `User request: ${row.description}`,
       "",
       "Important: dataSchemaName is internal — never put it in API URLs. Use the project UUID and registered table names.",
+      "",
+      "Audience: dashboards are for **business users** on the project Context tab — operational insight only.",
+      formatProjectDashboardAgentGuidance(),
       "",
       "Required steps:",
       `1) GET /api/projects/${row.projectId}/context — read projectDataApi + projectDashboardApi summaries (tables, columns, existing dashboards).`,

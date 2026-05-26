@@ -63,7 +63,21 @@ On issue heartbeats, prefer `projectContext.projectDataApi` from `GET /api/issue
 
 ## Dashboard API (views / widgets)
 
-Dashboards live under **Project → Context → Dashboards** in the UI. Widgets visualize data via `queryRef` (a `POST .../data/query` payload).
+Dashboards live under **Project → Context → Dashboards** in the UI. They are **operator-facing**: pipeline health, funnel KPIs, trends, and readable tables over **project data** — not agent runtime telemetry.
+
+**Build for business users**
+
+- **Do:** KPIs and charts on operational tables (counts by stage, leads this week, conversion, regional mix, aging backlog).
+- **Do:** table widgets with business columns (account, status, owner, date) — titles in plain language.
+- **Do:** use `kpi`, `chart`, `table`, or short `markdown` summaries when appropriate.
+
+**Do not**
+
+- Heartbeat runs, run IDs, run logs, agent IDs, issue UUIDs, API routes, or token/cost widgets unless the user explicitly asked for an engineering/debug view.
+- Raw log excerpts or “last agent run” style metrics.
+- Duplicating the Issues board as a dashboard — tasks stay on the board; dashboards summarize **business records** in project data tables.
+
+Widgets visualize data via `queryRef` (a `POST .../data/query` payload on registered tables/views).
 
 | Action | Route | Permission |
 | ------ | ----- | ---------- |
@@ -76,6 +90,33 @@ Dashboards live under **Project → Context → Dashboards** in the UI. Widgets 
 
 Widget `type`: `kpi`, `table`, `chart`, or `markdown`. Set `queryRef` to `{ ref: { kind: "table", name: "{tableName}" }, limit: 25, offset: 0 }` using a registered table name.
 
+**Presentation (agents control readability via `layout` + `config`):**
+
+| Field | Purpose |
+| ----- | ------- |
+| `layout.colSpan` | `1` (default), `2`, or `3` (full width) on the dashboard grid |
+| `layout.maxHeight` | Scrollable body for **table** or **markdown** (e.g. `320`–`480` px) |
+| `layout.chartHeight` | Bar chart height in px (e.g. `200`–`280`) |
+| `layout.minHeight` | Minimum tile height in px |
+| `config.pageSize` | Table rows per page (`5`–`50`, default `15`); set `queryRef.limit` up to `100` so pagination has data |
+| `config.columns` | Optional column order/filter for tables |
+| `config.compact` | Denser table typography |
+| `config.markdown` | Markdown body for `type: markdown` |
+| `position` | Sort order (`0`, `10`, `20`…) — KPIs first, then charts, then tables |
+
+Example table widget:
+
+```json
+{
+  "title": "Recent leads",
+  "type": "table",
+  "position": 20,
+  "queryRef": { "ref": { "kind": "table", "name": "leads" }, "limit": 100, "offset": 0 },
+  "config": { "pageSize": 15, "compact": true },
+  "layout": { "colSpan": 2, "maxHeight": 400 }
+}
+```
+
 `GET /api/projects/{projectId}/context` returns `projectDataApi` and `projectDashboardApi` summaries (tables with columns, existing dashboards/widgets). **Do not** use `/data-objects` — the correct path is `/data/objects`.
 
 ## Maintenance request types
@@ -84,7 +125,7 @@ Widget `type`: `kpi`, `table`, `chart`, or `markdown`. Set `queryRef` to `{ ref:
 | ---- | ----------------- |
 | `context_summary` | Business project summary + workflow playbook refreshed from files/project state |
 | `workflow` | **Project issue-status pipeline** updated to match the request, plus workflow doc |
-| `dashboards` | Views/widgets created or updated for reporting |
+| `dashboards` | Business-facing views/widgets (KPIs, charts, tables on **project data** — not agent run logs) |
 
 ## Workflow maintenance (`type: workflow`)
 
@@ -231,7 +272,7 @@ From `GET /api/issues/{issueId}/heartbeat-context` (for deeper context):
 4. Read `projectContext.projectDataApi` / `projectContext.projectDashboardApi` for structured data and visibility.
 5. Use `projectWorkflow.allowedNextStages` before PATCH; never guess generic `in_progress`.
 
-**Data discipline:** structured operational records belong in project data tables — not only in issue comments. Design table/column and dashboard names from project summary, workflow, and stage playbook. After writes, verify with `POST .../data/query`. Create or update widgets when operators need ongoing visibility.
+**Data discipline:** structured operational records belong in project data tables — not only in issue comments. Design table/column and dashboard names from project summary, workflow, and stage playbook. Dashboards must highlight **useful business KPIs and charts** for operators — never run logs, run IDs, or agent telemetry widgets. After writes, verify with `POST .../data/query`. Create or update widgets when operators need ongoing visibility.
 
 ## Context sync (`project_maintenance_request` / `project_context_sync`)
 

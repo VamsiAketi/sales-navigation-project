@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { projectsApi } from "@/api/projects";
 import { assetsApi } from "@/api/assets";
 import { queryKeys } from "@/lib/queryKeys";
@@ -13,16 +11,18 @@ import { useToast } from "@/context/ToastContext";
 import { ProjectViewRenderer } from "@/components/ProjectViewRenderer";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
-import { MarkdownBody } from "@/components/MarkdownBody";
 import type { ProjectMaintenanceRequest, ProjectView } from "@paperclipai/shared";
-import { FileText, Database, LayoutDashboard, Pencil, RefreshCw, Trash2, WandSparkles } from "lucide-react";
+import { ChevronDown, Database, LayoutDashboard, RefreshCw, WandSparkles } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { ProjectOverviewPanel } from "@/components/ProjectOverviewPanel";
 
 type MaintenanceType = "context_summary" | "dashboards" | "workflow";
 
-const MAINTENANCE_TYPE_OPTIONS: Array<{ value: MaintenanceType; label: string }> = [
-  { value: "context_summary", label: "Project summary and context" },
-  { value: "dashboards", label: "Dashboards and reporting" },
-  { value: "workflow", label: "Workflow stages and handoffs" },
+const MAINTENANCE_TYPE_OPTIONS: Array<{ value: MaintenanceType; label: string; shortLabel: string }> = [
+  { value: "context_summary", label: "Project summary and context", shortLabel: "Context" },
+  { value: "dashboards", label: "Dashboards and reporting", shortLabel: "Dashboards" },
+  { value: "workflow", label: "Workflow stages and handoffs", shortLabel: "Workflow" },
 ];
 
 const MAINTENANCE_TEMPLATES: Record<MaintenanceType, string> = {
@@ -34,20 +34,12 @@ const MAINTENANCE_TEMPLATES: Record<MaintenanceType, string> = {
     "Set up a complete sales workflow for this project: review all existing stages, add any missing pipeline stages (lead, qualified, proposal, won/lost, etc.), configure transitions and default assignees between stages, and rewrite the workflow summary as a business playbook (per-stage purpose, ownership, entry/exit, handoffs, approvals). Do not only adjust transition validations on existing stages, and do not put API or technical field names in the workflow summary document.",
 };
 const PREVIEW_CHAR_LIMIT = 12_000;
-const DOCUMENT_EDITOR_TEXTAREA_CLASS =
-  "max-h-[28rem] min-h-[12rem] resize-y overflow-y-auto field-sizing-fixed border-primary/60 ring-2 ring-primary/20";
-const DOCUMENT_PREVIEW_SCROLL_CLASS =
-  "max-h-[28rem] min-h-[12rem] overflow-y-auto overscroll-y-contain";
 const AUTO_MAINTENANCE_DESCRIPTIONS = new Set([
   "refresh project context from project updates",
   "refresh project context from newly extracted files",
   "initial project context sync",
   "manual context sync requested.",
 ]);
-
-function maintenanceTypeLabel(value: MaintenanceType): string {
-  return MAINTENANCE_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
-}
 
 function formatDate(value: unknown): string {
   if (typeof value !== "string") return "n/a";
@@ -70,98 +62,6 @@ function clampPreviewBody(value: string): { text: string; truncated: boolean } {
   return { text: `${value.slice(0, PREVIEW_CHAR_LIMIT)}\n\n---\nPreview truncated for readability. Use manual edit to view full content.`, truncated: true };
 }
 
-function ProjectDocumentPanel({
-  title,
-  description,
-  isEditing,
-  isSaving,
-  body,
-  previewText,
-  previewTruncated,
-  placeholder,
-  emptyMessage,
-  onStartEdit,
-  onCancel,
-  onSave,
-  onBodyChange,
-  readOnly = false,
-}: {
-  title: string;
-  description: string;
-  isEditing: boolean;
-  isSaving: boolean;
-  body: string;
-  previewText: string;
-  previewTruncated: boolean;
-  placeholder: string;
-  emptyMessage: string;
-  onStartEdit: () => void;
-  onCancel: () => void;
-  onSave: () => void;
-  onBodyChange: (value: string) => void;
-  readOnly?: boolean;
-}) {
-  return (
-    <section className="flex min-h-[22rem] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xs">
-      <div className="flex items-start justify-between gap-3 border-b border-border/70 px-4 py-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold leading-tight">{title}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-        </div>
-        {readOnly ? (
-          <Badge variant="outline" className="shrink-0 text-muted-foreground">
-            Read-only
-          </Badge>
-        ) : !isEditing ? (
-          <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={onStartEdit}>
-            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-            Edit
-          </Button>
-        ) : (
-          <Badge variant="secondary" className="shrink-0">Editing</Badge>
-        )}
-      </div>
-
-      <div className="flex flex-1 flex-col p-4">
-        {isEditing ? (
-          <>
-            <Textarea
-              value={body}
-              onChange={(event) => onBodyChange(event.target.value)}
-              rows={12}
-              className={cn(DOCUMENT_EDITOR_TEXTAREA_CLASS, "flex-1")}
-              placeholder={placeholder}
-            />
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
-              <Button size="sm" onClick={onSave} disabled={isSaving}>
-                Save draft
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={isSaving}>
-                Cancel
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className={cn(DOCUMENT_PREVIEW_SCROLL_CLASS, "rounded-md border border-border/60 bg-muted/20 p-4")}>
-              {body.trim().length > 0 ? (
-                <MarkdownBody>{previewText}</MarkdownBody>
-              ) : (
-                <p className="text-sm leading-relaxed text-muted-foreground">{emptyMessage}</p>
-              )}
-            </div>
-            {previewTruncated ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Preview truncated for readability. Edit to view the full document.
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
-    </section>
-  );
-}
-
 function DashboardListItem({
   view,
   selected,
@@ -179,55 +79,44 @@ function DashboardListItem({
         type="button"
         onClick={onSelect}
         className={cn(
-          "w-full rounded-lg border px-3 py-2.5 text-left transition-colors",
+          "group relative w-full rounded-md px-3 py-2.5 text-left transition-colors",
           selected
-            ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
-            : "border-border/70 bg-background hover:bg-muted/30",
+            ? "bg-primary/10 text-foreground"
+            : "text-foreground/90 hover:bg-muted/40",
         )}
       >
-        <div className="flex items-start justify-between gap-2">
-          <span className="text-sm font-medium leading-snug">{view.name}</span>
-          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-            {formatDate(view.updatedAt)}
-          </span>
-        </div>
-        {view.description ? (
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{view.description}</p>
+        {selected ? (
+          <span
+            className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary"
+            aria-hidden
+          />
         ) : null}
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {widgetCount != null ? `${widgetCount} widget${widgetCount === 1 ? "" : "s"}` : "Select to preview"}
-        </p>
+        <div className="flex items-start gap-2 pl-1">
+          <LayoutDashboard
+            className={cn(
+              "mt-0.5 h-3.5 w-3.5 shrink-0",
+              selected ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
+            )}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <span className="truncate text-sm font-medium leading-snug">{view.name}</span>
+              {widgetCount != null ? (
+                <span className="shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                  {widgetCount}
+                </span>
+              ) : null}
+            </div>
+            {view.description ? (
+              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{view.description}</p>
+            ) : null}
+            <p className="mt-1 text-[10px] text-muted-foreground tabular-nums">
+              Updated {formatDate(view.updatedAt)}
+            </p>
+          </div>
+        </div>
       </button>
     </li>
-  );
-}
-
-function MaintenanceRequestRow({
-  request,
-  compact = false,
-}: {
-  request: ProjectMaintenanceRequest;
-  compact?: boolean;
-}) {
-  const auto = isAutoMaintenanceRequest(request);
-  return (
-    <div
-      className={cn(
-        "flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5",
-        auto ? "border-border/50 bg-muted/15" : "border-border/70 bg-background",
-      )}
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-snug">{maintenanceTypeLabel(request.type)}</p>
-        <p className={cn("mt-0.5 text-muted-foreground", compact ? "text-[11px] line-clamp-1" : "text-xs line-clamp-2")}>
-          {auto ? "Automatic background sync" : summarizeText(request.description, compact ? 90 : 160)}
-        </p>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <StatusBadge status={request.status} />
-        <span className="text-[11px] text-muted-foreground">{formatDate(request.createdAt)}</span>
-      </div>
-    </div>
   );
 }
 
@@ -257,8 +146,10 @@ export function ProjectContextPanel({
   const [selectedViewId, setSelectedViewId] = useState<string>("");
   const [showCompletedRequests, setShowCompletedRequests] = useState(false);
   const [showDocumentSaveHistory, setShowDocumentSaveHistory] = useState(false);
+  const [dashboardRequestOpen, setDashboardRequestOpen] = useState(false);
   const [replacingFileId, setReplacingFileId] = useState<string | null>(null);
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
+  const uploadFilesInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (mode === "dashboards") setMaintenanceType("dashboards");
@@ -558,242 +449,25 @@ export function ProjectContextPanel({
   const summaryPreview = clampPreviewBody(summaryBody);
   const workflowPreview = clampPreviewBody(workflowBody);
 
+  const dataSchemaReady = Boolean(contextQuery.data?.dataSchemaName);
+  const activeMaintenanceCount = maintenanceRequestGroups.active.length + maintenanceRequestGroups.userQueued.length;
+
   if (contextQuery.isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading context...</p>;
+    if (mode === "dashboards") return <PageSkeleton variant="dashboard" />;
+    return <PageSkeleton variant="detail" />;
   }
 
+  const overviewFiles = (filesQuery.data ?? []).slice(0, 20).map((file) => ({
+    id: file.id,
+    title: file.title,
+    originalFilename: file.originalFilename,
+    extractionStatus: file.extractionStatus,
+  }));
+
   return (
-    <div className="space-y-6">
+    <div className={cn("space-y-5", mode === "dashboards" && "space-y-4")}>
       {(mode === "all" || mode === "context") ? (
-      <Card>
-        <CardHeader>
-          <CardTitle>Project knowledge</CardTitle>
-          <CardDescription>
-            Business project summary (context and SOPs) plus a workflow playbook (rules per stage). Use agent requests below for AI-driven updates.
-          </CardDescription>
-          <CardAction>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => triggerSyncMutation.mutate()}
-              disabled={triggerSyncMutation.isPending}
-            >
-              <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", triggerSyncMutation.isPending && "animate-spin")} />
-              Refresh from agent
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-            <Database className="h-4 w-4 shrink-0" />
-            <span>
-              Data workspace{" "}
-              <span className="font-medium text-foreground">
-                {contextQuery.data?.dataSchemaName ? "ready" : "not initialized"}
-              </span>
-            </span>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-            <ProjectDocumentPanel
-              title="Summary"
-              description="Business context, SOPs, decisions, and risks — for humans and agents"
-              isEditing={isEditingSummary}
-              isSaving={saveSummaryMutation.isPending}
-              body={summaryBody}
-              previewText={summaryPreview.text}
-              previewTruncated={summaryPreview.truncated}
-              placeholder="Purpose, metrics, goals, decisions, risks, stakeholders, terminology, human/agent SOPs. Plain language — no API or config dumps."
-              emptyMessage="No summary yet. Edit to add one, or send an agent request below."
-              onStartEdit={() => setIsEditingSummary(true)}
-              onCancel={() => {
-                setSummaryBody((contextQuery.data?.summary as { body?: string } | null)?.body ?? "");
-                setIsEditingSummary(false);
-              }}
-              onSave={() => saveSummaryMutation.mutate()}
-              onBodyChange={setSummaryBody}
-            />
-            <ProjectDocumentPanel
-              title="Workflow"
-              description="Business rules and stage context for agents — not technical board configuration"
-              isEditing={isEditingWorkflow}
-              isSaving={saveWorkflowMutation.isPending}
-              body={workflowBody}
-              previewText={workflowPreview.text}
-              previewTruncated={workflowPreview.truncated}
-              placeholder="Per stage: purpose, owner role, entry/exit criteria, handoffs, approvals. Plain language only — no API paths or field names."
-              emptyMessage="No workflow summary yet. Edit to add one, or send an agent request below."
-              onStartEdit={() => setIsEditingWorkflow(true)}
-              onCancel={() => {
-                setWorkflowBody((contextQuery.data?.workflowSummary as { body?: string } | null)?.body ?? "");
-                setIsEditingWorkflow(false);
-              }}
-              onSave={() => saveWorkflowMutation.mutate()}
-              onBodyChange={setWorkflowBody}
-              readOnly={lockWorkflowMaintenance}
-            />
-          </div>
-        </CardContent>
-      </Card>
-      ) : null}
-
-      {(mode === "all" || mode === "context") ? (
-      <Card>
-        <CardHeader>
-          <CardTitle>Agent requests</CardTitle>
-          <CardDescription>
-            Send one-off tasks to the agent and track their status. Manual summary and workflow saves are listed at the bottom.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-3 rounded-lg border border-border/70 bg-muted/10 p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">New request</p>
-            <div className="flex flex-wrap gap-2">
-              {maintenanceTypeOptions.map((option) => (
-                <Button
-                  key={option.value}
-                  type="button"
-                  size="sm"
-                  variant={maintenanceType === option.value ? "default" : "outline"}
-                  onClick={() => setMaintenanceType(option.value)}
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
-            <Textarea
-              rows={3}
-              value={maintenanceDescription}
-              onChange={(event) => setMaintenanceDescription(event.target.value)}
-              placeholder="Describe what should change and why (at least 20 characters)."
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setMaintenanceDescription(MAINTENANCE_TEMPLATES[maintenanceType])}
-              >
-                Use example
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => createMaintenanceMutation.mutate({ type: maintenanceType, description: maintenanceDescription })}
-                disabled={createMaintenanceMutation.isPending || maintenanceDescription.trim().length < 20}
-              >
-                Send to agent
-              </Button>
-            </div>
-          </div>
-          {maintenanceRequests.length === 0 && contextHistoryItems.length === 0 ? (
-            <EmptyState
-              icon={WandSparkles}
-              message="No agent requests yet. Send one above when you want the agent to update context, workflow, or dashboards."
-            />
-          ) : null}
-          {maintenanceRequests.length > 0 ? (
-            <div className="space-y-4">
-              {maintenanceRequestGroups.active.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Active ({maintenanceRequestGroups.active.length})
-                  </p>
-                  {maintenanceRequestGroups.active.map((request) => (
-                    <MaintenanceRequestRow key={request.id} request={request} />
-                  ))}
-                </div>
-              ) : null}
-
-              {maintenanceRequestGroups.userQueued.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Waiting ({maintenanceRequestGroups.userQueued.length})
-                  </p>
-                  {maintenanceRequestGroups.userQueued.map((request) => (
-                    <MaintenanceRequestRow key={request.id} request={request} />
-                  ))}
-                </div>
-              ) : null}
-
-              {maintenanceRequestGroups.autoQueued.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Background sync ({maintenanceRequestGroups.autoQueued.length})
-                  </p>
-                  {maintenanceRequestGroups.autoQueued.map((request) => (
-                    <MaintenanceRequestRow key={request.id} request={request} compact />
-                  ))}
-                </div>
-              ) : null}
-
-              {maintenanceRequestGroups.completed.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Finished ({maintenanceRequestGroups.completed.length})
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => setShowCompletedRequests((value) => !value)}
-                    >
-                      {showCompletedRequests ? "Hide" : "Show"}
-                    </Button>
-                  </div>
-                  {showCompletedRequests
-                    ? maintenanceRequestGroups.completed.slice(0, 8).map((request) => (
-                        <MaintenanceRequestRow key={request.id} request={request} compact />
-                      ))
-                    : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {contextHistoryItems.length > 0 ? (
-            <div className="space-y-2 border-t border-border/60 pt-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Manual document saves ({contextHistoryItems.length})
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setShowDocumentSaveHistory((value) => !value)}
-                >
-                  {showDocumentSaveHistory ? "Hide" : "Show"}
-                </Button>
-              </div>
-              {showDocumentSaveHistory
-                ? contextHistoryItems.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-border/70 px-3 py-2.5 text-sm">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{item.historyKind === "summary" ? "Summary" : "Workflow"}</Badge>
-                        <span className="text-xs text-muted-foreground">Revision {item.revisionNumber}</span>
-                        <span className="text-[11px] text-muted-foreground">{formatDate(item.createdAt)}</span>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {item.changeSummary ?? "No save note provided."}
-                      </p>
-                    </div>
-                  ))
-                : null}
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-      ) : null}
-
-      {(mode === "all" || mode === "context") ? (
-      <Card>
-        <CardHeader>
-          <CardTitle>Reference Documents</CardTitle>
-          <CardDescription>Upload files directly here. We will attach them to this project automatically.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <>
           <input
             ref={replaceFileInputRef}
             type="file"
@@ -805,80 +479,90 @@ export function ProjectContextPanel({
               event.target.value = "";
             }}
           />
-          <div className="space-y-3 rounded-lg border border-border/70 bg-muted/10 p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Add documents</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-            <Input
-              key={fileInputResetKey}
-              type="file"
-              multiple
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                setSelectedFiles(files);
-              }}
-            />
-            <Input
-              value={assetTitle}
-              onChange={(event) => setAssetTitle(event.target.value)}
-              placeholder="Optional title (single file upload)"
-              />
-            </div>
-            {selectedFiles.length > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Selected: {selectedFiles.map((file) => file.name).join(", ")}
-              </p>
-            ) : null}
-            <Button size="sm" onClick={() => addFileMutation.mutate()} disabled={addFileMutation.isPending || selectedFiles.length === 0}>
-              Upload and attach
-            </Button>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Attached files</p>
-            {(filesQuery.data ?? []).slice(0, 20).map((file) => (
-              <div key={file.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{file.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{file.originalFilename}</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <StatusBadge status={file.extractionStatus} />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 w-8 p-0"
-                    aria-label={`Replace ${file.title}`}
-                    disabled={replaceFileMutation.isPending}
-                    onClick={() => {
-                      setReplacingFileId(file.id);
-                      replaceFileInputRef.current?.click();
-                    }}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 w-8 p-0"
-                    aria-label={`Remove ${file.title}`}
-                    disabled={removeFileMutation.isPending}
-                    onClick={() => {
-                      if (!window.confirm(`Remove "${file.title}" from this project?`)) return;
-                      removeFileMutation.mutate(file.id);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-            {(filesQuery.data ?? []).length === 0 ? (
-              <EmptyState icon={FileText} message="No reference documents yet." />
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
+          <input
+            key={fileInputResetKey}
+            ref={uploadFilesInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              setSelectedFiles(files);
+              event.target.value = "";
+            }}
+          />
+          <ProjectOverviewPanel
+            dataSchemaReady={dataSchemaReady}
+            dataSchemaName={contextQuery.data?.dataSchemaName}
+            referenceFiles={overviewFiles}
+            activeRequestCount={activeMaintenanceCount}
+            maintenanceOptions={maintenanceTypeOptions}
+            maintenanceType={maintenanceType}
+            onMaintenanceTypeChange={setMaintenanceType}
+            maintenanceDescription={maintenanceDescription}
+            onMaintenanceDescriptionChange={setMaintenanceDescription}
+            onInsertExample={() => setMaintenanceDescription(MAINTENANCE_TEMPLATES[maintenanceType])}
+            onSendMaintenanceRequest={() =>
+              createMaintenanceMutation.mutate({ type: maintenanceType, description: maintenanceDescription })
+            }
+            sendMaintenancePending={createMaintenanceMutation.isPending}
+            maintenanceGroups={maintenanceRequestGroups}
+            maintenanceRequestsEmpty={maintenanceRequests.length === 0 && contextHistoryItems.length === 0}
+            isAutoMaintenanceRequest={isAutoMaintenanceRequest}
+            showCompletedRequests={showCompletedRequests}
+            onToggleCompletedRequests={() => setShowCompletedRequests((value) => !value)}
+            contextHistoryItems={contextHistoryItems}
+            showDocumentSaveHistory={showDocumentSaveHistory}
+            onToggleDocumentSaveHistory={() => setShowDocumentSaveHistory((value) => !value)}
+            summary={{
+              body: summaryBody,
+              previewText: summaryPreview.text,
+              previewTruncated: summaryPreview.truncated,
+              isEditing: isEditingSummary,
+              isSaving: saveSummaryMutation.isPending,
+              onStartEdit: () => setIsEditingSummary(true),
+              onCancel: () => {
+                setSummaryBody((contextQuery.data?.summary as { body?: string } | null)?.body ?? "");
+                setIsEditingSummary(false);
+              },
+              onSave: () => saveSummaryMutation.mutate(),
+              onBodyChange: setSummaryBody,
+            }}
+            workflow={{
+              body: workflowBody,
+              previewText: workflowPreview.text,
+              previewTruncated: workflowPreview.truncated,
+              isEditing: isEditingWorkflow,
+              isSaving: saveWorkflowMutation.isPending,
+              onStartEdit: () => setIsEditingWorkflow(true),
+              onCancel: () => {
+                setWorkflowBody((contextQuery.data?.workflowSummary as { body?: string } | null)?.body ?? "");
+                setIsEditingWorkflow(false);
+              },
+              onSave: () => saveWorkflowMutation.mutate(),
+              onBodyChange: setWorkflowBody,
+            }}
+            lockWorkflowMaintenance={lockWorkflowMaintenance}
+            onSyncFromAgent={() => triggerSyncMutation.mutate()}
+            syncFromAgentPending={triggerSyncMutation.isPending}
+            selectedFiles={selectedFiles}
+            assetTitle={assetTitle}
+            onAssetTitleChange={setAssetTitle}
+            onChooseFiles={() => uploadFilesInputRef.current?.click()}
+            onUploadFiles={() => addFileMutation.mutate()}
+            uploadFilesPending={addFileMutation.isPending}
+            onReplaceFile={(fileId) => {
+              setReplacingFileId(fileId);
+              replaceFileInputRef.current?.click();
+            }}
+            onRemoveFile={(fileId, title) => {
+              if (!window.confirm(`Remove "${title}" from this project?`)) return;
+              removeFileMutation.mutate(fileId);
+            }}
+            replaceFilePending={replaceFileMutation.isPending}
+            removeFilePending={removeFileMutation.isPending}
+          />
+        </>
       ) : null}
 
       {(mode === "all" || mode === "data") ? (
@@ -918,115 +602,173 @@ export function ProjectContextPanel({
       ) : null}
 
       {(mode === "all" || mode === "dashboards") ? (
-      <Card className="gap-0 py-0">
-        <CardHeader className="border-b border-border/60 py-5">
-          <CardTitle>Project dashboards</CardTitle>
-          <CardDescription>
-            Browse dashboards for this project. Request a new one from the agent when you need another view.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 py-5">
-          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/10 p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Request from agent</p>
-            <Textarea
-              rows={2}
-              value={maintenanceDescription}
-              onChange={(event) => setMaintenanceDescription(event.target.value)}
-              placeholder="Describe the dashboard you want and who will use it."
-              className="text-sm"
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setMaintenanceDescription(MAINTENANCE_TEMPLATES.dashboards)}
-              >
-                Example request
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => createMaintenanceMutation.mutate({ type: "dashboards", description: maintenanceDescription })}
-                disabled={createMaintenanceMutation.isPending || maintenanceDescription.trim().length < 20}
-              >
-                Request via agent
-              </Button>
-            </div>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 max-w-2xl">
+            <h3 className="text-sm font-semibold">Project dashboards</h3>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Pick a dashboard to preview widgets. Request new views from the agent when leadership needs different metrics.
+            </p>
           </div>
+          <Collapsible open={dashboardRequestOpen} onOpenChange={setDashboardRequestOpen}>
+            <CollapsibleTrigger asChild>
+              <Button type="button" size="sm" variant="outline" className="shrink-0">
+                <WandSparkles className="mr-1.5 h-3.5 w-3.5" />
+                Request dashboard
+                <ChevronDown
+                  className={cn(
+                    "ml-1.5 h-3.5 w-3.5 transition-transform",
+                    dashboardRequestOpen && "rotate-180",
+                  )}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3 w-full min-w-[min(100%,28rem)] sm:ml-auto sm:max-w-md">
+              <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-4 shadow-xs">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Agent request</p>
+                <Textarea
+                  rows={3}
+                  value={maintenanceDescription}
+                  onChange={(event) => setMaintenanceDescription(event.target.value)}
+                  placeholder="Describe the dashboard, audience, and metrics (at least 20 characters)."
+                  className="min-h-[4.5rem] resize-y text-sm"
+                />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    onClick={() => setMaintenanceDescription(MAINTENANCE_TEMPLATES.dashboards)}
+                  >
+                    Use example
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      createMaintenanceMutation.mutate({ type: "dashboards", description: maintenanceDescription });
+                      setDashboardRequestOpen(false);
+                    }}
+                    disabled={createMaintenanceMutation.isPending || maintenanceDescription.trim().length < 20}
+                  >
+                    Send to agent
+                  </Button>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium">Dashboards</p>
-              {dashboardViews.length > 0 ? (
-                <span className="text-xs text-muted-foreground">{dashboardViews.length} total</span>
+        <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
+          <div className="flex min-h-[28rem] flex-col lg:min-h-[32rem] lg:flex-row">
+            <aside className="flex flex-col border-b border-border/60 bg-muted/10 lg:w-72 lg:shrink-0 lg:border-b-0 lg:border-r">
+              <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Dashboards</p>
+                {dashboardViews.length > 0 ? (
+                  <span className="rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                    {dashboardViews.length}
+                  </span>
+                ) : null}
+              </div>
+              <div className="max-h-56 overflow-y-auto p-1.5 lg:max-h-none lg:flex-1 lg:overflow-y-auto">
+                {viewsQuery.isLoading ? (
+                  <p className="px-2 py-3 text-xs text-muted-foreground">Loading…</p>
+                ) : dashboardViews.length === 0 ? (
+                  <div className="px-2 py-4">
+                    <EmptyState
+                      icon={LayoutDashboard}
+                      message="No dashboards yet. Open Request dashboard to ask the agent to create one."
+                    />
+                  </div>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {dashboardViews.map((view) => (
+                      <DashboardListItem
+                        key={view.id}
+                        view={view}
+                        selected={selectedViewId === view.id}
+                        widgetCount={selectedViewId === view.id ? (widgetsQuery.data ?? []).length : null}
+                        onSelect={() => setSelectedViewId(view.id)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {dashboardHistoryItems.length > 0 ? (
+                <div className="hidden border-t border-border/60 px-3 py-3 lg:block">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>
+                  <ul className="mt-2 max-h-36 space-y-2 overflow-y-auto">
+                    {dashboardHistoryItems.map((item) => (
+                      <li key={item.id} className="text-[10px] leading-snug text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <StatusBadge status={item.status} />
+                          <span className="truncate text-foreground/85">{item.headline}</span>
+                        </div>
+                        <p className="mt-0.5 truncate pl-0.5">{item.detail}</p>
+                        <p className="mt-0.5 tabular-nums">{formatDate(item.at)}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
-            </div>
-            {viewsQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading dashboards…</p>
-            ) : dashboardViews.length === 0 ? (
-              <EmptyState icon={LayoutDashboard} message="No dashboards yet. Use “Request via agent” above to create one." />
-            ) : (
-              <ul className="space-y-2">
-                {dashboardViews.map((view) => (
-                  <DashboardListItem
-                    key={view.id}
-                    view={view}
-                    selected={selectedViewId === view.id}
-                    widgetCount={selectedViewId === view.id ? (widgetsQuery.data ?? []).length : null}
-                    onSelect={() => setSelectedViewId(view.id)}
-                  />
+            </aside>
+
+            <main className="min-w-0 flex-1 p-4 sm:p-5 lg:p-6">
+              {selectedDashboard ? (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/50 pb-4">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-semibold leading-tight">{selectedDashboard.name}</h3>
+                      {selectedDashboard.description ? (
+                        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{selectedDashboard.description}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      {(widgetsQuery.data ?? []).length > 0 ? (
+                        <span className="rounded-md border border-border/70 bg-muted/20 px-2 py-1 tabular-nums">
+                          {(widgetsQuery.data ?? []).length} widget{(widgetsQuery.data ?? []).length === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      <span className="tabular-nums">Updated {formatDate(selectedDashboard.updatedAt)}</span>
+                    </div>
+                  </div>
+                  {widgetsQuery.isLoading || widgetDataQuery.isLoading ? (
+                    <PageSkeleton variant="dashboard" />
+                  ) : (widgetsQuery.data ?? []).length === 0 ? (
+                    <EmptyState icon={LayoutDashboard} message="This dashboard has no widgets yet." />
+                  ) : (
+                    <ProjectViewRenderer widgets={widgetsQuery.data ?? []} widgetDataById={widgetDataById} />
+                  )}
+                </div>
+              ) : dashboardViews.length > 0 ? (
+                <div className="flex h-full min-h-[16rem] flex-col items-center justify-center rounded-lg border border-dashed border-border/70 bg-muted/10 px-6 text-center">
+                  <LayoutDashboard className="mb-3 h-8 w-8 text-muted-foreground/70" />
+                  <p className="text-sm font-medium">Select a dashboard</p>
+                  <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                    Choose a dashboard from the list to load its widgets and metrics.
+                  </p>
+                </div>
+              ) : null}
+            </main>
+          </div>
+          {dashboardHistoryItems.length > 0 ? (
+            <div className="border-t border-border/60 bg-muted/10 px-4 py-3 lg:hidden">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>
+              <ul className="mt-2 space-y-2">
+                {dashboardHistoryItems.slice(0, 4).map((item) => (
+                  <li key={item.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <StatusBadge status={item.status} />
+                      <span className="truncate text-foreground/85">{item.headline}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums">{formatDate(item.at)}</span>
+                  </li>
                 ))}
               </ul>
-            )}
-          </div>
-
-          {selectedDashboard ? (
-            <div className="space-y-3 border-t border-border/60 pt-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold">{selectedDashboard.name}</h3>
-                  {selectedDashboard.description ? (
-                    <p className="mt-0.5 text-xs text-muted-foreground">{selectedDashboard.description}</p>
-                  ) : null}
-                </div>
-                <span className="text-[11px] text-muted-foreground">
-                  Updated {formatDate(selectedDashboard.updatedAt)}
-                </span>
-              </div>
-              {widgetsQuery.isLoading ? (
-                <p className="text-sm text-muted-foreground">Loading widgets…</p>
-              ) : (widgetsQuery.data ?? []).length === 0 ? (
-                <EmptyState icon={LayoutDashboard} message="This dashboard has no widgets yet." />
-              ) : (
-                <ProjectViewRenderer widgets={widgetsQuery.data ?? []} widgetDataById={widgetDataById} />
-              )}
             </div>
-          ) : dashboardViews.length > 0 ? (
-            <p className="border-t border-border/60 pt-4 text-sm text-muted-foreground">
-              Select a dashboard to preview its widgets.
-            </p>
           ) : null}
-        </CardContent>
-        {dashboardHistoryItems.length > 0 ? (
-          <CardFooter className="flex-col items-stretch gap-2 border-t border-border/60 bg-muted/10 px-6 py-3">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>
-            <ul className="space-y-1.5">
-              {dashboardHistoryItems.map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <StatusBadge status={item.status} />
-                    <span className="min-w-0 truncate">
-                      <span className="text-foreground/80">{item.headline}</span>
-                      {item.detail ? <span> — {item.detail}</span> : null}
-                    </span>
-                  </span>
-                  <span className="shrink-0 tabular-nums">{formatDate(item.at)}</span>
-                </li>
-              ))}
-            </ul>
-          </CardFooter>
-        ) : null}
-      </Card>
+        </div>
+      </div>
       ) : null}
     </div>
   );

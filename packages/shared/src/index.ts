@@ -761,6 +761,22 @@ export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url
 export { ISSUE_IDENTIFIER_RE, isIssueIdentifierLike } from "./issue-identifier.js";
 export { deriveProjectUrlKey, normalizeProjectUrlKey, hasNonAsciiContent } from "./project-url-key.js";
 export {
+  projectViewWidgetLayoutSchema,
+  projectViewWidgetConfigSchema,
+  parseProjectViewWidgetLayout,
+  parseProjectViewWidgetConfig,
+  resolveProjectViewWidgetPageSize,
+  resolveProjectViewWidgetMarkdownMaxHeight,
+  resolveProjectViewWidgetChartHeight,
+  PROJECT_VIEW_WIDGET_DEFAULT_PAGE_SIZE,
+  PROJECT_VIEW_WIDGET_MAX_PAGE_SIZE,
+  PROJECT_VIEW_WIDGET_DEFAULT_MARKDOWN_MAX_HEIGHT,
+  PROJECT_VIEW_WIDGET_DEFAULT_CHART_HEIGHT,
+  PROJECT_VIEW_WIDGET_PRESENTATION_GUIDE,
+  type ProjectViewWidgetLayout,
+  type ProjectViewWidgetConfig,
+} from "./project-view-widget-display.js";
+export {
   AGENT_MENTION_SCHEME,
   PROJECT_MENTION_SCHEME,
   USER_MENTION_SCHEME,

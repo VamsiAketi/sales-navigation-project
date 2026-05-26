@@ -52,6 +52,7 @@ import { logger } from "../middleware/logger.js";
 import { forbidden, HttpError, unauthorized, unprocessable } from "../errors.js";
 import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
 import { shouldWakeAssigneeOnCheckout } from "./issues-checkout-wakeup.js";
+import { shouldWakeAssigneeOnStatusChange } from "./issues-update-wakeup.js";
 import {
   isAllowedContentType,
   MAX_ATTACHMENT_BYTES,
@@ -1420,10 +1421,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       });
     }
 
-    const statusChangedFromBacklog =
-      existing.status === "backlog" &&
-      issue.status !== "backlog" &&
-      req.body.status !== undefined;
+    const statusInRequest = req.body.status !== undefined;
 
     /** After update(), including workflow default assignees not present in the request body. */
     const assigneeAgentIdChangedResolved = issue.assigneeAgentId !== existing.assigneeAgentId;
@@ -1454,18 +1452,34 @@ export function issueRoutes(db: Db, storage: StorageService) {
       }
 
       if (
-        !assigneeAgentIdChangedResolved &&
-        statusChangedFromBacklog &&
-        issue.assigneeAgentId
+        shouldWakeAssigneeOnStatusChange({
+          statusInRequest,
+          previousStatus: existing.status,
+          nextStatus: issue.status,
+          previousAssigneeAgentId: existing.assigneeAgentId,
+          nextAssigneeAgentId: issue.assigneeAgentId,
+        })
       ) {
-        wakeups.set(issue.assigneeAgentId, {
-          source: "automation",
+        wakeups.set(issue.assigneeAgentId!, {
+          source: "assignment",
           triggerDetail: "system",
           reason: "issue_status_changed",
-          payload: { issueId: issue.id, mutation: "update" },
+          payload: {
+            issueId: issue.id,
+            mutation: "update",
+            previousStatus: existing.status,
+            nextStatus: issue.status,
+          },
           requestedByActorType: actor.actorType,
           requestedByActorId: actor.actorId,
-          contextSnapshot: { issueId: issue.id, source: "issue.status_change" },
+          contextSnapshot: {
+            issueId: issue.id,
+            taskId: issue.id,
+            source: "issue.status_change",
+            wakeReason: "issue_status_changed",
+            previousStatus: existing.status,
+            nextStatus: issue.status,
+          },
         });
       }
 

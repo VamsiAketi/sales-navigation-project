@@ -570,16 +570,24 @@ Permission: `project:edit configuration`.
 
 ### Dashboards (views / widgets)
 
+Project dashboards are for **business users** (Context → Dashboards). Widgets read **operational project data** via `queryRef` — not agent runs or logs.
+
+| Good widgets | Bad widgets |
+| ------------ | ----------- |
+| Open pipeline count (kpi) | Last heartbeat run id |
+| Leads by stage (chart) | Run log excerpt (table) |
+| Recent accounts (table) | Agent spend unless finance asked |
+
 | Method | Path | Notes |
 | ------ | ---- | ----- |
 | GET | `/api/projects/{projectId}/views` | List dashboards |
-| POST | `/api/projects/{projectId}/views` | Create dashboard `{ name, description? }` |
+| POST | `/api/projects/{projectId}/views` | Create dashboard `{ name, description? }` — use business names |
 | GET | `/api/projects/{projectId}/views/{viewId}/widgets` | List widgets |
 | GET | `/api/projects/{projectId}/views/{viewId}/widgets/data` | Resolved widget data |
-| POST | `/api/projects/{projectId}/views/{viewId}/widgets` | `{ title, type, queryRef, layout? }` — types: kpi, table, chart, markdown |
+| POST | `/api/projects/{projectId}/views/{viewId}/widgets` | `{ title, type, queryRef }` — types: kpi, table, chart, markdown |
 | PATCH | `/api/projects/{projectId}/views/{viewId}/widgets/{widgetId}` | Update widget |
 
-`queryRef` mirrors a `POST .../data/query` body. `GET /api/projects/{projectId}/context` includes `projectDashboardApi` with existing dashboards.
+`queryRef` mirrors a `POST .../data/query` body on registered **data tables/views**. `GET /api/projects/{projectId}/context` includes `projectDashboardApi` with existing dashboards.
 
 Permission: `project:read` for list/data; `project:edit configuration` for create/update.
 

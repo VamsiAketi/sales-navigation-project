@@ -1,3 +1,5 @@
+import { PROJECT_VIEW_WIDGET_PRESENTATION_GUIDE } from "@paperclipai/shared";
+
 export type ProjectDataObjectGuideInput = {
   kind: string;
   name: string;
@@ -14,8 +16,38 @@ export type ProjectViewWidgetGuideInput = {
   id: string;
   title: string | null;
   type: string;
+  position?: number;
   queryRef: Record<string, unknown> | null;
+  config?: Record<string, unknown> | null;
+  layout?: Record<string, unknown> | null;
 };
+
+/** Standing rules: project dashboards are operator-facing, not agent telemetry. */
+export const PROJECT_DASHBOARD_BUSINESS_RULES = [
+  "Dashboards are for **business users** (operators, sales, leadership) on Project → Context → Dashboards — not engineering debug boards.",
+  "Each widget must answer a business question: pipeline volume, conversion by stage, backlog aging, regional mix, weekly trend, recent accounts, etc.",
+  "Use **kpi** for one aggregate (e.g. open leads, verified this week); **chart** for breakdowns by stage/segment/region; **table** for recent rows with human-readable columns.",
+  "Titles and descriptions are plain language for humans — not API paths, not internal codes.",
+  "queryRef must point at **project data tables or SQL views** (operational records), not Paperclip system tables.",
+];
+
+export const PROJECT_DASHBOARD_ANTI_PATTERNS = [
+  "Do **not** build dashboards/widgets for heartbeat runs, run IDs, run logs, agent IDs, adapter config, issue UUIDs, or token/cost telemetry unless the user explicitly requested an engineering ops view.",
+  "Do **not** surface raw log lines, stack traces, or “last run status” as KPIs.",
+  "Do **not** duplicate information that belongs in the Issues board (task lists) as a dashboard — dashboards summarize **business data**, not agent work queues.",
+];
+
+export function formatProjectDashboardAgentGuidance(): string {
+  return [
+    ...PROJECT_DASHBOARD_BUSINESS_RULES.map((rule) => `- ${rule}`),
+    "",
+    "**Presentation (layout + config):**",
+    ...PROJECT_VIEW_WIDGET_PRESENTATION_GUIDE.map((rule) => `- ${rule}`),
+    "",
+    "**Avoid:**",
+    ...PROJECT_DASHBOARD_ANTI_PATTERNS.map((rule) => `- ${rule}`),
+  ].join("\n");
+}
 
 export function extractTableColumns(definition: Record<string, unknown>): Array<{ name: string; type: string }> {
   const columns = definition.columns;
@@ -92,11 +124,13 @@ export function buildProjectDashboardApiGuide(
     uiTab: "Project → Context → Dashboards (KPI / table / chart widgets backed by data/query)",
     permissionForEdits: "project:edit configuration",
     rules: [
-      "Dashboards visualize project data — widgets must use queryRef pointing at registered tables or SQL views.",
-      "Design dashboard and widget names from what operators need to see — infer from project context; do not copy placeholder names from API docs.",
-      "When you add rows to operational tables, existing KPI/table/chart widgets update on the next fetch; create widgets when new visibility is needed.",
-      "Prefer table/chart/kpi widgets over long comment threads for metrics the team tracks over time.",
+      ...PROJECT_DASHBOARD_BUSINESS_RULES,
+      "Widgets must use queryRef pointing at registered **project data** tables or SQL views.",
+      "When operational rows change, existing widgets refresh on next fetch; add widgets when operators need new visibility.",
+      ...PROJECT_VIEW_WIDGET_PRESENTATION_GUIDE,
+      ...PROJECT_DASHBOARD_ANTI_PATTERNS,
     ],
+    widgetPresentation: [...PROJECT_VIEW_WIDGET_PRESENTATION_GUIDE],
     routes: {
       listViews: `GET /api/projects/${projectId}/views`,
       createView: `POST /api/projects/${projectId}/views`,
@@ -114,7 +148,24 @@ export function buildProjectDashboardApiGuide(
     createTableWidgetBody: {
       title: "{widget title}",
       type: "table",
-      queryRef: { ref: { kind: "table", name: exampleTable }, limit: 25, offset: 0 },
+      position: 20,
+      queryRef: { ref: { kind: "table", name: exampleTable }, limit: 100, offset: 0 },
+      config: { pageSize: 15, compact: true, columns: ["{column_a}", "{column_b}"] },
+      layout: { colSpan: 2, maxHeight: 400 },
+    },
+    createMarkdownWidgetBody: {
+      title: "{section title}",
+      type: "markdown",
+      position: 0,
+      config: { markdown: "## Weekly summary\nShort operator-facing notes." },
+      layout: { colSpan: 2, maxHeight: 320 },
+    },
+    createChartWidgetBody: {
+      title: "{widget title}",
+      type: "chart",
+      position: 10,
+      queryRef: { ref: { kind: "view", name: "{viewName}" }, limit: 24, offset: 0 },
+      layout: { colSpan: 2, chartHeight: 220 },
     },
     readWidgetData: `GET /api/projects/${projectId}/views/${exampleViewId}/widgets/data`,
     dashboards: views.map((view) => ({
@@ -125,7 +176,10 @@ export function buildProjectDashboardApiGuide(
         id: widget.id,
         title: widget.title,
         type: widget.type,
+        position: widget.position,
         queryRef: widget.queryRef,
+        config: widget.config ?? null,
+        layout: widget.layout ?? null,
       })),
     })),
   };
