@@ -13,6 +13,7 @@ const DEFAULT_BACKFILL_BATCH_SIZE = Math.max(1, Number(process.env.PAPERCLIP_PRO
 async function enqueueInitialContextSync(db: Db, projectId: string) {
   const context = projectContextService(db);
   const sync = projectContextSyncService(db);
+  let created = false;
   try {
     await context.createMaintenanceRequest({
       projectId,
@@ -23,12 +24,15 @@ async function enqueueInitialContextSync(db: Db, projectId: string) {
         contextRef: { source: "bootstrap" },
       },
     });
+    created = true;
   } catch (error) {
     if (!(error instanceof HttpError) || error.status !== 409) {
       throw error;
     }
   }
-  await sync.dispatchPendingForProject(projectId);
+  if (created) {
+    await sync.dispatchPendingForProject(projectId);
+  }
 }
 
 export function projectContextBootstrapService(db: Db) {

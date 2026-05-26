@@ -70,6 +70,7 @@ import {
   type SessionCompactionPolicy,
 } from "@paperclipai/adapter-utils";
 import { loadIssueWorkflowPromptForRun } from "./issue-heartbeat-workflow-prompt.js";
+import { loadIssueProjectDataPromptForRun } from "./issue-heartbeat-project-data-prompt.js";
 
 const ISSUE_WORKFLOW_PROMPT_SKIP_WAKE_REASONS = new Set([
   "connector_event",
@@ -2336,15 +2337,24 @@ export function heartbeatService(db: Db) {
       (!wakeReasonForPrompt || !ISSUE_WORKFLOW_PROMPT_SKIP_WAKE_REASONS.has(wakeReasonForPrompt))
     ) {
       try {
-        const issueWorkflowPrompt = await loadIssueWorkflowPromptForRun(db, {
-          companyId: agent.companyId,
-          projectId: issueContext.projectId,
-          issueStatus: issueContext.status,
-          issueIdentifier: issueContext.identifier,
-          issueTitle: issueContext.title,
-        });
+        const [issueWorkflowPrompt, issueProjectDataPrompt] = await Promise.all([
+          loadIssueWorkflowPromptForRun(db, {
+            companyId: agent.companyId,
+            projectId: issueContext.projectId,
+            issueStatus: issueContext.status,
+            issueIdentifier: issueContext.identifier,
+            issueTitle: issueContext.title,
+          }),
+          loadIssueProjectDataPromptForRun(db, {
+            projectId: issueContext.projectId,
+            issueStatus: issueContext.status,
+          }),
+        ]);
         if (issueWorkflowPrompt) {
           context.issueWorkflowPrompt = issueWorkflowPrompt;
+        }
+        if (issueProjectDataPrompt) {
+          context.issueProjectDataPrompt = issueProjectDataPrompt;
         }
       } catch (err) {
         logger.warn(
@@ -2354,7 +2364,7 @@ export function heartbeatService(db: Db) {
             projectId: issueContext.projectId,
             error: err instanceof Error ? err.message : String(err),
           },
-          "Failed to build issue workflow prompt for adapter invocation",
+          "Failed to build issue workflow/data prompts for adapter invocation",
         );
       }
     }
@@ -4116,6 +4126,8 @@ export function heartbeatService(db: Db) {
         message: "run cancelled",
       });
       await releaseIssueExecutionAndPromote(cancelled);
+      const { cancelMaintenanceRequestForHeartbeatRun } = await import("./project-maintenance-queue.js");
+      await cancelMaintenanceRequestForHeartbeatRun(db, cancelled.id, reason);
     }
 
     runningProcesses.delete(run.id);
@@ -4148,6 +4160,8 @@ export function heartbeatService(db: Db) {
         runningProcesses.delete(run.id);
       }
       await releaseIssueExecutionAndPromote(run);
+      const { cancelMaintenanceRequestForHeartbeatRun } = await import("./project-maintenance-queue.js");
+      await cancelMaintenanceRequestForHeartbeatRun(db, run.id, reason);
     }
 
     return runs.length;

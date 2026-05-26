@@ -557,7 +557,7 @@ export function IssueProperties({ issue, onUpdate, inline, compact = false }: Is
   const currentProject = issue.projectId
     ? orderedProjects.find((project) => project.id === issue.projectId) ?? null
     : null;
-  const projectStatuses = useProjectIssueStatuses(issue.projectId ?? null);
+  const { statuses: projectStatuses } = useProjectIssueStatuses(issue.projectId ?? null);
   const activeProjectStatuses = projectStatuses.filter((s) => s.isActive).sort((a, b) => a.position - b.position);
   const statusWorkflowMeta = useMemo(
     () => projectStatuses.find((s) => s.value === issue.status),

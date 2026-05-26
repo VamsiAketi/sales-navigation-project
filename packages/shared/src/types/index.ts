@@ -183,6 +183,7 @@ export type {
   StripeBillingStatus,
   StripePortalSession,
   StripeCheckoutSession,
+  StripeCheckoutCreditResult,
   StripeCheckoutSessionStatus,
   StripeInvoiceRow,
   StripeInvoicesResponse,

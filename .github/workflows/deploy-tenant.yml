@@ -40,8 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     # Resolves secrets from a GitHub Environment whose name matches the tenant input
     # (e.g. tenant "acme" → Environment "acme"). Add per-tenant OPENAI_API_KEY,
-    # ANTHROPIC_API_KEY, and any overrides there; repo-level secrets (Azure, ACR, etc.)
-    # remain available to the job.
+    # ANTHROPIC_API_KEY, MS_GRAPH_*_EMAIL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+    # and any overrides there; repo-level secrets (Azure, ACR, etc.) remain available.
     environment: ${{ github.event.inputs.tenant }}
 
     steps:
@@ -227,8 +227,8 @@ jobs:
             --set-string server.extraEnv.MS_GRAPH_CLIENT_ID_EMAIL="${{ secrets.MS_GRAPH_CLIENT_ID_EMAIL }}" \
             --set-string server.extraEnv.MS_GRAPH_CLIENT_SECRET_EMAIL="${{ secrets.MS_GRAPH_CLIENT_SECRET_EMAIL }}" \
             --set-string server.extraEnv.MS_GRAPH_SENDER_EMAIL="${{ secrets.MS_GRAPH_SENDER_EMAIL }}" \
-            --set-string server.extraEnv.STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
-            --set-string server.extraEnv.STRIPE_WEBHOOK_SECRET="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
+            --set-string server.secrets.stripeSecretKey="${{ secrets.STRIPE_SECRET_KEY }}" \
+            --set-string server.secrets.stripeWebhookSecret="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
             --set-string server.extraEnv.CONTROL_PLANE_URL="${{ secrets.CONTROL_PLANE_URL }}" \
             --set-string server.extraEnv.INTERNAL_SECRET="${{ secrets.INTERNAL_SECRET }}" \
             --set ingress.enabled=true \

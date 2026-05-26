@@ -3,6 +3,10 @@ import type { Db } from "@paperclipai/db";
 import { agents, projectMaintenanceRequests, projects } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
 import { heartbeatService } from "./heartbeat.js";
+import {
+  cancelMaintenanceRequestForHeartbeatRun,
+  reconcileMaintenanceRequestForFinishedRun,
+} from "./project-maintenance-queue.js";
 
 const RETRY_BACKOFF_BASE_MS = Number(process.env.PAPERCLIP_CONTEXT_SYNC_RETRY_BACKOFF_MS ?? 15_000);
 
@@ -119,10 +123,21 @@ function wakePromptForRequest(row: MaintenanceRow) {
       `Project: ${row.projectId}`,
       `Maintenance request id: ${row.id}`,
       `User request: ${row.description}`,
+      "",
+      "Important: dataSchemaName is internal — never put it in API URLs. Use the project UUID and registered table names.",
+      "",
       "Required steps:",
-      `1) GET /api/projects/${row.projectId}/context and /api/projects/${row.projectId}/data-objects`,
-      `2) GET /api/projects/${row.projectId}/views — create or update views/widgets to match the request`,
-      `3) ${maintenanceDoneStep}`,
+      `1) GET /api/projects/${row.projectId}/context — read projectDataApi + projectDashboardApi summaries (tables, columns, existing dashboards).`,
+      `2) GET /api/projects/${row.projectId}/data/objects — full table/view definitions if you need to create tables or queryRef payloads.`,
+      `3) GET /api/projects/${row.projectId}/views — inventory dashboards; GET .../views/{viewId}/widgets for widget layout.`,
+      "4) Create or update dashboards/widgets to match the user request:",
+      `   - POST /api/projects/${row.projectId}/views — body: { name, description? }`,
+      `   - POST /api/projects/${row.projectId}/views/{viewId}/widgets — types: kpi, table, chart, markdown; set queryRef to a POST .../data/query payload (ref.kind table|view, name, limit, offset).`,
+      `   - PATCH /api/projects/${row.projectId}/views/{viewId}/widgets/{widgetId} — adjust title, queryRef, layout.`,
+      `   - GET /api/projects/${row.projectId}/views/{viewId}/widgets/data — verify widget output after changes.`,
+      "5) If the request needs new operational tables first:",
+      `   - POST /api/projects/${row.projectId}/data/tables — then POST .../data/{tableName}/rows for seed/backfill rows.`,
+      `6) ${maintenanceDoneStep}`,
     ].join("\n");
   }
 
@@ -206,6 +221,22 @@ export function projectContextSyncService(db: Db) {
       if (!request) return null;
       if (request.status !== "pending") return null;
       if (request.nextRetryAt && request.nextRetryAt.getTime() > Date.now()) return null;
+
+      const inProgressOnProject = await db
+        .select({ id: projectMaintenanceRequests.id })
+        .from(projectMaintenanceRequests)
+        .where(
+          and(
+            eq(projectMaintenanceRequests.projectId, request.projectId),
+            eq(projectMaintenanceRequests.status, "in_progress"),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (inProgressOnProject && inProgressOnProject.id !== request.id) {
+        return null;
+      }
+
       const project = await db
         .select({ id: projects.id, companyId: projects.companyId })
         .from(projects)
@@ -341,19 +372,24 @@ export function projectContextSyncService(db: Db) {
       .where(inArray(projectMaintenanceRequests.status, ["queued", "pending", "in_progress"]));
 
     for (const row of activeRows) {
-      if (row.status !== "in_progress") continue;
-      const run = row.heartbeatRunId ? await heartbeat.getRun(row.heartbeatRunId) : null;
-      const runStillActive = run && (run.status === "queued" || run.status === "running");
-      if (!runStillActive) {
-        await db
-          .update(projectMaintenanceRequests)
-          .set({
-            status: "pending",
-            heartbeatRunId: null,
-            updatedAt: new Date(),
-          })
-          .where(eq(projectMaintenanceRequests.id, row.id));
+      if (row.status !== "in_progress" || !row.heartbeatRunId) continue;
+      const run = await heartbeat.getRun(row.heartbeatRunId);
+      if (!run) {
+        await reconcileMaintenanceRequestForFinishedRun(
+          db,
+          row.heartbeatRunId,
+          "failed",
+          "Linked heartbeat run not found during startup recovery",
+        );
+        continue;
       }
+      if (run.status === "queued" || run.status === "running") continue;
+      await reconcileMaintenanceRequestForFinishedRun(
+        db,
+        row.heartbeatRunId,
+        run.status as "succeeded" | "failed" | "cancelled" | "timed_out",
+        run.error ?? null,
+      );
     }
 
     const projectIds = [...new Set(activeRows.map((row) => row.projectId))];
@@ -374,20 +410,34 @@ export function projectContextSyncService(db: Db) {
     const affectedProjectIds = new Set<string>();
 
     for (const row of inProgressRows) {
-      const run = row.heartbeatRunId ? await heartbeat.getRun(row.heartbeatRunId) : null;
-      const runStillActive = run && (run.status === "queued" || run.status === "running");
-      if (runStillActive) continue;
+      if (!row.heartbeatRunId) {
+        await db
+          .update(projectMaintenanceRequests)
+          .set({
+            status: "pending",
+            updatedAt: new Date(),
+          })
+          .where(eq(projectMaintenanceRequests.id, row.id));
+        recovered += 1;
+        affectedProjectIds.add(row.projectId);
+        continue;
+      }
 
-      await db
-        .update(projectMaintenanceRequests)
-        .set({
-          status: "pending",
-          heartbeatRunId: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(projectMaintenanceRequests.id, row.id));
+      const run = await heartbeat.getRun(row.heartbeatRunId);
+      if (run && (run.status === "queued" || run.status === "running")) continue;
 
-      recovered += 1;
+      const result = await reconcileMaintenanceRequestForFinishedRun(
+        db,
+        row.heartbeatRunId,
+        run
+          ? (run.status as "succeeded" | "failed" | "cancelled" | "timed_out")
+          : "failed",
+        run?.error ?? "Linked heartbeat run not found",
+      );
+      if (!result || result.action === "unchanged") continue;
+      if (result.action !== "cancelled") {
+        recovered += 1;
+      }
       affectedProjectIds.add(row.projectId);
     }
 
@@ -413,8 +463,10 @@ export function projectContextSyncService(db: Db) {
       )
       .orderBy(asc(projectMaintenanceRequests.nextRetryAt), asc(projectMaintenanceRequests.createdAt))
       .limit(50);
-    for (const row of due) {
-      await dispatchRequestById(row.id);
+
+    const projectIds = [...new Set(due.map((row) => row.projectId))];
+    for (const projectId of projectIds) {
+      await dispatchPendingForProject(projectId);
     }
     return due.length;
   };
@@ -426,6 +478,8 @@ export function projectContextSyncService(db: Db) {
 
     recoverPendingQueueStateOnStartup,
     reconcileInProgressRequests,
+    cancelMaintenanceRequestForRun: (runId: string, reason: string) =>
+      cancelMaintenanceRequestForHeartbeatRun(db, runId, reason),
 
     tickRetryQueue,
   };

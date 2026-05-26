@@ -26,6 +26,7 @@ import {
   type PrincipalType,
   type ProjectAuthActor,
   type ProjectPermissionKey,
+  mergeAgentCompanyPermissionGrants,
 } from "@paperclipai/shared";
 import { badRequest } from "../errors.js";
 import { isOwnerMembershipRole, normalizeMembershipRole } from "../lib/membership-role.js";
@@ -171,6 +172,18 @@ export function accessService(db: Db) {
     return `${companyId}:${principalType}:${principalId}`;
   }
 
+  function setMembershipCache(
+    companyId: string,
+    principalType: PrincipalType,
+    principalId: string,
+    row: MembershipRow | null,
+  ) {
+    const cache = getAccessRequestCache();
+    // Do not cache absent lookups; otherwise ensureMembership can insert twice in one request.
+    if (!cache || !row) return;
+    cache.membershipByKey.set(membershipCacheKey(companyId, principalType, principalId), row);
+  }
+
   async function getMembership(
     companyId: string,
     principalType: PrincipalType,
@@ -192,9 +205,7 @@ export function accessService(db: Db) {
         ),
       )
       .then((rows) => rows[0] ?? null);
-    if (row) {
-      cache?.membershipByKey.set(cacheKey, row);
-    }
+    setMembershipCache(companyId, principalType, principalId, row);
     return row;
   }
 
@@ -774,8 +785,6 @@ export function accessService(db: Db) {
   ) {
     const normalizedMembershipRole = normalizeMembershipRole(membershipRole);
     await assertOwnerAssignmentAllowed(principalType, principalId, normalizedMembershipRole);
-    const cache = getAccessRequestCache();
-    const cacheKey = membershipCacheKey(companyId, principalType, principalId);
     const existing = await getMembership(companyId, principalType, principalId);
     if (existing) {
       if (existing.status !== status || existing.membershipRole !== normalizedMembershipRole) {
@@ -785,9 +794,9 @@ export function accessService(db: Db) {
           .where(eq(companyMemberships.id, existing.id))
           .returning()
           .then((rows) => rows[0] ?? null);
-        const resolved = updated ?? existing;
-        cache?.membershipByKey.set(cacheKey, resolved);
-        return resolved;
+        const result = updated ?? existing;
+        setMembershipCache(companyId, principalType, principalId, result);
+        return result;
       }
       return existing;
     }
@@ -803,7 +812,7 @@ export function accessService(db: Db) {
       })
       .returning()
       .then((rows) => rows[0]);
-    cache?.membershipByKey.set(cacheKey, created);
+    setMembershipCache(companyId, principalType, principalId, created);
     return created;
   }
 
@@ -1157,6 +1166,57 @@ export function accessService(db: Db) {
     );
   }
 
+  async function ensureDefaultAgentCompanyGrants(
+    companyId: string,
+    agentId: string,
+    role: string,
+    grantedByUserId: string | null,
+    inviteGrants: GrantInput[] = [],
+  ) {
+    await ensureMembership(companyId, "agent", agentId, "member", "active");
+    const merged = mergeAgentCompanyPermissionGrants(
+      inviteGrants.map((grant) => ({
+        permissionKey: grant.permissionKey,
+        scope: grant.scope ?? null,
+      })),
+      role,
+    );
+    const normalized = normalizeGrantsWithReadDependencies(
+      merged.map((grant) => ({
+        permissionKey: grant.permissionKey,
+        scope: grant.scope,
+      })),
+    );
+    const existing = await listPrincipalGrants(companyId, "agent", agentId);
+    const existingKeys = new Set(existing.map((row) => row.permissionKey));
+    for (const grant of normalized) {
+      if (existingKeys.has(grant.permissionKey)) continue;
+      await setPrincipalPermission(
+        companyId,
+        "agent",
+        agentId,
+        grant.permissionKey,
+        true,
+        grantedByUserId,
+        grant.scope ?? null,
+      );
+    }
+  }
+
+  async function backfillDefaultAgentCompanyGrants() {
+    const rows = await db
+      .select({ id: agents.id, companyId: agents.companyId, role: agents.role })
+      .from(agents);
+    let updated = 0;
+    for (const agent of rows) {
+      const before = await listPrincipalGrants(agent.companyId, "agent", agent.id);
+      await ensureDefaultAgentCompanyGrants(agent.companyId, agent.id, agent.role, null);
+      const after = await listPrincipalGrants(agent.companyId, "agent", agent.id);
+      if (after.length > before.length) updated += 1;
+    }
+    return { scanned: rows.length, updated };
+  }
+
   async function seedIssueAssigneeGrantsForAgent(
     companyId: string,
     projectId: string,
@@ -1260,6 +1320,8 @@ export function accessService(db: Db) {
     setProjectPrincipalGrantsForPrincipal,
     seedFullProjectGrantsForUser,
     seedIssueAssigneeGrantsForAgent,
+    ensureDefaultAgentCompanyGrants,
+    backfillDefaultAgentCompanyGrants,
     principalHasAnyProjectPermission,
   };
 }

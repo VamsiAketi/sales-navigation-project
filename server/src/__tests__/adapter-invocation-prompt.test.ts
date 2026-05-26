@@ -67,6 +67,23 @@ describe("buildAdapterInvocationPrompt", () => {
     );
   });
 
+  it("prepends mandatory project data rules when issueProjectDataPrompt is set", () => {
+    const result = buildAdapterInvocationPrompt({
+      context: {
+        wakeReason: "issue_assigned",
+        issueProjectDataPrompt: "Registered tables:\n- **work_items** — PK [id]; columns: title:text",
+      },
+      promptTemplate: "Run the regular heartbeat inbox procedure.",
+      templateData: {},
+    });
+
+    expect(result.prompt).toContain("## Project data & dashboards (mandatory)");
+    expect(result.prompt).toContain("**work_items**");
+    expect(result.prompt.indexOf("Project data & dashboards")).toBeLessThan(
+      result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
+    );
+  });
+
   it("uses one-shot wake prompt for project context sync", () => {
     const result = buildAdapterInvocationPrompt({
       context: {

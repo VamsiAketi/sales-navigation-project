@@ -255,6 +255,7 @@ export function buildAdapterInvocationPrompt(input: {
       : "";
   const sessionHandoffNote = readNonEmptyContextString(input.sessionHandoffNote);
   const issueWorkflowPrompt = readNonEmptyContextString(input.context.issueWorkflowPrompt);
+  const issueProjectDataPrompt = readNonEmptyContextString(input.context.issueProjectDataPrompt);
   const renderedHeartbeatPrompt = renderTemplate(input.promptTemplate, input.templateData);
   const prompt = joinPromptSections([
     ...(input.leadingSections ?? []),
@@ -263,6 +264,13 @@ export function buildAdapterInvocationPrompt(input: {
           "## Current task — workflow rules (mandatory)",
           "Follow these rules before checkout, status changes, or handoff. Do not rely on generic `todo` / `in_progress` semantics.",
           issueWorkflowPrompt,
+        ].join("\n\n")
+      : null,
+    issueProjectDataPrompt
+      ? [
+          "## Project data & dashboards (mandatory)",
+          "Structured operational records belong in project data tables and dashboards — not only in issue comments. Use the Paperclip API routes below.",
+          issueProjectDataPrompt,
         ].join("\n\n")
       : null,
     renderedBootstrapPrompt,

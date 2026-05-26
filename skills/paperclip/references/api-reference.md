@@ -535,7 +535,7 @@ Use `GET /api/issues/{issueId}` or `GET /api/projects/{projectId}/issue-statuses
 
 Each project may have a dedicated PostgreSQL schema stored on the project as `dataSchemaName` (for example `prj_357ebae6e583`). That name is **internal only** — do not use it in HTTP paths. All agent/board calls use the **project id** and **registered table names** from `GET /api/projects/{projectId}/data/objects`.
 
-Issue heartbeats include `projectContext.projectDataApi` with route templates, table list, and example payloads.
+Issue heartbeats include `projectContext.projectDataApi` and `projectContext.projectDashboardApi` with route templates, table columns, and existing dashboards. The adapter prompt also prepends `## Project data & dashboards (mandatory)` on every project-scoped issue run.
 
 ### Row DML (task agents)
 
@@ -566,7 +566,22 @@ Permission: `project:read`.
 
 Permission: `project:edit configuration`.
 
-**Common mistake:** `POST /api/projects/{projectId}/data/rows` or paths containing `prj_*` — these routes do not exist and return `API route not found`.
+**Common mistake:** `POST /api/projects/{projectId}/data/rows` or paths containing `prj_*` or `/data-objects` — these routes do not exist and return `API route not found`. Use `/data/objects`.
+
+### Dashboards (views / widgets)
+
+| Method | Path | Notes |
+| ------ | ---- | ----- |
+| GET | `/api/projects/{projectId}/views` | List dashboards |
+| POST | `/api/projects/{projectId}/views` | Create dashboard `{ name, description? }` |
+| GET | `/api/projects/{projectId}/views/{viewId}/widgets` | List widgets |
+| GET | `/api/projects/{projectId}/views/{viewId}/widgets/data` | Resolved widget data |
+| POST | `/api/projects/{projectId}/views/{viewId}/widgets` | `{ title, type, queryRef, layout? }` — types: kpi, table, chart, markdown |
+| PATCH | `/api/projects/{projectId}/views/{viewId}/widgets/{widgetId}` | Update widget |
+
+`queryRef` mirrors a `POST .../data/query` body. `GET /api/projects/{projectId}/context` includes `projectDashboardApi` with existing dashboards.
+
+Permission: `project:read` for list/data; `project:edit configuration` for create/update.
 
 ---
 

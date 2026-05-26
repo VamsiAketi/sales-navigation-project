@@ -51,6 +51,10 @@ import {
 } from "../services/ai-admin-project.js";
 import { assertCompanyAccess, getActorInfo, projectAuthActorFromRequest } from "./authz.js";
 import { logger } from "../middleware/logger.js";
+import {
+  buildProjectDashboardApiGuide,
+  buildProjectDataApiGuide,
+} from "../services/project-data-api-guide.js";
 
 export function projectRoutes(db: Db) {
   const router = Router();
@@ -77,6 +81,9 @@ export function projectRoutes(db: Db) {
     "project:edit configuration",
     "project:edit Workflow",
   ]);
+
+  const CONTEXT_SYNC_DEBOUNCE_MS = Number(process.env.PAPERCLIP_CONTEXT_SYNC_DEBOUNCE_MS ?? 30_000);
+  const contextSyncDebounceUntil = new Map<string, number>();
 
   async function requireProjectPermission(
     req: Request,
@@ -128,23 +135,30 @@ export function projectRoutes(db: Db) {
   }
 
   async function queueProjectContextSync(projectId: string, actorUserId: string | null) {
+    const now = Date.now();
+    const debounceUntil = contextSyncDebounceUntil.get(projectId) ?? 0;
+    if (now < debounceUntil) return;
+    contextSyncDebounceUntil.set(projectId, now + CONTEXT_SYNC_DEBOUNCE_MS);
+
+    let created = false;
     try {
-      const created = await projectContextSvc.createMaintenanceRequest({
+      const result = await projectContextSvc.createMaintenanceRequest({
         projectId,
         actorUserId,
         payload: {
           type: "context_summary",
-          // Keep payload stable so bursts of project changes collapse into one active sync request.
+          // Stable description; dedupe is by project + type for context_summary.
           description: "Refresh project context from project updates",
           contextRef: null,
         },
       });
-      if (created.request.status === "pending") {
-        await projectContextSyncSvc.dispatchRequestById(created.request.id);
-      }
+      created = result.request.status === "pending";
     } catch (error) {
       if (error instanceof HttpError && error.status === 409) return;
       throw error;
+    }
+    if (created) {
+      await projectContextSyncSvc.dispatchPendingForProject(projectId);
     }
   }
 
@@ -233,11 +247,24 @@ export function projectRoutes(db: Db) {
     }
     assertCompanyAccess(req, project.companyId);
     await requireProjectPermission(req, project.companyId, id, "project:read");
-    const [documents, maintenanceRequests, statuses] = await Promise.all([
+    const [documents, maintenanceRequests, statuses, dataObjects, viewRows] = await Promise.all([
       documentsSvc.listProjectDocuments(id),
       projectContextSvc.listMaintenanceRequests(id, 20, 0),
       statusSvc.list(id),
+      projectDataSvc.listDataObjects(id).catch(() => []),
+      projectDataSvc.listViews(id).catch(() => []),
     ]);
+    const widgetsByView = await Promise.all(
+      viewRows.slice(0, 8).map(async (view) => ({
+        view,
+        widgets: await projectDataSvc.listWidgets(id, view.id).catch(() => []),
+      })),
+    );
+    const mappedDataObjects = dataObjects.map((row) => ({
+      kind: row.kind,
+      name: row.name,
+      definition: (row.definition as Record<string, unknown>) ?? {},
+    }));
     res.json({
       projectId: id,
       dataSchemaName: project.dataSchemaName ?? null,
@@ -246,6 +273,23 @@ export function projectRoutes(db: Db) {
       documents,
       maintenanceRequests,
       workflowStatuses: statuses,
+      projectDataApi: buildProjectDataApiGuide(id, project.dataSchemaName ?? null, mappedDataObjects),
+      projectDashboardApi: buildProjectDashboardApiGuide(
+        id,
+        widgetsByView.map(({ view, widgets }) => ({
+          id: view.id,
+          name: view.name,
+          description: view.description,
+          widgets: widgets.map((widget) => ({
+            id: widget.id,
+            title: widget.title,
+            type: widget.type,
+            queryRef: widget.queryRef,
+          })),
+        })),
+        { exampleTableName: mappedDataObjects.find((row) => row.kind === "table")?.name ?? null },
+      ),
+      dashboardCount: viewRows.length,
     });
   });
 
@@ -266,7 +310,7 @@ export function projectRoutes(db: Db) {
       },
     });
     if (created.request.status === "pending") {
-      await projectContextSyncSvc.dispatchRequestById(created.request.id);
+      await projectContextSyncSvc.dispatchPendingForProject(id);
     }
     await logActivity(db, {
       companyId: project.companyId,
@@ -550,7 +594,7 @@ export function projectRoutes(db: Db) {
       payload: req.body,
     });
     if (!created.queued) {
-      await projectContextSyncSvc.dispatchRequestById(created.request.id);
+      await projectContextSyncSvc.dispatchPendingForProject(id);
     }
     await logActivity(db, {
       companyId: project.companyId,
@@ -580,6 +624,31 @@ export function projectRoutes(db: Db) {
     assertCompanyAccess(req, project.companyId);
     await requireProjectPermission(req, project.companyId, id, "project:edit configuration");
     const actor = getActorInfo(req);
+    if (req.body.status === "cancelled") {
+      const existing = await projectContextSvc.getMaintenanceRequestById(id, requestId);
+      if (!existing) {
+        res.status(404).json({ error: "Maintenance request not found" });
+        return;
+      }
+      if (existing.heartbeatRunId && existing.status === "in_progress") {
+        await heartbeatSvc.cancelRun(existing.heartbeatRunId);
+        const updated = await projectContextSvc.getMaintenanceRequestById(id, requestId);
+        await projectContextSyncSvc.dispatchPendingForProject(id);
+        await logActivity(db, {
+          companyId: project.companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          agentId: actor.agentId,
+          runId: actor.runId,
+          action: "project_context.maintenance_request.updated",
+          entityType: "project_maintenance_request",
+          entityId: requestId,
+          details: { projectId: id, status: updated?.status ?? "cancelled" },
+        });
+        res.json(updated);
+        return;
+      }
+    }
     const updated = await projectContextSvc.patchMaintenanceRequest({ projectId: id, requestId, patch: req.body });
     if (updated.status === "completed" || updated.status === "failed" || updated.status === "cancelled") {
       await projectContextSyncSvc.dispatchPendingForProject(id);

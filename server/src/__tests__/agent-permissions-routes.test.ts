@@ -46,6 +46,7 @@ const mockAccessService = vi.hoisted(() => ({
   hasPermission: vi.fn(),
   getMembership: vi.fn(),
   ensureMembership: vi.fn(),
+  ensureDefaultAgentCompanyGrants: vi.fn(),
   listPrincipalGrants: vi.fn(),
   setPrincipalPermission: vi.fn(),
 }));
@@ -151,6 +152,7 @@ describe("agent permission routes", () => {
     });
     mockAccessService.listPrincipalGrants.mockResolvedValue([]);
     mockAccessService.ensureMembership.mockResolvedValue(undefined);
+    mockAccessService.ensureDefaultAgentCompanyGrants.mockResolvedValue(undefined);
     mockAccessService.setPrincipalPermission.mockResolvedValue(undefined);
     mockCompanySkillService.listRuntimeSkillEntries.mockResolvedValue([]);
     mockCompanySkillService.resolveRequestedSkillKeys.mockImplementation(async (_companyId, requested) => requested);
@@ -196,19 +198,10 @@ describe("agent permission routes", () => {
       });
 
     expect(res.status).toBe(201);
-    expect(mockAccessService.ensureMembership).toHaveBeenCalledWith(
+    expect(mockAccessService.ensureDefaultAgentCompanyGrants).toHaveBeenCalledWith(
       companyId,
-      "agent",
       agentId,
-      "member",
-      "active",
-    );
-    expect(mockAccessService.setPrincipalPermission).toHaveBeenCalledWith(
-      companyId,
-      "agent",
-      agentId,
-      "tasks:assign",
-      true,
+      "engineer",
       "board-user",
     );
   });

@@ -20,6 +20,7 @@ const agentSvc = {
 
 const accessSvc = {
   ensureMembership: vi.fn(),
+  ensureDefaultAgentCompanyGrants: vi.fn(),
   listActiveUserMemberships: vi.fn(),
   copyActiveUserMemberships: vi.fn(),
   setPrincipalPermission: vi.fn(),
@@ -340,6 +341,7 @@ describe("company portability", () => {
     assetSvc.getById.mockResolvedValue(null);
     assetSvc.create.mockReset();
     accessSvc.setPrincipalPermission.mockResolvedValue(undefined);
+    accessSvc.ensureDefaultAgentCompanyGrants.mockResolvedValue(undefined);
     assetSvc.create.mockResolvedValue({
       id: "asset-created",
     });

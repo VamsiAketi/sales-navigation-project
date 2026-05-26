@@ -26,7 +26,7 @@ import { badRequest, forbidden } from "../errors.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 import { getStripeFromConfig } from "../stripe-client.js";
 import {
-  createCheckoutIntentRecord,
+  createIdempotentStripeCheckoutSession,
   findStripeCustomerByCompanyId,
   getCompanyWalletTotals,
   getOrCreateStripeCustomerForCompany,
@@ -34,7 +34,9 @@ import {
   markCheckoutIntentLifecycle,
   stripeBillingBrandingFromEnv,
   stripeSecretsFromEnv,
+  syncStripeCheckoutSessionCredit,
 } from "../services/stripe-billing.js";
+import type { StripeCheckoutCreditResult } from "@paperclipai/shared";
 import { getWalletAvailability } from "../services/wallet-reservations.js";
 
 export function costRoutes(db: Db) {
@@ -361,58 +363,59 @@ export function costRoutes(db: Db) {
       const returnPath = req.body.returnPath?.startsWith("/") ? req.body.returnPath : "/company/billing";
       const successUrl = `${baseUrl}${returnPath}?stripe=payment-success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${baseUrl}${returnPath}?stripe=payment-cancelled`;
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        customer: customer.id,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        payment_method_types: ["card"],
-        payment_method_options: {
-          card: {
-            request_three_d_secure: "automatic",
-          },
-        },
-        // One-time Checkout does not create a Stripe Invoice by default; enable so top-ups show under Invoices / PDF.
-        invoice_creation: { enabled: true },
-        metadata: {
-          paperclip_company_id: companyId,
-          paperclip_kind: "prepaid_topup",
-        },
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: "usd",
-              unit_amount: req.body.amountCents,
-              product_data: {
-                name: "Wallet funds added",
-                description: `Top-up for ${branding.businessName}`,
-              },
-            },
-          },
-        ],
-      }, req.body.idempotencyKey ? { idempotencyKey: req.body.idempotencyKey } : undefined);
-      if (!session.url) {
-        res.status(500).json({ error: "Stripe checkout session did not include a redirect URL" });
-        return;
+      try {
+        const checkout = await createIdempotentStripeCheckoutSession({
+          db,
+          stripe,
+          companyId,
+          amountCents: req.body.amountCents,
+          idempotencyKey: req.body.idempotencyKey,
+          customerId: customer.id,
+          successUrl,
+          cancelUrl,
+          branding,
+          requestedBy: req.actor.type,
+        });
+        res.json({
+          sessionId: checkout.sessionId,
+          url: checkout.url,
+          reused: checkout.reused,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "CHECKOUT_ALREADY_PAID") {
+          res.status(409).json({
+            error: "This top-up was already paid. Refresh billing to see your updated balance.",
+          });
+          return;
+        }
+        throw error;
       }
-      await createCheckoutIntentRecord({
-        db,
-        companyId,
-        checkoutSessionId: session.id,
-        amountCents: req.body.amountCents,
-        currency: "usd",
-        stripeCustomerId: customer.id,
-        paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null,
-        status: "created",
-        metadata: { requestedBy: req.actor.type, idempotencyKey: req.body.idempotencyKey ?? null },
-      });
-      res.json({
-        sessionId: session.id,
-        url: session.url,
-      });
     },
   );
+
+  async function buildCheckoutSessionStatusResponse(input: {
+    companyId: string;
+    sessionId: string;
+    session: Stripe.Checkout.Session;
+    creditResult?: StripeCheckoutCreditResult;
+  }) {
+    const credited = await hasWalletCreditForCheckoutSession(db, input.companyId, input.sessionId);
+    const paid = input.session.payment_status === "paid" && credited;
+    if (paid) {
+      await markCheckoutIntentLifecycle(db, input.sessionId, "reconciled");
+    } else if (input.session.payment_status === "paid") {
+      await markCheckoutIntentLifecycle(db, input.sessionId, "paid");
+    } else {
+      await markCheckoutIntentLifecycle(db, input.sessionId, "failed");
+    }
+    return {
+      sessionId: input.sessionId,
+      status: paid ? ("paid" as const) : ("unpaid" as const),
+      paymentStatus: input.session.payment_status ?? null,
+      credited,
+      creditResult: input.creditResult ?? null,
+    };
+  }
 
   router.get("/companies/:companyId/billing/stripe/checkout-session/:sessionId/status", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -430,20 +433,27 @@ export function costRoutes(db: Db) {
       res.status(404).json({ error: "Checkout session not found" });
       return;
     }
-    const credited = await hasWalletCreditForCheckoutSession(db, companyId, sessionId);
-    const paid = session.payment_status === "paid" && credited;
-    if (paid) {
-      await markCheckoutIntentLifecycle(db, sessionId, "reconciled");
-    } else if (session.payment_status === "paid") {
-      await markCheckoutIntentLifecycle(db, sessionId, "paid");
-    } else {
-      await markCheckoutIntentLifecycle(db, sessionId, "failed");
+    res.json(await buildCheckoutSessionStatusResponse({ companyId, sessionId, session }));
+  });
+
+  router.post("/companies/:companyId/billing/stripe/checkout-session/:sessionId/sync", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const sessionId = req.params.sessionId as string;
+    await assertBoardBillingPaymentsManage(req, companyId);
+    const { stripeSecretKey } = stripeSecretsFromEnv();
+    const stripe = getStripeFromConfig({ stripeSecretKey });
+    if (!stripe) {
+      res.status(503).json({ error: "Stripe is not configured" });
+      return;
     }
-    res.json({
-      sessionId,
-      status: paid ? "paid" : "unpaid",
-      paymentStatus: session.payment_status ?? null,
-    });
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const sessionCompanyId = session.metadata?.paperclip_company_id?.trim();
+    if (!sessionCompanyId || sessionCompanyId !== companyId) {
+      res.status(404).json({ error: "Checkout session not found" });
+      return;
+    }
+    const creditResult = await syncStripeCheckoutSessionCredit(db, session);
+    res.json(await buildCheckoutSessionStatusResponse({ companyId, sessionId, session, creditResult }));
   });
 
   router.get("/companies/:companyId/costs/daily", async (req, res) => {

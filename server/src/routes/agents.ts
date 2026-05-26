@@ -11,6 +11,7 @@ import {
   createAgentHireSchema,
   createAgentSchema,
   deriveAgentUrlKey,
+  isIssueIdentifierLike,
   isUuidLike,
   resetAgentSessionSchema,
   testAdapterEnvironmentSchema,
@@ -165,20 +166,12 @@ export function agentRoutes(db: Db) {
     };
   }
 
-  async function applyDefaultAgentTaskAssignGrant(
+  async function applyDefaultAgentCompanyGrants(
     companyId: string,
-    agentId: string,
+    agent: { id: string; role: string },
     grantedByUserId: string | null,
   ) {
-    await access.ensureMembership(companyId, "agent", agentId, "member", "active");
-    await access.setPrincipalPermission(
-      companyId,
-      "agent",
-      agentId,
-      "tasks:assign",
-      true,
-      grantedByUserId,
-    );
+    await access.ensureDefaultAgentCompanyGrants(companyId, agent.id, agent.role, grantedByUserId);
   }
 
   async function assertCanCreateAgentsForCompany(req: Request, companyId: string) {
@@ -1639,9 +1632,9 @@ export function agentRoutes(db: Db) {
       },
     });
 
-    await applyDefaultAgentTaskAssignGrant(
+    await applyDefaultAgentCompanyGrants(
       companyId,
-      agent.id,
+      agent,
       actor.actorType === "user" ? actor.actorId : null,
     );
 
@@ -1721,9 +1714,9 @@ export function agentRoutes(db: Db) {
       },
     });
 
-    await applyDefaultAgentTaskAssignGrant(
+    await applyDefaultAgentCompanyGrants(
       companyId,
-      agent.id,
+      agent,
       req.actor.type === "board" ? (req.actor.userId ?? null) : null,
     );
 
@@ -2582,8 +2575,9 @@ export function agentRoutes(db: Db) {
   router.get("/issues/:issueId/live-runs", async (req, res) => {
     const rawId = req.params.issueId as string;
     const issueSvc = issueService(db);
-    const isIdentifier = /^[A-Z]+-\d+$/i.test(rawId);
-    const issue = isIdentifier ? await issueSvc.getByIdentifier(rawId) : await issueSvc.getById(rawId);
+    const issue = isIssueIdentifierLike(rawId)
+      ? await issueSvc.getByIdentifier(rawId)
+      : await issueSvc.getById(rawId);
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });
       return;
@@ -2620,8 +2614,9 @@ export function agentRoutes(db: Db) {
   router.get("/issues/:issueId/active-run", async (req, res) => {
     const rawId = req.params.issueId as string;
     const issueSvc = issueService(db);
-    const isIdentifier = /^[A-Z]+-\d+$/i.test(rawId);
-    const issue = isIdentifier ? await issueSvc.getByIdentifier(rawId) : await issueSvc.getById(rawId);
+    const issue = isIssueIdentifierLike(rawId)
+      ? await issueSvc.getByIdentifier(rawId)
+      : await issueSvc.getById(rawId);
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });
       return;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { execute } from "@paperclipai/adapter-cursor-local/server";
+import { execute, applyCursorAgentStateDirs, resolveCursorSkillsHomeFromEnv } from "@paperclipai/adapter-cursor-local/server";
 
 async function writeFakeCursorCommand(commandPath: string): Promise<void> {
   const script = `#!/usr/bin/env node
@@ -35,6 +35,25 @@ console.log(JSON.stringify({
   session_id: "cursor-session-1",
   result: "ok",
 }));
+`;
+  await fs.writeFile(commandPath, script, "utf8");
+  await fs.chmod(commandPath, 0o755);
+}
+
+async function writeFakeCursorCommandWithBatchedStdout(commandPath: string): Promise<void> {
+  const script = `#!/usr/bin/env node
+const fs = require("node:fs");
+
+const capturePath = process.env.PAPERCLIP_TEST_CAPTURE_PATH;
+if (capturePath) {
+  fs.writeFileSync(capturePath, JSON.stringify({ argv: process.argv.slice(2), prompt: fs.readFileSync(0, "utf8") }), "utf8");
+}
+const lines = [
+  JSON.stringify({ type: "system", subtype: "init", session_id: "cursor-session-batched", model: "auto" }),
+  JSON.stringify({ type: "assistant", message: { content: [{ type: "output_text", text: "hello" }] } }),
+  JSON.stringify({ type: "result", subtype: "success", session_id: "cursor-session-batched", result: "ok" }),
+];
+process.stdout.write(lines.join("\\n") + "\\n");
 `;
   await fs.writeFile(commandPath, script, "utf8");
   await fs.chmod(commandPath, 0o755);
@@ -119,6 +138,67 @@ describe("cursor execute", () => {
       expect(capture.prompt).toContain("PAPERCLIP_API_KEY");
       expect(invocationPrompt).toContain("Paperclip runtime note:");
       expect(invocationPrompt).toContain("PAPERCLIP_API_URL");
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("batches multi-line stdout chunks into one onLog call", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-cursor-execute-batch-"));
+    const workspace = path.join(root, "workspace");
+    const commandPath = path.join(root, "agent");
+    const capturePath = path.join(root, "capture.json");
+    await fs.mkdir(workspace, { recursive: true });
+    await writeFakeCursorCommandWithBatchedStdout(commandPath);
+
+    const previousHome = process.env.HOME;
+    process.env.HOME = root;
+
+    const jsonStdoutLogCalls: string[] = [];
+    try {
+      const result = await execute({
+        runId: "run-batch",
+        agent: {
+          id: "agent-1",
+          companyId: "company-1",
+          name: "Cursor Coder",
+          adapterType: "cursor",
+          adapterConfig: {},
+        },
+        runtime: {
+          sessionId: null,
+          sessionParams: null,
+          sessionDisplayId: null,
+          taskKey: null,
+        },
+        config: {
+          command: commandPath,
+          cwd: workspace,
+          model: "auto",
+          env: {
+            PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
+          },
+          promptTemplate: "Follow the paperclip heartbeat.",
+        },
+        context: {},
+        authToken: "run-jwt-token",
+        onLog: async (stream, chunk) => {
+          if (stream === "stdout" && chunk.includes('"type":"assistant"')) {
+            jsonStdoutLogCalls.push(chunk);
+          }
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(jsonStdoutLogCalls).toHaveLength(1);
+      expect(jsonStdoutLogCalls[0]).toContain('"type":"system"');
+      expect(jsonStdoutLogCalls[0]).toContain('"type":"assistant"');
+      expect(jsonStdoutLogCalls[0]).toContain('"type":"result"');
     } finally {
       if (previousHome === undefined) {
         delete process.env.HOME;
@@ -249,8 +329,11 @@ describe("cursor execute", () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.errorMessage).toBeNull();
-      expect((await fs.lstat(path.join(root, ".cursor", "skills", "ascii-heart"))).isSymbolicLink()).toBe(true);
-      expect(await fs.realpath(path.join(root, ".cursor", "skills", "ascii-heart"))).toBe(
+      const skillsHome = resolveCursorSkillsHomeFromEnv(
+        applyCursorAgentStateDirs("agent-1", { HOME: root }),
+      );
+      expect((await fs.lstat(path.join(skillsHome, "ascii-heart"))).isSymbolicLink()).toBe(true);
+      expect(await fs.realpath(path.join(skillsHome, "ascii-heart"))).toBe(
         await fs.realpath(asciiHeartDir),
       );
     } finally {

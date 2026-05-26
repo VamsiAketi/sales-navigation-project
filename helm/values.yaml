@@ -55,6 +55,9 @@ server:
     # the container WORKDIR (/app), which is NOT on the /paperclip PVC — restarts/reschedules can break decryption.
     # Generate once per tenant and store in GitHub/Azure Key Vault: openssl rand -base64 32
     paperclipSecretsMasterKey: ""
+    # Stripe billing (optional). Injected via CI --set-string from GitHub secrets; do not commit keys.
+    stripeSecretKey: ""
+    stripeWebhookSecret: ""
   # -- External database URL (used when postgres.enabled: false)
   # For Azure deployments this is set per-tenant by the pipeline, e.g.:
   #   postgresql://postgres:<password>@ai-harness-pg-db.postgres.database.azure.com:5432/ai-harness-<tenant>?sslmode=require
@@ -68,9 +71,6 @@ server:
     MS_GRAPH_CLIENT_ID_EMAIL: ""
     MS_GRAPH_CLIENT_SECRET_EMAIL: ""
     MS_GRAPH_SENDER_EMAIL: ""
-    # Stripe billing (optional). Set via CI --set-string from GitHub secrets; do not commit keys.
-    STRIPE_SECRET_KEY: ""
-    STRIPE_WEBHOOK_SECRET: ""
     CONTROL_PLANE_URL: "https://tenants.ai-harness.com"
     INTERNAL_SECRET: "ai-harness-internal-secret-2026"
     AI_HARNESS_AUTH_MICROSOFT_CLIENT_ID: "sample"

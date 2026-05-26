@@ -1,7 +1,12 @@
 export { execute, ensureCursorSkillsInjected } from "./execute.js";
 export { listCursorSkills, syncCursorSkills } from "./skills.js";
 export { testEnvironment } from "./test.js";
+export {
+  applyCursorAgentStateDirs,
+  resolveCursorSkillsHomeFromEnv,
+} from "./cursor-state.js";
 export { parseCursorJsonl, isCursorUnknownSessionError } from "./parse.js";
+export { appendCursorStreamChunk } from "../shared/stream.js";
 import type { AdapterSessionCodec } from "@paperclipai/adapter-utils";
 
 function readNonEmptyString(value: unknown): string | null {

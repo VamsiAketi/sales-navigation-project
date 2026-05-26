@@ -85,7 +85,7 @@ export async function syncCursorSkills(
     await fs.unlink(path.join(skillsHome, name)).catch(() => {});
   }
 
-  return buildCursorSkillSnapshot(ctx.config);
+  return buildCursorSkillSnapshot(ctx.config, ctx.agentId);
 }
 
 export function resolveCursorDesiredSkillNames(

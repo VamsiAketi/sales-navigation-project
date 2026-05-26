@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import type { StripeCheckoutCreditResult } from "@paperclipai/shared";
 import type { Db } from "@paperclipai/db";
 import { billingAlerts, companies, companyWalletTransactions, stripeCheckoutIntents, stripeProcessedEvents } from "@paperclipai/db";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -196,16 +197,113 @@ async function upsertCheckoutIntentFromSession(db: Db, session: Stripe.Checkout.
     });
 }
 
+type DbExecutor = Pick<Db, "insert" | "update" | "select" | "transaction">;
+
+async function creditWalletFromPaidCheckoutSession(
+  db: DbExecutor,
+  session: Stripe.Checkout.Session,
+  audit: { stripeEventId: string; actorId: string; eventType?: string },
+): Promise<StripeCheckoutCreditResult> {
+  const companyId = session.metadata?.[COMPANY_METADATA_KEY]?.trim();
+  if (!companyId) return "no_company";
+
+  await upsertCheckoutIntentFromSession(db as Db, session, session.payment_status === "paid" ? "paid" : "created", audit.stripeEventId);
+  if (session.payment_status !== "paid") return "not_paid";
+
+  const amountCents = session.amount_total ?? 0;
+  if (!Number.isFinite(amountCents) || amountCents <= 0) return "invalid_amount";
+
+  if (await hasWalletCreditForCheckoutSession(db as Db, companyId, session.id)) {
+    return "already_credited";
+  }
+
+  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
+  const inserted = await db
+    .insert(companyWalletTransactions)
+    .values({
+      companyId,
+      amountCents,
+      currency: (session.currency ?? "usd").toLowerCase(),
+      direction: "credit",
+      sourceType: "stripe_checkout",
+      sourceId: session.id,
+      stripeEventId: audit.stripeEventId,
+      checkoutSessionId: session.id,
+      paymentIntentId,
+      metadataJson: {
+        stripeEventType: audit.eventType ?? "checkout.session.completed",
+        paymentStatus: session.payment_status,
+        creditSource: audit.actorId,
+      },
+    })
+    .onConflictDoNothing()
+    .returning({ id: companyWalletTransactions.id })
+    .then((rows) => rows[0] ?? null);
+
+  if (!inserted) {
+    return "already_credited";
+  }
+
+  await db
+    .update(stripeCheckoutIntents)
+    .set({
+      status: "credited",
+      webhookEventId: audit.stripeEventId,
+      updatedAt: new Date(),
+    })
+    .where(eq(stripeCheckoutIntents.checkoutSessionId, session.id));
+
+  return "credited";
+}
+
+async function logCheckoutWalletCredit(
+  db: Db,
+  session: Stripe.Checkout.Session,
+  audit: { stripeEventId: string; actorId: string },
+): Promise<void> {
+  const companyId = session.metadata?.[COMPANY_METADATA_KEY]?.trim();
+  if (!companyId) return;
+  const amountCents = session.amount_total ?? 0;
+  await logActivity(db, {
+    companyId,
+    actorType: "system",
+    actorId: audit.actorId,
+    action: "billing.prepaid_credit.added",
+    entityType: "company_wallet_transaction",
+    entityId: session.id,
+    details: {
+      stripeEventId: audit.stripeEventId,
+      amountCents,
+      currency: session.currency,
+      checkoutSessionId: session.id,
+      paymentStatus: session.payment_status,
+    },
+  });
+}
+
+/** Apply wallet credit after Stripe redirect when webhooks have not reached the server yet (e.g. local dev). */
+export async function syncStripeCheckoutSessionCredit(
+  db: Db,
+  session: Stripe.Checkout.Session,
+): Promise<StripeCheckoutCreditResult> {
+  const audit = {
+    stripeEventId: `checkout_sync:${session.id}`,
+    actorId: "stripe-checkout-sync",
+    eventType: "checkout.session.completed",
+  };
+  const result = await creditWalletFromPaidCheckoutSession(db, session, audit);
+  if (result === "credited") {
+    await logCheckoutWalletCredit(db, session, audit);
+  }
+  return result;
+}
+
 export async function applyStripeCheckoutCreditFromEvent(db: Db, event: Stripe.CheckoutSessionCompletedEvent): Promise<void> {
   const session = event.data.object;
   const companyId = session.metadata?.[COMPANY_METADATA_KEY]?.trim();
   if (!companyId) return;
-  await upsertCheckoutIntentFromSession(db, session, "paid", event.id);
-  if (session.payment_status !== "paid") return;
-  const amountCents = session.amount_total ?? 0;
-  if (!Number.isFinite(amountCents) || amountCents <= 0) return;
-  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
 
+  let creditResult: StripeCheckoutCreditResult | null = null;
   await db.transaction(async (tx) => {
     const inserted = await tx
       .insert(stripeProcessedEvents)
@@ -218,51 +316,18 @@ export async function applyStripeCheckoutCreditFromEvent(db: Db, event: Stripe.C
       .then((rows) => rows[0] ?? null);
     if (!inserted) return;
 
-    await tx
-      .insert(companyWalletTransactions)
-      .values({
-        companyId,
-        amountCents,
-        currency: (session.currency ?? "usd").toLowerCase(),
-        direction: "credit",
-        sourceType: "stripe_checkout",
-        sourceId: session.id,
-        stripeEventId: event.id,
-        checkoutSessionId: session.id,
-        paymentIntentId,
-        metadataJson: {
-          stripeEventType: event.type,
-          paymentStatus: session.payment_status,
-        },
-      })
-      .onConflictDoNothing();
-
-    await tx
-      .update(stripeCheckoutIntents)
-      .set({
-        status: "credited",
-        webhookEventId: event.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(stripeCheckoutIntents.checkoutSessionId, session.id));
-
-  });
-
-  await logActivity(db, {
-    companyId,
-    actorType: "system",
-    actorId: "stripe-webhook",
-    action: "billing.prepaid_credit.added",
-    entityType: "company_wallet_transaction",
-    entityId: session.id,
-    details: {
+    creditResult = await creditWalletFromPaidCheckoutSession(tx, session, {
       stripeEventId: event.id,
-      amountCents,
-      currency: session.currency,
-      checkoutSessionId: session.id,
-      paymentStatus: session.payment_status,
-    },
+      actorId: "stripe-webhook",
+      eventType: event.type,
+    });
   });
+
+  if (creditResult === "credited") {
+    await logCheckoutWalletCredit(db, session, { stripeEventId: event.id, actorId: "stripe-webhook" });
+  } else if (creditResult === "already_credited") {
+    await markCheckoutIntentLifecycle(db, session.id, "credited", event.id);
+  }
 }
 
 export async function handleStripeInvoicePaidEvent(db: Db, event: Stripe.InvoicePaidEvent): Promise<void> {
@@ -454,10 +519,134 @@ export async function markStripeEventProcessed(db: Db, eventId: string, eventTyp
   return Boolean(row);
 }
 
+export async function findCheckoutIntentByIdempotencyKey(
+  db: Db,
+  companyId: string,
+  idempotencyKey: string,
+): Promise<typeof stripeCheckoutIntents.$inferSelect | null> {
+  return db
+    .select()
+    .from(stripeCheckoutIntents)
+    .where(
+      and(
+        eq(stripeCheckoutIntents.companyId, companyId),
+        eq(stripeCheckoutIntents.idempotencyKey, idempotencyKey),
+      ),
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+}
+
+function checkoutSessionIsOpenForPayment(session: Stripe.Checkout.Session): boolean {
+  return session.status === "open" && typeof session.url === "string" && session.url.length > 0;
+}
+
+export type CreateIdempotentCheckoutSessionResult = {
+  sessionId: string;
+  url: string;
+  reused: boolean;
+};
+
+/**
+ * Start or resume a wallet top-up Checkout session.
+ * - Stripe idempotency key prevents duplicate charges on transport retries.
+ * - DB idempotency key returns the same open session without calling Stripe again.
+ */
+export async function createIdempotentStripeCheckoutSession(input: {
+  db: Db;
+  stripe: Stripe;
+  companyId: string;
+  amountCents: number;
+  idempotencyKey: string;
+  customerId: string;
+  successUrl: string;
+  cancelUrl: string;
+  branding: { businessName: string; businessDescription: string };
+  requestedBy?: string;
+}): Promise<CreateIdempotentCheckoutSessionResult> {
+  const existingIntent = await findCheckoutIntentByIdempotencyKey(
+    input.db,
+    input.companyId,
+    input.idempotencyKey,
+  );
+  if (existingIntent) {
+    const existingSession = await input.stripe.checkout.sessions.retrieve(existingIntent.checkoutSessionId);
+    if (existingSession.payment_status === "paid" || existingSession.status === "complete") {
+      throw new Error("CHECKOUT_ALREADY_PAID");
+    }
+    if (checkoutSessionIsOpenForPayment(existingSession) && existingSession.url) {
+      return {
+        sessionId: existingSession.id,
+        url: existingSession.url,
+        reused: true,
+      };
+    }
+  }
+
+  const session = await input.stripe.checkout.sessions.create(
+    {
+      mode: "payment",
+      customer: input.customerId,
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      payment_method_types: ["card"],
+      payment_method_options: {
+        card: {
+          request_three_d_secure: "automatic",
+        },
+      },
+      invoice_creation: { enabled: true },
+      metadata: {
+        [COMPANY_METADATA_KEY]: input.companyId,
+        paperclip_kind: "prepaid_topup",
+        paperclip_idempotency_key: input.idempotencyKey,
+      },
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: input.amountCents,
+            product_data: {
+              name: "Wallet funds added",
+              description: `Top-up for ${input.branding.businessName}`,
+            },
+          },
+        },
+      ],
+    },
+    { idempotencyKey: input.idempotencyKey },
+  );
+
+  if (!session.url) {
+    throw new Error("Stripe checkout session did not include a redirect URL");
+  }
+
+  await createCheckoutIntentRecord({
+    db: input.db,
+    companyId: input.companyId,
+    checkoutSessionId: session.id,
+    idempotencyKey: input.idempotencyKey,
+    amountCents: input.amountCents,
+    currency: "usd",
+    stripeCustomerId: input.customerId,
+    paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null,
+    status: "created",
+    metadata: { requestedBy: input.requestedBy ?? null, idempotencyKey: input.idempotencyKey },
+  });
+
+  return {
+    sessionId: session.id,
+    url: session.url,
+    reused: false,
+  };
+}
+
 export async function createCheckoutIntentRecord(input: {
   db: Db;
   companyId: string;
   checkoutSessionId: string;
+  idempotencyKey?: string | null;
   amountCents: number;
   currency: string;
   stripeCustomerId: string | null;
@@ -471,6 +660,7 @@ export async function createCheckoutIntentRecord(input: {
     .values({
       companyId: input.companyId,
       checkoutSessionId: input.checkoutSessionId,
+      idempotencyKey: input.idempotencyKey ?? null,
       amountCents: input.amountCents,
       currency: input.currency.toLowerCase(),
       stripeCustomerId: input.stripeCustomerId,
@@ -483,6 +673,7 @@ export async function createCheckoutIntentRecord(input: {
     .onConflictDoUpdate({
       target: stripeCheckoutIntents.checkoutSessionId,
       set: {
+        idempotencyKey: input.idempotencyKey ?? null,
         amountCents: input.amountCents,
         currency: input.currency.toLowerCase(),
         stripeCustomerId: input.stripeCustomerId,

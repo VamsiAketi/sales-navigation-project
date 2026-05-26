@@ -290,6 +290,32 @@ describe("InboxIssueTrailingColumns", () => {
     });
   });
 
+  it("shows the resolved human assignee name instead of a user id prefix", () => {
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        <InboxIssueTrailingColumns
+          issue={createIssue({ assigneeUserId: "user-abcdef" })}
+          columns={["assignee"]}
+          projectName={null}
+          projectStatus={null}
+          workspaceName={null}
+          assigneeName={null}
+          assigneeUserName="Jamie Lee"
+          currentUserId="user-other"
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain("Jamie Lee");
+    expect(container.textContent).not.toContain("user-");
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
   it("leaves the workspace cell blank when no explicit workspace label should be shown", () => {
     const root = createRoot(container);
 

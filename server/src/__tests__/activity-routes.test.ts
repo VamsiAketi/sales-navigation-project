@@ -67,4 +67,19 @@ describe("activity routes", () => {
     expect(mockActivityService.runsForIssue).toHaveBeenCalledWith("company-1", "issue-uuid-1");
     expect(res.body).toEqual([{ runId: "run-1" }]);
   });
+
+  it("resolves project issue identifiers with numeric prefix suffixes", async () => {
+    mockIssueService.getByIdentifier.mockResolvedValue({
+      id: "issue-uuid-2",
+      companyId: "company-1",
+    });
+    mockActivityService.runsForIssue.mockResolvedValue([]);
+
+    const res = await request(createApp()).get("/api/issues/PODIU3-2/runs");
+
+    expect(res.status).toBe(200);
+    expect(mockIssueService.getByIdentifier).toHaveBeenCalledWith("PODIU3-2");
+    expect(mockIssueService.getById).not.toHaveBeenCalled();
+    expect(mockActivityService.runsForIssue).toHaveBeenCalledWith("company-1", "issue-uuid-2");
+  });
 });

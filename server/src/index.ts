@@ -43,6 +43,7 @@ import {
   projectContextBootstrapService,
   projectContextSyncService,
   routineService,
+  accessService,
 } from "./services/index.js";
 import { runStripeBillingReconciliation, stripeSecretsFromEnv } from "./services/stripe-billing.js";
 import { createFeedbackTraceShareClientFromConfig } from "./services/feedback-share-client.js";
@@ -648,6 +649,17 @@ export async function startServer(): Promise<StartedServer> {
     .catch((err) => {
       logger.error({ err }, "startup reconciliation of persisted runtime services failed");
     });
+
+  void accessService(db as any)
+    .backfillDefaultAgentCompanyGrants()
+    .then((result) => {
+      if (result.updated > 0) {
+        logger.info({ ...result }, "backfilled default company grants for agents");
+      }
+    })
+    .catch((err) => {
+      logger.error({ err }, "startup agent permission backfill failed");
+    });
   
   if (config.heartbeatSchedulerEnabled) {
     const heartbeat = heartbeatService(db as any);
@@ -671,7 +683,7 @@ export async function startServer(): Promise<StartedServer> {
     void projectContextExtraction.markStuckProcessingAsPending().catch((err) => {
       logger.error({ err }, "startup project context extraction recovery failed");
     });
-    void projectContextBootstrap.backfillExistingProjects().catch((err) => {
+    void projectContextBootstrap.backfillExistingProjects({ enqueueSync: false }).catch((err) => {
       logger.error({ err }, "startup project context backfill failed");
     });
     setInterval(() => {
