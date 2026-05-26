@@ -2,6 +2,11 @@ import type { Approval, DashboardSummary, HeartbeatRun, Issue, JoinRequest } fro
 
 export const RECENT_ISSUES_LIMIT = 100;
 export const FAILED_RUN_STATUSES = new Set(["failed", "timed_out"]);
+export const RETRYABLE_RUN_STATUSES = new Set(["failed", "timed_out", "cancelled"]);
+
+export function isRetryableRunStatus(status: string): boolean {
+  return RETRYABLE_RUN_STATUSES.has(status);
+}
 export const ACTIONABLE_APPROVAL_STATUSES = new Set(["pending", "revision_requested"]);
 export const DISMISSED_KEY = "paperclip:inbox:dismissed";
 export const READ_ITEMS_KEY = "paperclip:inbox:read-items";

@@ -45,6 +45,7 @@ import { PackageFileTree, buildFileTree } from "../components/PackageFileTree";
 import { ScrollToBottom } from "../components/ScrollToBottom";
 import { formatCents, formatDate, relativeTime, formatTokens, visibleRunCostUsd } from "../lib/utils";
 import { cn } from "../lib/utils";
+import { isRetryableRunStatus } from "../lib/inbox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -3147,7 +3148,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, readOnly }: { r
     },
   });
 
-  const canRetryRun = run.status === "failed" || run.status === "timed_out";
+  const canRetryRun = isRetryableRunStatus(run.status);
   const retryPayload = useMemo(() => {
     const payload: Record<string, unknown> = {};
     const context = asRecord(run.contextSnapshot);

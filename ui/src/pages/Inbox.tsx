@@ -95,6 +95,7 @@ import {
   getInboxWorkItems,
   getInboxKeyboardSelectionIndex,
   getLatestFailedRunsByAgent,
+  isRetryableRunStatus,
   getRecentTouchedIssues,
   isMineInboxTab,
   inboxAgentRunColumns,
@@ -848,7 +849,7 @@ export function AgentRunInboxTableRow({
 }) {
   const { href, status, title, meta, when } = buildFailedRunInboxRowContent({ run, issueById, agentName });
   const includeActions = showActionsColumn && !hideRetryAndDismiss;
-  const showRetry = includeActions && (run.status === "failed" || run.status === "timed_out");
+  const showRetry = includeActions && isRetryableRunStatus(run.status);
   const retryActions = showRetry ? (
     <Button
       type="button"
@@ -951,7 +952,7 @@ export function FailedRunInboxRow({
 }) {
   const { href, status, title, meta, when } = buildFailedRunInboxRowContent({ run, issueById, agentName });
   const includeActions = showActionsColumn && !hideRetryAndDismiss;
-  const showRetry = includeActions && (run.status === "failed" || run.status === "timed_out");
+  const showRetry = includeActions && isRetryableRunStatus(run.status);
   const retryActions = showRetry ? (
     <Button
       type="button"

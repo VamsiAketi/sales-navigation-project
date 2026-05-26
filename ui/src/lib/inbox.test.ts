@@ -21,6 +21,7 @@ import {
   getInboxWorkItems,
   getInboxKeyboardSelectionIndex,
   getLatestFailedRunsByAgent,
+  isRetryableRunStatus,
   getRecentTouchedIssues,
   getUnreadTouchedIssues,
   isMineInboxTab,
@@ -283,6 +284,14 @@ const dashboard: DashboardSummary = {
 describe("inbox helpers", () => {
   beforeEach(() => {
     storage.clear();
+  });
+
+  it("treats failed, timed_out, and cancelled runs as retryable", () => {
+    expect(isRetryableRunStatus("failed")).toBe(true);
+    expect(isRetryableRunStatus("timed_out")).toBe(true);
+    expect(isRetryableRunStatus("cancelled")).toBe(true);
+    expect(isRetryableRunStatus("succeeded")).toBe(false);
+    expect(isRetryableRunStatus("running")).toBe(false);
   });
 
   it("only surfaces failed runs that are still each agent's latest run", () => {
