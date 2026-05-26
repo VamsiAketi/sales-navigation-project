@@ -77,7 +77,7 @@ export function WalletTopUpDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (amountCents: number) => void;
+  onConfirm: (amountCents: number, idempotencyKey: string) => void;
   isSubmitting?: boolean;
   submitError?: string | null;
 }) {
@@ -120,7 +120,11 @@ export function WalletTopUpDialog({
   const handleSubmit = () => {
     setTouched(true);
     if (validationError !== null || resolvedCents === null) return;
-    onConfirm(resolvedCents);
+    const idempotencyKey =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `topup-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    onConfirm(resolvedCents, idempotencyKey);
   };
 
   const isPresetActive = (cents: number) => customInput === centsToInputValue(cents);

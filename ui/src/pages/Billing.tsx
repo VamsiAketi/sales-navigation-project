@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -315,9 +315,14 @@ export function Billing() {
   });
   const [walletTopUpDialogOpen, setWalletTopUpDialogOpen] = useState(false);
   const [walletTopUpSubmitError, setWalletTopUpSubmitError] = useState<string | null>(null);
+  const topUpIdempotencyKeyRef = useRef<string | null>(null);
   const stripeTopUpMutation = useMutation({
-    mutationFn: (amountCents: number) =>
-      costsApi.createStripeCheckoutSession(selectedCompanyId!, amountCents),
+    mutationFn: (input: { amountCents: number; idempotencyKey: string }) =>
+      costsApi.createStripeCheckoutSession(
+        selectedCompanyId!,
+        input.amountCents,
+        input.idempotencyKey,
+      ),
     onMutate: () => setWalletTopUpSubmitError(null),
     onSuccess: (result) => {
       window.location.assign(result.url);
@@ -413,6 +418,9 @@ export function Billing() {
     return new URLSearchParams(window.location.search).get("stripe");
   });
   const [topUpSuccessHandled, setTopUpSuccessHandled] = useState(false);
+  const [checkoutSyncState, setCheckoutSyncState] = useState<
+    "idle" | "syncing" | "credited" | "pending" | "failed"
+  >("idle");
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -484,15 +492,8 @@ export function Billing() {
     ]);
   }, [setBreadcrumbs, selectedCompany?.name]);
 
-  useEffect(() => {
-    const stripeFlag = searchParams.get("stripe")
-      ?? (typeof window !== "undefined"
-        ? new URLSearchParams(window.location.search).get("stripe")
-        : null);
-    if (!stripeFlag || !selectedCompanyId || topUpSuccessHandled) return;
-    setTopUpSuccessHandled(true);
-    setBillingDialogStatus(stripeFlag);
-    setTopUpSuccessDialogOpen(true);
+  const invalidateBillingQueries = useCallback(() => {
+    if (!selectedCompanyId) return;
     void queryClient.invalidateQueries({
       queryKey: ["costs", "billing-summary", selectedCompanyId, monthRange.from, monthRange.to],
     });
@@ -504,17 +505,83 @@ export function Billing() {
     });
     void queryClient.invalidateQueries({ queryKey: queryKeys.billingStripeInvoices(selectedCompanyId) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.billingPrepaidBalance(selectedCompanyId) });
-  }, [searchParams, queryClient, selectedCompanyId, monthRange.from, monthRange.to, topUpSuccessHandled]);
+  }, [queryClient, selectedCompanyId, monthRange.from, monthRange.to]);
+
+  useEffect(() => {
+    const stripeFlag = searchParams.get("stripe")
+      ?? (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("stripe")
+        : null);
+    if (!stripeFlag || !selectedCompanyId || topUpSuccessHandled) return;
+    setTopUpSuccessHandled(true);
+    setBillingDialogStatus(stripeFlag);
+    setTopUpSuccessDialogOpen(true);
+
+    const sessionId =
+      searchParams.get("session_id")
+      ?? (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("session_id")
+        : null);
+
+    const isPaymentSuccess =
+      stripeFlag === "payment-success" || stripeFlag === "topup-success";
+
+    if (!isPaymentSuccess || !sessionId || !canManageBillingPayments) {
+      setCheckoutSyncState(isPaymentSuccess ? "pending" : "idle");
+      invalidateBillingQueries();
+      return;
+    }
+
+    let cancelled = false;
+    setCheckoutSyncState("syncing");
+    void costsApi
+      .syncStripeCheckoutSession(selectedCompanyId, sessionId)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.credited) {
+          setCheckoutSyncState("credited");
+        } else if (result.paymentStatus === "paid") {
+          setCheckoutSyncState("pending");
+        } else {
+          setCheckoutSyncState("failed");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCheckoutSyncState("failed");
+      })
+      .finally(() => {
+        // Always refresh balance after sync — closing the dialog strips URL params and
+        // re-runs this effect's cleanup (cancelled=true), but the server may already have credited.
+        void queryClient.refetchQueries({
+          queryKey: queryKeys.billingPrepaidBalance(selectedCompanyId),
+        });
+        invalidateBillingQueries();
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    searchParams,
+    selectedCompanyId,
+    topUpSuccessHandled,
+    canManageBillingPayments,
+    invalidateBillingQueries,
+  ]);
 
   const closeBillingDialog = useCallback(() => {
     setTopUpSuccessDialogOpen(false);
     setBillingDialogStatus(null);
+    setCheckoutSyncState("idle");
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
     if (url.searchParams.has("stripe")) {
       url.searchParams.delete("stripe");
-      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     }
+    if (url.searchParams.has("session_id")) {
+      url.searchParams.delete("session_id");
+    }
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
   if (!selectedCompany) {
@@ -1018,9 +1085,20 @@ export function Billing() {
       <WalletTopUpDialog
         open={walletTopUpDialogOpen}
         onOpenChange={(open) => {
-          if (!stripeTopUpMutation.isPending) setWalletTopUpDialogOpen(open);
+          if (!stripeTopUpMutation.isPending) {
+            if (!open) topUpIdempotencyKeyRef.current = null;
+            setWalletTopUpDialogOpen(open);
+          }
         }}
-        onConfirm={(amountCents) => stripeTopUpMutation.mutate(amountCents)}
+        onConfirm={(amountCents, idempotencyKey) => {
+          if (!topUpIdempotencyKeyRef.current) {
+            topUpIdempotencyKeyRef.current = idempotencyKey;
+          }
+          stripeTopUpMutation.mutate({
+            amountCents,
+            idempotencyKey: topUpIdempotencyKeyRef.current,
+          });
+        }}
         isSubmitting={stripeTopUpMutation.isPending}
         submitError={walletTopUpSubmitError}
       />
@@ -1041,7 +1119,15 @@ export function Billing() {
                 </div>
                 <DialogTitle>Payment successful</DialogTitle>
                 <DialogDescription>
-                  Payment is complete and your account balance is updating.
+                  {checkoutSyncState === "syncing"
+                    ? "Payment is complete. Applying funds to your wallet…"
+                    : checkoutSyncState === "credited"
+                      ? "Payment is complete and your wallet balance has been updated."
+                      : checkoutSyncState === "pending"
+                        ? "Payment succeeded in Stripe, but funds are not in your wallet yet. Keep the Stripe webhook running (see below) or refresh in a moment."
+                        : checkoutSyncState === "failed"
+                          ? "Payment succeeded in Stripe, but we could not add funds automatically. Check server logs and your Stripe webhook setup."
+                          : "Payment is complete and your account balance is updating."}
                 </DialogDescription>
               </>
             ) : billingDialogStatus === "payment-cancelled" || billingDialogStatus === "topup-cancelled" ? (
