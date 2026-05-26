@@ -176,6 +176,20 @@ POST /api/companies/{companyId}/issues/{issueId}/attachments
 Content-Type: multipart/form-data
 ```
 
+Form fields:
+
+| Field | Required | Description |
+| ----- | -------- | ----------- |
+| `file` | yes | Binary file body |
+| `issueCommentId` | no | Link attachment to a specific comment (recommended for task deliverables) |
+
+**Agent standing instruction:** when you create task-relevant files (CSV, Excel, PDF, images, video, etc.), upload them as attachments on your completion comment. Do not only paste workspace file paths in the comment body.
+
+Typical flow:
+
+1. `POST /api/issues/{issueId}/comments` or `PATCH` with `comment` → save `comment.id`
+2. `POST .../attachments` per file with `issueCommentId` set to that id
+
 ### List
 
 ```

@@ -42,7 +42,11 @@ describe("buildAdapterInvocationPrompt", () => {
       templateData: {},
     });
 
-    expect(result.prompt).toBe("Run the regular heartbeat inbox procedure.");
+    expect(result.prompt).toContain("## Task deliverable files (mandatory)");
+    expect(result.prompt).toContain("Run the regular heartbeat inbox procedure.");
+    expect(result.prompt.indexOf("Task deliverable files")).toBeLessThan(
+      result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
+    );
     expect(result.connectorWakePrompt).toBe("");
     expect(result.renderedHeartbeatPrompt).toBe("Run the regular heartbeat inbox procedure.");
   });
@@ -82,6 +86,33 @@ describe("buildAdapterInvocationPrompt", () => {
     expect(result.prompt.indexOf("Project data & dashboards")).toBeLessThan(
       result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
     );
+  });
+
+  it("prepends task deliverable attachment standing instruction on normal heartbeats", () => {
+    const result = buildAdapterInvocationPrompt({
+      context: { wakeReason: "issue_assigned" },
+      promptTemplate: "Run the regular heartbeat inbox procedure.",
+      templateData: {},
+    });
+
+    expect(result.prompt).toContain("## Task deliverable files (mandatory)");
+    expect(result.prompt).toContain("issueCommentId");
+    expect(result.prompt.indexOf("Task deliverable files")).toBeLessThan(
+      result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
+    );
+  });
+
+  it("does not inject deliverable attachment instruction on one-shot connector wakes", () => {
+    const result = buildAdapterInvocationPrompt({
+      context: {
+        wakeReason: "connector_event",
+        wakeupPrompt: "Process this Gmail message.",
+      },
+      promptTemplate: "Run the regular heartbeat inbox procedure.",
+      templateData: {},
+    });
+
+    expect(result.prompt).not.toContain("Task deliverable files");
   });
 
   it("uses one-shot wake prompt for project context sync", () => {

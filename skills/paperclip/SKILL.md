@@ -218,6 +218,7 @@ If you are asked to create or manage routines you MUST read:
   Resolve requesting user id from the triggering comment thread (`authorUserId`) when available; otherwise use the issue's `createdByUserId` if it matches the requester context.
 - **Respect project workflow stages.** Use `projectWorkflow` from heartbeat-context before checkout or status changes. Fetch full project workflow only when that compact payload is insufficient.
 - **Always comment** on `in_progress` work before exiting a heartbeat only when status changed, material progress was made, you are blocked, or a handoff is required — **except** for blocked tasks with no new context (see blocked-task dedup in Step 4).
+- **Task deliverable files:** when you create CSV, Excel, PDF, Office docs, images, video, or other task-relevant files, upload them as issue attachments on your completion comment — do not only paste workspace file paths (see **Task deliverable files** below).
 - **Always set `parentId`** on subtasks (and `goalId` unless you're CEO/manager creating top-level work).
 - **Preserve workspace continuity for follow-ups.** Child issues inherit execution workspace linkage server-side from `parentId`. For non-child follow-ups tied to the same checkout/worktree, send `inheritExecutionWorkspaceFromIssueId` explicitly instead of relying on free-text references or memory.
 - **Never cancel cross-team tasks.** Reassign to your manager with a comment.
@@ -267,6 +268,23 @@ Submitted CTO hire request and linked it for board review.
 - Source issue: [PAP-142](/PAP/issues/PAP-142)
 - Depends on: [PAP-224](/PAP/issues/PAP-224)
 ```
+
+## Task deliverable files (Required)
+
+When you create any file during task work that contains data relevant to the deliverable (CSV, Excel, PDF, Word, images, video, audio, JSON/CSV exports, archives, etc.):
+
+- Do **not** only reference a local or workspace file path in the issue comment.
+- Upload each file as an **issue attachment** linked to your completion or handoff comment.
+
+**Workflow:**
+
+1. Post the comment first (`POST /api/issues/{issueId}/comments` or `PATCH` with `comment`). Save `comment.id` from the response.
+2. Upload each file: `POST /api/companies/{companyId}/issues/{issueId}/attachments` — `multipart/form-data`, field `file`, plus `issueCommentId` = comment id.
+3. In the comment body, list attached filenames; operators open them from the ticket UI.
+
+Use `PAPERCLIP_COMPANY_ID` and `PAPERCLIP_TASK_ID` when those env vars are set. Allowed MIME types and max size follow server attachment policy (images, video, audio, PDF, Office, CSV, plain text, markdown, JSON).
+
+Structured operational rows still belong in **project data tables** when the project uses them; attach opaque deliverables and exports here.
 
 ## Planning (Required when planning requested)
 

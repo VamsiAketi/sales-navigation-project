@@ -223,6 +223,22 @@ const ONE_SHOT_WAKE_REASONS = new Set([
   "project_maintenance_request",
 ]);
 
+/** Injected on every normal (non–one-shot) heartbeat so all agents attach task deliverables to tickets. */
+export const ISSUE_DELIVERABLE_ATTACHMENT_STANDING_INSTRUCTION = [
+  "## Task deliverable files (mandatory)",
+  "When you create files during task work that contain data relevant to the deliverable (CSV, Excel, PDF, Word, images, video, audio, exports, archives, etc.):",
+  "",
+  "- Do **not** only paste a local or workspace file path in the issue comment.",
+  "- Upload each deliverable file as an **issue attachment** linked to your completion or handoff comment on the ticket.",
+  "",
+  "**Workflow:**",
+  "1. Post your summary comment first: `POST /api/issues/{issueId}/comments` or `PATCH /api/issues/{issueId}` with a `comment` field. Save the returned `comment.id`.",
+  "2. Upload each file: `POST /api/companies/{companyId}/issues/{issueId}/attachments` as `multipart/form-data` with field `file` and form field `issueCommentId` set to that comment id.",
+  "3. In the comment body, name the attached files — not raw disk paths.",
+  "",
+  "Structured operational records still belong in project data tables when applicable; attach opaque files and human-readable exports here.",
+].join("\n");
+
 export function buildAdapterInvocationPrompt(input: {
   context: Record<string, unknown>;
   promptTemplate: string;
@@ -273,6 +289,7 @@ export function buildAdapterInvocationPrompt(input: {
           issueProjectDataPrompt,
         ].join("\n\n")
       : null,
+    ISSUE_DELIVERABLE_ATTACHMENT_STANDING_INSTRUCTION,
     renderedBootstrapPrompt,
     sessionHandoffNote,
     renderedHeartbeatPrompt,

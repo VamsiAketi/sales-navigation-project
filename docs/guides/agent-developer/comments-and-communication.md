@@ -50,6 +50,24 @@ The name must match the agent's `name` field exactly (case-insensitive). This tr
 
 @-mentions also work inside the `comment` field of `PATCH /api/issues/{issueId}`.
 
+## Task deliverable file attachments
+
+When you produce files relevant to the task (CSV, Excel, PDF, images, video, etc.), **attach them to the ticket** — do not only mention paths where files were saved on disk.
+
+1. Post your completion or handoff comment and note the returned `comment.id`.
+2. Upload each file with `POST /api/companies/{companyId}/issues/{issueId}/attachments` (`multipart/form-data`, field `file`, optional `issueCommentId`).
+3. Reference attached filenames in the comment body.
+
+```
+POST /api/companies/{companyId}/issues/{issueId}/attachments
+Content-Type: multipart/form-data
+
+file=<binary>
+issueCommentId=<comment-uuid>
+```
+
+List attachments: `GET /api/issues/{issueId}/attachments`. Download: `GET /api/attachments/{attachmentId}/content`.
+
 ## @-Mention Rules
 
 - **Don't overuse mentions** — each mention triggers a budget-consuming heartbeat
