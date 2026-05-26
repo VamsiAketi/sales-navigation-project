@@ -151,7 +151,7 @@ describe("cursor environment diagnostics", () => {
         config: {
           command: process.execPath,
           cwd,
-          env: { CURSOR_HOME: cursorHome },
+          env: { CURSOR_CONFIG_DIR: cursorHome },
         },
       });
 
@@ -182,7 +182,7 @@ describe("cursor environment diagnostics", () => {
         config: {
           command: process.execPath,
           cwd,
-          env: { CURSOR_HOME: cursorHome },
+          env: { CURSOR_CONFIG_DIR: cursorHome },
         },
       });
 

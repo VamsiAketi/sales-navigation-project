@@ -83,6 +83,46 @@ const allowedPatterns: string[] = parseAllowedTypes(
   process.env.PAPERCLIP_ALLOWED_ATTACHMENT_TYPES,
 );
 
+const EXTENSION_CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".md": "text/markdown",
+  ".markdown": "text/markdown",
+  ".txt": "text/plain",
+  ".json": "application/json",
+  ".csv": "text/csv",
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+const GENERIC_UPLOAD_CONTENT_TYPES = new Set(["", "application/octet-stream"]);
+
+/**
+ * Resolve an upload MIME type from the client hint and filename.
+ * Browsers often send empty or generic types for HTML and other text files.
+ */
+export function resolveAttachmentContentType(
+  mimetype: string | undefined,
+  originalFilename: string | undefined,
+  patterns: string[] = allowedPatterns,
+): string {
+  const hinted = (mimetype || "").toLowerCase().split(";")[0]?.trim() ?? "";
+  if (hinted && !GENERIC_UPLOAD_CONTENT_TYPES.has(hinted) && matchesContentType(hinted, patterns)) {
+    return hinted;
+  }
+
+  const ext = originalFilename
+    ? originalFilename.slice(originalFilename.lastIndexOf(".")).toLowerCase()
+    : "";
+  const inferred = ext ? EXTENSION_CONTENT_TYPES[ext] : undefined;
+  if (inferred && matchesContentType(inferred, patterns)) return inferred;
+
+  return hinted;
+}
+
 /** Convenience wrapper using the process-level allowed list. */
 export function isAllowedContentType(contentType: string): boolean {
   return matchesContentType(contentType, allowedPatterns);

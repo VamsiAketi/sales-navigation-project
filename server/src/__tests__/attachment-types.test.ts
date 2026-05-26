@@ -3,6 +3,7 @@ import {
   parseAllowedTypes,
   matchesContentType,
   DEFAULT_ALLOWED_TYPES,
+  resolveAttachmentContentType,
 } from "../attachment-types.js";
 
 describe("parseAllowedTypes", () => {
@@ -20,6 +21,7 @@ describe("parseAllowedTypes", () => {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "audio/mpeg",
         "audio/wav",
+        "text/html",
       ]),
     );
   });
@@ -111,5 +113,29 @@ describe("matchesContentType", () => {
     expect(matchesContentType("application/pdf", patterns)).toBe(true);
     expect(matchesContentType("text/plain", patterns)).toBe(true);
     expect(matchesContentType("application/zip", patterns)).toBe(true);
+  });
+});
+
+describe("resolveAttachmentContentType", () => {
+  const patterns = [...DEFAULT_ALLOWED_TYPES];
+
+  it("keeps an allowed client MIME type", () => {
+    expect(resolveAttachmentContentType("text/html", "page.html", patterns)).toBe("text/html");
+  });
+
+  it("infers text/html from .html when the client sends an empty type", () => {
+    expect(resolveAttachmentContentType("", "report.html", patterns)).toBe("text/html");
+  });
+
+  it("infers text/html from .htm when the client sends application/octet-stream", () => {
+    expect(resolveAttachmentContentType("application/octet-stream", "report.htm", patterns)).toBe(
+      "text/html",
+    );
+  });
+
+  it("strips charset parameters before matching", () => {
+    expect(resolveAttachmentContentType("text/html; charset=utf-8", "page.html", patterns)).toBe(
+      "text/html",
+    );
   });
 });
