@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSubmitNewIssue, formatRequiredFieldLabel } from "./NewIssueDialog";
+import { canSubmitNewIssue, formatRequiredFieldLabel, shouldForceTodoStatusOnCreateForProject } from "./NewIssueDialog";
 
 describe("canSubmitNewIssue", () => {
   it("requires title and project while not pending", () => {
@@ -43,5 +43,18 @@ describe("canSubmitNewIssue", () => {
 describe("formatRequiredFieldLabel", () => {
   it("appends required marker for required fields", () => {
     expect(formatRequiredFieldLabel("Project")).toBe("Project *");
+  });
+});
+
+describe("shouldForceTodoStatusOnCreateForProject", () => {
+  it("forces todo for backlog and planned projects", () => {
+    expect(shouldForceTodoStatusOnCreateForProject("backlog")).toBe(true);
+    expect(shouldForceTodoStatusOnCreateForProject("planned")).toBe(true);
+  });
+
+  it("does not force todo once the project has started", () => {
+    expect(shouldForceTodoStatusOnCreateForProject("in_progress")).toBe(false);
+    expect(shouldForceTodoStatusOnCreateForProject("completed")).toBe(false);
+    expect(shouldForceTodoStatusOnCreateForProject(null)).toBe(false);
   });
 });

@@ -17,6 +17,7 @@ const mockAccessService = vi.hoisted(() => ({
   getMembership: vi.fn(),
   listPrincipalGrants: vi.fn(),
   ensureMembership: vi.fn(),
+  ensureDefaultAgentCompanyGrants: vi.fn(),
   setPrincipalPermission: vi.fn(),
 }));
 
@@ -219,6 +220,7 @@ describe("agent skill routes", () => {
     mockAccessService.getMembership.mockResolvedValue(null);
     mockAccessService.listPrincipalGrants.mockResolvedValue([]);
     mockAccessService.ensureMembership.mockResolvedValue(undefined);
+    mockAccessService.ensureDefaultAgentCompanyGrants.mockResolvedValue(undefined);
     mockAccessService.setPrincipalPermission.mockResolvedValue(undefined);
   });
 

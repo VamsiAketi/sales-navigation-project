@@ -113,6 +113,9 @@ vi.mock("../realtime/live-events-ws.js", () => ({
 }));
 
 vi.mock("../services/index.js", () => ({
+  accessService: vi.fn(() => ({
+    backfillDefaultAgentCompanyGrants: vi.fn(async () => ({ scanned: 0, updated: 0 })),
+  })),
   feedbackService: feedbackServiceFactoryMock,
   heartbeatService: vi.fn(() => ({
     reapOrphanedRuns: vi.fn(async () => undefined),
