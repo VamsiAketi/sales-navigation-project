@@ -42,9 +42,9 @@ describe("buildAdapterInvocationPrompt", () => {
       templateData: {},
     });
 
-    expect(result.prompt).toContain("## Task deliverable files (mandatory)");
+    expect(result.prompt).toContain("## Task run protocol (mandatory)");
     expect(result.prompt).toContain("Run the regular heartbeat inbox procedure.");
-    expect(result.prompt.indexOf("Task deliverable files")).toBeLessThan(
+    expect(result.prompt.indexOf("Task run protocol")).toBeLessThan(
       result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
     );
     expect(result.connectorWakePrompt).toBe("");
@@ -63,12 +63,59 @@ describe("buildAdapterInvocationPrompt", () => {
     });
 
     expect(result.prompt).toContain("AGENTS.md content");
-    expect(result.prompt).toContain("## Current task — workflow rules (mandatory)");
-    expect(result.prompt).toContain("Lead Generation (API key: todo)");
+    expect(result.prompt).toContain("### Playbook and stage rules");
+    expect(result.prompt).toContain("Lead Generation");
     expect(result.prompt).toContain("Run the regular heartbeat inbox procedure.");
-    expect(result.prompt.indexOf("workflow rules")).toBeLessThan(
+    expect(result.prompt.indexOf("Playbook and stage rules")).toBeLessThan(
       result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
     );
+  });
+
+  it("prepends mandatory task run protocol on normal heartbeats", () => {
+    const result = buildAdapterInvocationPrompt({
+      context: { wakeReason: "issue_assigned" },
+      promptTemplate: "Run the regular heartbeat inbox procedure.",
+      templateData: {},
+    });
+
+    expect(result.prompt).toContain("## Task run protocol (mandatory)");
+    expect(result.prompt).toContain("**Role fit**");
+    expect(result.prompt).toContain("**Handoff**");
+    expect(result.prompt.indexOf("Task run protocol")).toBeLessThan(
+      result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
+    );
+  });
+
+  it("nests workflow and data prompts under the task run protocol", () => {
+    const result = buildAdapterInvocationPrompt({
+      context: {
+        wakeReason: "issue_assigned",
+        issueRunPromptDigest: "**Task:** X-1 — Do thing\n**Stage:** Verify",
+      },
+      promptTemplate: "Run heartbeat.",
+      templateData: {},
+    });
+
+    expect(result.prompt).toContain("### Task context (this run)");
+    expect(result.prompt).toContain("**Stage:** Verify");
+    expect(result.prompt.indexOf("Task run protocol")).toBeLessThan(
+      result.prompt.indexOf("### Task context"),
+    );
+  });
+
+  it("supports legacy workflow and data prompts when digest is absent", () => {
+    const result = buildAdapterInvocationPrompt({
+      context: {
+        wakeReason: "issue_assigned",
+        issueWorkflowPrompt: "Current stage: **Verify**",
+        issueProjectDataPrompt: "Registered tables:\n- **work_items**",
+      },
+      promptTemplate: "Run heartbeat.",
+      templateData: {},
+    });
+
+    expect(result.prompt).toContain("### Playbook and stage rules");
+    expect(result.prompt).toContain("### Project data & dashboards");
   });
 
   it("prepends mandatory project data rules when issueProjectDataPrompt is set", () => {
@@ -81,28 +128,11 @@ describe("buildAdapterInvocationPrompt", () => {
       templateData: {},
     });
 
-    expect(result.prompt).toContain("## Project data & dashboards (mandatory)");
+    expect(result.prompt).toContain("### Project data & dashboards");
     expect(result.prompt).toContain("**work_items**");
-    expect(result.prompt.indexOf("Project data & dashboards")).toBeLessThan(
-      result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
-    );
   });
 
-  it("prepends task deliverable attachment standing instruction on normal heartbeats", () => {
-    const result = buildAdapterInvocationPrompt({
-      context: { wakeReason: "issue_assigned" },
-      promptTemplate: "Run the regular heartbeat inbox procedure.",
-      templateData: {},
-    });
-
-    expect(result.prompt).toContain("## Task deliverable files (mandatory)");
-    expect(result.prompt).toContain("issueCommentId");
-    expect(result.prompt.indexOf("Task deliverable files")).toBeLessThan(
-      result.prompt.indexOf("Run the regular heartbeat inbox procedure."),
-    );
-  });
-
-  it("does not inject deliverable attachment instruction on one-shot connector wakes", () => {
+  it("does not inject task run protocol on one-shot connector wakes", () => {
     const result = buildAdapterInvocationPrompt({
       context: {
         wakeReason: "connector_event",
@@ -112,7 +142,7 @@ describe("buildAdapterInvocationPrompt", () => {
       templateData: {},
     });
 
-    expect(result.prompt).not.toContain("Task deliverable files");
+    expect(result.prompt).not.toContain("Task run protocol");
   });
 
   it("uses one-shot wake prompt for project context sync", () => {

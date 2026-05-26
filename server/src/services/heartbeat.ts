@@ -69,8 +69,7 @@ import {
   resolveSessionCompactionPolicy,
   type SessionCompactionPolicy,
 } from "@paperclipai/adapter-utils";
-import { loadIssueWorkflowPromptForRun } from "./issue-heartbeat-workflow-prompt.js";
-import { loadIssueProjectDataPromptForRun } from "./issue-heartbeat-project-data-prompt.js";
+import { loadIssueRunPromptDigest } from "./issue-run-prompt-digest.js";
 
 const ISSUE_WORKFLOW_PROMPT_SKIP_WAKE_REASONS = new Set([
   "connector_event",
@@ -2325,6 +2324,8 @@ export function heartbeatService(db: Db) {
             assigneeAgentId: issues.assigneeAgentId,
             assigneeAdapterOverrides: issues.assigneeAdapterOverrides,
             executionWorkspaceSettings: issues.executionWorkspaceSettings,
+            description: issues.description,
+            parentId: issues.parentId,
           })
           .from(issues)
           .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
@@ -2337,24 +2338,25 @@ export function heartbeatService(db: Db) {
       (!wakeReasonForPrompt || !ISSUE_WORKFLOW_PROMPT_SKIP_WAKE_REASONS.has(wakeReasonForPrompt))
     ) {
       try {
-        const [issueWorkflowPrompt, issueProjectDataPrompt] = await Promise.all([
-          loadIssueWorkflowPromptForRun(db, {
-            companyId: agent.companyId,
-            projectId: issueContext.projectId,
-            issueStatus: issueContext.status,
-            issueIdentifier: issueContext.identifier,
-            issueTitle: issueContext.title,
-          }),
-          loadIssueProjectDataPromptForRun(db, {
-            projectId: issueContext.projectId,
-            issueStatus: issueContext.status,
-          }),
-        ]);
-        if (issueWorkflowPrompt) {
-          context.issueWorkflowPrompt = issueWorkflowPrompt;
-        }
-        if (issueProjectDataPrompt) {
-          context.issueProjectDataPrompt = issueProjectDataPrompt;
+        const wakeCommentId =
+          readNonEmptyString(context.wakeCommentId) ?? readNonEmptyString(context.commentId);
+        const digest = await loadIssueRunPromptDigest(db, {
+          companyId: agent.companyId,
+          agentId: agent.id,
+          issueId: issueContext.id,
+          projectId: issueContext.projectId,
+          issueStatus: issueContext.status,
+          issueIdentifier: issueContext.identifier,
+          issueTitle: issueContext.title,
+          issueDescription: issueContext.description,
+          parentId: issueContext.parentId,
+          wakeCommentId,
+          previousFingerprint: readNonEmptyString(context.issueRunPromptFingerprint),
+        });
+        if (digest) {
+          context.issueRunPromptDigest = digest.markdown;
+          context.issueRunPromptFingerprint = digest.fingerprint;
+          context.issueRunPromptDigestCompact = digest.compact;
         }
       } catch (err) {
         logger.warn(
@@ -2364,7 +2366,7 @@ export function heartbeatService(db: Db) {
             projectId: issueContext.projectId,
             error: err instanceof Error ? err.message : String(err),
           },
-          "Failed to build issue workflow/data prompts for adapter invocation",
+          "Failed to build issue run prompt digest for adapter invocation",
         );
       }
     }

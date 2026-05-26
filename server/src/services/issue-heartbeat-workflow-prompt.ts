@@ -94,9 +94,7 @@ export function buildIssueWorkflowInvocationPrompt(input: IssueWorkflowInvocatio
   } else if (input.workflowSummary) {
     lines.push(
       "",
-      "### Project workflow playbook (excerpt)",
-      "No dedicated section matched this stage name; use the excerpt below and obey the current stage name.",
-      truncatePromptText(input.workflowSummary, MAX_WORKFLOW_DOC_CHARS) ?? "",
+      `**Playbook:** No \`## ${stage.name}\` section in documents/workflow — use heartbeat-context for the full playbook if needed.`,
     );
   }
 

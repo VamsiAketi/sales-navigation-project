@@ -74,9 +74,9 @@ Headers: Authorization: Bearer $PAPERCLIP_API_KEY, X-Paperclip-Run-Id: $PAPERCLI
 
 If already checked out by you, returns normally. If owned by another agent: `409 Conflict` — stop, pick a different task. **Never retry a 409.**
 
-**Step 6 — Understand context.** `GET /api/issues/{issueId}/heartbeat-context` once. Use `projectWorkflow` for transition rules on project-scoped issues. Use `project.primaryWorkspace` for repo/cwd hints. Use `wakeComment` when present.
+**Step 6 — Task run protocol.** Every issue run follows the five steps in `## Task run protocol (mandatory)` in your prompt: (1) understand the task, (2) role fit — comment and exit if not yours, (3) execute per playbook, (4) comment + attach files, (5) handoff. Use `GET /api/issues/{issueId}/heartbeat-context` once when description, parent, wake comment, or workspace is still missing.
 
-On **project-scoped** issues, workflow rules are **injected into your run prompt** under `## Current task — workflow rules (mandatory)` (built from the project playbook + current stage). You do not need to discover them via a separate API call, but you may still use `GET /api/issues/{issueId}/heartbeat-context` for comments, workspaces, and updates.
+On **project-scoped** issues, stage rules and data inventory are injected under the protocol (steps 3 & 5). Do not rely on stale project text in AGENTS.md.
 
 Also read before any status change:
 
@@ -136,7 +136,7 @@ For project-scoped issues, `GET /api/issues/{issueId}/heartbeat-context` returns
 
 **Project database rows:** `projectContext.dataSchemaName` (e.g. `prj_…`) is the internal PostgreSQL schema — **not** an API path. Use `projectContext.projectDataApi.routes` from heartbeat-context (or `GET /api/projects/{projectId}/data/objects`). Insert with `POST /api/projects/{projectId}/data/{tableName}/rows` and body `{ "rows": [ { ... } ] }`. Requires `project:edit tickets` (granted to issue assignees on restricted projects).
 
-**Mandatory adapter prompt:** project-scoped issue runs prepend `## Project data & dashboards (mandatory)` with table columns and dashboard routes — follow it before marking stage work complete. Issue comments are narrative; durable records belong in data tables and dashboards.
+**Mandatory adapter prompt:** project-scoped issue runs include the **Task run protocol** (understand → role fit → playbook → comment/attachments → handoff) plus injected stage rules and data/dashboard inventory. Follow the protocol before marking work complete.
 
 Use **`currentStage.name` + playbook** to decide behavior; use **`issue.status` / stage `value`** only when calling checkout or PATCH.
 

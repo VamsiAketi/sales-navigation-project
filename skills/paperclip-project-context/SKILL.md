@@ -221,10 +221,7 @@ Synthesize and curate from `GET .../context-files` extracted text, existing docu
 
 ## Task heartbeats (agents working issues)
 
-Every issue adapter prompt includes mandatory sections when the task is project-scoped:
-
-1. `## Current task — workflow rules (mandatory)` — stage transitions and handoffs.
-2. `## Project data & dashboards (mandatory)` — table names, columns, insert/query routes, and existing dashboards.
+Every issue adapter prompt includes the **Task run protocol (mandatory)** — five steps: understand → role fit → playbook → comment/attachments → handoff. Steps 3 and 5 use injected stage rules; step 3 may use `projectContext.projectDataApi` / `projectDashboardApi` when present.
 
 From `GET /api/issues/{issueId}/heartbeat-context` (for deeper context):
 

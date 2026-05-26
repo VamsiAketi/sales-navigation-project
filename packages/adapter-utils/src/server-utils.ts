@@ -223,20 +223,14 @@ const ONE_SHOT_WAKE_REASONS = new Set([
   "project_maintenance_request",
 ]);
 
-/** Injected on every normal (non–one-shot) heartbeat so all agents attach task deliverables to tickets. */
-export const ISSUE_DELIVERABLE_ATTACHMENT_STANDING_INSTRUCTION = [
-  "## Task deliverable files (mandatory)",
-  "When you create files during task work that contain data relevant to the deliverable (CSV, Excel, PDF, Word, images, video, audio, exports, archives, etc.):",
-  "",
-  "- Do **not** only paste a local or workspace file path in the issue comment.",
-  "- Upload each deliverable file as an **issue attachment** linked to your completion or handoff comment on the ticket.",
-  "",
-  "**Workflow:**",
-  "1. Post your summary comment first: `POST /api/issues/{issueId}/comments` or `PATCH /api/issues/{issueId}` with a `comment` field. Save the returned `comment.id`.",
-  "2. Upload each file: `POST /api/companies/{companyId}/issues/{issueId}/attachments` as `multipart/form-data` with field `file` and form field `issueCommentId` set to that comment id.",
-  "3. In the comment body, name the attached files — not raw disk paths.",
-  "",
-  "Structured operational records still belong in project data tables when applicable; attach opaque files and human-readable exports here.",
+/** Mandatory five-step lifecycle for every normal (non–one-shot) issue heartbeat. */
+export const ISSUE_TASK_RUN_PROTOCOL = [
+  "## Task run protocol (mandatory)",
+  "1. **Understand** — task context below; call `GET /api/issues/{issueId}/heartbeat-context` only if you still need full thread, goal tree, or workspace.",
+  "2. **Role fit** — if this task is outside your AGENTS.md mandate: comment why, do not checkout or change status, exit.",
+  "3. **Execute** — follow stage playbook and data section below when present.",
+  "4. **Close out** — comment what you did; upload task files as issue attachments on that comment (not disk paths only).",
+  "5. **Handoff** — advance only to allowed next stage `value` keys after exit criteria are met.",
 ].join("\n");
 
 export function buildAdapterInvocationPrompt(input: {
@@ -270,26 +264,24 @@ export function buildAdapterInvocationPrompt(input: {
       ? renderTemplate(bootstrapPromptTemplate, input.templateData).trim()
       : "";
   const sessionHandoffNote = readNonEmptyContextString(input.sessionHandoffNote);
+  const issueRunPromptDigest = readNonEmptyContextString(input.context.issueRunPromptDigest);
   const issueWorkflowPrompt = readNonEmptyContextString(input.context.issueWorkflowPrompt);
   const issueProjectDataPrompt = readNonEmptyContextString(input.context.issueProjectDataPrompt);
   const renderedHeartbeatPrompt = renderTemplate(input.promptTemplate, input.templateData);
+  const taskContextSection = issueRunPromptDigest
+    ? issueRunPromptDigest
+    : joinPromptSections([
+        issueWorkflowPrompt
+          ? ["### Playbook and stage rules (step 3 & 5)", issueWorkflowPrompt].join("\n\n")
+          : null,
+        issueProjectDataPrompt
+          ? ["### Project data & dashboards (step 3)", issueProjectDataPrompt].join("\n\n")
+          : null,
+      ]);
   const prompt = joinPromptSections([
     ...(input.leadingSections ?? []),
-    issueWorkflowPrompt
-      ? [
-          "## Current task — workflow rules (mandatory)",
-          "Follow these rules before checkout, status changes, or handoff. Do not rely on generic `todo` / `in_progress` semantics.",
-          issueWorkflowPrompt,
-        ].join("\n\n")
-      : null,
-    issueProjectDataPrompt
-      ? [
-          "## Project data & dashboards (mandatory)",
-          "Structured operational records belong in project data tables and dashboards — not only in issue comments. Use the Paperclip API routes below.",
-          issueProjectDataPrompt,
-        ].join("\n\n")
-      : null,
-    ISSUE_DELIVERABLE_ATTACHMENT_STANDING_INSTRUCTION,
+    ISSUE_TASK_RUN_PROTOCOL,
+    taskContextSection ? ["### Task context (this run)", taskContextSection].join("\n\n") : null,
     renderedBootstrapPrompt,
     sessionHandoffNote,
     renderedHeartbeatPrompt,
