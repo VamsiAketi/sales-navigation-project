@@ -35,6 +35,7 @@ import { projectStatusSwatchClass } from "../lib/status-colors";
 import { cn } from "../lib/utils";
 import { displayBrandSafe } from "../lib/displayBrandSafe";
 import { markdownTokenForUploadedIssueFile } from "../lib/issue-attachment-file-accept";
+import { MdxImageDialog } from "./MdxImageDialog";
 
 /* ---- Mention types ---- */
 
@@ -333,7 +334,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       markdownShortcutPlugin(),
     ];
     if (imageHandler) {
-      all.push(imagePlugin({ imageUploadHandler: imageHandler }));
+      all.push(
+        imagePlugin({
+          imageUploadHandler: imageHandler,
+          ImageDialog: MdxImageDialog,
+        }),
+      );
     }
     return all;
   }, [hasImageUpload]);
