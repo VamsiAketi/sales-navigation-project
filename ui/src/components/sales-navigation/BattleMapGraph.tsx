@@ -28,7 +28,7 @@ export function BattleMapGraph({
     <div className="flex h-full min-h-0 flex-col gap-0.5 p-1 md:p-1.5">
       <div className="flex shrink-0 items-center gap-2 border-b border-border/50 pb-1">
         <div
-          className="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:thin]"
+          className="flex min-w-0 flex-1 flex-wrap gap-1 overflow-x-hidden"
           role="tablist"
           aria-label="Strategic accounts"
         >
