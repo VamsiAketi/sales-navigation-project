@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { layoutRelationshipGraph } from "@/lib/sales-navigation/graph-layout";
 import { SalesNavContactAvatar } from "@/components/sales-navigation/SalesNavContactAvatar";
 import { SalesNavStatusBadge } from "@/components/sales-navigation/sales-nav-status";
+import { isSalesNavInternalConnector } from "@/lib/sales-navigation/internal-connectors";
 import { salesNavDisplayName } from "@/lib/sales-navigation/linkedin-avatar";
 
 const LEVEL_DOT: Record<SalesNavContactLevel, string> = {
@@ -213,7 +214,10 @@ export function StrategicCompetitiveGraph({
             const recommended = node.id === recommendedContactId;
             const onPath = pathContactIds.has(node.id);
             const isFinalTarget = node.level === "decision_maker";
-            const isPankaj = salesNavDisplayName(node.contact.name, node.contact.linkedinUrl).toLowerCase() === "pankaj srivastava";
+            const isInternalConnector = isSalesNavInternalConnector(
+              salesNavDisplayName(node.contact.name, node.contact.linkedinUrl),
+              node.contact.linkedinUrl,
+            );
             return (
               <foreignObject
                 key={node.id}
@@ -283,7 +287,7 @@ export function StrategicCompetitiveGraph({
                       <span className="text-[9px] font-medium tabular-nums text-muted-foreground">
                         {node.contact.relationshipStrength}%
                       </span>
-                      {!isPankaj ? (
+                      {!isInternalConnector ? (
                         <SalesNavStatusBadge status={node.contact.status} className="px-1.5 py-0.5 text-[8px] leading-tight" />
                       ) : null}
                     </div>

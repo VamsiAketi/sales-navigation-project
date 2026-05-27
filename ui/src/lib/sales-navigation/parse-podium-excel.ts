@@ -12,6 +12,34 @@ import {
 const PODIUM_SHEET_NAME = "lead intelligence";
 const PANKAJ_LINKEDIN_URL = "https://www.linkedin.com/in/pankaj-srivastava-71b751/?skipRedirect=true";
 
+type InternalConnectorConfig = {
+  slug: string;
+  displayName: string;
+  linkedinUrl: string | null;
+  rowKeys: string[];
+  edgeLabel: string;
+  importSource: string;
+};
+
+const INTERNAL_CONNECTORS: InternalConnectorConfig[] = [
+  {
+    slug: "pankaj-srivastava",
+    displayName: "Pankaj Srivastava",
+    linkedinUrl: PANKAJ_LINKEDIN_URL,
+    rowKeys: ["linkedin_connections_ps", "linkedin_connections", "linkedin_connections_-_ps"],
+    edgeLabel: "PS mutual route",
+    importSource: "LinkedIn Connections - PS",
+  },
+  {
+    slug: "nav",
+    displayName: "Nav",
+    linkedinUrl: null,
+    rowKeys: ["linkedin_connections_nav"],
+    edgeLabel: "Nav mutual route",
+    importSource: "LinkedIn Connections : Nav",
+  },
+];
+
 type PodiumRow = Record<string, string>;
 type AccountMeta = { name: string; maxScore: number; maxIntent: number; region: string };
 type ParsedMutual = { name: string; linkedinUrl: string | null };
@@ -167,36 +195,38 @@ function parseLinkedInConnections(raw: string): ParsedMutual[] {
     });
 }
 
-function ensurePankajStartNode(
+function ensureInternalConnectorNode(
   contacts: SalesNavContact[],
   accountId: string,
   company: string,
   nameToId: Map<string, string>,
+  connector: InternalConnectorConfig,
 ): string {
+  const nameKey = connector.displayName.toLowerCase();
   const existing = contacts.find(
-    (c) => c.accountId === accountId && c.name.toLowerCase() === "pankaj srivastava",
+    (c) => c.accountId === accountId && c.name.toLowerCase() === nameKey,
   );
   if (existing) return existing.id;
 
-  const contactId = slugId("contact", `${company}-pankaj-srivastava`, contacts.length);
+  const contactId = slugId("contact", `${company}-${connector.slug}`, contacts.length);
   contacts.push({
     id: contactId,
     accountId,
-    name: "Pankaj Srivastava",
+    name: connector.displayName,
     title: "Internal connector",
     company,
-    linkedinUrl: PANKAJ_LINKEDIN_URL,
+    linkedinUrl: connector.linkedinUrl,
     level: "warm_intro",
     status: "in_progress",
     relationshipStrength: 100,
     verified: true,
-    outreachNotes: "Auto-generated climb start node from PODIUM import.",
+    outreachNotes: `Auto-generated climb start node from ${connector.importSource}.`,
     warmIntroPath: null,
     reportsToContactId: null,
     teamOwner: null,
   });
-  nameToId.set("pankaj srivastava", contactId);
-  nameToId.set(`${company.toLowerCase()}::pankaj srivastava`, contactId);
+  nameToId.set(nameKey, contactId);
+  nameToId.set(`${company.toLowerCase()}::${nameKey}`, contactId);
   return contactId;
 }
 
@@ -207,6 +237,7 @@ function ensureMutualContact(
   nameToId: Map<string, string>,
   name: string,
   linkedinUrl: string | null,
+  importSource: string,
 ): string {
   const scopedKey = `${company.toLowerCase()}::${name.toLowerCase()}`;
   const existingId = nameToId.get(scopedKey) ?? nameToId.get(name.toLowerCase());
@@ -224,7 +255,7 @@ function ensureMutualContact(
     status: "connected",
     relationshipStrength: 90,
     verified: true,
-    outreachNotes: "Imported from LinkedIn Connections - PS.",
+    outreachNotes: `Imported from ${importSource}.`,
     warmIntroPath: `Via ${name}`,
     reportsToContactId: null,
     teamOwner: null,
@@ -329,15 +360,37 @@ export function parsePodiumLeadIntelligenceWorkbook(workbook: XLSX.WorkBook): Sa
       teamOwner: pick(row, "source") || pick(row, "consultant_in_podium_list") || null,
     });
 
-    const psConnectionsRaw = pick(row, "linkedin_connections_ps", "linkedin_connections", "linkedin_connections_-_ps");
-    const psConnections = parseLinkedInConnections(psConnectionsRaw);
-    const pankajId = ensurePankajStartNode(contacts, accountId, company, nameToId);
-    if (psConnections.length > 0) {
-      for (const mutual of psConnections) {
-        if (mutual.name.toLowerCase() === "pankaj srivastava") continue;
-        const mutualId = ensureMutualContact(contacts, accountId, company, nameToId, mutual.name, mutual.linkedinUrl);
-        parserEdges.push({ from: pankajId, to: mutualId, strength: 95, label: "PS mutual route" });
-        parserEdges.push({ from: mutualId, to: contactId, strength: Math.max(60, strength), label: "Mutual to target" });
+    for (const connector of INTERNAL_CONNECTORS) {
+      const connectionsRaw = pick(row, ...connector.rowKeys);
+      const connections = parseLinkedInConnections(connectionsRaw);
+      if (connections.length === 0) continue;
+
+      const connectorId = ensureInternalConnectorNode(contacts, accountId, company, nameToId, connector);
+      const connectorNameKey = connector.displayName.toLowerCase();
+
+      for (const mutual of connections) {
+        if (mutual.name.toLowerCase() === connectorNameKey) continue;
+        const mutualId = ensureMutualContact(
+          contacts,
+          accountId,
+          company,
+          nameToId,
+          mutual.name,
+          mutual.linkedinUrl,
+          connector.importSource,
+        );
+        parserEdges.push({
+          from: connectorId,
+          to: mutualId,
+          strength: 95,
+          label: connector.edgeLabel,
+        });
+        parserEdges.push({
+          from: mutualId,
+          to: contactId,
+          strength: Math.max(60, strength),
+          label: "Mutual to target",
+        });
       }
     }
   }
