@@ -8,6 +8,9 @@ const pagesBase = process.env.GITHUB_PAGES === "true" && repoName ? `/${repoName
 
 export default defineConfig({
   base: pagesBase,
+  build: {
+    chunkSizeWarningLimit: 1200,
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

@@ -23,7 +23,7 @@ Vercel should read `vercel.json` automatically:
 | Setting | Value |
 |--------|--------|
 | Install Command | `corepack enable && pnpm install --filter @paperclipai/ui... --frozen-lockfile` |
-| Build Command | `VITE_VERCEL_STATIC=true pnpm --filter @paperclipai/ui build && rm -rf dist && cp -r ui/dist dist` |
+| Build Command | `node scripts/vercel-build.mjs` |
 | Output Directory | `dist` |
 | Framework Preset | Other |
 
