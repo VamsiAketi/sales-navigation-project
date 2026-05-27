@@ -111,7 +111,7 @@ export function SalesNavigation() {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-7rem)] flex-1 flex-col md:-mx-4 md:-mb-4 md:min-h-[calc(100dvh-5.5rem)] lg:-mx-6 lg:-mb-6">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       <input
         ref={fileInputRef}
         type="file"

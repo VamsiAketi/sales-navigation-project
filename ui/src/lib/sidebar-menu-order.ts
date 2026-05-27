@@ -9,20 +9,12 @@ const COMPANY_PREFIX = "aiharness.sidebarCompanyNavOrder";
 
 /** Default primary order (plugins render after this block). `team` follows Attention Queue (`inbox`). */
 export const DEFAULT_PRIMARY_NAV_IDS = [
-  "dashboard",
-  "org",
-  "skills",
-  "costs",
-  "goals",
   "sales-navigation",
-  "inbox",
-  "tasks",
-  "team",
 ] as const;
 
 export const ROUTINES_NAV_ID = "routines" as const;
 
-export const DEFAULT_COMPANY_NAV_IDS = ["audit", "billing", "connectors", "settings"] as const;
+export const DEFAULT_COMPANY_NAV_IDS = [] as const;
 
 type OrderUpdatedDetail = {
   storageKey: string;
