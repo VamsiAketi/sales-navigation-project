@@ -21,24 +21,68 @@ type InternalConnectorConfig = {
   importSource: string;
 };
 
-const INTERNAL_CONNECTORS: InternalConnectorConfig[] = [
-  {
-    slug: "pankaj-srivastava",
-    displayName: "Pankaj Srivastava",
-    linkedinUrl: PANKAJ_LINKEDIN_URL,
-    rowKeys: ["linkedin_connections_ps", "linkedin_connections", "linkedin_connections_-_ps"],
-    edgeLabel: "PS mutual route",
-    importSource: "LinkedIn Connections - PS",
-  },
-  {
-    slug: "nav",
-    displayName: "Nav",
-    linkedinUrl: null,
-    rowKeys: ["linkedin_connections_nav"],
-    edgeLabel: "Nav mutual route",
-    importSource: "LinkedIn Connections : Nav",
-  },
-];
+const PANKAJ_CONNECTOR: InternalConnectorConfig = {
+  slug: "pankaj-srivastava",
+  displayName: "Pankaj Srivastava",
+  linkedinUrl: PANKAJ_LINKEDIN_URL,
+  rowKeys: ["linkedin_connections_ps", "linkedin_connections", "linkedin_connections_-_ps"],
+  edgeLabel: "PS mutual route",
+  importSource: "LinkedIn Connections - PS",
+};
+
+const NAV_CONNECTOR: InternalConnectorConfig = {
+  slug: "nav",
+  displayName: "Nav",
+  linkedinUrl: null,
+  rowKeys: ["linkedin_connections_nav"],
+  edgeLabel: "Nav mutual route",
+  importSource: "LinkedIn Connections : Nav",
+};
+
+function connectorLabelFromSlug(slug: string): string {
+  if (slug === "nav") return "Nav";
+  if (slug === "ps") return "PS";
+  return titleCaseWords(slug.replace(/_/g, " "));
+}
+
+function resolveInternalConnectorsFromHeaders(headerKeys: string[]): InternalConnectorConfig[] {
+  const connectors: InternalConnectorConfig[] = [];
+  const seenSlugs = new Set<string>();
+
+  const psKeys = PANKAJ_CONNECTOR.rowKeys.filter((key) => headerKeys.includes(key));
+  if (psKeys.length > 0) {
+    connectors.push({ ...PANKAJ_CONNECTOR, rowKeys: psKeys });
+    seenSlugs.add("pankaj-srivastava");
+  }
+
+  for (const key of headerKeys) {
+    const match = key.match(/^linkedin_connections_(.+)$/);
+    if (!match) continue;
+    const slugRaw = match[1]!.replace(/^_+/, "").replace(/_+$/, "");
+    if (!slugRaw || slugRaw === "ps") continue;
+
+    const slug = slugRaw === "nav" ? "nav" : slugRaw.replace(/_/g, "-");
+    if (seenSlugs.has(slug)) continue;
+    seenSlugs.add(slug);
+
+    if (slug === "nav") {
+      connectors.push({ ...NAV_CONNECTOR, rowKeys: [key] });
+      continue;
+    }
+
+    const label = connectorLabelFromSlug(slugRaw);
+    connectors.push({
+      slug,
+      displayName: label,
+      linkedinUrl: null,
+      rowKeys: [key],
+      edgeLabel: `${label} mutual route`,
+      importSource: `LinkedIn Connections - ${label}`,
+    });
+  }
+
+  return connectors;
+}
 
 type PodiumRow = Record<string, string>;
 type AccountMeta = { name: string; maxScore: number; maxIntent: number; region: string };
@@ -291,6 +335,9 @@ export function parsePodiumLeadIntelligenceWorkbook(workbook: XLSX.WorkBook): Sa
     return { accounts: [], contacts: [], edges: [], outreachHistory: [] };
   }
 
+  const headerRow = rows[headerRowIndex] ?? [];
+  const headerKeys = headerRow.map((h) => normalizeHeader(h)).filter(Boolean);
+  const internalConnectors = resolveInternalConnectorsFromHeaders(headerKeys);
   const dataRows = buildRowRecords(rows, headerRowIndex);
   const accountMeta = new Map<string, AccountMeta>();
   const contacts: SalesNavContact[] = [];
@@ -360,7 +407,7 @@ export function parsePodiumLeadIntelligenceWorkbook(workbook: XLSX.WorkBook): Sa
       teamOwner: pick(row, "source") || pick(row, "consultant_in_podium_list") || null,
     });
 
-    for (const connector of INTERNAL_CONNECTORS) {
+    for (const connector of internalConnectors) {
       const connectionsRaw = pick(row, ...connector.rowKeys);
       const connections = parseLinkedInConnections(connectionsRaw);
       if (connections.length === 0) continue;

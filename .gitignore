@@ -1,3 +1,6 @@
+# Local PODIUM workbooks used for parser validation (do not commit customer data)
+ui/src/lib/**/*.xlsx
+ui/src/lib/**/*.xls
 node_modules/
 dist/
 .env
