@@ -22,7 +22,7 @@ Vercel should read `vercel.json` automatically:
 
 | Setting | Value |
 |--------|--------|
-| Install Command | `corepack enable && pnpm install` |
+| Install Command | `corepack enable && pnpm install --filter @paperclipai/ui... --frozen-lockfile` |
 | Build Command | `pnpm vercel-build` |
 | Output Directory | `ui/dist` |
 | Framework Preset | Other |
@@ -50,6 +50,7 @@ pnpm --filter @paperclipai/ui preview
 
 ## Notes
 
+- Vercel install uses `pnpm install --filter @paperclipai/ui...` so only the UI and its dependencies are installed (avoids plugin/server bin warnings from the rest of the monorepo).
 - Data is per browser (clearing site data removes imported Excel graphs).
 - LinkedIn avatars use initials fallback on Vercel (no server proxy).
 - For team-shared data, host the full Paperclip server with `DATABASE_URL` (Neon/Supabase) separately and set `VITE_VERCEL_STATIC=false`.

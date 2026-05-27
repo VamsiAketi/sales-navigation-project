@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "corepack enable && pnpm install",
+  "installCommand": "corepack enable && pnpm install --filter @paperclipai/ui... --frozen-lockfile",
   "buildCommand": "pnpm vercel-build",
   "outputDirectory": "ui/dist",
   "framework": null,
