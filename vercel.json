@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "corepack enable && pnpm install --filter @paperclipai/ui... --frozen-lockfile",
-  "buildCommand": "VITE_VERCEL_STATIC=true pnpm --filter @paperclipai/ui build",
-  "outputDirectory": "ui/dist",
+  "buildCommand": "VITE_VERCEL_STATIC=true pnpm --filter @paperclipai/ui build && rm -rf dist && cp -r ui/dist dist",
+  "outputDirectory": "dist",
   "framework": null,
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

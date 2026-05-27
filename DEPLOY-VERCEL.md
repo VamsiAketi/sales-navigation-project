@@ -23,8 +23,8 @@ Vercel should read `vercel.json` automatically:
 | Setting | Value |
 |--------|--------|
 | Install Command | `corepack enable && pnpm install --filter @paperclipai/ui... --frozen-lockfile` |
-| Build Command | `VITE_VERCEL_STATIC=true pnpm --filter @paperclipai/ui build` |
-| Output Directory | `ui/dist` |
+| Build Command | `VITE_VERCEL_STATIC=true pnpm --filter @paperclipai/ui build && rm -rf dist && cp -r ui/dist dist` |
+| Output Directory | `dist` |
 | Framework Preset | Other |
 
 ## 4. Environment variables
