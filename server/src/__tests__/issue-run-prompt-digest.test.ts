@@ -2,47 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildCompactDataSection,
   computeIssueRunPromptFingerprint,
-  stageLikelyNeedsProjectData,
 } from "../services/issue-run-prompt-digest.js";
+import {
+  ISSUE_PROJECT_DATA_VISIBILITY_MANDATORY_REVIEW,
+} from "@paperclipai/shared";
 import { buildProjectDashboardApiGuide, buildProjectDataApiGuide, formatProjectDashboardAgentGuidance } from "../services/project-data-api-guide.js";
-
-describe("stageLikelyNeedsProjectData", () => {
-  it("includes data when tables exist", () => {
-    expect(
-      stageLikelyNeedsProjectData({
-        capabilityTags: [],
-        agentInstructions: null,
-        stagePlaybookSection: null,
-        tableCount: 1,
-        dashboardCount: 0,
-      }),
-    ).toBe(true);
-  });
-
-  it("skips data when no tables and stage text has no data signals", () => {
-    expect(
-      stageLikelyNeedsProjectData({
-        capabilityTags: [],
-        agentInstructions: "Draft the customer email.",
-        stagePlaybookSection: "Write copy only.",
-        tableCount: 0,
-        dashboardCount: 0,
-      }),
-    ).toBe(false);
-  });
-
-  it("includes data when stage instructions mention tables", () => {
-    expect(
-      stageLikelyNeedsProjectData({
-        capabilityTags: [],
-        agentInstructions: "Insert rows into the campaign table.",
-        stagePlaybookSection: null,
-        tableCount: 0,
-        dashboardCount: 0,
-      }),
-    ).toBe(true);
-  });
-});
 
 describe("formatProjectDashboardAgentGuidance", () => {
   it("discourages agent telemetry dashboards", () => {
@@ -54,6 +18,17 @@ describe("formatProjectDashboardAgentGuidance", () => {
 });
 
 describe("buildCompactDataSection", () => {
+  it("always includes mandatory data and dashboard review", () => {
+    const projectId = "proj-1";
+    const projectDataApi = buildProjectDataApiGuide(projectId, null, []);
+    const projectDashboardApi = buildProjectDashboardApiGuide(projectId, []);
+    const text = buildCompactDataSection(projectId, projectDataApi, projectDashboardApi);
+    expect(text).toContain(ISSUE_PROJECT_DATA_VISIBILITY_MANDATORY_REVIEW.split("\n")[0]!);
+    expect(text).toContain("No tables yet");
+    expect(text).toContain("No dashboards yet");
+    expect(text).toContain("protocol step 5");
+  });
+
   it("lists tables without repeating full rule blocks", () => {
     const projectId = "proj-1";
     const projectDataApi = buildProjectDataApiGuide(projectId, null, [

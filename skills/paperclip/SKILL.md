@@ -74,9 +74,9 @@ Headers: Authorization: Bearer $PAPERCLIP_API_KEY, X-Paperclip-Run-Id: $PAPERCLI
 
 If already checked out by you, returns normally. If owned by another agent: `409 Conflict` — stop, pick a different task. **Never retry a 409.**
 
-**Step 6 — Task run protocol.** Every issue run follows the five steps in `## Task run protocol (mandatory)` in your prompt: (1) understand the task, (2) role fit — comment and exit if not yours, (3) execute per playbook, (4) comment + attach files, (5) handoff. Use `GET /api/issues/{issueId}/heartbeat-context` once when description, parent, wake comment, or workspace is still missing.
+**Step 6 — Task run protocol.** Every issue run follows the six steps in `## Task run protocol (mandatory)` in your prompt: (1) understand the task, (2) role fit — comment and exit if not yours, (3) execute per playbook, (4) comment + attach files, (5) **data & dashboards review (mandatory)** — update project tables/widgets if this task changed operational records, else comment why no change, (6) handoff. Use `GET /api/issues/{issueId}/heartbeat-context` once when description, parent, wake comment, or workspace is still missing.
 
-On **project-scoped** issues, stage rules and data inventory are injected under the protocol (steps 3 & 5). Do not rely on stale project text in AGENTS.md.
+On **project-scoped** issues, stage rules and a **data/dashboard manifest** are always injected under the protocol (including step 5). Do not rely on stale project text in AGENTS.md.
 
 Also read before any status change:
 
@@ -136,7 +136,7 @@ For project-scoped issues, `GET /api/issues/{issueId}/heartbeat-context` returns
 
 **Project database rows:** `projectContext.dataSchemaName` (e.g. `prj_…`) is the internal PostgreSQL schema — **not** an API path. Use `projectContext.projectDataApi.routes` from heartbeat-context (or `GET /api/projects/{projectId}/data/objects`). Insert with `POST /api/projects/{projectId}/data/{tableName}/rows` and body `{ "rows": [ { ... } ] }`. Requires `project:edit tickets` (granted to issue assignees on restricted projects).
 
-**Mandatory adapter prompt:** project-scoped issue runs include the **Task run protocol** (understand → role fit → playbook → comment/attachments → handoff) plus injected stage rules and data/dashboard inventory. Follow the protocol before marking work complete.
+**Mandatory adapter prompt:** project-scoped issue runs include the **Task run protocol** (understand → role fit → execute → comment/attachments → **mandatory data/dashboard review** → handoff) plus injected stage rules and a data/dashboard manifest on every run. Follow the protocol before marking work complete.
 
 Use **`currentStage.name` + playbook** to decide behavior; use **`issue.status` / stage `value`** only when calling checkout or PATCH.
 

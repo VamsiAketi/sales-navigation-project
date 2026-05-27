@@ -12,6 +12,10 @@ import {
   buildProjectDataApiGuide,
   type ProjectDataObjectGuideInput,
 } from "./project-data-api-guide.js";
+import {
+  ISSUE_PROJECT_DATA_VISIBILITY_COMPACT_REMINDER,
+  ISSUE_PROJECT_DATA_VISIBILITY_MANDATORY_REVIEW,
+} from "@paperclipai/shared";
 import { projectDataService } from "./project-data.js";
 import { projectIssueStatusService } from "./project-issue-statuses.js";
 import { issueService } from "./issues.js";
@@ -31,23 +35,6 @@ function truncate(value: string | null | undefined, max: number): string | null 
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max)}\n\n...[truncated]`;
-}
-
-const DATA_SIGNAL_RE =
-  /\b(data|table|tables|dashboard|dashboards|rows?|query|csv|excel|database|schema|widget|kpi)\b/i;
-
-export function stageLikelyNeedsProjectData(input: {
-  capabilityTags: string[];
-  agentInstructions: string | null;
-  stagePlaybookSection: string | null;
-  tableCount: number;
-  dashboardCount: number;
-}): boolean {
-  if (input.tableCount > 0 || input.dashboardCount > 0) return true;
-  const tagHit = input.capabilityTags.some((tag) => DATA_SIGNAL_RE.test(tag));
-  if (tagHit) return true;
-  const text = [input.agentInstructions, input.stagePlaybookSection].filter(Boolean).join("\n");
-  return DATA_SIGNAL_RE.test(text);
 }
 
 export function computeIssueRunPromptFingerprint(input: {
@@ -145,7 +132,11 @@ export function buildCompactDataSection(
   projectDataApi: ReturnType<typeof buildProjectDataApiGuide>,
   projectDashboardApi: ReturnType<typeof buildProjectDashboardApiGuide>,
 ): string {
-  const lines: string[] = ["**Data & dashboards** (use project UUID in URLs, not `dataSchemaName`):"];
+  const lines: string[] = [
+    ISSUE_PROJECT_DATA_VISIBILITY_MANDATORY_REVIEW,
+    "",
+    "**Project manifest** (use project UUID in URLs, not `dataSchemaName`):",
+  ];
 
   if (projectDataApi.tables.length > 0) {
     lines.push(`- Schema: \`${projectDataApi.routes.listObjects}\``);
@@ -166,7 +157,7 @@ export function buildCompactDataSection(
       lines.push(`  - …and ${projectDataApi.tables.length - MAX_TABLES_LISTED} more tables (GET .../data/objects)`);
     }
   } else {
-    lines.push("- No tables yet — create via maintenance or `POST .../data/tables` when the stage requires structured records.");
+    lines.push("- No tables yet — create via `POST .../data/tables` when step 5 requires structured records.");
   }
 
   if (projectDashboardApi.dashboards.length > 0) {
@@ -179,6 +170,8 @@ export function buildCompactDataSection(
       lines.push(`  - **${dashboard.name}** — ${widgetSummary}`);
     }
     lines.push(`- Widget data: \`${projectDashboardApi.routes.widgetData}\``);
+  } else {
+    lines.push("- No dashboards yet — create views/widgets via `POST .../views` when step 5 requires operator visibility.");
   }
 
   lines.push(
@@ -253,9 +246,6 @@ export async function loadIssueRunPromptDigest(
   }
 
   const stage = projectWorkflow.currentStage;
-  const stagePlaybookSection = workflowSummary
-    ? extractWorkflowStageSection(workflowSummary, stage.name)
-    : null;
   const currentStagePlaybook = truncate(stage.agentInstructions, MAX_STAGE_PLAYBOOK_CHARS);
 
   const mappedDataObjects = dataObjects.map(
@@ -287,11 +277,16 @@ export async function loadIssueRunPromptDigest(
     (await loadPreviousIssueRunPromptFingerprint(db, input.agentId, input.issueId));
 
   if (previousFingerprint && previousFingerprint === fingerprint) {
+    const tableCount = tableNames.length;
+    const dashboardCount = views.length;
     return {
       markdown: [
         `**Task:** ${[input.issueIdentifier, input.issueTitle].filter(Boolean).join(" — ") || input.issueId}`,
         `**Stage:** ${stage.name} (\`${stage.value}\`) — unchanged since your last run on this issue.`,
         "Workflow, tables, and dashboards are the same — continue from your prior comment or call heartbeat-context only if you need new thread activity.",
+        "",
+        ISSUE_PROJECT_DATA_VISIBILITY_COMPACT_REMINDER,
+        `- Manifest: ${tableCount} table${tableCount === 1 ? "" : "s"}, ${dashboardCount} dashboard${dashboardCount === 1 ? "" : "s"}.`,
       ].join("\n"),
       fingerprint,
       compact: true,
@@ -329,33 +324,23 @@ export async function loadIssueRunPromptDigest(
 
   const sections = [...headerParts, "", workflowBlock];
 
-  const includeData = stageLikelyNeedsProjectData({
-    capabilityTags: stage.capabilityTags,
-    agentInstructions: stage.agentInstructions,
-    stagePlaybookSection,
-    tableCount: tableNames.length,
-    dashboardCount: views.length,
-  });
-
-  if (includeData) {
-    const projectDataApi = buildProjectDataApiGuide(input.projectId, null, mappedDataObjects);
-    const projectDashboardApi = buildProjectDashboardApiGuide(
-      input.projectId,
-      widgetsByView.map(({ view, widgets }) => ({
-        id: view.id,
-        name: view.name,
-        description: view.description,
-        widgets: widgets.map((widget) => ({
-          id: widget.id,
-          title: widget.title,
-          type: widget.type,
-          queryRef: widget.queryRef,
-        })),
+  const projectDataApi = buildProjectDataApiGuide(input.projectId, null, mappedDataObjects);
+  const projectDashboardApi = buildProjectDashboardApiGuide(
+    input.projectId,
+    widgetsByView.map(({ view, widgets }) => ({
+      id: view.id,
+      name: view.name,
+      description: view.description,
+      widgets: widgets.map((widget) => ({
+        id: widget.id,
+        title: widget.title,
+        type: widget.type,
+        queryRef: widget.queryRef,
       })),
-      { exampleTableName: projectDataApi.tables[0]?.name ?? null },
-    );
-    sections.push("", buildCompactDataSection(input.projectId, projectDataApi, projectDashboardApi));
-  }
+    })),
+    { exampleTableName: projectDataApi.tables[0]?.name ?? null },
+  );
+  sections.push("", buildCompactDataSection(input.projectId, projectDataApi, projectDashboardApi));
 
   return {
     markdown: sections.join("\n").trim(),

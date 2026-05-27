@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { constants as fsConstants, promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
+import { ISSUE_TASK_RUN_PROTOCOL } from "@paperclipai/shared";
 import type {
   AdapterSkillEntry,
   AdapterSkillSnapshot,
@@ -223,15 +224,7 @@ const ONE_SHOT_WAKE_REASONS = new Set([
   "project_maintenance_request",
 ]);
 
-/** Mandatory five-step lifecycle for every normal (non–one-shot) issue heartbeat. */
-export const ISSUE_TASK_RUN_PROTOCOL = [
-  "## Task run protocol (mandatory)",
-  "1. **Understand** — task context below; call `GET /api/issues/{issueId}/heartbeat-context` only if you still need full thread, goal tree, or workspace.",
-  "2. **Role fit** — if this task is outside your AGENTS.md mandate: comment why, do not checkout or change status, exit.",
-  "3. **Execute** — follow stage playbook and data section below when present.",
-  "4. **Close out** — comment what you did; upload task files as issue attachments on that comment (not disk paths only).",
-  "5. **Handoff** — advance only to allowed next stage `value` keys after exit criteria are met.",
-].join("\n");
+export { ISSUE_TASK_RUN_PROTOCOL };
 
 export function buildAdapterInvocationPrompt(input: {
   context: Record<string, unknown>;

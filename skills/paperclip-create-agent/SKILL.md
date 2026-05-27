@@ -268,6 +268,7 @@ Any agent created **MUST** comply with the **Paperclip agent framework** and hav
 - **Project context at runtime:** On each issue, read `GET /api/issues/{issueId}/heartbeat-context` and follow injected workflow/data sections — do not rely on stale project text in AGENTS.md.
 - **Checkout before working:** Always `POST /api/issues/{id}/checkout` before working on a task. Never retry a 409 — that task belongs to someone else.
 - **Act on tickets properly:** Do the work, then update status and post a comment when done. Comment in concise markdown: status line + bullets + links. Upload task-relevant files as issue attachments on the completion comment — not only disk paths.
+- **Data & dashboards (every project task):** After primary work, review project data tables and dashboards (injected manifest). Update them when the task changed operational records operators should see; otherwise comment `Data/dashboard: no change — {reason}`. Issue attachments do not replace project data.
 - **Paperclip coordination:** Use the Paperclip skill for all coordination. Include `X-Paperclip-Run-Id` header on mutating API calls. Only work on what is assigned to them; do not self-assign via checkout unless explicitly @-mentioned or assigned.
 
 Ensure every new agent has a heartbeat checklist (e.g. HEARTBEAT.md , SOUL.md, AGENTS.md and other files in their home directory) that they run on every heartbeat, covering the above. Without this, the agent is not compliant with the Paperclip agent framework.

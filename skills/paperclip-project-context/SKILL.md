@@ -59,7 +59,7 @@ POST /api/projects/{projectId}/data/query
 
 On issue heartbeats, prefer `projectContext.projectDataApi` from `GET /api/issues/{issueId}/heartbeat-context` — it lists registered tables and the exact route templates for that project.
 
-**Mandatory on every issue run:** the adapter prompt includes `## Project data & dashboards (mandatory)` built from the same tables/dashboards — you do not need a separate heartbeat-context fetch for route templates if you follow that section. Still use heartbeat-context or `GET .../context` when you need the full playbook or maintenance state.
+**Mandatory on every project task (protocol step 5):** the adapter prompt includes the task run protocol plus a project data/dashboard manifest — review and update when this task changed operational records. Still use heartbeat-context or `GET .../context` when you need the full playbook or maintenance state.
 
 ## Dashboard API (views / widgets)
 
@@ -262,7 +262,7 @@ Synthesize and curate from `GET .../context-files` extracted text, existing docu
 
 ## Task heartbeats (agents working issues)
 
-Every issue adapter prompt includes the **Task run protocol (mandatory)** — five steps: understand → role fit → playbook → comment/attachments → handoff. Steps 3 and 5 use injected stage rules; step 3 may use `projectContext.projectDataApi` / `projectDashboardApi` when present.
+Every issue adapter prompt includes the **Task run protocol (mandatory)** — six steps: understand → role fit → execute → comment/attachments → **data & dashboards review (mandatory)** → handoff. Step 5 is **not** optional and is **not** tied to stage keywords: every project task must decide whether tables/dashboards need updates based on what was done. The injected manifest lists current tables and dashboards.
 
 From `GET /api/issues/{issueId}/heartbeat-context` (for deeper context):
 
@@ -272,7 +272,7 @@ From `GET /api/issues/{issueId}/heartbeat-context` (for deeper context):
 4. Read `projectContext.projectDataApi` / `projectContext.projectDashboardApi` for structured data and visibility.
 5. Use `projectWorkflow.allowedNextStages` before PATCH; never guess generic `in_progress`.
 
-**Data discipline:** structured operational records belong in project data tables — not only in issue comments. Design table/column and dashboard names from project summary, workflow, and stage playbook. Dashboards must highlight **useful business KPIs and charts** for operators — never run logs, run IDs, or agent telemetry widgets. After writes, verify with `POST .../data/query`. Create or update widgets when operators need ongoing visibility.
+**Data discipline:** Step 5 is mandatory on every project task: review tables and dashboards; update when this task changed operational records; otherwise comment `Data/dashboard: no change — {reason}`. Structured records belong in project data tables — not only in issue comments. Dashboards must highlight **useful business KPIs and charts** for operators — never run logs, run IDs, or agent telemetry widgets. After writes, verify with `POST .../data/query`.
 
 ## Context sync (`project_maintenance_request` / `project_context_sync`)
 

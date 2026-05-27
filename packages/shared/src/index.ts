@@ -777,6 +777,11 @@ export {
   type ProjectViewWidgetConfig,
 } from "./project-view-widget-display.js";
 export {
+  ISSUE_TASK_RUN_PROTOCOL,
+  ISSUE_PROJECT_DATA_VISIBILITY_MANDATORY_REVIEW,
+  ISSUE_PROJECT_DATA_VISIBILITY_COMPACT_REMINDER,
+} from "./issue-task-run-protocol.js";
+export {
   AGENT_MENTION_SCHEME,
   PROJECT_MENTION_SCHEME,
   USER_MENTION_SCHEME,

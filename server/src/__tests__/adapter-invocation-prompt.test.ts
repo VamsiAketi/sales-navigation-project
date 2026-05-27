@@ -80,6 +80,7 @@ describe("buildAdapterInvocationPrompt", () => {
 
     expect(result.prompt).toContain("## Task run protocol (mandatory)");
     expect(result.prompt).toContain("**Role fit**");
+    expect(result.prompt).toContain("**Data & dashboards (mandatory review)**");
     expect(result.prompt).toContain("**Handoff**");
     expect(result.prompt.indexOf("Task run protocol")).toBeLessThan(
       result.prompt.indexOf("Run the regular heartbeat inbox procedure."),

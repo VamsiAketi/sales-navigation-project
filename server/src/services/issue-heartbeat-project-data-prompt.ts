@@ -39,7 +39,7 @@ export function buildIssueProjectDataInvocationPrompt(input: IssueProjectDataInv
   } else {
     lines.push(
       "",
-      "No data tables registered yet. Infer what structured entities this project needs from the summary, workflow, and stage playbook — then create tables (maintenance request or POST .../data/tables) before bulk work.",
+      "No data tables registered yet. Step 5 (mandatory review): if this task produces operational records, create tables via POST .../data/tables and insert rows before handoff — attachments alone are not enough.",
     );
   }
 
@@ -61,7 +61,7 @@ export function buildIssueProjectDataInvocationPrompt(input: IssueProjectDataInv
       lines.push(`- **${dashboard.name}** (\`${dashboard.id}\`) — ${widgetSummary}`);
     }
   } else {
-    lines.push("", "No dashboards yet. When operators need visibility, design views and widgets from project context (maintenance type `dashboards` or view/widget APIs).");
+    lines.push("", "No dashboards yet. Step 5: if operators need visibility for what this task changed, create views/widgets (maintenance type `dashboards` or view/widget APIs).");
   }
 
   if (input.currentStagePlaybook?.trim()) {
