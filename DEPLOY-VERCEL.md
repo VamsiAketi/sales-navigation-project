@@ -20,13 +20,14 @@ Repository: `git@github.com:VamsiAketi/sales-navigation-project.git`
 
 **Root Directory:** can be empty (repo root) or `server` — the build copies UI output into `dist` under that directory.
 
-Set **Output Directory** to `dist` (Vercel dashboard → Project Settings → Build & Deployment).
+Set **Output Directory** to `vercel-static` (Vercel dashboard → Project Settings → Build & Deployment).  
+Do not use `dist` — it is gitignored and Vercel will not pick it up.
 
 | Setting | Value |
 |--------|--------|
 | Install Command | `corepack enable && pnpm install --filter @paperclipai/ui... --frozen-lockfile` |
 | Build Command | `node scripts/vercel-build.mjs` |
-| Output Directory | `dist` |
+| Output Directory | `vercel-static` |
 | Framework Preset | Other |
 
 ## 4. Environment variables
