@@ -18,7 +18,7 @@ Repository: `git@github.com:VamsiAketi/sales-navigation-project.git`
 
 ## 3. Project settings
 
-**Root Directory:** can be empty (repo root) or `server` — the build copies UI output into `dist` under that directory.
+**Root Directory:** can be empty (repo root) or `server` — the build copies UI output into `vercel-static` under that directory.
 
 Set **Output Directory** to `vercel-static` (Vercel dashboard → Project Settings → Build & Deployment).  
 Do not use `dist` — it is gitignored and Vercel will not pick it up.
@@ -55,5 +55,5 @@ pnpm --filter @paperclipai/ui preview
 
 - Vercel install uses `pnpm install --filter @paperclipai/ui...` so only the UI and its dependencies are installed (avoids plugin/server bin warnings from the rest of the monorepo).
 - Data is per browser (clearing site data removes imported Excel graphs).
-- LinkedIn avatars use initials fallback on Vercel (no server proxy).
+- LinkedIn avatars are served by a Vercel serverless route at `/api/linkedin-avatar`.
 - For team-shared data, host the full Paperclip server with `DATABASE_URL` (Neon/Supabase) separately and set `VITE_VERCEL_STATIC=false`.

@@ -1,7 +1,12 @@
+import { isVercelStaticMode } from "../vercel-static/config";
+
 /** Same-origin avatar proxy (resolves LinkedIn photo server-side). */
 export function salesNavLinkedInAvatarSrc(companyId: string, linkedinUrl: string | null | undefined): string | null {
   if (!companyId || !linkedinUrl?.trim()) return null;
   const params = new URLSearchParams({ url: linkedinUrl.trim() });
+  if (isVercelStaticMode) {
+    return `/api/linkedin-avatar?${params}`;
+  }
   return `/api/companies/${encodeURIComponent(companyId)}/sales-navigation/linkedin-avatar?${params}`;
 }
 
