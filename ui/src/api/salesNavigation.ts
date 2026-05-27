@@ -1,7 +1,9 @@
 import type { SalesNavGraph, SalesNavState } from "@paperclipai/shared";
+import { isVercelStaticMode } from "../lib/vercel-static/config";
 import { api } from "./client";
+import { localSalesNavigationApi } from "./salesNavigation.local";
 
-export const salesNavigationApi = {
+const remoteSalesNavigationApi = {
   get: (companyId: string) => api.get<SalesNavState>(`/companies/${companyId}/sales-navigation`),
   clear: (companyId: string) => api.delete<SalesNavState>(`/companies/${companyId}/sales-navigation`),
   import: (companyId: string, sourceFileName: string, graph: SalesNavGraph) =>
@@ -20,3 +22,7 @@ export const salesNavigationApi = {
     },
   ) => api.patch<SalesNavState>(`/companies/${companyId}/sales-navigation/contacts/${contactId}`, patch),
 };
+
+export const salesNavigationApi = isVercelStaticMode
+  ? localSalesNavigationApi
+  : remoteSalesNavigationApi;

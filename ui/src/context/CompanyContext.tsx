@@ -13,6 +13,11 @@ import { companiesApi } from "../api/companies";
 import { ApiError } from "../api/client";
 import { queryKeys } from "../lib/queryKeys";
 import type { CompanySelectionSource } from "../lib/company-selection";
+import {
+  isVercelStaticMode,
+  VERCEL_DEFAULT_COMPANY,
+  VERCEL_DEFAULT_COMPANY_ID,
+} from "../lib/vercel-static/config";
 type CompanySelectionOptions = { source?: CompanySelectionSource };
 
 interface CompanyContextValue {
@@ -38,9 +43,11 @@ const CompanyContext = createContext<CompanyContextValue | null>(null);
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [selectionSource, setSelectionSource] = useState<CompanySelectionSource>("bootstrap");
-  const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY));
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | null>(() =>
+    isVercelStaticMode ? VERCEL_DEFAULT_COMPANY_ID : localStorage.getItem(STORAGE_KEY),
+  );
 
-  const { data: companies = [], isLoading, error } = useQuery({
+  const { data: companiesFromApi = [], isLoading, error } = useQuery({
     queryKey: queryKeys.companies.all,
     queryFn: async () => {
       try {
@@ -52,8 +59,10 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
+    enabled: !isVercelStaticMode,
     retry: false,
   });
+  const companies = isVercelStaticMode ? [VERCEL_DEFAULT_COMPANY] : companiesFromApi;
   const sidebarCompanies = useMemo(
     () => companies.filter((company) => company.status !== "archived"),
     [companies],
@@ -119,7 +128,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       selectedCompanyId,
       selectedCompany,
       selectionSource,
-      loading: isLoading,
+      loading: isVercelStaticMode ? false : isLoading,
       error: error as Error | null,
       setSelectedCompanyId,
       reloadCompanies,
