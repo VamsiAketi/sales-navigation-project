@@ -12,10 +12,13 @@ import { ProjectViewRenderer } from "@/components/ProjectViewRenderer";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/EmptyState";
 import type { ProjectMaintenanceRequest, ProjectView } from "@paperclipai/shared";
-import { ChevronDown, Database, LayoutDashboard, RefreshCw, WandSparkles } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Database, LayoutDashboard, WandSparkles } from "lucide-react";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { PageSkeleton } from "@/components/PageSkeleton";
-import { ProjectOverviewPanel } from "@/components/ProjectOverviewPanel";
+import {
+  ProjectOverviewLayout,
+  type OverviewSection,
+} from "@/components/ProjectOverviewLayout";
 
 type MaintenanceType = "context_summary" | "dashboards" | "workflow";
 
@@ -123,11 +126,16 @@ function DashboardListItem({
 export function ProjectContextPanel({
   projectId,
   companyId,
+  projectRef,
+  overviewSection = "knowledge",
   mode = "all",
   lockWorkflowMaintenance = false,
 }: {
   projectId: string;
   companyId: string;
+  /** URL segment for `/projects/:projectRef/...` links from Overview. */
+  projectRef: string;
+  overviewSection?: OverviewSection;
   mode?: "all" | "context" | "data" | "dashboards";
   /** When true (AI-Admin Project), workflow maintenance requests are hidden. */
   lockWorkflowMaintenance?: boolean;
@@ -153,7 +161,6 @@ export function ProjectContextPanel({
 
   useEffect(() => {
     if (mode === "dashboards") setMaintenanceType("dashboards");
-    if (mode === "context") setMaintenanceType("context_summary");
   }, [mode]);
 
   const contextQuery = useQuery({
@@ -451,51 +458,127 @@ export function ProjectContextPanel({
 
   const dataSchemaReady = Boolean(contextQuery.data?.dataSchemaName);
   const activeMaintenanceCount = maintenanceRequestGroups.active.length + maintenanceRequestGroups.userQueued.length;
+  const lastSyncAt = useMemo<string | null>(() => {
+    const completed = maintenanceRequests
+      .filter((request) => request.type === "context_summary" && request.status === "completed")
+      .map((request) => {
+        const at = request.completedAt ?? request.updatedAt ?? request.createdAt;
+        if (!at) return null;
+        if (at instanceof Date) return at.toISOString();
+        return typeof at === "string" ? at : null;
+      })
+      .filter((value): value is string => value != null);
+    if (completed.length === 0) return null;
+    return completed.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
+  }, [maintenanceRequests]);
 
   if (contextQuery.isLoading) {
     if (mode === "dashboards") return <PageSkeleton variant="dashboard" />;
     return <PageSkeleton variant="detail" />;
   }
 
-  const overviewFiles = (filesQuery.data ?? []).slice(0, 20).map((file) => ({
+  const overviewFiles = (filesQuery.data ?? []).slice(0, 50).map((file) => ({
     id: file.id,
     title: file.title,
     originalFilename: file.originalFilename,
     extractionStatus: file.extractionStatus,
   }));
 
+  const referenceFileCount = overviewFiles.length;
+
+  const fileInputs = (
+    <>
+      <input
+        ref={replaceFileInputRef}
+        type="file"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file || !replacingFileId) return;
+          replaceFileMutation.mutate({ fileId: replacingFileId, file });
+          event.target.value = "";
+        }}
+      />
+      <input
+        key={fileInputResetKey}
+        ref={uploadFilesInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          setSelectedFiles(files);
+          event.target.value = "";
+        }}
+      />
+    </>
+  );
+
+  const sharedSummary = {
+    body: summaryBody,
+    previewText: summaryPreview.text,
+    previewTruncated: summaryPreview.truncated,
+    isEditing: isEditingSummary,
+    isSaving: saveSummaryMutation.isPending,
+    onStartEdit: () => setIsEditingSummary(true),
+    onCancel: () => {
+      setSummaryBody((contextQuery.data?.summary as { body?: string } | null)?.body ?? "");
+      setIsEditingSummary(false);
+    },
+    onSave: () => saveSummaryMutation.mutate(),
+    onBodyChange: setSummaryBody,
+  };
+
+  const sharedWorkflow = {
+    body: workflowBody,
+    previewText: workflowPreview.text,
+    previewTruncated: workflowPreview.truncated,
+    isEditing: isEditingWorkflow,
+    isSaving: saveWorkflowMutation.isPending,
+    onStartEdit: () => setIsEditingWorkflow(true),
+    onCancel: () => {
+      setWorkflowBody((contextQuery.data?.workflowSummary as { body?: string } | null)?.body ?? "");
+      setIsEditingWorkflow(false);
+    },
+    onSave: () => saveWorkflowMutation.mutate(),
+    onBodyChange: setWorkflowBody,
+  };
+
   return (
     <div className={cn("space-y-5", mode === "dashboards" && "space-y-4")}>
-      {(mode === "all" || mode === "context") ? (
+      {mode === "context" || mode === "all" ? (
         <>
-          <input
-            ref={replaceFileInputRef}
-            type="file"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (!file || !replacingFileId) return;
-              replaceFileMutation.mutate({ fileId: replacingFileId, file });
-              event.target.value = "";
-            }}
-          />
-          <input
-            key={fileInputResetKey}
-            ref={uploadFilesInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              setSelectedFiles(files);
-              event.target.value = "";
-            }}
-          />
-          <ProjectOverviewPanel
-            dataSchemaReady={dataSchemaReady}
-            dataSchemaName={contextQuery.data?.dataSchemaName}
-            referenceFiles={overviewFiles}
+          {fileInputs}
+          <ProjectOverviewLayout
+            projectRef={projectRef}
+            section={overviewSection}
+            referenceFileCount={referenceFileCount}
             activeRequestCount={activeMaintenanceCount}
+            onSyncFromAgent={() => triggerSyncMutation.mutate()}
+            syncFromAgentPending={triggerSyncMutation.isPending}
+            dataSchemaReady={dataSchemaReady}
+            dataSchemaName={contextQuery.data?.dataSchemaName ?? null}
+            lastSyncAt={lastSyncAt}
+            summary={sharedSummary}
+            workflow={sharedWorkflow}
+            lockWorkflowMaintenance={lockWorkflowMaintenance}
+            files={overviewFiles}
+            selectedFiles={selectedFiles}
+            assetTitle={assetTitle}
+            onAssetTitleChange={setAssetTitle}
+            onChooseFiles={() => uploadFilesInputRef.current?.click()}
+            onUploadFiles={() => addFileMutation.mutate()}
+            uploadFilesPending={addFileMutation.isPending}
+            onReplaceFile={(fileId) => {
+              setReplacingFileId(fileId);
+              replaceFileInputRef.current?.click();
+            }}
+            onRemoveFile={(fileId, title) => {
+              if (!window.confirm(`Remove "${title}" from this project?`)) return;
+              removeFileMutation.mutate(fileId);
+            }}
+            replaceFilePending={replaceFileMutation.isPending}
+            removeFilePending={removeFileMutation.isPending}
             maintenanceOptions={maintenanceTypeOptions}
             maintenanceType={maintenanceType}
             onMaintenanceTypeChange={setMaintenanceType}
@@ -514,53 +597,6 @@ export function ProjectContextPanel({
             contextHistoryItems={contextHistoryItems}
             showDocumentSaveHistory={showDocumentSaveHistory}
             onToggleDocumentSaveHistory={() => setShowDocumentSaveHistory((value) => !value)}
-            summary={{
-              body: summaryBody,
-              previewText: summaryPreview.text,
-              previewTruncated: summaryPreview.truncated,
-              isEditing: isEditingSummary,
-              isSaving: saveSummaryMutation.isPending,
-              onStartEdit: () => setIsEditingSummary(true),
-              onCancel: () => {
-                setSummaryBody((contextQuery.data?.summary as { body?: string } | null)?.body ?? "");
-                setIsEditingSummary(false);
-              },
-              onSave: () => saveSummaryMutation.mutate(),
-              onBodyChange: setSummaryBody,
-            }}
-            workflow={{
-              body: workflowBody,
-              previewText: workflowPreview.text,
-              previewTruncated: workflowPreview.truncated,
-              isEditing: isEditingWorkflow,
-              isSaving: saveWorkflowMutation.isPending,
-              onStartEdit: () => setIsEditingWorkflow(true),
-              onCancel: () => {
-                setWorkflowBody((contextQuery.data?.workflowSummary as { body?: string } | null)?.body ?? "");
-                setIsEditingWorkflow(false);
-              },
-              onSave: () => saveWorkflowMutation.mutate(),
-              onBodyChange: setWorkflowBody,
-            }}
-            lockWorkflowMaintenance={lockWorkflowMaintenance}
-            onSyncFromAgent={() => triggerSyncMutation.mutate()}
-            syncFromAgentPending={triggerSyncMutation.isPending}
-            selectedFiles={selectedFiles}
-            assetTitle={assetTitle}
-            onAssetTitleChange={setAssetTitle}
-            onChooseFiles={() => uploadFilesInputRef.current?.click()}
-            onUploadFiles={() => addFileMutation.mutate()}
-            uploadFilesPending={addFileMutation.isPending}
-            onReplaceFile={(fileId) => {
-              setReplacingFileId(fileId);
-              replaceFileInputRef.current?.click();
-            }}
-            onRemoveFile={(fileId, title) => {
-              if (!window.confirm(`Remove "${title}" from this project?`)) return;
-              removeFileMutation.mutate(fileId);
-            }}
-            replaceFilePending={replaceFileMutation.isPending}
-            removeFilePending={removeFileMutation.isPending}
           />
         </>
       ) : null}
@@ -602,164 +638,109 @@ export function ProjectContextPanel({
       ) : null}
 
       {(mode === "all" || mode === "dashboards") ? (
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 max-w-2xl">
-            <h3 className="text-sm font-semibold">Project dashboards</h3>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Pick a dashboard to preview widgets. Request new views from the agent when leadership needs different metrics.
-            </p>
-          </div>
-          <Collapsible open={dashboardRequestOpen} onOpenChange={setDashboardRequestOpen}>
-            <CollapsibleTrigger asChild>
-              <Button type="button" size="sm" variant="outline" className="shrink-0">
-                <WandSparkles className="mr-1.5 h-3.5 w-3.5" />
-                Request dashboard
-                <ChevronDown
-                  className={cn(
-                    "ml-1.5 h-3.5 w-3.5 transition-transform",
-                    dashboardRequestOpen && "rotate-180",
-                  )}
-                />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="mt-3 w-full min-w-[min(100%,28rem)] sm:ml-auto sm:max-w-md">
-              <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-4 shadow-xs">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Agent request</p>
-                <Textarea
-                  rows={3}
-                  value={maintenanceDescription}
-                  onChange={(event) => setMaintenanceDescription(event.target.value)}
-                  placeholder="Describe the dashboard, audience, and metrics (at least 20 characters)."
-                  className="min-h-[4.5rem] resize-y text-sm"
-                />
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="text-muted-foreground"
-                    onClick={() => setMaintenanceDescription(MAINTENANCE_TEMPLATES.dashboards)}
-                  >
-                    Use example
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      createMaintenanceMutation.mutate({ type: "dashboards", description: maintenanceDescription });
-                      setDashboardRequestOpen(false);
-                    }}
-                    disabled={createMaintenanceMutation.isPending || maintenanceDescription.trim().length < 20}
-                  >
-                    Send to agent
-                  </Button>
-                </div>
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
-          <div className="flex min-h-[28rem] flex-col lg:min-h-[32rem] lg:flex-row">
-            <aside className="flex flex-col border-b border-border/60 bg-muted/10 lg:w-72 lg:shrink-0 lg:border-b-0 lg:border-r">
-              <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Dashboards</p>
-                {dashboardViews.length > 0 ? (
-                  <span className="rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-                    {dashboardViews.length}
-                  </span>
-                ) : null}
-              </div>
-              <div className="max-h-56 overflow-y-auto p-1.5 lg:max-h-none lg:flex-1 lg:overflow-y-auto">
-                {viewsQuery.isLoading ? (
-                  <p className="px-2 py-3 text-xs text-muted-foreground">Loading…</p>
-                ) : dashboardViews.length === 0 ? (
-                  <div className="px-2 py-4">
-                    <EmptyState
-                      icon={LayoutDashboard}
-                      message="No dashboards yet. Open Request dashboard to ask the agent to create one."
-                    />
-                  </div>
-                ) : (
-                  <ul className="space-y-0.5">
-                    {dashboardViews.map((view) => (
-                      <DashboardListItem
-                        key={view.id}
-                        view={view}
-                        selected={selectedViewId === view.id}
-                        widgetCount={selectedViewId === view.id ? (widgetsQuery.data ?? []).length : null}
-                        onSelect={() => setSelectedViewId(view.id)}
-                      />
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {dashboardHistoryItems.length > 0 ? (
-                <div className="hidden border-t border-border/60 px-3 py-3 lg:block">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>
-                  <ul className="mt-2 max-h-36 space-y-2 overflow-y-auto">
-                    {dashboardHistoryItems.map((item) => (
-                      <li key={item.id} className="text-[10px] leading-snug text-muted-foreground">
-                        <div className="flex items-center gap-1.5">
-                          <StatusBadge status={item.status} />
-                          <span className="truncate text-foreground/85">{item.headline}</span>
-                        </div>
-                        <p className="mt-0.5 truncate pl-0.5">{item.detail}</p>
-                        <p className="mt-0.5 tabular-nums">{formatDate(item.at)}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+      <div className="flex h-[calc(100vh-12rem)] min-h-[32rem] flex-col lg:flex-row lg:gap-0">
+        <aside className="flex flex-col border-b border-border/60 lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r lg:pr-4">
+          <div className="flex items-center justify-between gap-2 pb-3">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-sm font-semibold">Dashboards</h3>
+              {dashboardViews.length > 0 ? (
+                <span className="text-xs tabular-nums text-muted-foreground">{dashboardViews.length}</span>
               ) : null}
-            </aside>
-
-            <main className="min-w-0 flex-1 p-4 sm:p-5 lg:p-6">
-              {selectedDashboard ? (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/50 pb-4">
-                    <div className="min-w-0">
-                      <h3 className="text-base font-semibold leading-tight">{selectedDashboard.name}</h3>
-                      {selectedDashboard.description ? (
-                        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{selectedDashboard.description}</p>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      {(widgetsQuery.data ?? []).length > 0 ? (
-                        <span className="rounded-md border border-border/70 bg-muted/20 px-2 py-1 tabular-nums">
-                          {(widgetsQuery.data ?? []).length} widget{(widgetsQuery.data ?? []).length === 1 ? "" : "s"}
-                        </span>
-                      ) : null}
-                      <span className="tabular-nums">Updated {formatDate(selectedDashboard.updatedAt)}</span>
-                    </div>
-                  </div>
-                  {widgetsQuery.isLoading || widgetDataQuery.isLoading ? (
-                    <PageSkeleton variant="dashboard" />
-                  ) : (widgetsQuery.data ?? []).length === 0 ? (
-                    <EmptyState icon={LayoutDashboard} message="This dashboard has no widgets yet." />
-                  ) : (
-                    <ProjectViewRenderer widgets={widgetsQuery.data ?? []} widgetDataById={widgetDataById} />
-                  )}
-                </div>
-              ) : dashboardViews.length > 0 ? (
-                <div className="flex h-full min-h-[16rem] flex-col items-center justify-center rounded-lg border border-dashed border-border/70 bg-muted/10 px-6 text-center">
-                  <LayoutDashboard className="mb-3 h-8 w-8 text-muted-foreground/70" />
-                  <p className="text-sm font-medium">Select a dashboard</p>
-                  <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-                    Choose a dashboard from the list to load its widgets and metrics.
-                  </p>
-                </div>
-              ) : null}
-            </main>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setMaintenanceDescription("");
+                setDashboardRequestOpen(true);
+              }}
+            >
+              <WandSparkles className="h-3.5 w-3.5" />
+              Request
+            </Button>
           </div>
+          <div className="flex-1 overflow-y-auto pr-1">
+            {viewsQuery.isLoading ? (
+              <p className="px-2 py-3 text-xs text-muted-foreground">Loading…</p>
+            ) : dashboardViews.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border/70 bg-muted/10 px-3 py-6 text-center">
+                <LayoutDashboard className="mx-auto mb-2 h-5 w-5 text-muted-foreground/70" />
+                <p className="text-xs font-medium">No dashboards yet</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Use Request to ask the agent for one.
+                </p>
+              </div>
+            ) : (
+              <ul className="space-y-0.5">
+                {dashboardViews.map((view) => (
+                  <DashboardListItem
+                    key={view.id}
+                    view={view}
+                    selected={selectedViewId === view.id}
+                    widgetCount={selectedViewId === view.id ? (widgetsQuery.data ?? []).length : null}
+                    onSelect={() => setSelectedViewId(view.id)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+
+        <main className="min-w-0 flex-1 overflow-y-auto pt-4 lg:pl-6 lg:pt-0">
+          {selectedDashboard ? (
+            <div>
+              <header className="flex flex-wrap items-start justify-between gap-3 pb-4">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold tracking-tight">{selectedDashboard.name}</h2>
+                  {selectedDashboard.description ? (
+                    <p className="mt-1 max-w-prose text-sm text-muted-foreground">{selectedDashboard.description}</p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  {(widgetsQuery.data ?? []).length > 0 ? (
+                    <span className="tabular-nums">
+                      {(widgetsQuery.data ?? []).length} widget{(widgetsQuery.data ?? []).length === 1 ? "" : "s"}
+                    </span>
+                  ) : null}
+                  <span className="tabular-nums">Updated {formatDate(selectedDashboard.updatedAt)}</span>
+                </div>
+              </header>
+              {widgetsQuery.isLoading || widgetDataQuery.isLoading ? (
+                <PageSkeleton variant="dashboard" />
+              ) : (widgetsQuery.data ?? []).length === 0 ? (
+                <EmptyState icon={LayoutDashboard} message="This dashboard has no widgets yet." />
+              ) : (
+                <ProjectViewRenderer widgets={widgetsQuery.data ?? []} widgetDataById={widgetDataById} />
+              )}
+            </div>
+          ) : dashboardViews.length > 0 ? (
+            <div className="flex h-full min-h-[16rem] flex-col items-center justify-center text-center">
+              <LayoutDashboard className="mb-3 h-8 w-8 text-muted-foreground/50" />
+              <p className="text-sm font-medium">Select a dashboard</p>
+              <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                Choose a dashboard from the list to load its widgets and metrics.
+              </p>
+            </div>
+          ) : null}
           {dashboardHistoryItems.length > 0 ? (
-            <div className="border-t border-border/60 bg-muted/10 px-4 py-3 lg:hidden">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>
-              <ul className="mt-2 space-y-2">
-                {dashboardHistoryItems.slice(0, 4).map((item) => (
-                  <li key={item.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <div className="mt-8 border-t border-border/60 pt-4">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Recent dashboard activity
+              </p>
+              <ul className="mt-3 space-y-2">
+                {dashboardHistoryItems.slice(0, 5).map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 text-xs text-muted-foreground"
+                  >
                     <span className="flex min-w-0 items-center gap-2">
                       <StatusBadge status={item.status} />
-                      <span className="truncate text-foreground/85">{item.headline}</span>
+                      <span className="min-w-0 truncate">
+                        <span className="text-foreground/85">{item.headline}</span>
+                        {item.detail ? <span className="text-muted-foreground"> — {item.detail}</span> : null}
+                      </span>
                     </span>
                     <span className="shrink-0 tabular-nums">{formatDate(item.at)}</span>
                   </li>
@@ -767,9 +748,73 @@ export function ProjectContextPanel({
               </ul>
             </div>
           ) : null}
-        </div>
+        </main>
       </div>
       ) : null}
+
+      <Sheet open={dashboardRequestOpen} onOpenChange={setDashboardRequestOpen}>
+        <SheetContent side="right" className="flex w-full max-w-md flex-col gap-0 p-0 sm:max-w-md">
+          <SheetHeader className="border-b border-border/60 px-6 py-4">
+            <SheetTitle>Request a dashboard</SheetTitle>
+            <SheetDescription>
+              The agent will draft a new dashboard based on the brief below.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label htmlFor="dashboard-request-body" className="text-xs font-medium text-muted-foreground">
+                  Describe the dashboard
+                </label>
+                <Textarea
+                  id="dashboard-request-body"
+                  rows={5}
+                  value={maintenanceDescription}
+                  onChange={(event) => setMaintenanceDescription(event.target.value)}
+                  placeholder="Audience, metrics, time range, breakdowns. Minimum 20 characters."
+                  className="min-h-[8rem] resize-y text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {maintenanceDescription.trim().length < 20
+                    ? `${20 - maintenanceDescription.trim().length} more characters required`
+                    : "Ready to send"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-auto px-0 text-xs text-muted-foreground"
+                onClick={() => setMaintenanceDescription(MAINTENANCE_TEMPLATES.dashboards)}
+              >
+                Use example brief
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-border/60 px-6 py-4">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setDashboardRequestOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                createMaintenanceMutation.mutate({ type: "dashboards", description: maintenanceDescription });
+                setDashboardRequestOpen(false);
+              }}
+              disabled={createMaintenanceMutation.isPending || maintenanceDescription.trim().length < 20}
+            >
+              <WandSparkles className="mr-1.5 h-3.5 w-3.5" />
+              Send to agent
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

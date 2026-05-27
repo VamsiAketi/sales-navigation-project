@@ -31,6 +31,7 @@ import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { ProjectAccessControlPanel } from "../components/ProjectAccessControlPanel";
 import { ProjectContextPanel } from "../components/ProjectContextPanel";
+import { resolveOverviewSection } from "../components/ProjectOverviewLayout";
 
 /* ── Top-level tab types ── */
 
@@ -66,6 +67,7 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   const tab = segments[projectsIdx + 2];
   if (tab === "backlog") return "backlog";
   if (tab === "overview" || tab === "context") return "overview";
+  if (tab === "files" || tab === "agent") return "overview";
   if (tab === "configuration") return "configuration";
   if (tab === "data") return "data";
   if (tab === "dashboards") return "dashboards";
@@ -540,6 +542,23 @@ export function ProjectDetail() {
     return <Navigate to={`/projects/${canonicalProjectRef ?? routeProjectRef}/overview`} replace />;
   }
 
+  const overviewSection = routeProjectRef
+    ? resolveOverviewSection(location.pathname, canonicalProjectRef ?? routeProjectRef)
+    : "knowledge";
+
+  if (routeProjectRef) {
+    const projectRefForPath = canonicalProjectRef ?? routeProjectRef;
+    const segments = location.pathname.split("/").filter(Boolean);
+    const projectsIdx = segments.indexOf("projects");
+    const tab = projectsIdx >= 0 ? segments[projectsIdx + 2] : null;
+    if (tab === "files") {
+      return <Navigate to={`/projects/${projectRefForPath}/overview/files`} replace />;
+    }
+    if (tab === "agent") {
+      return <Navigate to={`/projects/${projectRefForPath}/overview/agent`} replace />;
+    }
+  }
+
   if (pluginTabFromSearch && !pluginDetailSlotsLoading && !activePluginTab) {
     return <Navigate to={`/projects/${canonicalProjectRef}/issues`} replace />;
   }
@@ -555,6 +574,12 @@ export function ProjectDetail() {
     }
     if (cachedTab === "overview") {
       return <Navigate to={`/projects/${canonicalProjectRef}/overview`} replace />;
+    }
+    if (cachedTab === "files") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/overview/files`} replace />;
+    }
+    if (cachedTab === "agent") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/overview/agent`} replace />;
     }
     if (cachedTab === "configuration") {
       return <Navigate to={`/projects/${canonicalProjectRef}/configuration`} replace />;
@@ -728,6 +753,8 @@ export function ProjectDetail() {
           <ProjectContextPanel
             projectId={project.id}
             companyId={resolvedCompanyId}
+            projectRef={canonicalProjectRef}
+            overviewSection={overviewSection}
             mode="context"
             lockWorkflowMaintenance={isAiAdminProjectLocked}
           />
@@ -816,13 +843,23 @@ export function ProjectDetail() {
 
       {activeTab === "data" && project?.id && resolvedCompanyId && (
         <div className="max-w-5xl pb-2">
-          <ProjectContextPanel projectId={project.id} companyId={resolvedCompanyId} mode="data" />
+          <ProjectContextPanel
+            projectId={project.id}
+            companyId={resolvedCompanyId}
+            projectRef={canonicalProjectRef}
+            mode="data"
+          />
         </div>
       )}
 
       {activeTab === "dashboards" && project?.id && resolvedCompanyId && (
         <div className="pb-4">
-          <ProjectContextPanel projectId={project.id} companyId={resolvedCompanyId} mode="dashboards" />
+          <ProjectContextPanel
+            projectId={project.id}
+            companyId={resolvedCompanyId}
+            projectRef={canonicalProjectRef}
+            mode="dashboards"
+          />
         </div>
       )}
 

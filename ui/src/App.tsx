@@ -182,6 +182,10 @@ function boardRoutes() {
       <Route path="projects" element={<Projects />} />
       <Route path="projects/:projectId" element={<ProjectDetail />} />
       <Route path="projects/:projectId/overview" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/overview/files" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/overview/agent" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/files" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/agent" element={<ProjectDetail />} />
       <Route path="projects/:projectId/backlog" element={<ProjectDetail />} />
       <Route path="projects/:projectId/issues" element={<ProjectDetail />} />
       <Route path="projects/:projectId/issues/:filter" element={<ProjectDetail />} />
@@ -416,6 +420,10 @@ export function App() {
           <Route path="projects" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/overview" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/overview/files" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/overview/agent" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/files" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/agent" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/backlog" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
