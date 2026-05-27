@@ -18,6 +18,8 @@ Repository: `git@github.com:VamsiAketi/sales-navigation-project.git`
 
 ## 3. Project settings
 
+**Root Directory:** leave empty (repository root). Do not set it to `server` or `ui`.
+
 Vercel should read `vercel.json` automatically:
 
 | Setting | Value |
