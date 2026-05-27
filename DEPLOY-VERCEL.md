@@ -18,9 +18,9 @@ Repository: `git@github.com:VamsiAketi/sales-navigation-project.git`
 
 ## 3. Project settings
 
-**Root Directory:** leave empty (repository root). Do not set it to `server` or `ui`.
+**Root Directory:** can be empty (repo root) or `server` — the build copies UI output into `dist` under that directory.
 
-Vercel should read `vercel.json` automatically:
+Set **Output Directory** to `dist` (Vercel dashboard → Project Settings → Build & Deployment).
 
 | Setting | Value |
 |--------|--------|
