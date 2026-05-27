@@ -77,6 +77,7 @@ export { companyWalletReservations } from "./company_wallet_reservations.js";
 export { stripeCheckoutIntents } from "./stripe_checkout_intents.js";
 export { billingAlerts } from "./billing_alerts.js";
 export { companySkills } from "./company_skills.js";
+export { salesNavigationState } from "./sales_navigation_state.js";
 export { plugins } from "./plugins.js";
 export { pluginConfig } from "./plugin_config.js";
 export { pluginCompanySettings } from "./plugin_company_settings.js";

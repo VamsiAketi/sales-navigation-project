@@ -14,6 +14,7 @@ export const DEFAULT_PRIMARY_NAV_IDS = [
   "skills",
   "costs",
   "goals",
+  "sales-navigation",
   "inbox",
   "tasks",
   "team",

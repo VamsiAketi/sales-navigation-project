@@ -15,6 +15,7 @@ import {
   Users,
   GripVertical,
   CheckSquare,
+  Radar,
 } from "lucide-react";
 import {
   DndContext,
@@ -207,6 +208,17 @@ export function SidebarPrimaryNav({ liveRunCount, pluginContext }: SidebarPrimar
             to="/goals"
             label="Goals"
             icon={Target}
+            iconClassName={azureSidebarIcon.goals}
+            className={dragDisabled ? undefined : "!pl-2"}
+          />
+        );
+      case "sales-navigation":
+        if (!canReadGoals) return null;
+        return (
+          <SidebarNavItem
+            to="/sales-navigation"
+            label="Sales Navigation"
+            icon={Radar}
             iconClassName={azureSidebarIcon.goals}
             className={dragDisabled ? undefined : "!pl-2"}
           />

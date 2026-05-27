@@ -21,6 +21,7 @@ import { routineRoutes } from "./routes/routines.js";
 import { connectorRoutes } from "./routes/connectors.js";
 import { executionWorkspaceRoutes } from "./routes/execution-workspaces.js";
 import { goalRoutes } from "./routes/goals.js";
+import { salesNavigationRoutes } from "./routes/sales-navigation.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { secretRoutes } from "./routes/secrets.js";
 import { projectSecretMutationsRoutes } from "./routes/project-secret-mutations.js";
@@ -499,6 +500,7 @@ export async function createApp(
   api.use(connectorRoutes(db));
   api.use(executionWorkspaceRoutes(db));
   api.use(goalRoutes(db));
+  api.use(salesNavigationRoutes(db));
   api.use(approvalRoutes(db));
   api.use(secretRoutes(db));
   api.use(projectSecretMutationsRoutes(db));

@@ -859,3 +859,29 @@ export {
   type SecretsLocalEncryptedConfig,
   type ConfigMeta,
 } from "./config-schema.js";
+
+export {
+  SALES_NAV_CONTACT_LEVELS,
+  SALES_NAV_CONTACT_STATUSES,
+  SALES_NAV_EDGE_TYPES,
+  SALES_NAV_LEVEL_LABELS,
+  SALES_NAV_STATUS_LABELS,
+  type SalesNavContactLevel,
+  type SalesNavContactStatus,
+  type SalesNavEdgeType,
+  type SalesNavAccount,
+  type SalesNavContact,
+  type SalesNavEdge,
+  type SalesNavOutreachEvent,
+  type SalesNavGraph,
+  type SalesNavPathStep,
+  type SalesNavWarmPath,
+  type SalesNavInsights,
+  type SalesNavState,
+} from "./types/sales-navigation.js";
+
+export {
+  salesNavGraphSchema,
+  importSalesNavSchema,
+  updateSalesNavContactSchema,
+} from "./validators/sales-navigation.js";
