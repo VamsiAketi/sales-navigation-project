@@ -8,6 +8,7 @@ import {
   slugId,
   stableAccountId,
 } from "./parse-common";
+import { salesNavInferLinkedInProfileUrl } from "./linkedin-avatar";
 
 const PODIUM_SHEET_NAME = "lead intelligence";
 const PANKAJ_LINKEDIN_URL = "https://www.linkedin.com/in/pankaj-srivastava-71b751/?skipRedirect=true";
@@ -139,7 +140,7 @@ function pick(row: PodiumRow, ...keys: string[]): string {
 function parsePodiumPipelineStatus(raw: string): SalesNavContactStatus {
   const n = raw.toLowerCase().trim();
   if (n === "signing" || n.includes("signing")) return "converted";
-  if (n === "hot") return "in_progress";
+  if (n === "hot") return "not_contacted";
   if (n === "warm") return "not_contacted";
   return "not_contacted";
 }
@@ -148,7 +149,7 @@ function parsePodiumRelationshipStatus(raw: string, pipeline: string): SalesNavC
   const n = raw.toLowerCase();
   if (n.includes("signing") || n.includes("existing customer")) return "verified";
   if (n.includes("warm")) return "warm_intro_complete";
-  if (n.includes("cold")) return "unverified";
+  if (n.includes("cold")) return "not_contacted";
   if (pipeline.toLowerCase() === "signing") return "verified";
   return parsePodiumPipelineStatus(pipeline);
 }
@@ -233,8 +234,9 @@ function parseLinkedInConnections(raw: string): ParsedMutual[] {
     .filter((part) => part.length >= 2)
     .filter((part) => !/^no\s*connections?$/i.test(part))
     .map((part) => {
-      const linkedinUrl = extractFirstLinkedInUrl(part);
-      const name = linkedinUrl ? mutualNameFromLinkedInUrl(linkedinUrl) : part;
+      const linkedinUrlFromPart = extractFirstLinkedInUrl(part);
+      const name = linkedinUrlFromPart ? mutualNameFromLinkedInUrl(linkedinUrlFromPart) : part;
+      const linkedinUrl = linkedinUrlFromPart ?? salesNavInferLinkedInProfileUrl(name);
       return { name, linkedinUrl };
     });
 }
@@ -261,7 +263,7 @@ function ensureInternalConnectorNode(
     company,
     linkedinUrl: connector.linkedinUrl,
     level: "warm_intro",
-    status: "in_progress",
+    status: "not_contacted",
     relationshipStrength: 100,
     verified: true,
     outreachNotes: `Auto-generated climb start node from ${connector.importSource}.`,
@@ -288,13 +290,14 @@ function ensureMutualContact(
   if (existingId) return existingId;
 
   const contactId = slugId("contact", `${company}-${name}`, contacts.length);
+  const resolvedLinkedInUrl = linkedinUrl ?? salesNavInferLinkedInProfileUrl(name);
   contacts.push({
     id: contactId,
     accountId,
     name,
     title: "Mutual connection",
     company,
-    linkedinUrl,
+    linkedinUrl: resolvedLinkedInUrl,
     level: "internal_champion",
     status: "connected",
     relationshipStrength: 90,
@@ -398,7 +401,8 @@ export function parsePodiumLeadIntelligenceWorkbook(workbook: XLSX.WorkBook): Sa
       company,
       linkedinUrl,
       level: "decision_maker",
-      status: verified && status === "unverified" ? "verified" : status,
+      status:
+        verified && (status === "unverified" || status === "not_contacted") ? "verified" : status,
       relationshipStrength: strength,
       verified,
       outreachNotes: buildOutreachNotes(row),

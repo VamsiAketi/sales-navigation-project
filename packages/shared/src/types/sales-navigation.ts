@@ -93,7 +93,12 @@ export type SalesNavWarmPath = {
   targetContactId: string;
   targetContactName: string;
   steps: SalesNavPathStep[];
+  /** @deprecated Prefer routeScore — kept for older persisted insights payloads. */
   totalStrength: number;
+  /** 0–100 climb quality (bottleneck hops + engagement). */
+  routeScore?: number;
+  /** Human-readable explanation of why this route was chosen. */
+  summary?: string;
 };
 
 export type SalesNavInsights = {
@@ -123,7 +128,7 @@ export type SalesNavState = {
 
 export const SALES_NAV_LEVEL_LABELS: Record<SalesNavContactLevel, string> = {
   warm_intro: "Warm Introductions",
-  internal_champion: "Internal Champions",
+  internal_champion: "1st Level Connection",
   influencer: "Influencers",
   technical_evaluator: "Technical Evaluators",
   decision_maker: "Decision Makers",

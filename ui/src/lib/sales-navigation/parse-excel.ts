@@ -86,7 +86,8 @@ function parseGenericSalesNavWorkbook(workbook: XLSX.WorkBook): SalesNavGraph {
       company: accountName,
       linkedinUrl: pick(row, "linkedin", "linkedin_url", "profile_url") || null,
       level,
-      status: verified && status === "unverified" ? "verified" : status,
+      status:
+        verified && (status === "unverified" || status === "not_contacted") ? "verified" : status,
       relationshipStrength: strength,
       verified,
       outreachNotes: pick(row, "notes", "outreach_notes", "comment") || null,

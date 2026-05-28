@@ -1,5 +1,6 @@
-import type { SalesNavGraph, SalesNavWarmPath } from "@paperclipai/shared";
+import type { SalesNavContact, SalesNavGraph, SalesNavWarmPath } from "@paperclipai/shared";
 import { cn } from "@/lib/utils";
+import { OptimalRouteBanner } from "./OptimalRouteBanner";
 import { StrategicCompetitiveGraph } from "./StrategicCompetitiveGraph";
 
 export function BattleMapGraph({
@@ -8,6 +9,9 @@ export function BattleMapGraph({
   selectedContactId,
   recommendedContactId,
   highlightedPath,
+  routeTargets,
+  routeTargetId,
+  onRouteTargetChange,
   onSelectAccount,
   onSelectContact,
   compact = false,
@@ -17,6 +21,9 @@ export function BattleMapGraph({
   selectedContactId: string | null;
   recommendedContactId: string | null;
   highlightedPath: SalesNavWarmPath | null;
+  routeTargets: SalesNavContact[];
+  routeTargetId: string | null;
+  onRouteTargetChange: (contactId: string) => void;
   onSelectAccount: (accountId: string) => void;
   onSelectContact: (contactId: string) => void;
   compact?: boolean;
@@ -49,23 +56,33 @@ export function BattleMapGraph({
               title={account.name}
             >
               {account.name}
-              <span className="ml-1 tabular-nums opacity-80">{account.priorityScore}</span>
             </button>
           ))}
         </div>
       </div>
 
       {accountId ? (
-        <StrategicCompetitiveGraph
-          graph={graph}
-          accountId={accountId}
-          accountName={accountName}
-          selectedContactId={selectedContactId}
-          recommendedContactId={recommendedContactId}
-          highlightedPath={highlightedPath}
-          onSelectContact={onSelectContact}
-          compact={compact}
-        />
+        <>
+          <OptimalRouteBanner
+            className="shrink-0"
+            route={highlightedPath}
+            targets={routeTargets}
+            targetContactId={routeTargetId}
+            onTargetChange={onRouteTargetChange}
+          />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <StrategicCompetitiveGraph
+            graph={graph}
+            accountId={accountId}
+            accountName={accountName}
+            selectedContactId={selectedContactId}
+            recommendedContactId={recommendedContactId}
+            highlightedPath={highlightedPath}
+            onSelectContact={onSelectContact}
+            compact={compact}
+          />
+        </div>
+        </>
       ) : (
         <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border/70 bg-muted/10">
           <p className="text-sm text-muted-foreground">No strategic account selected.</p>

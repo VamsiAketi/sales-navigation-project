@@ -6,9 +6,8 @@ import type {
   SalesNavGraph,
   SalesNavInsights,
   SalesNavState,
-  SalesNavWarmPath,
 } from "@paperclipai/shared";
-import { SALES_NAV_CONTACT_LEVELS } from "@paperclipai/shared";
+import { findOptimalRoute, SALES_NAV_CONTACT_LEVELS } from "@paperclipai/shared";
 
 const LEVEL_RANK: Record<SalesNavContactLevel, number> = {
   warm_intro: 0,
@@ -170,93 +169,6 @@ export function buildDemoSalesNavGraph(): SalesNavGraph {
   return { accounts, contacts, edges, outreachHistory: [] };
 }
 
-function adjacency(graph: SalesNavGraph): Map<string, Array<{ to: string; strength: number }>> {
-  const map = new Map<string, Array<{ to: string; strength: number }>>();
-  for (const edge of graph.edges) {
-    const list = map.get(edge.fromContactId) ?? [];
-    list.push({ to: edge.toContactId, strength: edge.strength });
-    map.set(edge.fromContactId, list);
-    const reverse = map.get(edge.toContactId) ?? [];
-    reverse.push({ to: edge.fromContactId, strength: edge.strength });
-    map.set(edge.toContactId, reverse);
-  }
-  for (const c of graph.contacts) {
-    if (c.reportsToContactId) {
-      const list = map.get(c.id) ?? [];
-      if (!list.some((x) => x.to === c.reportsToContactId)) {
-        list.push({ to: c.reportsToContactId, strength: Math.max(40, c.relationshipStrength * 0.6) });
-        map.set(c.id, list);
-      }
-    }
-  }
-  return map;
-}
-
-function findWarmPath(
-  graph: SalesNavGraph,
-  accountId: string,
-): SalesNavWarmPath | null {
-  const account = graph.accounts.find((a) => a.id === accountId);
-  if (!account) return null;
-  const contacts = graph.contacts.filter((c) => c.accountId === accountId);
-  const decision = contacts
-    .filter((c) => c.level === "decision_maker")
-    .sort((a, b) => b.relationshipStrength - a.relationshipStrength)[0];
-  if (!decision) return null;
-
-  const starts = contacts
-    .filter((c) => c.level === "warm_intro" || c.level === "internal_champion")
-    .sort((a, b) => b.relationshipStrength - a.relationshipStrength);
-  if (starts.length === 0) return null;
-
-  const adj = adjacency(graph);
-  let best: SalesNavWarmPath | null = null;
-
-  for (const start of starts) {
-    const queue: Array<{ id: string; strength: number; path: string[] }> = [
-      { id: start.id, strength: start.relationshipStrength, path: [start.id] },
-    ];
-    const seen = new Set<string>([start.id]);
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      if (current.id === decision.id) {
-        const steps = current.path.map((id) => {
-          const contact = contacts.find((c) => c.id === id)!;
-          return {
-            contactId: contact.id,
-            contactName: contact.name,
-            level: contact.level,
-            strength: contact.relationshipStrength,
-          };
-        });
-        const candidate: SalesNavWarmPath = {
-          accountId,
-          accountName: account.name,
-          targetContactId: decision.id,
-          targetContactName: decision.name,
-          steps,
-          totalStrength: current.strength / current.path.length,
-        };
-        if (!best || candidate.totalStrength > best.totalStrength) best = candidate;
-        break;
-      }
-      for (const next of adj.get(current.id) ?? []) {
-        if (!contacts.some((c) => c.id === next.to)) continue;
-        if (seen.has(next.to)) continue;
-        seen.add(next.to);
-        queue.push({
-          id: next.to,
-          strength: current.strength + next.strength,
-          path: [...current.path, next.to],
-        });
-      }
-    }
-  }
-
-  return best;
-}
-
 export function analyzeSalesNavGraph(graph: SalesNavGraph): SalesNavInsights {
   if (graph.accounts.length === 0) return emptyInsights();
 
@@ -306,7 +218,7 @@ export function analyzeSalesNavGraph(graph: SalesNavGraph): SalesNavInsights {
     ["unverified", "verified", "contacted"].includes(c.status),
   ) ?? actionable[0] ?? null;
 
-  const strongestWarmPath = nextAccount ? findWarmPath(graph, nextAccount.accountId) : null;
+  const strongestWarmPath = nextAccount ? findOptimalRoute(graph, nextAccount.accountId) : null;
 
   const strengths = graph.contacts.map((c) => c.relationshipStrength);
   const averageRelationshipStrength =

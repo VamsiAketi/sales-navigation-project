@@ -885,3 +885,5 @@ export {
   importSalesNavSchema,
   updateSalesNavContactSchema,
 } from "./validators/sales-navigation.js";
+
+export { findOptimalRoute, listRouteTargets } from "./sales-nav-optimal-route.js";

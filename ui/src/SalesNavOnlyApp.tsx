@@ -199,7 +199,7 @@ export function SalesNavOnlyApp() {
           )}
         </div>
       </aside>
-      <section className="min-w-0 flex-1 overflow-hidden bg-[#f9fafb]">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f9fafb]">
         <SalesNavigation />
       </section>
     </main>

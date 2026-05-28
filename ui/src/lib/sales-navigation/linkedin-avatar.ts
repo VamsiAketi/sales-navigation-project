@@ -1,4 +1,50 @@
+import type { SalesNavContactLevel } from "@paperclipai/shared";
+import { extractFirstLinkedInUrl } from "./parse-common";
 import { isVercelStaticMode } from "../vercel-static/config";
+
+/** Climb order for avatar prefetch (bottom row first). */
+export const SALES_NAV_AVATAR_PREFETCH_LEVEL_ORDER: Record<SalesNavContactLevel, number> = {
+  warm_intro: 0,
+  internal_champion: 1,
+  influencer: 2,
+  technical_evaluator: 3,
+  decision_maker: 4,
+  procurement: 5,
+};
+
+/**
+ * Guess a linkedin.com/in/… URL when PODIUM lists a mutual as a name or slug only.
+ * Used for bottom-tier mutual connections that lack an explicit profile URL in Excel.
+ */
+export function salesNavInferLinkedInProfileUrl(name: string): string | null {
+  const display = salesNavDisplayName(name).trim();
+  if (!display) return null;
+
+  const embedded = extractFirstLinkedInUrl(display);
+  if (embedded) return embedded;
+
+  const withoutTrailing = display.replace(/\s+\d+[\w.-]*$/, "").trim();
+  const slugCandidate = !/\s/.test(withoutTrailing)
+    ? withoutTrailing
+    : withoutTrailing
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+
+  if (!slugCandidate || slugCandidate.length < 3) return null;
+  if (!/^[a-z0-9][a-z0-9-]*$/i.test(slugCandidate)) return null;
+
+  return `https://www.linkedin.com/in/${slugCandidate.toLowerCase()}`;
+}
+
+export function salesNavResolveLinkedInUrl(
+  name: string,
+  linkedinUrl?: string | null,
+): string | null {
+  const explicit = linkedinUrl?.trim();
+  if (explicit) return explicit;
+  return salesNavInferLinkedInProfileUrl(name);
+}
 
 /** Same-origin avatar proxy (resolves LinkedIn photo server-side). */
 export function salesNavLinkedInAvatarSrc(companyId: string, linkedinUrl: string | null | undefined): string | null {

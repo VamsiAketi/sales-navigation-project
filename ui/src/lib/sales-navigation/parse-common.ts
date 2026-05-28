@@ -80,7 +80,7 @@ export function parseStatus(raw: string): SalesNavContactStatus {
   if (n.includes("lost")) return "closed_lost";
   if (n.includes("verify")) return "verified";
   if (n.includes("warm")) return "warm_intro_complete";
-  return "unverified";
+  return "not_contacted";
 }
 
 /** Parses 0–100, 0–10 scores, or strong/medium/weak labels. */

@@ -123,14 +123,18 @@ export function SalesIntelligencePanel({
         {insights.strongestWarmPath ? (
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-              Strongest warm path
+              Optimal route
             </p>
             <p className="mt-2 text-xs text-foreground">
               {insights.strongestWarmPath.steps.map((s) => salesNavDisplayName(s.contactName)).join(" → ")}
             </p>
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              Toward {salesNavDisplayName(insights.strongestWarmPath.targetContactName)}
-            </p>
+            {insights.strongestWarmPath.summary ? (
+              <p className="mt-1 text-[10px] text-muted-foreground">{insights.strongestWarmPath.summary}</p>
+            ) : (
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Toward {salesNavDisplayName(insights.strongestWarmPath.targetContactName)}
+              </p>
+            )}
           </div>
         ) : null}
 

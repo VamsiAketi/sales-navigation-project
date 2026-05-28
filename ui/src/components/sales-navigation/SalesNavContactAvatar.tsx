@@ -3,7 +3,11 @@ import type { SalesNavContactLevel } from "@paperclipai/shared";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
-import { salesNavContactInitials, salesNavLinkedInAvatarSrc } from "@/lib/sales-navigation/linkedin-avatar";
+import {
+  salesNavContactInitials,
+  salesNavLinkedInAvatarSrc,
+  salesNavResolveLinkedInUrl,
+} from "@/lib/sales-navigation/linkedin-avatar";
 
 const LEVEL_RING: Record<SalesNavContactLevel, string> = {
   warm_intro: "ring-emerald-500/60",
@@ -31,13 +35,14 @@ export function SalesNavContactAvatar({
 }) {
   const { selectedCompanyId } = useCompany();
   const [imageFailed, setImageFailed] = useState(false);
+  const resolvedLinkedInUrl = salesNavResolveLinkedInUrl(name, linkedinUrl);
 
   useEffect(() => {
     setImageFailed(false);
   }, [linkedinUrl, name]);
   const avatarSrc =
-    selectedCompanyId && linkedinUrl && !imageFailed
-      ? salesNavLinkedInAvatarSrc(selectedCompanyId, linkedinUrl)
+    selectedCompanyId && resolvedLinkedInUrl && !imageFailed
+      ? salesNavLinkedInAvatarSrc(selectedCompanyId, resolvedLinkedInUrl)
       : null;
 
   return (

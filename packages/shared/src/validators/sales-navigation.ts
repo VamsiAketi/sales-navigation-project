@@ -22,7 +22,7 @@ const contactSchema = z.object({
   company: z.string().nullable().optional(),
   linkedinUrl: z.string().nullable().optional(),
   level: z.enum(SALES_NAV_CONTACT_LEVELS),
-  status: z.enum(SALES_NAV_CONTACT_STATUSES).default("unverified"),
+  status: z.enum(SALES_NAV_CONTACT_STATUSES).default("not_contacted"),
   relationshipStrength: z.number().min(0).max(100).default(0),
   verified: z.boolean().default(false),
   outreachNotes: z.string().nullable().optional(),

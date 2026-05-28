@@ -1,7 +1,4 @@
-import { useState } from "react";
 import type { SalesNavContact, SalesNavGraph, SalesNavInsights, SalesNavContactStatus } from "@paperclipai/shared";
-import { ChevronDown, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { SalesNavContactDetailPanel } from "./SalesNavContactDetailPanel";
 import { SalesIntelligencePanel } from "./SalesIntelligencePanel";
 
@@ -20,7 +17,6 @@ export function SalesNavRightSidebar({
   onClose: () => void;
   onStatusChange: (status: SalesNavContactStatus) => void;
 }) {
-  const [overviewOpen, setOverviewOpen] = useState(false);
   const isRecommended = Boolean(
     selectedContact && insights.recommendedContactId === selectedContact.id,
   );
@@ -57,37 +53,6 @@ export function SalesNavRightSidebar({
         onClose={onClose}
         onStatusChange={onStatusChange}
       />
-
-      <div className="shrink-0 border-t border-border bg-muted/15">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between px-3 py-2 text-left"
-          aria-expanded={overviewOpen}
-          onClick={() => setOverviewOpen((v) => !v)}
-        >
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold">
-            <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden />
-            Battlefield overview
-          </span>
-          <ChevronDown
-            className={cn("h-4 w-4 text-muted-foreground transition-transform", overviewOpen && "rotate-180")}
-            aria-hidden
-          />
-        </button>
-        {overviewOpen ? (
-          <div className="max-h-56 overflow-y-auto border-t border-border/60 [scrollbar-width:thin]">
-            <SalesIntelligencePanel
-              graph={graph}
-              insights={insights}
-              selectedContact={null}
-              canWrite={canWrite}
-              dense
-              hideContactSection
-              onStatusChange={onStatusChange}
-            />
-          </div>
-        ) : null}
-      </div>
     </div>
   );
 }

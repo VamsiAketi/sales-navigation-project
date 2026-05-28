@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SalesNavContactStatus } from "@paperclipai/shared";
+import { findOptimalRoute, listRouteTargets } from "@paperclipai/shared";
 import { salesNavigationApi } from "../api/salesNavigation";
 import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { parseSalesNavExcelBuffer } from "../lib/sales-navigation/parse-excel";
+import { clearSalesNavNodeLayouts } from "../lib/sales-navigation/node-layout-storage";
 import { BattleMapGraph } from "../components/sales-navigation/BattleMapGraph";
 import { SalesNavRightSidebar } from "../components/sales-navigation/SalesNavRightSidebar";
 import { SalesNavImportTemplateRef } from "../components/sales-navigation/SalesNavImportTemplateRef";
@@ -20,6 +22,7 @@ export function SalesNavigation() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [routeTargetId, setRouteTargetId] = useState<string | null>(null);
   const [intelPanelOpen, setIntelPanelOpen] = useState(false);
 
   useEffect(() => {
@@ -49,6 +52,26 @@ export function SalesNavigation() {
     setSelectedContactId((prev) => prev ?? state.insights.recommendedContactId ?? null);
   }, [state]);
 
+  const routeTargets = useMemo(() => {
+    if (!state || !selectedAccountId) return [];
+    return listRouteTargets(state.graph, selectedAccountId);
+  }, [state, selectedAccountId]);
+
+  useEffect(() => {
+    if (routeTargets.length === 0) {
+      setRouteTargetId(null);
+      return;
+    }
+    setRouteTargetId((prev) =>
+      prev && routeTargets.some((t) => t.id === prev) ? prev : (routeTargets[0]?.id ?? null),
+    );
+  }, [selectedAccountId, routeTargets]);
+
+  const optimalRoute = useMemo(() => {
+    if (!state || !selectedAccountId) return null;
+    return findOptimalRoute(state.graph, selectedAccountId, routeTargetId);
+  }, [state, selectedAccountId, routeTargetId]);
+
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
       await salesNavigationApi.clear(selectedCompanyId!);
@@ -57,6 +80,7 @@ export function SalesNavigation() {
       return salesNavigationApi.import(selectedCompanyId!, file.name, graph);
     },
     onSuccess: (next) => {
+      if (selectedCompanyId) clearSalesNavNodeLayouts(selectedCompanyId);
       queryClient.setQueryData(queryKeys.salesNavigation(selectedCompanyId!), next);
       setSelectedAccountId(next.insights.nextBestAccountId ?? next.graph.accounts[0]?.id ?? null);
       setSelectedContactId(next.insights.recommendedContactId ?? null);
@@ -160,11 +184,10 @@ export function SalesNavigation() {
               selectedAccountId={selectedAccountId}
               selectedContactId={selectedContactId}
               recommendedContactId={state.insights.recommendedContactId}
-              highlightedPath={
-                selectedAccountId && state.insights.strongestWarmPath?.accountId === selectedAccountId
-                  ? state.insights.strongestWarmPath
-                  : state.insights.strongestWarmPath
-              }
+              highlightedPath={optimalRoute}
+              routeTargets={routeTargets}
+              routeTargetId={routeTargetId}
+              onRouteTargetChange={setRouteTargetId}
               onSelectAccount={handleSelectAccount}
               onSelectContact={handleSelectContact}
               compact
